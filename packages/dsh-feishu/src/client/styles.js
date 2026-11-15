@@ -80,10 +80,11 @@ export const CSS = `
   --fo-glass-shadow: ${GLASS.shadow};
   --fo-glass-wash: ${GLASS.wash};
   --fo-glass-blur: blur(12px);
-  /* 侧栏宽度。参考站是 288px，但那是**整页**的 aside；我们这块是宿主侧栏里的一个 tab，
-     288px 会把正文挤得很窄（用户实测「展开太宽」）。所以收到 232px：
-     标签最长的「洞察」「运行」两字 + 图标 + caret 在这个宽度里仍然舒展。 */
-  --fo-rail-w: 232px;
+  /* 侧栏宽度：与 cove 完全一致 —— 展开 192px、收起 80px。 */
+  --fo-rail-w: 192px;
+  /* 全局 Header 高度（= 品牌栏高度，两栏共用）与右侧建议栏宽度 */
+  --fo-appbar-h: 48px;
+  --fo-dock-w: 340px;
   /* rail 里「一个方块」的边长：logo 与一级项**共用**这一个值，
      以后只调这里，两者不可能再不一致（用户反复踩到的就是「改一处、另一处没跟上」）。 */
   --fo-rail-item: 44px;
@@ -123,39 +124,59 @@ export const CSS = `
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
-.fo-brand, .fo-featnav-item, .fo-row, .fo-graph, .fo-sec, .fo-ref, .fo-scope-head {
+/* 注意：**品牌块不参加入场动画**。它和全局 Header 必须严格共线，而 fo-rise 的
+   from 帧带 translateY(4px) —— 动画没跑完（或标签页在后台、动画被冻结）时会停在偏移 4px 的
+   状态，正好就是用户看到的「中间那条缝对不齐」。 */
+.fo-featnav-item, .fo-row, .fo-graph, .fo-sec, .fo-ref, .fo-scope-head {
   animation: fo-rise 120ms var(--fo-ease) backwards;
   animation-delay: calc(var(--fo-i, 0) * 20ms);
 }
 
 /* ============ rail 三段：品牌 / 功能导航 / 底部固定区 ============ */
+/* ============ rail（与 cove 一致：192/80 宽 · 48 头部 · 44 项 · 12 圆角） ============ */
 .fo-rail {
   display: flex; flex-direction: column; min-width: 0; min-height: 0;
-  border-right: 1px solid var(--fo-rail-line);
-  /* 参考站 aside 是「极深蓝黑 80% + blur(40px)」；这里用宿主的 sidebar-fill 铺同一层 80% 半透明底 */
-  background: color-mix(in oklab, ${T.sidebar} 80%, transparent);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  /* 拖动把手是绝对定位的，需要一个定位上下文 */
+  position: relative;
+  border-right: 1px solid color-mix(in oklab, ${T.label1} 5%, transparent);
+  /* cove：深底 + 一层 5% 品牌色径向光晕 + 右侧投影 */
+  background:
+    radial-gradient(circle at 30% 20%, color-mix(in oklab, ${T.brand} 5%, transparent) 0%, transparent 70%),
+    color-mix(in oklab, ${T.bgBase} 96%, transparent);
+  box-shadow: 8px 0 32px -24px color-mix(in oklab, ${T.label1} 30%, transparent);
 }
+/* 右边缘拖动把手：6px 命中带，hover 时显一条品牌色细线（不占布局） */
+.fo-rail-resizer {
+  position: absolute; top: 0; right: -3px; bottom: 0; z-index: 6;
+  width: 6px; cursor: col-resize; touch-action: none;
+}
+.fo-rail-resizer::after {
+  content: ''; position: absolute; top: 0; right: 3px; bottom: 0; width: 1px;
+  background: transparent; transition: background-color .16s var(--fo-ease);
+}
+.fo-rail-resizer:hover::after, .fo-rail-resizer:focus-visible::after {
+  background: color-mix(in oklab, ${T.brand} 60%, transparent);
+}
+/* 头部 48px（cove h-12）：logo 28px，右侧 16px 内边距 */
 .fo-brand {
-  display: flex; align-items: center; gap: 10px;
-  min-height: 68px; padding: 10px 16px;
-  border-bottom: 1px solid var(--fo-glass-line);
+  display: flex; align-items: center; gap: 12px;
+  min-height: 48px; height: 48px; padding: 0 16px;
+  border-bottom: 1px solid color-mix(in oklab, ${T.brand} 20%, transparent);
 }
-/* logo 与一级项**同高**（44px）：展开态两者都是 44 高，收起态两者都是 36×36 正方形。
-   只改一处尺寸会让「大小不一致」反复出现，所以这里按「和导航项对齐」定尺寸。 */
+/* cove 的 logo 是 28px 裸标（无底板、无描边） */
 .fo-brand-logo {
-  flex: 0 0 var(--fo-rail-item); width: var(--fo-rail-item); height: var(--fo-rail-item); border-radius: 12px;
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center;
   color: ${T.brand};
-  background: var(--fo-selected-bg);
-  border: 1px solid var(--fo-selected-line);
+  background: none; border: 0; padding: 0;
 }
-.fo-brand-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-.fo-brand-title { font-size: 13px; font-weight: 600; color: ${T.label1}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fo-brand-sub { font-size: 11px; color: ${T.label2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fo-brand-mark { width: 28px; height: 28px; display: block; object-fit: contain; }
+.fo-brand-text { display: flex; flex-direction: column; min-width: 0; gap: 0; }
+.fo-brand-title { font-size: 14px; font-weight: 500; color: ${T.label1}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fo-brand-sub { font-size: 12px; color: ${T.label2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 导航容器：p-4 + gap-2 */
 .fo-featnav {
-  flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 16px;
   scrollbar-width: thin; scrollbar-color: var(--fo-glass-line-hover) transparent;
 }
 .fo-featnav::-webkit-scrollbar, .fo-subnav .fo-scope-body::-webkit-scrollbar { width: 6px; }
@@ -163,89 +184,211 @@ export const CSS = `
   background: var(--fo-glass-line-hover); border-radius: 3px;
 }
 .fo-featnav::-webkit-scrollbar-track, .fo-subnav .fo-scope-body::-webkit-scrollbar-track { background: transparent; }
+/* 一级项：px-4 py-3 rounded-xl gap-3 leading-5 font-medium */
 .fo-featnav-item {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; min-width: 0; height: var(--fo-rail-item); padding: 0 12px;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-width: 0; height: 44px; padding: 0 16px;
   border: 1px solid transparent; border-radius: 12px;
-  background: transparent; color: ${T.label2}; font: inherit; font-size: 13px; text-align: left;
+  background: transparent; color: ${T.label2}; font: inherit; font-size: 14px; font-weight: 500; text-align: left;
   cursor: pointer;
   transition: background-color var(--fo-dur) var(--fo-ease), border-color var(--fo-dur) var(--fo-ease), color var(--fo-dur) var(--fo-ease);
 }
-.fo-featnav-item:hover { background: var(--fo-row-hover-bg); border-color: var(--fo-glass-line); color: ${T.label1}; }
+.fo-featnav-item:hover {
+  background: color-mix(in oklab, ${T.label1} 5%, transparent);
+  border-color: transparent; color: ${T.label1};
+}
+/* 激活：bg-blue-600/30 + border-blue-500/50 + text-blue-300 */
 .fo-featnav-item[data-active="1"] {
-  background: var(--fo-selected-bg);
-  border-color: var(--fo-selected-line);
-  color: ${T.brand}; font-weight: 500;
+  background: color-mix(in oklab, ${T.brand} 30%, transparent);
+  border-color: color-mix(in oklab, ${T.brand} 50%, transparent);
+  color: color-mix(in oklab, ${T.brand} 60%, ${T.label1}); font-weight: 500;
 }
 .fo-nav-icon { flex: 0 0 20px; width: 20px; height: 20px; }
 .fo-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 两级菜单：一级项 +（可展开项的）二级菜单。caret 是唯一的展开指示，不额外加文字。 */
+/* 底部固定区：cove 是 mt-auto + 上边框 + p-4 + gap-1 */
+.fo-rail-foot {
+  flex: 0 0 auto; display: flex; gap: 4px; padding: 16px;
+  border-top: 1px solid color-mix(in oklab, ${T.label1} 10%, transparent);
+}
+.fo-rail-action {
+  /* 靠左对齐（与一级项同一条起始线），用户口径：打开页面放左下 */
+  display: flex; align-items: center; justify-content: flex-start; gap: 12px;
+  flex: 1 1 0; min-width: 0; height: 44px; padding: 0 16px;
+  border: 1px solid transparent; border-radius: 12px;
+  background: transparent; color: ${T.label2};
+  font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer;
+  transition: background-color var(--fo-dur) var(--fo-ease), border-color var(--fo-dur) var(--fo-ease), color var(--fo-dur) var(--fo-ease);
+}
+.fo-rail-action:hover {
+  background: color-mix(in oklab, ${T.label1} 5%, transparent);
+  border-color: transparent; color: ${T.label1};
+}
+.fo-root[data-rail="0"] .fo-rail-action {
+  justify-content: center; padding: 0; flex: 0 0 auto;
+  width: 100%; height: 44px; border-radius: 12px;
+}
+/* 两级菜单：cove NavGroup = mt-1 + bg-white/[0.03] + rounded-xl + py-1.5 + gap-2 */
 .fo-featnav-group { display: flex; flex-direction: column; min-width: 0; }
-.fo-nav-caret { margin-left: auto; flex: 0 0 auto; font-size: 10px; color: ${T.label2}; transition: transform .12s var(--fo-ease); }
-.fo-nav-caret[data-open="1"] { transform: rotate(180deg); }
+/* cove 的二级菜单没有 caret —— 这里也不画 */
+.fo-nav-caret { display: none; }
+
 /* 二级菜单（「关系」下面是范围树）：不再自带侧栏底色/描边与 blur —— 它就是 rail 的一部分。
    行更矮（30px）、字号 12px、左侧缩进 24px 起（一级项 padding 是 12px），长文案用省略号。 */
+/* ============ 关系页范围树：cove 的「大包小」 ============
+   cove 的二级菜单是这样：一个 mt-1 + bg-white/[0.03] + rounded-xl + py-1.5 + gap-2 的容器，
+   里面每一项和一级项**完全同款**（px-4 py-3 rounded-xl gap-3 font-medium）。
+   所以这里不再给「二级 30px / 三级 26px / 小字号 / 深缩进」这些特殊样式：
+   行统一 44px、14px、px-4、gap-3、12 圆角；层级只由**容器一层层包住**来表达。 */
 .fo-subnav {
-  display: flex; flex-direction: column; min-width: 0; padding: 2px 0 6px;
-  border-top: 1px solid var(--fo-glass-line);
-  margin-top: 2px;
+  display: flex; flex-direction: column; min-width: 0;
+  padding: 4px 0 0; gap: 2px;
 }
-.fo-subnav .fo-scope {
-  border-right: 0; background: transparent;
-  backdrop-filter: none; -webkit-backdrop-filter: none;
+.fo-subnav .fo-scope { border-right: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.fo-subnav .fo-scope-head { padding: 2px 12px 4px; border-bottom: 0; }
+.fo-subnav .fo-scope-body { padding: 0; }
+.fo-subnav .fo-scope-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* 行 = 一级项的同一套取值（只是字号交给 CSS 变量，视觉上和 rail 一级项没有区别） */
+.fo-subnav .fo-row {
+  position: relative;
+  /* 与一级项**完全相同**的取值（cove 的 subItem 与父项同款）：44 高 / px-4 / gap-3 /
+     14px / 500 / 12 圆角。层级由外层容器给，不给行加任何特殊样式。 */
+  height: 44px; padding: 0 16px; gap: 12px;
+  border: 1px solid transparent; border-radius: 12px;
+  font-size: 14px; font-weight: 500; color: ${T.label2};
+  transition: background-color var(--fo-dur) var(--fo-ease), border-color var(--fo-dur) var(--fo-ease), color var(--fo-dur) var(--fo-ease);
 }
-.fo-subnav .fo-scope-head { padding: 2px 10px 6px 24px; border-bottom: 0; }
-.fo-subnav .fo-scope-body { padding: 0 10px 4px 0; }
-.fo-subnav .fo-scope-list { gap: 2px; }
-/* 行高 30 → 32：命中区域更接近可用下限（触控板/触屏更稳），顺带给两层导轨留出高度 */
-.fo-subnav .fo-row { height: 32px; padding: 0 6px 0 8px; gap: 6px; border-radius: 8px; font-size: 12px; }
-/* 计数**定宽**：hover 时只淡出、不改布局 —— 否则名字会突然变宽，整行文字抖一下（用户能看见的那种抖） */
-.fo-subnav .fo-row-count { min-width: 44px; text-align: right; }
-/* 缩进导轨：每层一条 1px 竖线，位置由 TreeNav 按 indentStep 算好 */
-.fo-guide { position: absolute; top: 2px; bottom: 2px; width: 1px; background: ${g(T.label1, 8)}; pointer-events: none; }
-.fo-row:hover .fo-guide, .fo-row[aria-selected="true"] .fo-guide { background: ${g(T.label1, 14)}; }
-/* 「未分组」是系统桶而不是用户建的目录：虚线方点 + 整行降一档，避免被当成真目录 */
-.fo-dot.is-bucket {
-  width: 10px; height: 10px; border-radius: 3px; background: none;
-  border: 1px dashed ${g(T.label2, 55)}; box-shadow: none;
+.fo-subnav .fo-row:hover {
+  background: ${g(T.label1, 5)}; border-color: transparent; color: ${T.label1};
 }
-.fo-row[data-bucket="1"] .fo-row-label { font-weight: 400; color: ${T.label2}; }
-.fo-subnav .fo-row-menu { width: 20px; height: 20px; min-width: 20px; padding: 0; border-radius: 6px; font-size: 13px; line-height: 1; }
-.fo-subnav .fo-row-count { font-size: 11px; }
-.fo-subnav .fo-row-badge { font-size: 9px; }
-.fo-subnav .fo-caret { flex: 0 0 10px; width: 10px; height: 10px; font-size: 8px; }
-.fo-subnav .fo-dot {
-  /* 项目行可以把色点换成图标（.is-logo）：保持同样的 8px 占位不跳动 */ flex: 0 0 6px; width: 6px; height: 6px; box-shadow: 0 0 0 2px color-mix(in oklab, var(--fo-c, ${T.idle}
-.fo-dot.is-logo { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: none; border: 0; }
-) 22%, transparent); }
-.fo-subnav .fo-scope-note { padding: 1px 8px 3px 30px; font-size: 10px; }
-.fo-subnav .fo-input { height: 24px; }
+.fo-subnav .fo-row[aria-selected="true"] {
+  background: ${g(T.brand, 30)};
+  border-color: ${g(T.brand, 50)};
+  color: ${g(T.brand, 60, T.label1)};
+  font-weight: 500;
+  box-shadow: none;
+}
+/* 目录行与项目行同款：层级由外层容器给，不给文字加粗/变灰这类额外区分 */
+.fo-subnav .fo-row[data-kind="group"],
+.fo-subnav .fo-row[data-kind="project"],
+.fo-subnav .fo-row[data-kind="all"] {
+  height: 44px; font-size: 14px; font-weight: 500; color: ${T.label2};
+}
+.fo-subnav .fo-row[aria-selected="true"]:is([data-kind="group"], [data-kind="project"], [data-kind="all"]) {
+  color: ${g(T.brand, 60, T.label1)};
+}
+
+/* 嵌套容器：cove 的 mt-1 + bg-white/[0.03] + rounded-xl + py-1.5 + gap-2 */
+.fo-row-group {
+  /* cove：mt-1（4px）+ bg-white/[0.03] + rounded-xl + py-1.5（6px）+ flex-col gap-2（8px），
+     容器自身**没有左右内边距** —— 里面的项用同款 px-4，所以和父项左缘对齐。 */
+  display: flex; flex-direction: column; gap: 8px;
+  margin: 4px 0 0; padding: 6px 0;
+  border-radius: 12px;
+  background: ${g(T.label1, 3)};
+}
+/* 第三层再包一层，观感与 second level 相同（cove 也是同一个 bg/圆角叠一层） */
+/* 更深一层：再包一层同款容器、底色深一档 —— 归属关系全靠「外层包住内层」表达，
+   不加缩进、不加竖线（缩进会吃掉项目名宽度，竖线又像缩进）。 */
+.fo-row-group .fo-row-group {
+  margin: 0; padding: 6px 0;
+  background: ${g(T.label1, 5)};
+}
+
+.fo-subnav .fo-row-label {
+  min-width: 0; flex: 1 1 auto; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 计数不参与 flex 宽度（绝对贴右）：cove 的行只有「图标 + 名字」，
+   我们多出的数字若占位，项目名就会被截断。项目行本来也不显示计数。 */
+.fo-subnav .fo-row-count {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  text-align: right;
+  font-size: 11px; font-weight: 500; color: ${T.label2};
+  font-variant-numeric: tabular-nums;
+  transition: opacity var(--fo-dur) var(--fo-ease);
+}
+.fo-subnav .fo-row-badge {
+  flex: 0 0 auto; min-width: 16px; height: 16px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; font-size: 10px; font-weight: 600;
+  color: ${T.bgBase}; background: ${T.warn};
+}
+
+/* caret：与一级项的图标同尺寸（20px 命中区里居中一个 10px chevron） */
+.fo-subnav .fo-caret {
+  flex: 0 0 10px; width: 10px; height: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: ${T.label2}; cursor: pointer;
+  transition: transform .16s var(--fo-ease);
+}
+.fo-subnav .fo-caret[data-collapsed="1"] { transform: rotate(0deg); }
+.fo-subnav .fo-caret:not([data-collapsed="1"]) { transform: rotate(90deg); }
+
+/* 色点 / 项目图标：14px，和一级项图标位对齐 */
+/* 行首图标槽：**定宽 16px**，每一行都有图标（没配过 logo 的用默认图标）。
+   定宽是关键 —— 宽度一样，标签才会全部落在同一条左对齐线上。 */
+/* 20px = 一级项的图标槽宽（gap 也一样），这样二级/三级的文字与一级项**同一条左缘** */
+.fo-subnav .fo-dot.is-logo {
+  flex: 0 0 20px; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fo-c, ${T.label2});
+  background: none; box-shadow: none;
+}
+.fo-subnav .fo-row[aria-selected="true"] .fo-dot.is-logo { color: ${T.brand}; }
+/* 目录行的图标 = 展开/收起开关：单独一块命中区，hover 有反馈 */
+.fo-subnav .fo-dot.is-toggle {
+  cursor: pointer; border-radius: 6px;
+  transition: background-color .12s var(--fo-ease), color .12s var(--fo-ease);
+}
+.fo-subnav .fo-dot.is-toggle:hover { background: ${g(T.label1, 10)}; color: ${T.label1}; }
+
+/* 行尾「⋯」：绝对定位，hover / 选中 / 聚焦才显形（不占行的宽度） */
+.fo-subnav .fo-row-menu {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; min-width: 22px; padding: 0;
+  border-radius: 7px; border: 0; background: ${T.bgLayer1};
+  font-size: 13px; line-height: 1; color: ${T.label2};
+  opacity: 0; transition: opacity .12s var(--fo-ease), background-color .12s var(--fo-ease);
+}
+.fo-subnav .fo-row:hover .fo-row-menu,
+.fo-subnav .fo-row[aria-selected="true"] .fo-row-menu,
+.fo-subnav .fo-row-menu:focus-visible { opacity: 1; }
+.fo-subnav .fo-row:hover .fo-row-count { opacity: 0; }
+.fo-subnav .fo-row-menu:hover { background: ${g(T.label1, 8)}; color: ${T.label1}; }
+
+.fo-subnav .fo-scope-note { padding: 2px 12px 6px; font-size: 11px; color: ${g(T.label2, 70)}; }
+.fo-subnav .fo-input { height: 30px; border-radius: 8px; }
+/* 缩进导轨不再使用（层级由容器表达） */
+.fo-guide { display: none; }
 /* rail 收成 56px 图标条时二级菜单整个藏起来（列不下，也没法操作） */
 .fo-root[data-rail="0"] .fo-subnav { display: none; }
-/* 说明：底部固定区（刷新/折叠）已按用户口径移除 —— 折叠在品牌 logo 上，刷新在正文头部。 */
+/* 说明：折叠在品牌 logo 上，刷新在正文头部；底部固定区只留「在浏览器打开」。 */
 /* rail 收起：只留 56px 图标条（按钮仍可点，能再展开） */
 /* rail 收起：只留 52px 图标条。**caret 必须一起藏**——只藏文字、留着 ▾ 会让图标偏左，
    用户实测「折叠时图标没对齐」就是这么来的。 */
-.fo-root[data-rail="0"] { --fo-rail-w: 52px; --fo-rail-item: 36px; }
+.fo-root[data-rail="0"] { --fo-rail-w: 80px; --fo-rail-item: 44px; }
 /* 收起态：logo 与下面的一级项**同尺寸正方形**（36×36 / 圆角 10），整条 rail 只留图标列 */
 .fo-root[data-rail="0"] .fo-brand { justify-content: center; padding: 8px 0; }
 /* 收起态 logo：必须显式改 flex-basis —— 基础规则里的 flex 是 0 0 40px，
    只改 width/height 的话 flex 仍按 40px 排版，于是 logo 比一级项宽 4px（用户看到的「大小不一致」）。 */
 .fo-root[data-rail="0"] .fo-brand-logo { padding: 0; border-radius: 10px; }
-/* 收起态：文字与 caret 都隐藏（只藏文字会让图标偏左） */
+/* 收起态：文字与 caret 都隐藏（只藏文字会让图标偏左）；角标一并藏——36×36 方块里放不下数字。 */
 .fo-root[data-rail="0"] .fo-brand-text,
 .fo-root[data-rail="0"] .fo-nav-label,
-.fo-root[data-rail="0"] .fo-nav-caret { display: none; }
+.fo-root[data-rail="0"] .fo-nav-caret,
+.fo-root[data-rail="0"] .fo-rail-badge { display: none; }
 /* 收起态：一级项是 36×36 的正方形，与 logo 同尺寸 */
+/* cove 收起态：项仍是整行宽、图标居中（80 - 2*16 = 48px 宽 × 44 高） */
 .fo-root[data-rail="0"] .fo-featnav-item {
   justify-content: center; padding: 0; gap: 0;
-  width: var(--fo-rail-item); height: var(--fo-rail-item); margin: 0 auto; border-radius: 10px;
+  width: 100%; height: var(--fo-rail-item); margin: 0; border-radius: 12px;
 }
 /* 收起态：图标本身严格居中（不靠子元素宽度凑），并禁掉 caret 的旋转占位 */
 .fo-root[data-rail="0"] .fo-featnav-item > svg,
 .fo-root[data-rail="0"] .fo-featnav-item > .fo-nav-icon { margin: 0 auto; flex: 0 0 auto; }
 .fo-root[data-rail="0"] .fo-featnav-item[data-active="1"]::before { left: 4px; }
-.fo-root[data-rail="0"] .fo-rail-foot { justify-content: center; }
+.fo-root[data-rail="0"] .fo-rail-foot { flex-direction: column; justify-content: center; gap: 6px; padding: 8px 0; }
 
 /* ============ 项目图标选择器（纯本地展示配置） ============ */
 .fo-logo-backdrop {
@@ -325,34 +468,114 @@ export const CSS = `
 }
 .fo-logo-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
-/* ============ 内容头部：面包屑/标题 + 搜索框 + 动作 ============ */
+/* ============ 全局 Header：逐条对齐 cove TopBar ============
+   h-12 · px-6 · bg-white/[0.03] · backdrop-blur-xl backdrop-saturate-150 ·
+   shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] · 横向渐变蒙层（blue→purple 各 2%）。
+   与左上品牌栏共用 --fo-appbar-h，两边同为 48 且同底色，视觉上是一条完整的顶栏。 */
 .fo-main-head {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  min-height: 64px; padding: 10px 16px;
-  border-bottom: 1px solid var(--fo-glass-line);
-  background: color-mix(in oklab, ${T.bgBase} 40%, transparent);
+  position: relative;
+  display: flex; align-items: center; gap: 16px; flex-wrap: nowrap;
+  height: var(--fo-appbar-h); min-height: var(--fo-appbar-h);
+  padding: 0 24px;
+  border-bottom: 0;
+  background: ${g(T.label1, 3)};
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: inset 0 1px 0 0 ${g(T.label1, 4)};
 }
+.fo-main-head::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to right, ${g(T.brand, 2)}, transparent 50%, ${g(T.brand, 2)});
+}
+.fo-main-head > * { position: relative; }
+.fo-main-head .fo-crumb { flex: 0 0 auto; max-width: 30%; }
+
 .fo-crumb { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-.fo-crumb-title { font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+.fo-crumb-title { font-size: 14px; font-weight: 600; letter-spacing: .01em; }
 .fo-crumb-sub { font-size: 11px; color: ${T.label2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* 搜索框在**正文头部**（参考站也是 main > header），左侧 40px 留给图标 */
-.fo-search-wrap { position: relative; display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; max-width: 460px; }
-.fo-search-icon {
-  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-  display: inline-flex; color: ${T.label2}; pointer-events: none;
+
+/* 搜索：cove 是「42px 圆形图标 → 点开变 320px 胶囊」
+   （collapsed: hover:bg-white/5；open: w-80 bg-white/5 border-white/10 rounded-xl） */
+.fo-search-wrap {
+  position: relative; display: flex; align-items: center;
+  flex: 0 1 auto; min-width: 0; height: 42px;
+  width: 42px; border-radius: 12px; overflow: hidden;
+  background: transparent; border: 1px solid transparent;
+  transition: width .2s ease, background-color .2s ease, border-color .2s ease;
 }
+.fo-search-wrap:hover { background: ${g(T.label1, 5)}; }
+.fo-search-wrap[data-open="1"] {
+  width: 320px; max-width: 100%;
+  background: ${g(T.label1, 5)};
+  border-color: ${g(T.label1, 10)};
+}
+.fo-search-toggle {
+  flex: 0 0 42px; width: 42px; height: 42px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; cursor: pointer;
+  color: ${T.label2}; transition: color .2s ease;
+}
+.fo-search-toggle:hover { color: ${T.label1}; }
 .fo-search {
-  width: 100%; min-width: 0; height: 42px;
-  padding: 0 12px 0 40px; border-radius: 14px;
-  font: inherit; font-size: 12px;
-  color: ${T.label1};
-  background: ${g(T.bgBase, 70)};
-  border: 1px solid var(--fo-glass-line);
+  flex: 1 1 auto; min-width: 0; height: 100%; padding: 8px 16px 8px 0;
+  border: 0; border-radius: 0; font: inherit; font-size: 14px;
+  color: ${T.label1}; background: transparent;
 }
 .fo-search::placeholder { color: ${T.label2}; }
-.fo-search:focus-visible { border-color: var(--fo-selected-line); outline: none; }
-.fo-search-hint { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; white-space: nowrap; }
-.fo-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.fo-search:focus-visible { outline: none; }
+.fo-search-hint { flex: 0 0 auto; padding-right: 12px; font-size: 11px; color: ${T.label2}; white-space: nowrap; }
+
+.fo-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; margin-left: auto; }
+
+/* 右上角按钮 = cove Capsule：h-8 px-3 rounded-full ·
+   bg-white/[0.04] border-white/[0.08] · hover 7%/14% + scale 1.02 · active 缩回 0.98 */
+.fo-capsule {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 12px; border-radius: 999px;
+  font: inherit; font-size: 13px; font-weight: 500;
+  color: ${T.label1};
+  background: ${g(T.label1, 4)};
+  border: 1px solid ${g(T.label1, 8)};
+  cursor: pointer; will-change: transform;
+  transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+}
+.fo-capsule:hover { background: ${g(T.label1, 7)}; border-color: ${g(T.label1, 14)}; transform: scale(1.02); }
+.fo-capsule:active { transform: scale(.98); }
+.fo-capsule[data-icon="1"] { width: 32px; padding: 0; justify-content: center; }
+.fo-capsule:disabled { opacity: .5; cursor: default; transform: none; }
+/* 建议胶囊：cove 的 active 变体（border-blue-400/30 bg-blue-500/12，hover 18%） */
+.fo-suggest[data-active="1"] {
+  background: ${g(T.brand, 12)};
+  border-color: ${g(T.brand, 30)};
+}
+.fo-suggest[data-active="1"]:hover { background: ${g(T.brand, 18)}; }
+.fo-suggest[data-running="1"] { opacity: .7; cursor: progress; transform: none; }
+.fo-suggest-label { white-space: nowrap; }
+.fo-suggest-badge {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: ${T.bgBase}; background: ${T.brand};
+}
+
+/* 搜索结果浮层（cove 的 Popover 观感：玻璃卡片 + 圆角 12） */
+.fo-search-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+  max-height: 320px; overflow: auto; padding: 6px;
+  border-radius: 12px; border: 1px solid var(--fo-glass-line);
+  background: var(--fo-glass-card); box-shadow: var(--fo-glass-shadow);
+  backdrop-filter: var(--fo-glass-blur); -webkit-backdrop-filter: var(--fo-glass-blur);
+}
+.fo-search-pop-empty { padding: 10px; font-size: 12px; color: ${T.label2}; }
+.fo-search-hit {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border-radius: 8px; border: 0; background: none;
+  font: inherit; font-size: 12px; text-align: left; color: ${T.label1}; cursor: pointer;
+}
+.fo-search-hit:hover, .fo-search-hit[data-active="1"] { background: ${g(T.brand, 14)}; }
+.fo-search-hit-no { flex: 0 0 auto; font-size: 10px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
+.fo-search-hit-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* 提示条（role=status）：动作没做成时给一句人话，别静默。与 role=alert 的错误条分开。 */
 .fo-note {
   display: flex; align-items: center; gap: 8px;
@@ -398,15 +621,58 @@ export const CSS = `
 
 /* ============ 主体三栏 ============ */
 /* 正文区：功能页 | 详情（rail 由根栅格的第一列承担） */
+
+/* 搜索：全局常驻；命中列表用浮层（运行/洞察页不过滤页面数据） */
+.fo-search-wrap { position: relative; }
+.fo-search-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+  max-height: 320px; overflow: auto; padding: 6px;
+  border-radius: 12px; border: 1px solid var(--fo-glass-line);
+  background: var(--fo-glass-card); box-shadow: var(--fo-glass-shadow);
+  backdrop-filter: var(--fo-glass-blur); -webkit-backdrop-filter: var(--fo-glass-blur);
+}
+.fo-search-pop-empty { padding: 10px; font-size: 12px; color: ${T.label2}; }
+.fo-search-hit {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border-radius: 8px; border: 0; background: none;
+  font: inherit; font-size: 12px; text-align: left; color: ${T.label1}; cursor: pointer;
+}
+.fo-search-hit:hover, .fo-search-hit[data-active="1"] { background: color-mix(in oklab, ${T.brand} 14%, transparent); }
+.fo-search-hit-no { flex: 0 0 auto; font-size: 10px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
+.fo-search-hit-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 建议栏：宽屏常驻（占一列），窄面板自动变悬浮；data-dock 可强制 */
+.fo-root[data-organize="1"] .fo-body { grid-template-columns: minmax(0, 1fr) var(--fo-dock-w); }
+@container fopanel (max-width: 1100px) {
+  .fo-root[data-organize="1"] .fo-body { grid-template-columns: minmax(0, 1fr); }
+  .fo-organize {
+    position: absolute; top: 0; right: 0; bottom: 0; z-index: 30;
+    width: var(--fo-dock-w); max-width: 86%;
+    border-radius: 12px 0 0 12px;
+    box-shadow: var(--fo-glass-shadow);
+  }
+}
+/* 手动钉住：dock=1 永远占列，dock=0 永远悬浮 */
+.fo-root[data-organize-dock="1"] .fo-body { grid-template-columns: minmax(0, 1fr) var(--fo-dock-w) !important; }
+.fo-root[data-organize-dock="1"] .fo-organize {
+  position: static !important; width: auto; max-width: none; border-radius: 0; box-shadow: none;
+}
+.fo-root[data-organize-dock="0"] .fo-body { grid-template-columns: minmax(0, 1fr) !important; }
+.fo-root[data-organize-dock="0"] .fo-organize {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 30;
+  width: var(--fo-dock-w); max-width: 86%;
+  border-radius: 12px 0 0 12px;
+  box-shadow: var(--fo-glass-shadow);
+}
 .fo-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
+  /* 建议栏在窄面板里是悬浮的，需要一个定位上下文 */
+  position: relative;
 }
 .fo-root[data-detail="1"] .fo-body { grid-template-columns: minmax(0, 1fr) clamp(260px, 30%, 336px); }
 /* 一键整理抽屉：正文右边的玻璃抽屉；与详情同时开时是第三列（正文 | 详情 | 建议） */
-.fo-root[data-organize="1"] .fo-body { grid-template-columns: minmax(0, 1fr) clamp(260px, 30%, 340px); }
 .fo-root[data-detail="1"][data-organize="1"] .fo-body { grid-template-columns: minmax(0, 1fr) clamp(240px, 26%, 336px) clamp(240px, 26%, 340px); }
 /* 视口不够时先压详情栏；rail 只在很窄时才收（288 是参考站口径） */
 @container fopanel (max-width: 1180px) {
@@ -459,43 +725,19 @@ export const CSS = `
 }
 .fo-row.is-drop { border-color: ${T.brand}; background: ${g(T.brand, 20)}; }
 .fo-row.is-drag { opacity: .45; }
-.fo-row[data-kind="group"] { background: ${g(T.label1, 4)}; }
-.fo-subnav .fo-row[data-kind="group"] {
-  /* 目录行是分组骨架：给一层很浅的底块 + 上间距，让「几个项目属于它」一眼成块 */
-  margin-top: 6px;
-  height: 30px;
-  background: ${g(T.label1, 5)};
-  border-color: transparent;
-}
-.fo-subnav .fo-row[data-kind="group"]:first-child { margin-top: 0; }
-.fo-row[data-kind="group"] .fo-row-label { font-weight: 600; color: ${T.label1}; }
-/* 项目行是「可选项」：比目录轻一档，别和分组抢层级 */
-.fo-row[data-kind="project"] .fo-row-label { color: ${T.label2}; }
-.fo-row[data-kind="project"]:hover .fo-row-label,
-.fo-row[data-kind="project"][aria-selected="true"] .fo-row-label { color: inherit; }
-.fo-caret {
-  flex: 0 0 14px; width: 14px; height: 14px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: ${T.label2}; font-size: 9px; line-height: 1;
-  transition: transform .12s var(--fo-ease);
-}
-.fo-caret[data-collapsed="1"] { transform: rotate(-90deg); }
-.fo-caret[data-leaf="1"] { visibility: hidden; }
+/* 色点：项目行的分色槽（--fo-c 由组件给），根行是品牌色，目录行中性 */
 .fo-dot {
-  flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%;
+  flex: 0 0 8px; width: 8px; height: 8px; border-radius: 999px;
   background: var(--fo-c, ${T.idle});
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--fo-c, ${T.idle}) 22%, transparent);
+  box-shadow: 0 0 0 3px ${g(T.label1, 6)};
 }
-.fo-row-label {
-  min-width: 0; flex: 1;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.fo-dot.is-logo { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: none; border: 0; }
+/* 计数：行尾数字（定宽；hover 时淡出，把位置让给「⋯」） */
 .fo-row-count {
-  flex: 0 0 auto; font-size: 12px; color: ${T.label2};
+  flex: 0 0 auto; min-width: 16px; text-align: right;
+  font-size: 11px; font-weight: 500; color: ${T.label2};
   font-variant-numeric: tabular-nums;
-  transition: opacity var(--fo-dur) var(--fo-ease);
 }
-.fo-subnav .fo-row-count[data-kind="project"] { color: ${T.label2}; opacity: .75; font-size: 11px; }
 .fo-row-badge {
   flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%;
   background: ${T.error};
@@ -567,7 +809,7 @@ export const CSS = `
 .fo-feature-host { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .fo-feature { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 /* 旧版顶部工具条（.fo-feature-bar）与画布浮动卡片（.fo-canvas-card）都已删：
-   整页动作在正文头部（.fo-head-organize），逐图工具在每张卡片的 header（.fo-graph-actions）。 */
+   全局「建议」在 rail 底部固定区，逐图工具在每张卡片的 header（.fo-graph-actions）。 */
 .fo-feature-body { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; }
 /* task-17：范围树搬进 rail 之后，功能页只剩画布一块主内容（单列，画布拿全部宽度）。 */
 .fo-canvas-area {
@@ -586,7 +828,7 @@ export const CSS = `
 /* ============ 卡片头部工具（.fo-graph-head 右侧） ============
    用户口径：「右上的按钮应该在卡片的 header 里而不是悬浮」——没有浮层，工具就长在卡片头上。
    视觉沿用 adventure WorkflowEditor 的分段控件口径：深底 + 细边 + 大圆角；
-   整页的「建议」是主按钮口径（品牌色实心 + shadow），落在正文头部。 */
+   「建议」已迁到 rail 底部固定区（全局）。 */
 .fo-zoom-group {
   display: inline-flex; align-items: center; gap: 2px;
   padding: 3px; border-radius: 10px;
@@ -601,13 +843,14 @@ export const CSS = `
 }
 .fo-zoom-value:hover { color: ${T.label1}; background: ${g(T.label1, 6)}; }
 .fo-zoom-value:disabled { cursor: default; opacity: .45; }
-/* 正文头部里的整理入口：走标准 primary 口径（底色=品牌、字色=bg-base，跟别处主按钮同一套），
-   这里只补一层阴影和悬停放大。**不要再自定义字色** —— 之前写 label1 在浅色品牌底上等于白字白底。 */
-.fo-head-organize { display: inline-flex; align-items: center; gap: 6px; }
-.fo-head-organize .fo-btn[data-action="organize"] {
-  box-shadow: 0 8px 18px -10px ${g(T.brand, 55)};
+/* rail 底部「建议」按钮的未读角标：一个小号胶囊，只显示待处理条数。
+   颜色走品牌色变体（与主按钮同一套 color-mix 口径），不引入字面量。 */
+.fo-rail-badge {
+  flex: 0 0 auto; min-width: 16px; height: 16px; padding: 0 5px;
+  border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  color: ${T.label1}; background: ${g(T.brand, 24)}; border: 1px solid ${g(T.brand, 38)};
 }
-.fo-head-organize .fo-btn[data-action="organize"]:hover:not(:disabled) { transform: scale(1.03); }
 .fo-banner {
   display: flex; align-items: center; gap: 8px;
   margin: 10px 10px 0; padding: 12px 16px;
@@ -655,9 +898,10 @@ export const CSS = `
    （实线 / 虚线 / 点线）。少了它，接受建议后「多了几条点线」很容易被当成没变化。 */
 .fo-edge-legend { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .fo-edge-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: ${T.label2}; }
-.fo-edge-swatch { width: 16px; height: 0; border-top: 2px solid var(--fo-glass-line-hover); flex: 0 0 16px; }
-.fo-edge-swatch[data-kind="derived_from"] { border-top-style: dashed; border-top-color: ${T.idle}; }
-.fo-edge-swatch[data-kind="temporal"] { border-top-style: dotted; border-top-color: ${T.idle}; opacity: .8; }
+/* 图例线与画布线同一套：实线、同色（只有颜色区分类别） */
+.fo-edge-swatch { width: 16px; height: 0; border-top: 2.5px solid ${T.brand}; flex: 0 0 16px; opacity: .8; }
+.fo-edge-swatch[data-kind="derived_from"] { border-top-color: ${T.idle}; }
+.fo-edge-swatch[data-kind="temporal"] { border-top-color: ${T.idle}; }
 .fo-edge-count { font-variant-numeric: tabular-nums; }
 /* 图例：没有泳道后，这是「哪个颜色 = 哪个项目」的唯一标识 */
 .fo-graph-legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
@@ -718,22 +962,18 @@ export const CSS = `
 .fo-graph-body { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; height: 100%; }
 .fo-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .fo-edge {
-  fill: none; stroke: var(--fo-glass-line-hover);
-  stroke-width: 2; stroke-opacity: .7;
+  fill: none; stroke: ${T.brand};
+  stroke-width: 2.5; stroke-opacity: .7; stroke-linecap: round; stroke-linejoin: round;
   pointer-events: stroke;
   transition: stroke-width var(--fo-dur) var(--fo-ease), stroke-opacity var(--fo-dur) var(--fo-ease), stroke var(--fo-dur) var(--fo-ease);
 }
-.fo-edge[data-kind="derived_from"] { stroke-dasharray: 5 4; stroke: ${T.idle}; }
-/* 时间先后：点线 + 更淡的灰。它表达的是「谁在前谁在后」，不是必须等待——
-   所以视觉上必须比依赖线弱一档，否则用户会把它当成阻塞关系。 */
-.fo-edge[data-kind="temporal"] { stroke-dasharray: 1.5 5; stroke: ${T.idle}; stroke-opacity: .55; }
-.fo-edge[data-kind="temporal"].is-active { stroke-opacity: 1; }
-.fo-edge:hover, .fo-edge.is-active { stroke-width: 3; stroke-opacity: 1; }
+.fo-edge[data-kind="derived_from"] { stroke: ${T.idle}; stroke-dasharray: none; }
+.fo-edge[data-kind="temporal"] { stroke: ${T.idle}; stroke-dasharray: none; stroke-opacity: .6; }
+.fo-edge:hover, .fo-edge.is-active { stroke-width: 3.5; stroke-opacity: 1; }
 .fo-edge.is-active { stroke: ${T.brand}; }
-/* 箭头：6×6 实心三角，fill 跟边同色（参考站 markerWidth/Height=6、d="M 0 0 L 6 3 L 0 6 z"） */
-.fo-arrow { fill: var(--fo-glass-line-hover); fill-opacity: .85; }
+.fo-arrow { fill: ${T.brand}; fill-opacity: .8; }
 .fo-arrow[data-kind="derived_from"] { fill: ${T.idle}; }
-.fo-arrow[data-kind="temporal"] { fill: ${T.idle}; fill-opacity: .55; }
+.fo-arrow[data-kind="temporal"] { fill: ${T.idle}; fill-opacity: .6; }
 /* ============ 画布节点 = workflow 式三段卡片（task-15） ============
    参考站 WorkflowEditor 的节点口径：rounded-xl + border-2 + shadow-xl + 玻璃底 +「左动作列 | 中信息 |
    右状态」。这里全落在 SVG 上：卡片 = rect（rx 12 / stroke 2），各段坐标由 layout.cardGeometry 给。
@@ -888,16 +1128,82 @@ export const CSS = `
    evidence 原文（引用块）、代价预览（会让谁变阻塞）。健康色/警告色都走宿主状态令牌。 */
 .fo-organize {
   display: flex; flex-direction: column; gap: 10px;
-  min-width: 0; min-height: 0; overflow: auto;
+  min-width: 0; min-height: 0; overflow: hidden;
+  /* 高度铺满：右侧一整条，不再为 Header 让位（用户口径） */
+  height: 100%;
   padding: 14px;
   border-left: 1px solid var(--fo-glass-line);
   background: var(--fo-glass-card);
   backdrop-filter: var(--fo-glass-blur);
   -webkit-backdrop-filter: var(--fo-glass-blur);
 }
-.fo-org-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+/* 顶部：标题 + 计数一行，操作按钮一行（关闭/重新分析/固定-浮层都在上面，底部不再有"关闭"） */
+.fo-org-head {
+  display: flex; flex-direction: column; gap: 8px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--fo-glass-line);
+}
+.fo-org-head-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.fo-org-head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* 项目卡 header 一行到底：不换行（按钮多了就压缩图例，不把 header 撑成两行） */
+.fo-graph-head { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+.fo-graph-head .fo-row-card { flex: 0 1 240px; max-width: 240px; min-width: 0; }
+.fo-graph-head .fo-edge-legend { flex: 0 0 auto; }
+/* 图例可压缩：挤不下就省略，绝不让 header 换行 */
+.fo-graph-head .fo-graph-legend { flex: 1 1 0; min-width: 0; overflow: hidden; flex-wrap: nowrap; }
+.fo-graph-head .fo-graph-actions { flex: 0 0 auto; margin-left: auto; flex-wrap: nowrap; }
+.fo-graph-head .fo-legend-item { min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.fo-graph-head .fo-legend-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 项目卡 = 侧栏卡片那一套（同一个 .fo-row 内容组件 + 同一组 cardParts 输出），容器在画布上 */
+.fo-graph-head .fo-row-card {
+  flex: 0 1 auto; min-width: 0; max-width: 360px;
+  height: 44px; padding: 0 12px; gap: 10px;
+  border: 1px solid transparent; border-radius: 12px;
+  background: ${g(T.label1, 3)};
+  font-size: 14px; font-weight: 500; color: ${T.label1};
+}
+.fo-graph-head .fo-row-card .fo-dot.is-logo { flex: 0 0 20px; width: 20px; height: 20px; color: ${T.brand}; }
+.fo-graph-head .fo-row-card .fo-row-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-graph-head .fo-row-card .fo-row-count {
+  position: static; transform: none; min-width: 18px;
+  padding: 0 6px; border-radius: 999px;
+  font-size: 11px; color: ${T.label2}; background: ${g(T.label1, 6)};
+}
+/* 筛选：按钮 + 浮层（浮层贴着卡片右下，不推挤 header 布局） */
+.fo-filter-wrap { position: relative; display: inline-flex; }
+.fo-filter-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  display: flex; flex-direction: column; gap: 8px;
+  min-width: 248px; padding: 10px 12px;
+  border-radius: 12px; border: 1px solid var(--fo-glass-line);
+  background: var(--fo-glass-card); box-shadow: var(--fo-glass-shadow);
+  backdrop-filter: var(--fo-glass-blur); -webkit-backdrop-filter: var(--fo-glass-blur);
+}
+.fo-filter-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fo-filter-label { flex: 0 0 44px; font-size: 11px; color: ${T.label2}; }
+.fo-filter-hint { font-size: 10px; color: ${T.label2}; opacity: .8; }
+.fo-filter-chip {
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  font: inherit; font-size: 11px; color: ${T.label2};
+  background: transparent; border: 1px solid var(--fo-glass-line); cursor: pointer;
+}
+.fo-filter-chip[data-active="1"] {
+  color: ${T.label1};
+  background: ${g(T.brand, 18)};
+  border-color: ${g(T.brand, 42)};
+}
+.fo-filter-chip:hover { border-color: var(--fo-glass-line-hover); }
+.fo-row-summary { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; white-space: nowrap; }
+.fo-row-action {
+  flex: 0 0 auto; height: 28px; padding: 0 10px; border-radius: 8px;
+  font: inherit; font-size: 12px; color: ${T.label1};
+  background: ${g(T.label1, 6)}; border: 1px solid transparent; cursor: pointer;
+}
+.fo-row-action:hover { background: ${g(T.label1, 10)}; }
 .fo-org-title { font-size: 13px; font-weight: 600; }
 .fo-org-counts { margin-left: auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
+/* 建议栏自己不滚动，只有列表滚（头和底固定） */
+.fo-organize { overflow: hidden; }
+.fo-org-list { overflow: auto; min-height: 0; }
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
 .fo-org-list { display: flex; flex-direction: column; gap: 10px; }
 .fo-org-item {
@@ -916,6 +1222,8 @@ export const CSS = `
 }
 .fo-org-kind[data-kind="derived_from"] { color: ${T.idle}; background: ${g(T.idle, 16)}; border-color: ${g(T.idle, 32)}; }
 .fo-org-kind[data-kind="temporal"] { color: ${T.idle}; background: ${g(T.idle, 12)}; border-color: ${g(T.idle, 24)}; }
+/* 预期完成建议：绿色系（它是「改一个配置」，不是改关系） */
+.fo-org-kind[data-kind="eta"] { color: ${T.success}; background: ${g(T.success, 14)}; border-color: ${g(T.success, 30)}; }
 .fo-org-conf { margin-left: auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 .fo-org-route { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
 .fo-org-from, .fo-org-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

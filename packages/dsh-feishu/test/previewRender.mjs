@@ -44,26 +44,41 @@ check('产物里不出现 undefined / NaN（模板里漏字段最容易在这里
   assert.deepEqual(bad, [], `可见文本里出现了 ${JSON.stringify(bad.slice(0, 3))}`)
 })
 
-check('运行页：9 张卡 + 每行 4 列的跨度', () => {
+check('运行页：6 张卡（一卡一问）+ 每行 4 列的跨度', () => {
   const runs = frameOf('运行')
-  const labels = [...runs.matchAll(/aria-label="([^"]+)"[^>]*class="frx-card|class="frx-card[^"]*"[^>]*aria-label="([^"]+)"/g)].map((m) => m[1] || m[2])
   assert.ok(runs.includes('frx-grid'), '缺网格容器')
-  for (const label of ['运行状态', '项目分布（旭日图）', '阻塞排行', '待处理', '跑得最久', '暂缓', '计时覆盖', '执行历史', '快捷操作']) {
+  for (const label of ['运行状态', '开工顺序', '快到期', '最近动态', '系统健康', '运行历史']) {
     assert.ok(runs.includes(label), `缺卡片：${label}`)
   }
-  assert.ok((runs.match(/frx-card is-span2/g) || []).length >= 2, '第 1/3 行的跨列卡要还在')
+  /* 旧卡必须彻底消失：它们的信息要么被新卡覆盖，要么看完不能动手 */
+  /* 「计时覆盖」不算旧卡：它作为一行小字收进了「系统健康」（设计如此） */
+  for (const gone of ['项目分布', '阻塞排行', '待处理', '跑得最久', '暂缓', '执行历史', '快捷操作']) {
+    assert.equal(runs.includes(gone), false, `旧卡片没删干净：${gone}`)
+  }
+  assert.ok((runs.match(/frx-card is-span2/g) || []).length >= 2, '两行各有一张跨列卡')
 })
 
-check('运行页：旭日图两层环 + 状态徽标 + KPI 胶囊都渲出来了', () => {
+check('运行页：四张图表都渲出来了（条形 / 时间轴 / 柱状 / 环形）', () => {
   const runs = frameOf('运行')
-  assert.ok((runs.match(/class="frx-sun"/g) || []).length === 1, '旭日图 svg 只有一个')
-  assert.ok((runs.match(/<path d="M[\d.]+ [\d.]+A/g) || []).length >= 4, '内外圈至少 4 段弧')
-  /* 已完成的气泡按用户口径**不挂徽标**，所以这里只会有 dots / alert / clock 三种 */
-  for (const badge of ['dots', 'alert', 'clock']) {
-    assert.ok(runs.includes(`data-badge="${badge}"`), `缺 ${badge} 徽标`)
+  /* 状态徽标只挂在运行中的泡上（用户口径），其余状态一律不画 */
+  assert.ok(runs.includes('data-badge="dots"'), '缺运行中的 dots 徽标')
+  for (const badge of ['alert', 'clock', 'check']) {
+    assert.equal(runs.includes(`data-badge="${badge}"`), false, `非运行的泡不该有 ${badge} 徽标`)
   }
-  assert.equal(runs.includes('data-badge="check"'), false, '已完成的气泡不该有徽标')
-  assert.equal((runs.match(/frx-kpi"/g) || []).length, 4, 'KPI 胶囊必须是 4 个')
+  /* 状态卡里 4 个 + 新卡片右上各 1 个（就绪 / 逾期 / 24h 事件 / 同步成功） */
+  assert.ok((runs.match(/frx-kpi"/g) || []).length >= 4, '状态卡的 4 个 KPI 胶囊要在')
+  assert.ok(runs.includes('frx-rank-row'), '开工顺序要用条形图（不是纯列表）')
+  assert.ok(runs.includes('frx-due-row'), '快到期要用时间轴')
+  assert.ok(runs.includes('frx-due-bands'), '时间轴要有逾期/未来两条背景带')
+  assert.equal((runs.match(/class="frx-col"/g) || []).length >= 1, true, '最近动态要有柱状图')
+  assert.ok(runs.includes('frx-health-ring'), '系统健康要有环形图')
+  assert.ok(runs.includes('frx-health-cover'), '系统健康底部要有计时覆盖细条')
+  /* 没有 /api/health 数据时只能写「—」，不许编出「已关闭」这种状态 */
+  assert.equal(runs.includes('已关闭'), false, '读不到健康数据时不能假装「自动同步已关闭」')
+  assert.ok(runs.includes('frx-hist-row'), '运行历史要有行（表格 + 时长微条形）')
+  assert.ok(runs.includes('frx-hist-bar'), '运行历史每行要有时长微条形（不是纯列表）')
+  /* 空白处要能动手：没设预期完成的任务是可点的小胶囊，不是一句数字 */
+  assert.ok(runs.includes('frx-due-unset-chip'), '快到期卡要把「没设预期完成」列成可点的胶囊')
 })
 
 check('洞察页：渲染成功（没有红框错误）', () => {
@@ -76,7 +91,7 @@ check('关系页：侧栏树（真模型 rows）+ 画布节点都渲出来了', 
   const graph = frameOf('关系')
   assert.equal(graph.includes('渲染失败：'), false, '关系页渲染失败')
   assert.ok(graph.includes('aria-level'), '侧栏树要渲染出 treeitem 的 aria-level')
-  for (const label of ['全部任务', '未分组']) assert.ok(graph.includes(label), `侧栏缺「${label}」`)
+  for (const label of ['全部任务', '未分类']) assert.ok(graph.includes(label), `侧栏缺「${label}」`)
   assert.ok((graph.match(/class="fo-node"/g) || []).length >= 3, '画布至少 3 个节点')
   assert.ok(graph.includes('飞书任务集开发'), '节点标题要用 label/fullTitle（不是 id）')
 })

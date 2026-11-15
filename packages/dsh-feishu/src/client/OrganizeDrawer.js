@@ -18,7 +18,17 @@
 
 import * as modelModule from '../overview/model.js'
 
-const KIND_LABEL = { depends_on: '前置', derived_from: '来源', temporal: '时间' }
+const KIND_LABEL = { depends_on: '前置', derived_from: '来源', temporal: '时间', eta: '预期完成' }
+
+/** 时间戳 → 「10-30 18:00」（建议卡片上只显示到分钟，年份在同一年里没必要占位）。 */
+export function etaText(value) {
+  const n = Number(value)
+  if (!isFinite(n) || n <= 0) return ''
+  const d = new Date(n)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (x) => String(x).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 /** 置信度 → 百分比。模型有时给 0~1、有时手滑给 0~100，两种都认。 */
 export function confidenceText(value) {
@@ -43,7 +53,7 @@ export function createOrganizeDrawer(deps) {
   return function OrganizeDrawer(props) {
     const p = props || {}
     if (p.open !== true) return null
-    const { batch, status = 'idle', failed, droppedOpen = false } = p
+    const { batch, status = 'idle', failed, droppedOpen = false, docked = false } = p
     const onAccept = typeof p.onAccept === 'function' ? p.onAccept : () => {}
     const onReject = typeof p.onReject === 'function' ? p.onReject : () => {}
     const onUndo = typeof p.onUndo === 'function' ? p.onUndo : null
@@ -69,11 +79,18 @@ export function createOrganizeDrawer(deps) {
           h('span', { className: 'fo-org-kind', 'data-kind': item.kind }, kindLabel),
           conf ? h('span', { className: 'fo-org-conf', title: '模型自评的把握' }, conf) : null,
         ),
-        h('div', { key: 'route', className: 'fo-org-route' },
-          h('span', { className: 'fo-org-from', title: item.from || '' }, model.str(item.fromTitle) || model.str(item.from)),
-          h('span', { className: 'fo-org-arrow', 'aria-hidden': 'true' }, '→'),
-          h('span', { className: 'fo-org-to', title: item.to || '' }, model.str(item.toTitle) || model.str(item.to)),
-        ),
+        /* eta 是「给某条任务定个预期完成时间」，没有 to 端，所以只写任务名 + 时间 */
+        item.kind === 'eta'
+          ? h('div', { key: 'route', className: 'fo-org-route' },
+            h('span', { className: 'fo-org-from', title: item.from || '' }, model.str(item.fromTitle) || model.str(item.from)),
+            h('span', { className: 'fo-org-arrow', 'aria-hidden': 'true' }, '→'),
+            h('span', { className: 'fo-org-to', title: '预期完成' }, etaText(item.value)),
+          )
+          : h('div', { key: 'route', className: 'fo-org-route' },
+            h('span', { className: 'fo-org-from', title: item.from || '' }, model.str(item.fromTitle) || model.str(item.from)),
+            h('span', { className: 'fo-org-arrow', 'aria-hidden': 'true' }, '→'),
+            h('span', { className: 'fo-org-to', title: item.to || '' }, model.str(item.toTitle) || model.str(item.to)),
+          ),
       ]
       if (model.str(item.evidence)) {
         children.push(h('blockquote', { key: 'evidence', className: 'fo-org-evidence' }, model.str(item.evidence)))
@@ -118,11 +135,34 @@ export function createOrganizeDrawer(deps) {
     }
 
     return h('aside', { className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
+      /* 头部：标题 + 计数 + 全部操作（模式切换 / 重新分析 / 关闭都在上面，下面不再有"关闭"） */
       h('div', { className: 'fo-org-head' },
-        h('span', { className: 'fo-org-title' }, '整理建议'),
-        h('span', { className: 'fo-org-counts' },
-          `待处理 ${counts.pending} · 已接受 ${counts.accepted} · 已拒绝 ${counts.rejected}`
-          + (counts.undone ? ` · 已撤销 ${counts.undone}` : '')),
+        h('div', { className: 'fo-org-head-main' },
+          h('span', { className: 'fo-org-title' }, '建议'),
+          h('span', { className: 'fo-org-counts' },
+            `待处理 ${counts.pending} · 已接受 ${counts.accepted} · 已拒绝 ${counts.rejected}`
+            + (counts.undone ? ` · 已撤销 ${counts.undone}` : '')),
+        ),
+        h('div', { className: 'fo-org-head-actions' },
+          h('button', {
+            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+            'data-action': 'dock', 'aria-pressed': docked ? 'true' : 'false',
+            title: docked ? '现在固定在右侧（占一列），点击改成浮层' : '现在是浮层（盖在画布上），点击固定到右侧',
+            'aria-label': docked ? '切换为浮层' : '切换为固定',
+            onClick: () => { if (typeof p.onToggleDock === 'function') p.onToggleDock() },
+          }, docked ? '改浮层' : '改固定'),
+          h('button', {
+            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+            'data-action': 'rerun', disabled: running,
+            title: '重新跑一遍分析（会覆盖当前这批建议）',
+            onClick: () => { if (typeof p.onRerun === 'function') p.onRerun() },
+          }, running ? '分析中…' : '重新分析'),
+          h('button', {
+            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+            'data-action': 'close', 'aria-label': '关闭建议栏', title: '关闭',
+            onClick: () => { if (typeof p.onClose === 'function') p.onClose() },
+          }, '关闭'),
+        ),
       ),
       model.str(batch && batch.notes)
         ? h('p', { className: 'fo-org-notes' }, model.str(batch.notes))
@@ -135,11 +175,13 @@ export function createOrganizeDrawer(deps) {
       h('div', { className: 'fo-org-list' },
         pending.length
           ? pending.map(itemNode)
-          : h('p', { className: 'fo-org-empty' }, !batch
-            ? '还没有跑过整理：点页面右上角的「建议」，让 AI 和时间排序先出建议。'
-            : (items.length
-              ? '待处理的建议都处理完了。'
-              : '没有找到新的关系——这常常是正确答案，宁可少而准')),
+          : h('p', { className: 'fo-org-empty', 'aria-live': 'polite' }, running
+            ? '正在读任务、找前置 / 后置 / 来源关系…（可能十几秒）'
+            : (!batch
+              ? '还没有跑过整理：点页面右上角的「建议」，让 AI 和时间排序先出建议。'
+              : (items.length
+                ? '待处理的建议都处理完了。'
+                : '没有找到新的关系——这常常是正确答案，宁可少而准')))
       ),
       items.filter((item) => item.status === 'accepted' || item.status === 'rejected' || item.status === 'undone').map(itemNode),
       dropped.length
@@ -179,10 +221,6 @@ export function createOrganizeDrawer(deps) {
             onClick: () => onUndo([]),
           }, `撤销已接受 ${counts.accepted}`)
           : null,
-        h('button', {
-          type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'close',
-          onClick: () => { if (typeof p.onClose === 'function') p.onClose() },
-        }, '关闭'),
       ),
     )
   }

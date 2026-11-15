@@ -104,6 +104,13 @@ export function createApi({ fetchImpl } = {}) {
      * 返回 { stats: { series, distribution, board, fulfillment, quality, delayBuckets, datasets, ... } }。
      * 旧宿主没有这条路由 → 抛错，调用方自己降级（不要把整页打崩）。
      */
+    /**
+     * 「系统健康」卡：同步 / 授权 / CLI。
+     * 旧宿主没有这条路由 → 抛错；调用方降级成「读取中」而不是打崩整页。
+     */
+    health() {
+      return request('/api/health', { headers: { accept: 'application/json' } });
+    },
     insightStats(days) {
       const span = Number(days) > 0 ? Math.min(365, Math.floor(Number(days))) : 14;
       return request(`/api/insight/stats?days=${span}`, { headers: { accept: 'application/json' } });

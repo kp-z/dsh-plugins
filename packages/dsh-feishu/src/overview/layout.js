@@ -66,7 +66,7 @@ export const GEOMETRY = {
  */
 export const CARD = {
   /** 与面板里的任务卡同一套：1px 描边、9px 圆角、7/10 内边距。 */
-  RADIUS: 9,
+  RADIUS: 12,
   BORDER: 1,
   PAD_X: 10,
   PAD_Y: 7,

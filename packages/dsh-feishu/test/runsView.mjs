@@ -337,9 +337,11 @@ check('已完成的任务：入口过滤，KPI 分母 / 气泡 / 历史 / 时长
   const view = buildRuns({ tasks, now: NOW })
   assert.equal(view.total, 1, '只剩未完成的 1 条')
   assert.equal(view.skippedDone, 2)
-  const text = JSON.stringify(view)
-  assert.equal(text.includes('"d1"'), false, '气泡/历史/告警里都不许出现 d1')
-  assert.equal(text.includes('"d2"'), false, 'd2 也一样')
+  /* 只检查「不该出现已完成」的那几块：气泡 / 历史 / 时长 / 告警 / 开工顺序 / 快到期。
+     「最近动态」是事件流，完成本身就是一条事件，允许出现（这是它唯一的价值）。 */
+  const liveParts = JSON.stringify({ bubbles: view.bubbles, history: view.history, longest: view.longest, alerts: view.alerts, ready: view.ready, due: view.due })
+  assert.equal(liveParts.includes('"d1"'), false, '气泡/历史/时长/告警/开工顺序/快到期里都不许出现 d1')
+  assert.equal(liveParts.includes('"d2"'), false, 'd2 也一样')
   assert.equal(view.bubbles.length, 1)
   assert.equal(view.history.length, 1)
   assert.deepEqual(view.longest.map((row) => row.id), ['live'])
@@ -347,6 +349,110 @@ check('已完成的任务：入口过滤，KPI 分母 / 气泡 / 历史 / 时长
   assert.equal(view.overview.every((row) => row.total === 1), true, 'KPI 分母不含 done')
   assert.equal(view.overview[1].value, 0, 'd2 明明是 suspended，但已完成 → 不进等待/挂起')
 })
+
+/* ---- 新增三张图的口径（开工顺序 / 快到期 / 最近动态） ---- */
+{
+  const NOW = Date.UTC(2026, 4, 20, 12, 0, 0)
+  const day = 86_400_000
+  const tasks = [
+    task('p0-ready', { priority: 'P0', ready: true, blocked: false, createdAt: NOW - 5 * day }),
+    task('p2-ready', { priority: 'P2', ready: true, blocked: false, createdAt: NOW - 9 * day }),
+    task('p1-ready', { priority: 'P1', ready: true, blocked: false, createdAt: NOW - 2 * day }),
+    task('no-prio', { ready: true, blocked: false, createdAt: NOW - 30 * day }),
+    task('blocked', { ready: false, blocked: true, blockedBy: [{ id: 'x', done: false }], createdAt: NOW - day }),
+    task('running', { ready: true, running: true, createdAt: NOW - day }),
+    task('suspended', { ready: true, suspended: true, createdAt: NOW - day }),
+    task('done', { done: true, ready: true, completedAt: NOW - 60_000 }),
+    task('due-over', { ready: true, expectedAt: NOW - 3 * day }),
+    task('due-today', { ready: true, expectedAt: NOW + 2 * 3_600_000 }),
+    task('due-week', { ready: true, expectedAt: NOW + 4 * day }),
+    task('due-later', { ready: true, expectedAt: NOW + 40 * day }),
+    task('due-unset', { ready: true }),
+  ]
+  const view = buildRuns({ tasks, now: NOW })
+
+  check('开工顺序：只留依赖就绪、未挂起、没在跑的；P0 → P1 → P2 → 无优先级', () => {
+    assert.deepEqual(view.ready.map((row) => row.id).slice(0, 4), ['p0-ready', 'p1-ready', 'p2-ready', 'no-prio'])
+    assert.equal(view.ready.some((row) => row.id === 'blocked'), false, '被前置挡住的不能进开工顺序')
+    assert.equal(view.ready.some((row) => row.id === 'running'), false, '在跑的不能进开工顺序')
+    assert.equal(view.ready.some((row) => row.id === 'suspended'), false, '挂起的不能进开工顺序')
+    assert.equal(view.ready.some((row) => row.id === 'done'), false, '已完成的不能进开工顺序')
+  })
+
+  check('开工顺序：同级按「等得最久」排（createdAt 越早越前）', () => {
+    const two = buildRuns({
+      now: NOW,
+      tasks: [
+        task('a-new', { priority: 'P1', ready: true, createdAt: NOW - day }),
+        task('a-old', { priority: 'P1', ready: true, createdAt: NOW - 20 * day }),
+      ],
+    })
+    assert.deepEqual(two.ready.map((row) => row.id), ['a-old', 'a-new'])
+    assert.ok(two.ready[0].waitDays >= 19)
+  })
+
+  check('快到期：按预期完成分「逾期 / 今天 / 本周 / 之后」，没设的单独计数', () => {
+    assert.equal(view.due.buckets.overdue, 1)
+    assert.equal(view.due.buckets.today, 1)
+    assert.equal(view.due.buckets.week, 1)
+    assert.equal(view.due.buckets.later, 1)
+    assert.ok(view.due.unset >= 1, '没设预期完成的要单独计数（提示去填）')
+    const over = view.due.items.find((row) => row.id === 'due-over')
+    assert.equal(over.lateDays, 3, '逾期天数按天向上取整')
+    assert.match(over.dueText, /逾期 3 天/)
+  })
+
+  check('快到期：当天已过期也算逾期（不能因为「还在今天」就显示成「剩 N 小时」）', () => {
+    /* 这是实机踩到的 bug：20:00 到期、21:30 看，旧口径落进「今天」→ 文案「剩 2 小时」、逾期计数 0。 */
+    const sameDay = buildRuns({
+      now: NOW,
+      tasks: [task('late-today', { ready: true, expectedAt: NOW - 2 * 3_600_000 })],
+    })
+    assert.equal(sameDay.due.buckets.overdue, 1, '当天已过期的必须进逾期桶')
+    assert.equal(sameDay.due.buckets.today, 0)
+    assert.match(sameDay.due.items[0].dueText, /逾期 2 小时/)
+    assert.equal(sameDay.due.items[0].lateDays, 1, '不足一天按 1 天算')
+  })
+
+  check('快到期：刚好到点算逾期，还差一分钟算「剩不到 1 小时」', () => {
+    const exact = buildRuns({ now: NOW, tasks: [task('exact', { ready: true, expectedAt: NOW })] })
+    assert.equal(exact.due.buckets.overdue, 1, '到点即逾期')
+    const soon = buildRuns({ now: NOW, tasks: [task('soon', { ready: true, expectedAt: NOW + 30_000 })] })
+    assert.equal(soon.due.buckets.today, 1)
+    assert.match(soon.due.items[0].dueText, /不到 1 小时/)
+  })
+
+  check('快到期：没设预期完成的列出来（最多 3 条，可点），不是只报一个数字', () => {
+    const many = buildRuns({
+      now: NOW,
+      tasks: ['u1', 'u2', 'u3', 'u4'].map((id) => task(id, { ready: true })),
+    })
+    assert.equal(many.due.unset, 4)
+    assert.equal(many.due.unsetItems.length, 3, '最多列 3 条，避免把卡片撑爆')
+    assert.deepEqual(many.due.unsetItems.map((row) => row.id), ['u1', 'u2', 'u3'])
+    assert.ok(many.due.unsetItems[0].title.length > 0, '要带上标题，否则点了不知道是哪条')
+  })
+
+  check('快到期：按时间升序（最紧迫的在最上面），窗口覆盖 -14d ~ +7d', () => {
+    const sorted = view.due.items.map((row) => row.expectedAt)
+    assert.deepEqual(sorted, [...sorted].sort((a, b) => a - b))
+    assert.equal(view.due.windowEnd - view.due.windowStart, 21 * day)
+  })
+
+  check('最近动态：事件时间倒序，完成也是一条事件（与任务列表不同）', () => {
+    assert.equal(view.timeline.events[0].id, 'done:done', '刚完成的那条排最前')
+    assert.equal(view.timeline.events[0].kind, 'done')
+    const ats = view.timeline.events.map((event) => event.at)
+    assert.deepEqual(ats, [...ats].sort((a, b) => b - a))
+    assert.ok(view.timeline.events.some((event) => event.kind === 'created'))
+  })
+
+  check('最近动态：24 小时柱状图正好 24 根，计数守恒', () => {
+    assert.equal(view.timeline.hourly.length, 24)
+    const sum = view.timeline.hourly.reduce((acc, row) => acc + row.count, 0)
+    assert.equal(sum, view.timeline.last24h, '柱状图总和 = 24h 事件数')
+  })
+}
 
 check('全是已完成 → 运pages 空态（empty=true），不会假装有数据', () => {
   const view = buildRuns({ tasks: [task('d1', { done: true }), task('d2', { done: true })], now: NOW })

@@ -420,7 +420,7 @@ test('卡片口径：与面板飞书任务卡同规格（300×84、圆角 9、1p
   assert.equal(GEOMETRY.NODE_W, 300)
   assert.equal(GEOMETRY.NODE_H, 84)
   assert.equal(GEOMETRY.GRID, 40)
-  assert.equal(CARD.RADIUS, 9)
+  assert.equal(CARD.RADIUS, 12)
   assert.equal(CARD.BORDER, 1)
   assert.equal(CARD.PAD_X, 10)
   assert.equal(CARD.PAD_Y, 7)

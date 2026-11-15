@@ -82,11 +82,11 @@ check('标题：绑了会话就用「标题区」的宽度，没绑就用整行�
   assert.ok(cutWidth(withSess) <= GEOMETRY.NODE_W - CARD.PAD_X * 2 - CARD.SESSION_W - CARD.COL_GAP + 0.5)
 })
 
-check('卡片尺寸来自 layout：300×84、圆角 9、三行（标题 / 徽标 / 页脚）', () => {
+check('卡片尺寸来自 layout：300×84、圆角 12（与侧栏卡片同规格）、三行（标题 / 徽标 / 页脚）', () => {
   const card = cardGeometry({ x: 0, y: 0, w: GEOMETRY.NODE_W, h: GEOMETRY.NODE_H, sessionId: 's-1', priority: 'P1' })
   assert.equal(GEOMETRY.NODE_W, 300)
   assert.equal(GEOMETRY.NODE_H, 84)
-  assert.equal(card.radius, 9)
+  assert.equal(card.radius, 12)
   assert.equal(card.border, 1)
   assert.ok(card.title.baseline < card.meta.y, '标题行在徽标行之上')
   assert.ok(card.meta.y + card.meta.h <= card.foot.y, '徽标行在页脚行之上')

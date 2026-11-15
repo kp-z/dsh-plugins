@@ -75,8 +75,11 @@ const temporal = (edges) => edges.filter((edge) => edge.kind === 'temporal')
 const made = await post('/api/overview/organize', { scope: { kind: 'all' } })
 check('模型不可用时整理仍然成功（不是 400）', made.status === 200 && made.data?.ok === true, JSON.stringify(made.data).slice(0, 240))
 const items = made.data?.batch?.items || []
-const pendingItems = items.filter((item) => item.status === 'pending')
+/* 一批里除了时间关系，还有「预期完成」建议（kind=eta）；这条链路只看 temporal。 */
+const pendingAll = items.filter((item) => item.status === 'pending')
+const pendingItems = pendingAll.filter((item) => item.kind === 'temporal')
 check('建议单里带 temporal 条目', pendingItems.length === 2 && pendingItems.every((item) => item.kind === 'temporal'), JSON.stringify(pendingItems).slice(0, 300))
+check('同一批里也给了预期完成建议（t5 没有预期）', pendingAll.some((item) => item.kind === 'eta'), JSON.stringify(pendingAll.map((item) => item.kind)))
 check('时间链：t1 → t2、t3 → t4', pendingItems.some((item) => item.from === 't1' && item.to === 't2')
   && pendingItems.some((item) => item.from === 't3' && item.to === 't4'), JSON.stringify(pendingItems.map((item) => `${item.from}>${item.to}`)))
 check('同一时刻并列：t2 与 t3 之间不连边', !pendingItems.some((item) => (item.from === 't2' && item.to === 't3') || (item.from === 't3' && item.to === 't2')))
