@@ -175,13 +175,15 @@ export function buildTemporalSuggestions(input) {
   }
   const groups = new Map()
   for (const task of tasks) {
-    const done = task.done === true
-    const at = done ? num(task.completedAt, 0) : num(task.expectedAt, 0)
+    /* 只给**待办**串时间线：已完成的任务再排先后没有可操作性，而且画布默认隐藏已完成 ——
+       生成出来的边接受了也看不见（用户反馈「点了接受什么都没出现」就是这个）。 */
+    if (task.done === true) continue
+    const at = num(task.expectedAt, 0)
     if (!(at > 0)) continue
     const project = str(task.workspaceKey) || str(task.meta?.workspace) || str(task.workspaceTitle)
-    const key = `${project}|${done ? 'done' : 'open'}`
+    const key = `${project}|open`
     if (!groups.has(key)) groups.set(key, [])
-    groups.get(key).push({ task, at, done })
+    groups.get(key).push({ task, at, done: false })
   }
   const items = []
   let truncated = 0
@@ -194,7 +196,7 @@ export function buildTemporalSuggestions(input) {
       if (!(next.at > prev.at)) continue
       if (existing.has(`temporal|${prev.task.id}|${next.task.id}`)) continue
       if (items.length >= max) { truncated += 1; continue }
-      const verb = next.done ? '完成' : '预期'
+      const verb = '预期'
       items.push({
         type: 'relation',
         kind: 'temporal',
@@ -238,6 +240,21 @@ export function validateOrganizeItems(input) {
     const evidence = str(entry?.evidence).trim()
     const confidence = num(entry?.confidence, 0)
     const base = { type: 'relation', kind, from, to, confidence, evidence: evidence.slice(0, 240) }
+    /* 字段类建议（目前只有 eta）：只需要一个存在的任务 + 一个未来的时间点 */
+    if (kind === 'eta') {
+      const value = num(entry?.value, 0)
+      const baseField = { type: 'field', kind: 'eta', from, to: '', confidence: 1, evidence: evidence.slice(0, 240), value }
+      if (!from) { push(baseField, '缺少任务'); continue }
+      if (!known.has(from)) { push(baseField, '引用了范围外的任务'); continue }
+      if (known.get(from).done === true) { push(baseField, '已完成的任务不用再设预期'); continue }
+      if (!(value > num(o.now, 0))) { push(baseField, '给的时间不在将来'); continue }
+      if (evidence.length < MIN_EVIDENCE) { push(baseField, '缺少可核对的依据'); continue }
+      const fieldKey = `eta|${from}`
+      if (seen.has(fieldKey)) { push(baseField, '同一批次内重复'); continue }
+      seen.add(fieldKey)
+      items.push({ ...baseField, status: 'pending', reason: '' })
+      continue
+    }
     if (!KINDS.includes(kind)) { push(base, `关系类型不支持：${kind || '（空）'}`); continue }
     if (!from || !to) { push(base, '缺少 from/to'); continue }
     if (from === to) { push(base, '自环'); continue }
@@ -301,6 +318,8 @@ export function projectOrganize(batch, tasks) {
       to: str(item.to),
       fromTitle: titleOf(item.from),
       toTitle: titleOf(item.to),
+      /* field 类建议要带上目标值（eta 的预期完成时间），否则前端只能看到一句话 */
+      value: item.value === undefined ? undefined : num(item.value, 0),
       confidence: num(item.confidence, 0),
       evidence: str(item.evidence).slice(0, 240),
       status: str(item.status) || 'pending',
@@ -325,10 +344,12 @@ export function makeOrganizeBatch(input) {
   const scope = isObj(o.scope) ? o.scope : {}
   const items = arr(o.items).map((item, index) => ({
     id: str(item.id) || `it-${index + 1}`,
-    type: 'relation',
+    /* 关系建议是 'relation'；改配置的建议（预期完成）是 'field'，并且带着要写进去的值 */
+    type: str(item.type) || 'relation',
     kind: str(item.kind),
     from: str(item.from),
     to: str(item.to),
+    value: item.value === undefined ? undefined : num(item.value, 0),
     confidence: num(item.confidence, 0),
     evidence: str(item.evidence).slice(0, 240),
     status: str(item.status) || 'pending',
@@ -343,3 +364,88 @@ export function makeOrganizeBatch(input) {
     items,
   }
 }
+
+/* ============================ 预期完成（ETA）建议 ============================ */
+
+/** 按优先级给的估时（天）。没有优先级用中性值。 */
+export const ETA_DAYS_BY_PRIORITY = { P0: 1, P1: 2, P2: 5 }
+export const ETA_DAYS_DEFAULT = 3
+export const MAX_ETA_ITEMS = 12
+
+/**
+ * 预期完成建议（**确定性**，不依赖模型）。
+ *
+ * 为什么要有：用户口径是「建议别只给任务关系，也要推荐各种配置，比如预计完成时间」。
+ * 关系之外最容易漏、也最影响履约判断的就是「这条任务什么时候该完成」。
+ *
+ * 口径：
+ *  - 只看**待办**（已完成/已暂停的不提；它们的预期没有意义）；
+ *  - 已经有未来预期的不提；已逾期（预期在过去）的重新提一个；
+ *  - 时长按优先级估（P0 1 天 / P1 2 天 / P2 5 天 / 其它 3 天）；
+ *  - 从「今天」起算，落在当天 18:00（与设置里的默认下班时刻一致）。
+ */
+export function buildEtaSuggestions(input) {
+  const o = isObj(input) ? input : {}
+  const tasks = arr(o.tasks).filter((task) => isObj(task) && str(task.id))
+  const now = num(o.now, Date.now())
+  const tz = str(o.tz) || 'Asia/Shanghai'
+  const max = Math.max(1, num(o.max, MAX_ETA_ITEMS))
+  const format = typeof o.format === 'function' ? o.format : (at) => {
+    const d = new Date(num(at, 0))
+    if (Number.isNaN(d.getTime())) return ''
+    const p = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+  const items = []
+  let truncated = 0
+  for (const task of tasks) {
+    if (task.done === true) continue
+    if (task.suspended === true) continue
+    const expected = num(task.expectedAt, 0)
+    const overdue = expected > 0 && expected < now
+    if (expected > 0 && !overdue) continue
+    const priority = str(task.priority).toUpperCase()
+    const days = ETA_DAYS_BY_PRIORITY[priority] || ETA_DAYS_DEFAULT
+    const at = etaFromNow(now, days, tz)
+    if (!at) continue
+    if (items.length >= max) { truncated += 1; continue }
+    items.push({
+      type: 'field',
+      kind: 'eta',
+      from: str(task.id),
+      to: '',
+      fromTitle: str(task.title),
+      toTitle: '',
+      confidence: 1,
+      value: at,
+      evidence: overdue
+        ? `预期已经过期（${format(expected)}），按 ${priority || '默认'} 优先级重新给 ${days} 天：${format(at)}`
+        : `还没有预期完成时间；按 ${priority || '默认'} 优先级估 ${days} 天：${format(at)}`,
+      status: 'pending',
+      reason: '',
+    })
+  }
+  return { items, truncated }
+}
+
+/** now + days 天，落在当地 18:00。 */
+function etaFromNow(now, days, tz) {
+  const base = new Date(now + Math.max(1, days) * 86_400_000)
+  const text = base.toISOString()
+  if (typeof tz !== 'string' || !tz) return Date.parse(text)
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(base)
+    const pick = (type) => parts.find((row) => row.type === type)?.value || ''
+    const ymd = `${pick('year')}-${pick('month')}-${pick('day')}`
+    /* 收口到当地 18:00。北京时间写死 +08:00；其它时区退化成「同一时刻 + N 天」，
+       不猜偏移量（猜错会比不精确更糟）。 */
+    if (tz !== 'Asia/Shanghai') return Date.parse(text)
+    const parsed = Date.parse(`${ymd}T18:00:00+08:00`)
+    return Number.isNaN(parsed) ? Date.parse(text) : parsed
+  } catch (error) {
+    return Date.parse(text)
+  }
+}
+

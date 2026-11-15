@@ -2,7 +2,7 @@
  * 范围树：三层（全部任务 / 自定义目录 / 项目）—— 工厂组件，模块顶层不 import react。
  *
  * task-17 起它是 **rail 里「关系」这个一级菜单的二级菜单**（`.fo-subnav`），页面里不再有第二列；
- * `compact` = 二级菜单形态：行更矮更小（30px / 12px）、左侧缩进按层级给、不再重复一个分组标题。
+ * `compact` = 二级菜单形态（挂在 rail 里）：层级由嵌套容器表达，不再重复一个分组标题。
  *
  * 能力（照 task-8 规格）：
  * - ARIA tree：role=tree/treeitem、aria-level / aria-expanded / aria-selected + roving tabindex；
@@ -26,6 +26,7 @@
  */
 
 import { renderIcon, normalizeIcon, autoIconFor } from './projectIcons.js'
+import { sideCardIcon, sideCardLabel, sideCardCount } from './cardParts.js'
 import { brandVar, decoVar } from './styles.js'
 
 const KIND_LABEL = { all: '全部任务', group: '目录', project: '项目' }
@@ -60,13 +61,11 @@ export function createTreeNav(deps) {
       compact = false,
       hideDone = false,
     } = props || {}
-    /* 二级菜单形态：行更紧凑、缩进从 24px 起（一级项 padding 是 12px），字号交给 CSS。 */
-    /* 二级菜单挂在 rail 里只有 232px 宽：缩进必须省着给，项目行才放得下名字。
-       compact=12px 起、每层 8px；非 compact（旧的两列布局）保留宽一点的手感。 */
-    const indentStep = compact ? 10 : 14
-    const indent = (depth) => `${12 + (Number(depth) || 0) * indentStep}px`
-    /* 导轨画在「父级图标中线」上：父级 padding + caret 半宽 */
-    const guideX = (level) => 12 + level * indentStep + 6
+    /* 二级菜单在 192px 的 rail 里：首层 12px、每层 12px。
+       之前是 16 + 10，三级行的可用宽度只有 ~90px，项目名一律被截成「[QVIZ] 后端工作区 A⋯」。 */
+    /* 不再按 depth 算缩进：cove 的二级菜单里所有项都是同款 px-4，
+       层级完全由外层容器（.fo-row-group）一层层包住来表达。 */
+
 
     const rows = tree && Array.isArray(tree.rows) ? tree.rows : []
     const [active, setActive] = useState(() => (tree && tree.selected ? tree.selected.key : 'all'))
@@ -96,59 +95,50 @@ export function createTreeNav(deps) {
       /* 缩进导轨：每层一条 1px 竖线（绝对定位，不占 flex 空间）—— 必须在 children 之前算，
          否则 TDZ（`Cannot access 'guides' before initialization`）。
          为什么要它：缩进只有 10px/层，比一个项目图标还窄，光靠 padding 看不出「谁属于谁」。 */
-      const guides = []
-      for (let level = 0; level < (Number(row.depth) || 0); level += 1) {
-        guides.push(h('span', { key: `guide-${level}`, className: 'fo-guide', 'aria-hidden': 'true', style: { left: `${guideX(level)}px` } }))
-      }
+      /* 层级由嵌套容器表达，不再画缩进导轨（cove 的二级菜单里也没有导轨线）。 */
       /* 色点：项目行 = 该项目在目录里的分色槽；根行 = 品牌色；目录行 = 中性色。 */
       const color = isProject && Number.isFinite(row.colorIndex)
         ? { '--fo-c': decoVar(row.colorIndex) }
         : (row.kind === 'all' ? { '--fo-c': brandVar() } : undefined)
-      const label = row.label
+      /* 项目名里常带一个工作区前缀（"[QVIZ] 后端工作区 A"），而在树里它已经挂在 QVIZ 目录下面了 ——
+         去掉这段前缀，窄栏里能多显示 4~5 个字，这也是「名字全被截断」的另一半原因。
+         完整名字仍在 title（row.path）里，鼠标悬停可看全。 */
+      const label = isProject
+        ? String(row.label || '').replace(/^\s*\[[^\]]+\]\s*/, '') || String(row.label || '')
+        : row.label
       /* 计数要和画布说同一件事：隐藏已完成时，行上的数就是画布上会出现的任务数
          （否则侧栏写 12、画布只画 2，用户会以为图丢了东西）。目录行仍是「几个项目」。 */
+      /* 计数只放数字：窄栏里「6 项目」四个字会把项目名挤没；单位在 title 里说明。 */
       const count = isGroup
-        ? `${row.count} 项目`
+        ? String(row.count)
         : String(hideDone ? row.open : row.count)
       const countTip = isGroup
         ? `${row.count} 个项目 · ${row.open} 条待办`
         : `${row.open} 条待办 · 共 ${row.count} 条${hideDone && row.done ? `（${row.done} 条已完成已隐藏）` : ''}`
 
       const children = []
-      /* 导轨放最前面（绝对定位，不占 flex 空间） */
-      guides.forEach((guide) => children.push(guide))
       if (!isProject) {
-        children.push(h('span', {
-          key: 'caret',
-          className: 'fo-caret',
-          'data-collapsed': row.collapsed === true ? '1' : '0',
-          'aria-hidden': 'true',
-          onClick: (event) => { event.stopPropagation(); toggleOf(row) },
-        }, '▾'))
+        /* 不再画展开图标：层级已经由嵌套容器表达（cove 的二级菜单也没有 caret）。
+           折叠仍然可用 —— 点行本身即可展开/收起，键盘左右方向键也照旧。 */
       }
-      /* 项目行：配了图标就把色点换成图标（颜色沿用项目选的颜色），没配才是色点 */
-      /* 手动配的图标优先；没配就按项目名自动推（与气泡同一套规则） */
+      /* 每一行都有图标（logo），没有配过的用默认图标 —— 这样行首图标槽宽度一致，
+         文字自然全部落在同一条左对齐线上（之前只有项目行有图标、其余是 7px 色点，
+         标签的起始位置就差开了）。 */
       const manualLogo = isProject ? normalizeIcon(row.logo) : ''
-      const autoLogo = isProject && !manualLogo ? autoIconFor(row.label) : null
-      const logoIcon = manualLogo || (autoLogo ? autoLogo.icon : '')
-      if (logoIcon) {
-        /* 面板这一层的红线是「只用宿主令牌、零字面量颜色」，所以这里**不注入十六进制色**，
-           沿用该项目的 deco 色（--fo-deco-N）或品牌色；八色板只用于运行页气泡（那张表允许原值）。 */
-        children.push(h('span', {
-          key: 'dot',
-          className: 'fo-dot is-logo',
-          style: color || undefined,
-          'aria-hidden': 'true',
-        }, renderIcon({ h }, logoIcon, 12)))
-      } else {
-        children.push(h('span', {
-          key: 'dot',
-          className: `fo-dot${row.ungrouped === true ? ' is-bucket' : ''}`,
-          style: row.ungrouped === true ? undefined : color,
-          'aria-hidden': 'true',
-        }))
-      }
-      children.push(h('span', { key: 'label', className: 'fo-row-label', title: row.path || label }, label))
+      const auto = autoIconFor(row.label)
+      const fallback = row.kind === 'all' ? 'lucide:layers' : (row.ungrouped === true ? 'lucide:inbox' : 'lucide:folder')
+      const logoIcon = manualLogo || (auto && auto.icon) || fallback
+      /* 目录行：**只有图标是展开/收起的开关**，点名字只是切换范围（用户口径）。
+         图标本身是独立命中区（20×20），点它 stopPropagation，不会顺带改范围。 */
+      /* 图标 / 名字 / 计数都由 cardParts 提供 —— 与关系图的「项目卡」是同一份组件 */
+      children.push(sideCardIcon(h, {
+        icon: logoIcon,
+        color: row.ungrouped === true ? undefined : color,
+        toggle: isGroup,
+        iconTitle: isGroup ? (row.collapsed === true ? '展开' : '收起') : undefined,
+        onIconClick: isGroup ? (event) => { event.stopPropagation(); toggleOf(row) } : undefined,
+      }))
+      children.push(sideCardLabel(h, { label, title: row.path || label }))
       if (row.blocked > 0) {
         children.push(h('span', {
           key: 'badge',
@@ -158,12 +148,11 @@ export function createTreeNav(deps) {
           'data-count': String(row.blocked),
         }))
       }
-      children.push(h('span', {
-        key: 'count',
-        className: 'fo-row-count',
-        'data-kind': isGroup ? 'group' : 'project',
-        title: countTip,
-      }, count))
+      /* 只在目录行给计数：项目行右边就是画布，球数一眼能看出；
+         192px 的栏里「名字 + 数字」放不下，实测名字只剩 53px（约 4 个字）。 */
+      if (isGroup || row.kind === 'all') {
+        children.push(sideCardCount(h, { count, kind: isGroup ? 'group' : 'project', title: countTip }))
+      }
       if ((isGroup && !row.ungrouped) || isProject) {
         children.push(h('button', {
           key: 'menu',
@@ -183,7 +172,7 @@ export function createTreeNav(deps) {
 
       const rename = renamingId && renamingId === row.id && isGroup
       if (rename) {
-        return h('div', { key: row.key, className: 'fo-row', 'data-kind': row.kind, style: { paddingLeft: indent(row.depth), '--fo-i': stagger } },
+        return h('div', { key: row.key, className: 'fo-row', 'data-kind': row.kind, style: { '--fo-i': stagger } },
           h('input', {
             className: 'fo-input',
             defaultValue: row.label,
@@ -215,7 +204,7 @@ export function createTreeNav(deps) {
         'data-depth': row.depth,
         'data-key': row.key,
         'data-id': row.id,
-        style: { paddingLeft: indent(row.depth), '--fo-i': stagger },
+        style: { '--fo-i': stagger },
         draggable: isProject,
         title: `${KIND_LABEL[row.kind] || ''}：${label}`,
         onClick: () => { focusKey(row.key); if (typeof onSelect === 'function') onSelect(row) },
@@ -303,10 +292,32 @@ export function createTreeNav(deps) {
     }
 
     const items = []
-    visible.forEach((row, index) => {
-      items.push(rowElement(row, index))
+    /* cove 的二级菜单是「一个大容器包住几个小项」：容器 bg 3% + 圆角，里面的项和一级项**完全同款**
+       （44 高 / px-4 / gap-3 / 12 圆角 / 14px-500）。所以这里把扁平行按 depth 折成嵌套结构，
+       层级靠容器嵌套表达，不再靠缩进/字号/行高这些小动作。 */
+    const buildNested = () => {
+      const root = []
+      const stack = [{ depth: -1, children: root }]
+      visible.forEach((row, index) => {
+        while (stack.length > 1 && stack[stack.length - 1].depth >= (Number(row.depth) || 0)) stack.pop()
+        const node = { row, index, children: [] }
+        stack[stack.length - 1].children.push(node)
+        stack.push({ depth: Number(row.depth) || 0, children: node.children })
+      })
+      return root
+    }
+    const renderNested = (nodes) => nodes.map((node) => {
+      const row = rowElement(node.row, node.index)
+      if (!node.children.length) return row
+      return h('div', { key: 'wrap:' + node.row.key, className: 'fo-row-wrap' },
+        row,
+        h('div', { key: 'group', className: 'fo-row-group' }, renderNested(node.children)),
+      )
+    })
+    renderNested(buildNested()).forEach((el) => items.push(el))
+    visible.forEach((row) => {
       if (row.kind === 'group' && row.missing > 0 && row.collapsed !== true) {
-        items.push(h('div', { key: `note:${row.key}`, className: 'fo-scope-note' }, `${row.missing} 个成员已不在当前任务集里`))
+        items.push(h('div', { key: 'note:' + row.key, className: 'fo-scope-note' }, row.missing + ' 个成员已不在当前任务集里'))
       }
     })
     if (creating) {

@@ -84,6 +84,19 @@ function createMiniReact() {
 /* 真正的 HTML void 元素，以及**允许自闭合的 SVG 形状**。
    ⚠️ 只有真的自闭合（写成 `<path/>`）才安全；写成 `<path>` 会让后面所有兄弟元素变成它的子节点
    —— 旭日图的第一版就是这么被「吃掉」的（圆环整片不显示）。所以 SVG 形状改走闭合标签分支。 */
+/* React 的 SVG 属性名 → HTML 属性名（只列这一页真用到的） */
+const SVG_ATTRS = {
+  strokeWidth: 'stroke-width',
+  strokeDasharray: 'stroke-dasharray',
+  strokeLinecap: 'stroke-linecap',
+  strokeLinejoin: 'stroke-linejoin',
+  fillOpacity: 'fill-opacity',
+  textAnchor: 'text-anchor',
+  dominantBaseline: 'dominant-baseline',
+  clipPath: 'clip-path',
+  strokeOpacity: 'stroke-opacity',
+}
+
 const VOID = new Set(['br', 'hr', 'img', 'input', 'meta', 'link', 'source', 'track', 'wbr'])
 const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 function styleOf(obj) {
@@ -106,7 +119,10 @@ function toHtml(node) {
     if (k === 'defaultValue' || k === 'autoFocus' || k === 'focusable') continue
     if (/^on[A-Z]/.test(k)) continue
     if (v === true) { attrs.push(k); continue }
-    attrs.push(`${k}="${escapeHtml(v)}"`)
+    /* SVG 的 React 属性是 camelCase，直接写进 HTML 会变成 strokewidth 这种无效属性
+       （预览里环形/柱状的描边会整块不见）——这里按规范转成 kebab-case。 */
+    const attr = SVG_ATTRS[k] || k
+    attrs.push(`${attr}="${escapeHtml(v)}"`)
   }
   const inner = (node.children || []).map(toHtml).join('')
   return VOID.has(type) ? `<${type} ${attrs.join(' ')}>` : `<${type} ${attrs.join(' ')}>${inner}</${type}>`
@@ -115,6 +131,7 @@ function toHtml(node) {
 /* ---------------- 数据与渲染 ---------------- */
 const NOW = Date.now()
 const HOUR = 3600 * 1000
+const DAY = 24 * HOUR
 const task = (id, no, ws, title, extra) => {
   const wsKey = ws.split(' ')[0].replace(/[[\]]/g, '')
   return Object.assign({
@@ -135,8 +152,13 @@ const snapshot = {
   tasks: [
     task('a1', 516418, 'QVIZ 后端工作区', 'topic_timelines 接口新增 MCAP 支持', { running: true, started: true, startedAt: NOW - 42 * 60 * 1000, sessionTurn: 12, done: true, completedAt: NOW - 1000 }),
     task('b1', 516451, 'DSH 插件开发', '飞书任务集开发', { running: true, started: true, startedAt: NOW - 8 * 60 * 1000, sessionTurn: 12 }),
-    task('c1', 516350, 'DSH 插件开发', '总览页写回飞书评论', { blocked: true, ready: false, blockedBy: [{ id: 'zz', title: '早就删掉的任务', done: false }] }),
-    task('d1', 516418, 'QVIZ 后端工作区', '拆分 tile 渲染管线', { started: true, startedAt: NOW - 3 * HOUR, sessionTurn: 4 }),
+    task('c1', 516350, 'DSH 插件开发', '总览页写回飞书评论', { blocked: true, ready: false, blockedBy: [{ id: 'zz', title: '早就删掉的任务', done: false }], expectedAt: NOW - 2 * DAY }),
+    /* 当天就过期的也要算逾期（实机踩过的 bug：会被算成「今天 · 剩 N 小时」） */
+    task('e1', 516530, 'QVIZ 后端工作区', '修掉 bytes 被显示成 string', { started: true, startedAt: NOW - 5 * HOUR, expectedAt: NOW - 2 * HOUR }),
+    task('d1', 516418, 'QVIZ 后端工作区', '拆分 tile 渲染管线', { started: true, startedAt: NOW - 3 * HOUR, sessionTurn: 4, expectedAt: NOW + 3 * HOUR }),
+    /* 还没开工、但已经压了几天：开工顺序与快到期两张卡都要有东西可画 */
+    task('f1', 516520, 'DSH 插件开发', '关系图加上时间轴视图', { priority: 'P0', createdAt: NOW - 6 * DAY, expectedAt: NOW + 2 * DAY }),
+    task('f2', 516521, 'QVIZ 后端工作区', '导出任务周报', { priority: 'P2', createdAt: NOW - 12 * DAY, expectedAt: NOW + 5 * DAY }),
     /* 刚做完（5 秒前）：应该以绿泡短暂留在墙上，并挂一句「已完成」状态泡 */
     task('e1', 516500, 'DSH 插件开发', '刚跑完的一条任务', { done: true, completedAt: NOW - 5 * 1000, startedAt: NOW - 2 * HOUR, sessionTurn: 9 }),
   ],

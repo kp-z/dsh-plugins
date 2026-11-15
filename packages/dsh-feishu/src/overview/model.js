@@ -18,7 +18,7 @@
 
 /** 未进任何自定义目录的桶。 */
 export const UNGROUPED_KEY = '__ungrouped__'
-export const UNGROUPED_LABEL = '未分组'
+export const UNGROUPED_LABEL = '未分类'
 /** 图里的「组外 / 缺失」泳道：依赖指向了本图之外的任务。 */
 export const EXTERNAL_KEY = '__external__'
 export const EXTERNAL_LABEL = '组外 · 缺失'
@@ -544,6 +544,13 @@ export function scopeLabel(scope, groups) {
 export function buildTree(groups, tasks, options) {
   const o = isObj(options) ? options : {}
   const collapsed = isObj(o.collapsed) ? o.collapsed : {}
+  /* 三态：true = 收着、false = 展开、没记录过 = 用默认值。
+     默认值：根行（全部任务）展开，其余目录行（含「未分类」）全部收起 ——
+     一进来就能看到有哪些目录，但不会被几十个项目撑爆侧栏。 */
+  const isCollapsed = (key, fallback) => {
+    const value = collapsed[key]
+    return typeof value === 'boolean' ? value : fallback
+  }
   const scope = normScope(o.selection)
   const lanes = groupByCustom(groups, tasks, o.workspaces)
   const list = arr(tasks).filter((task) => isObj(task) && str(task.id))
@@ -572,8 +579,10 @@ export function buildTree(groups, tasks, options) {
     blocked: 0,
     ready: 0,
     suspended: 0,
-    collapsed: collapsed.all === true,
-  })
+    collapsed: isCollapsed('all', false),
+  /* 「全部任务」不再是侧栏里的一行：点一级菜单「关系」本身就是全量视图，再放一行根节点只是重复。
+     它仍然进 byKey（选中态、计数、范围判断都要用它），但不进可见行。 */
+  }, false)
   list.forEach((task) => {
     const state = stateOf(task)
     if (state === 'done') { allRow.done += 1; return }
@@ -583,7 +592,8 @@ export function buildTree(groups, tasks, options) {
     else allRow.ready += 1
   })
 
-  const rootVisible = allRow.collapsed !== true
+  /* 没有根行，目录永远是最外层可见行 */
+  const rootVisible = true
   lanes.forEach((lane) => {
     const bucket = lane.ungrouped === true
     const id = bucket ? UNGROUPED_KEY : lane.id
@@ -593,7 +603,8 @@ export function buildTree(groups, tasks, options) {
       kind: 'group',
       id,
       label: lane.label,
-      depth: 1,
+      /* 根行不在侧栏里了，目录就是最外层（深度 0 → aria-level 1） */
+      depth: 0,
       count: lane.projectCount,
       tasks: lane.total,
       open: lane.open,
@@ -606,7 +617,7 @@ export function buildTree(groups, tasks, options) {
       labels: { ...lane.labels },
       missing: lane.missingMembers.length,
       colorOf: { ...lane.colorOf },
-      collapsed: collapsed[key] === true,
+      collapsed: isCollapsed(key, true),
     }, rootVisible)
     const groupVisible = rootVisible && groupRow.collapsed !== true
     lane.projects.forEach((project) => {
@@ -617,7 +628,7 @@ export function buildTree(groups, tasks, options) {
         label: project.label,
         logo: project.logo || '',
         logoColor: project.logoColor || '',
-        depth: 2,
+        depth: 1,
         count: project.total,
         tasks: project.total,
         open: project.open,

@@ -339,6 +339,12 @@ async function mountPanel(options) {
      绝大多数断言测的是关系图，所以默认先把 store 的 feature 种成 graph；
      想验「真实默认落地页」的用例显式传 startFeature: null。 */
   if (opts.startFeature !== null && typeof store.set === 'function') store.set('feature', opts.startFeature || 'graph')
+  /* 真实默认是「目录全部收起」（见 model.buildTree 的 isCollapsed 默认值）。
+     绝大多数断言看的是完整的那棵树，所以默认把目录种成展开；
+     想验真实默认折叠的用例显式传 keepCollapsed: true。 */
+  if (opts.keepCollapsed !== true && typeof store.set === 'function' && !store.data.has('collapsed')) {
+    store.set('collapsed', { all: false, 'group:g1': false, 'group:__ungrouped__': false })
+  }
   const bag = { React: mini.React, h: mini.React.createElement, model, layout, api, store, host: opts.host }
   const features = typeof opts.features === 'function' ? opts.features(bag) : opts.features
   const Panel = createOverviewPanel(Object.assign({}, bag, { features, pollMs: 60000, revealMs: opts.revealMs }))
@@ -428,6 +434,17 @@ const alertBoxes = (tree) => findAll(tree, (node) => node.kind === 'host' && nod
 
 console.log('overview/面板组件（迷你 React + 固定 fixture：5 任务 / 2 目录 / 1 跨项目边 / 1 缺失端点）')
 
+/* 默认折叠是「模型给的默认值」，不是写进 store 的状态 —— 这里单独验一次真实默认。 */
+{
+  const fresh = await mountPanel({ keepCollapsed: true })
+  check('默认落地：目录全部收起（含未分类），根行展开', () => {
+    const kinds = treeItems(fresh.tree).map((row) => row.props['data-kind'])
+    assert.deepEqual(kinds, ['group', 'group'], '只有两个目录（没有「全部任务」这一行）')
+    /* 面板会把当前折叠表回写 store（空表 = 全都走默认），默认值本身来自 model。 */
+    assert.deepEqual(fresh.store.data.get('collapsed'), {}, '没有把「展开」写进 store')
+  })
+}
+
 const main = await mountPanel({ startFeature: null })
 let tree = main.tree
 /* 注册表顺序 = 用户口径「运行排第一，洞察第二，关系第三」，所以默认落地页是运行。
@@ -464,7 +481,8 @@ check('styles：decoVar / stateVar 只产出宿主令牌引用', () => {
 check('玻璃面：详情栏 / 菜单仍带 backdrop-filter blur(12px) 与玻璃底色', () => {
   const root = ruleBody('.fo-root')
   assert.ok(root.includes('--fo-glass-blur: blur(12px)'), '模糊半径 12px 定义在根上')
-  for (const selector of ['.fo-detail', '.fo-menu', '.fo-rail']) {
+  /* rail 不再走玻璃：用户要求与 cove 完全一致（实底 + 品牌色径向光晕），只剩详情栏 / 菜单是玻璃面 */
+  for (const selector of ['.fo-detail', '.fo-menu']) {
     const body = ruleBody(selector)
     assert.ok(body.includes('backdrop-filter'), `${selector} 要有 backdrop-filter`)
     assert.ok(body.includes('-webkit-backdrop-filter'), `${selector} 补一份 -webkit- 前缀`)
@@ -519,9 +537,12 @@ check('玻璃分层：三层透明度 92% / 88%（面板底是不透明的 bg-ba
   assert.ok(root.includes('--fo-glass-line-hover: color-mix(in oklab, var(--dsw-alias-border-l2'))
   assert.ok(root.includes('--fo-glass-shadow: 0 8px 24px color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent)'))
   assert.ok(root.includes('background: var(--dsw-alias-bg-base'), '面板底仍是不透明的 bg-base')
-  assert.ok(ruleBody('.fo-rail').includes('color-mix(in oklab, var(--dsw-specific-sidebar-fill'), 'rail 用 sidebar-fill 的混合')
-  assert.ok(ruleBody('.fo-rail').includes('80%, transparent)'), 'rail 半透明底 80%（对齐参考站 aside /80）')
-  assert.ok(ruleBody('.fo-rail').includes('blur(24px)'), 'rail 用 blur(24px)')
+  /* rail 对齐 cove：实底（bg-base 96%）+ 5% 品牌色径向光晕 + 右侧投影，不再 blur */
+  const rail = ruleBody('.fo-rail')
+  assert.ok(rail.includes('radial-gradient('), 'rail 有品牌色径向光晕')
+  assert.ok(/color-mix\(in oklab, var\(--dsw-alias-bg-base[^)]*\)+ 96%, transparent\)/.test(rail), 'rail 实底 96%')
+  assert.ok(rail.includes('box-shadow:'), 'rail 有右侧投影')
+  assert.equal(rail.includes('backdrop-filter'), false, 'rail 不再是玻璃面')
 })
 check('玻璃风格全部走 color-mix(in oklab, …)，没有 in srgb 残留', () => {
   const mixes = CSS_BARE.match(/color-mix\(in oklab,/g) || []
@@ -585,24 +606,23 @@ check('prefers-reduced-motion：关掉动画、过渡与位移，渐变也不再
 })
 check('紧密密度：正文 12px / 标题 13px / 卡片内边距 16px / 正文行 13px', () => {
   assert.ok(ruleBody('.fo-root').includes('font-size: 12px'))
-  assert.ok(ruleBody('.fo-crumb-title').includes('font-size: 13px'))
+  assert.ok(ruleBody('.fo-crumb-title').includes('font-size: 14px'), 'Header 标题 14px（cove）')
   assert.ok(ruleBody('.fo-crumb-title').includes('font-weight: 600'))
-  assert.ok(ruleBody('.fo-brand-title').includes('font-size: 13px'))
+  assert.ok(ruleBody('.fo-brand-title').includes('font-size: 14px'), '品牌名 14px（对齐 cove）')
   assert.ok(ruleBody('.fo-detail-title').includes('font-size: 13px'))
   assert.ok(ruleBody('.fo-graph-name').includes('font-size: 13px'))
   assert.ok(ruleBody('.fo-ref').includes('padding: 8px 10px'), '详情关系项内边距')
   assert.ok(ruleBody('.fo-crumb-sub').includes('font-size: 11px'))
   assert.ok(ruleBody('.fo-canvas').includes('padding: 24px'), '画布内边距 24px')
   assert.ok(ruleBody('.fo-row').includes('font-size: 13px'), 'rail 正文 13px')
-  assert.ok(ruleBody('.fo-row-count').includes('font-size: 12px'), 'rail 次级 12px')
+  assert.ok(ruleBody('.fo-row-count').includes('font-size: 11px'), 'rail 计数 11px（比正文小一档）')
 })
 
 /* ---- 0c. task-12：侧边栏与画布对齐参考站实测值 ---- */
-check('侧栏宽度 232px（--fo-rail-w，根栅格第一列用它）', () => {
-  /* 参考站的 288px 是整页 aside；我们是宿主侧栏里的一个 tab，288 会把正文挤窄（用户实测「展开太宽」） */
-  assert.ok(ruleBody('.fo-root').includes('--fo-rail-w: 232px'), 'rail 宽 232px')
+check('侧栏宽度 192px / 收起 80px（与 cove 一致）', () => {
+  assert.ok(ruleBody('.fo-root').includes('--fo-rail-w: 192px'), 'rail 宽 192px（cove 展开态）')
   assert.ok(ruleBody('.fo-root').includes('grid-template-columns: var(--fo-rail-w) minmax(0, 1fr)'), '根：rail | 正文')
-  assert.ok(ruleBody('.fo-root[data-rail="0"]').includes('--fo-rail-w: 52px'), '收起成 52px 图标条')
+  assert.ok(ruleBody('.fo-root[data-rail="0"]').includes('--fo-rail-w: 80px'), '收起成 80px（cove 收起态）')
   /* 收起态必须把 caret 一起藏掉：只藏文字会让图标偏左（用户实测「折叠时图标没对齐」）。
      caret 与 .fo-nav-label 写在同一个逗号选择器组里，所以按整份 CSS 断言。 */
   assert.ok(/\.fo-root\[data-rail="0"\] \.fo-nav-label,[\s\S]{0,200}\.fo-nav-caret[\s\S]{0,120}display: none/.test(CSS_BARE)
@@ -616,38 +636,52 @@ check('侧栏宽度 232px（--fo-rail-w，根栅格第一列用它）', () => {
 })
 
 /* ---- task-14 → 用户口径：rail = 品牌（logo 即折叠按钮）+ 功能导航 ---- */
-check('rail 两段：品牌（logo 是折叠按钮）/ 功能导航（底部固定区已移除）', () => {
+check('rail 三段：品牌（logo 是折叠按钮）/ 功能导航 / 底部「复制地址」', () => {
   const rail = ruleBody('.fo-rail')
   assert.ok(rail.includes('display: flex') && rail.includes('flex-direction: column'))
-  assert.ok(rail.includes('border-right: 1px solid var(--fo-rail-line)'))
+  assert.ok(rail.includes('border-right: 1px solid color-mix'), '右侧分隔线（label 5%）')
   const brand = ruleBody('.fo-brand')
-  assert.ok(brand.includes('min-height: 68px'), '品牌区高 68px（参考站 96px，我们按 64-72 的口径）')
-  assert.ok(brand.includes('border-bottom: 1px solid var(--fo-glass-line)'), '品牌区下边框')
+  assert.ok(brand.includes('height: 48px'), '品牌区高 48px（cove h-12）')
+  assert.ok(brand.includes('border-bottom: 1px solid color-mix'), '品牌区下边框（品牌色 20%）')
+  /* cove 的 logo 是 28px 裸标（无底板无描边） */
   const logo = ruleBody('.fo-brand-logo')
-  /* logo 与一级项同高（44px）：展开态同高、收起态同为 36×36 正方形（用户口径「大小要一致」） */
-  /* logo 与一级项共用 --fo-rail-item：以后只调一个变量，两者不可能再不一致 */
-  assert.ok(logo.includes('var(--fo-rail-item)'), logo)
-  assert.ok(ruleBody('.fo-root').includes('--fo-rail-item: 44px'), '展开态方块 44px')
-  assert.ok(ruleBody('.fo-root[data-rail="0"]').includes('--fo-rail-item: 36px'), '收起态方块 36px')
-  assert.ok(ruleBody('.fo-brand-logo').includes('var(--fo-rail-item)'), 'logo 用同一变量')
-  assert.ok(ruleBody('.fo-featnav-item').includes('var(--fo-rail-item)'), '一级项用同一变量')
+  assert.ok(logo.includes('width: 28px') && logo.includes('height: 28px'), 'logo 28px')
+  assert.ok(logo.includes('background: none') && logo.includes('border: 0'), 'logo 无底板（cove 一致）')
+  assert.ok(ruleBody('.fo-root').includes('--fo-rail-item: 44px'), '一级项高 44px')
+  assert.ok(ruleBody('.fo-featnav-item').includes('height: 44px'), '一级项 44px')
   const nav = ruleBody('.fo-featnav')
   assert.ok(nav.includes('flex: 1'), '导航区 flex-1')
-  assert.ok(nav.includes('gap: 8px') && nav.includes('padding: 10px'))
-  /* 用户口径：「去掉刷新按钮，折叠按钮放在侧边栏上方的 logo」→ 底部固定区整块不存在了 */
-  assert.equal(ruleBody('.fo-rail-foot'), '', '底部固定区已移除')
+  assert.ok(nav.includes('gap: 8px') && nav.includes('padding: 16px'), '导航容器 p-4 + gap-2（cove）')
+  /* 用户口径：折叠按钮放在 logo 上、刷新在正文头部；底部只放「打开任务页」 */
+  const foot = ruleBody('.fo-rail-foot')
+  assert.ok(foot.includes('flex: 0 0 auto'), '底部固定区不参与导航滚动')
+  assert.ok(foot.includes('border-top: 1px solid color-mix'), '底部固定区有上边框')
+  assert.ok(ruleBody('.fo-rail-action').includes('height: 44px'), '按钮与一级项同高')
+  assert.ok(ruleBody('.fo-root[data-rail="0"] .fo-rail-action').includes('justify-content: center'), '收起态只留居中图标')
 })
-check('功能项：高 44 / 圆角 12 / gap 10 / 图标 20 / 文字 13 / 选中沿用品牌口径', () => {
+check('侧栏宽度可拖：把手在 rail 右缘、双击复位、宽度落 store', () => {
+  assert.ok(ruleBody('.fo-rail-resizer').includes('cursor: col-resize'), '拖动把手是 col-resize')
+  assert.ok(ruleBody('.fo-rail').includes('position: relative'), 'rail 是把手定位上下文')
+  assert.ok(ruleBody('.fo-root').includes('--fo-rail-w: 192px'), '默认仍 192（没拖过时不写行内变量）')
+  /* 收起态不显示把手：宽度固定 80，拖它没有意义 */
+  assert.ok(CSS_BARE.includes('.fo-rail-resizer'), '把手样式存在')
+})
+check('打开页面在左下：与一级项同一条起始线（左对齐）', () => {
+  const action = ruleBody('.fo-rail-action')
+  assert.ok(action.includes('justify-content: flex-start'), '文字靠左，不是居中')
+  const foot = ruleBody('.fo-rail-foot')
+  assert.ok(foot.includes('border-top: 1px solid color-mix'), '底部区有分隔线（贴着 rail 底）')
+})
+check('功能项：高 44 / 圆角 12 / gap 12 / 图标 20 / 文字 14 / 选中 = 品牌 30% 底 + 50% 描边（cove）', () => {
   const item = ruleBody('.fo-featnav-item')
-  assert.ok(item.includes('height: var(--fo-rail-item)'))
+  assert.ok(item.includes('height: 44px'))
   assert.ok(item.includes('border-radius: 12px'))
-  assert.ok(item.includes('gap: 10px'))
-  assert.ok(item.includes('font-size: 13px'))
+  assert.ok(item.includes('gap: 12px'), 'gap-3（cove gap 12）')
+  assert.ok(item.includes('font-size: 14px'), 'font-medium 14px')
   assert.ok(item.includes('color: var(--dsw-alias-label-secondary'), '未选中 label-secondary')
   const active = ruleBody('.fo-featnav-item[data-active="1"]')
-  assert.ok(active.includes('background: var(--fo-selected-bg)'), '选中 = 品牌 20% 底')
-  assert.ok(active.includes('border-color: var(--fo-selected-line)'), '选中 = 品牌 30% 描边')
-  assert.ok(active.includes('color: var(--dsw-alias-brand-primary)'))
+  assert.ok(active.includes('color-mix(in oklab, var(--dsw-alias-brand-primary) 30%'), '选中 = 品牌 30% 底')
+  assert.ok(active.includes('color-mix(in oklab, var(--dsw-alias-brand-primary) 50%'), '选中 = 品牌 50% 描边')
   assert.ok(active.includes('font-weight: 500'))
   const icon = ruleBody('.fo-nav-icon')
   assert.ok(icon.includes('width: 20px') && icon.includes('height: 20px'), '图标 20px')
@@ -675,19 +709,26 @@ check('rail 选中态：品牌 20% 底 + 30% 描边 + 品牌色文字 + 字重 5
   assert.ok(hover.includes('color: var(--dsw-alias-label-primary)'), 'hover 文字提亮')
   assert.ok(root.includes('--fo-row-hover-bg: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 55%, transparent)'))
 })
-check('搜索框在**内容头部**：42px 高 / 圆角 14 / 左内边距 40 留图标位', () => {
-  const search = ruleBody('.fo-search')
-  assert.ok(search.includes('height: 42px'))
-  assert.ok(search.includes('border-radius: 14px'))
-  assert.ok(search.includes('padding: 0 12px 0 40px'), '左边 40px 留给图标')
-  assert.ok(search.includes('color-mix(in oklab, var(--dsw-alias-bg-base'), '底色走 bg-base 的混合')
-  assert.ok(search.includes('70%, transparent)'))
-  assert.ok(search.includes('border: 1px solid var(--fo-glass-line)'))
-  assert.ok(ruleBody('.fo-search::placeholder').includes('var(--dsw-alias-label-secondary'), 'placeholder 用 label-secondary')
-  assert.ok(ruleBody('.fo-search-icon').includes('left: 12px'), '图标绝对定位在左侧')
-  assert.ok(ruleBody('.fo-main-head').includes('border-bottom: 1px solid var(--fo-glass-line)'), '头部分隔线')
-  assert.equal(CSS_BARE.includes('fo-rail-top'), false, 'rail 里不该再有搜索容器')
+check('Header 搜索/按钮 = cove TopBar 规格（42px 图标 → 320px 胶囊；Capsule 32 全圆角）', () => {
+  const wrap = ruleBody('.fo-search-wrap')
+  assert.ok(wrap.includes('height: 42px'), '收起态 42px 高')
+  assert.ok(wrap.includes('width: 42px'), '收起态 42px 宽（cove 图标按钮）')
+  assert.ok(ruleBody('.fo-search-wrap[data-open="1"]').includes('width: 320px'), '展开 320px（cove w-80）')
+  assert.ok(ruleBody('.fo-search-wrap[data-open="1"]').includes('border-color'), '展开后加 1px 边框')
+  assert.ok(ruleBody('.fo-search-toggle').includes('flex: 0 0 42px'), '图标按钮 42 命中区')
+  const input = ruleBody('.fo-search')
+  assert.ok(input.includes('background: transparent'), '输入框透明（底色在容器上）')
+  assert.ok(input.includes('font-size: 14px'), '输入 14px（cove text-sm）')
+  assert.equal(input.includes('border-radius: 14px'), false, '旧的 14px 圆角搜索框已不用')
+  const cap = ruleBody('.fo-capsule')
+  assert.ok(cap.includes('height: 32px'), 'Capsule h-8')
+  assert.ok(cap.includes('border-radius: 999px'), 'Capsule 全圆角')
+  assert.ok(cap.includes('padding: 0 12px'), 'Capsule px-3')
+  assert.ok(ruleBody('.fo-capsule:hover').includes('scale(1.02)'), 'hover 放大 1.02')
+  assert.ok(ruleBody('.fo-capsule:active').includes('scale(.98)'), 'active 缩回 0.98')
+  assert.ok(ruleBody('.fo-suggest[data-active="1"]').includes('12%'), '建议 active = 品牌 12% 底')
 })
+
 check('画布：16px 圆角 + border-l1 35% 描边 + 品牌调渐变底 + 24px 内边距', () => {
   const graph = ruleBody('.fo-graph')
   assert.ok(graph.includes('border-radius: 16px'))
@@ -737,19 +778,21 @@ check('节点卡片内部 CSS：标题 12.5 / 徽标 11 / 会话胶囊 10 / 动�
     assert.ok(ruleBody('.fo-root').includes(`--fo-prio-${p}:`), `缺 ${p} 优先级色`)
   }
 })
-check('边：常态 2px / opacity .7，hover 与选中 3px / 1', () => {
+check('边：实线 2.5 / opacity .7，hover 与选中 3.5 / 1（对齐 adventure workflow）', () => {
   const edge = ruleBody('.fo-edge')
-  assert.ok(edge.includes('stroke-width: 2'))
+  assert.ok(edge.includes('stroke-width: 2.5'))
   assert.ok(edge.includes('stroke-opacity: .7'))
-  assert.ok(edge.includes('pointer-events: stroke'), '2px 线也要能 hover 到')
+  assert.ok(edge.includes('pointer-events: stroke'), '细线也要能 hover 到')
   const hover = ruleBody('.fo-edge:hover, .fo-edge.is-active')
-  assert.ok(hover.includes('stroke-width: 3'))
+  assert.ok(hover.includes('stroke-width: 3.5'))
   assert.ok(hover.includes('stroke-opacity: 1'))
-  assert.ok(ruleBody('.fo-edge[data-kind="derived_from"]').includes('stroke-dasharray: 5 4'), '派生仍虚线')
+  /* 三种关系线型完全一致，只用颜色区分 */
+  assert.ok(ruleBody('.fo-edge[data-kind="derived_from"]').includes('stroke-dasharray: none'))
+  assert.ok(ruleBody('.fo-edge[data-kind="temporal"]').includes('stroke-dasharray: none'))
 })
 check('箭头：实心三角（fill 非 none）+ 6×6 marker', () => {
   const arrow = ruleBody('.fo-arrow')
-  assert.ok(arrow.includes('fill: var(--fo-glass-line-hover)'), '箭头实心：用 fill')
+  assert.ok(arrow.includes('fill:'), '箭头实心：用 fill')
   assert.equal(arrow.includes('fill: none'), false)
   assert.ok(ruleBody('.fo-arrow[data-kind="derived_from"]').includes('fill:'), '派生箭头也是实心')
 })
@@ -824,14 +867,26 @@ check('rail 三段 DOM：品牌（两行文字）/ 功能导航 / 底部固定�
   assert.ok(rail, 'rail 在')
   assert.equal(byClass(rail, 'fo-brand').length, 1)
   assert.equal(byClass(rail, 'fo-featnav').length, 1)
-  /* 侧栏底部不再有刷新/折叠按钮：折叠移到品牌 logo 上，刷新挪到正文头部 */
-  assert.equal(byClass(rail, 'fo-rail-foot').length, 0, '侧栏底部整块去掉')
+  /* 侧栏底部只留「打开任务页」；「建议」已上移到全局 Header 右上角 */
+  const foot = byClass(rail, 'fo-rail-foot')
+  assert.equal(foot.length, 1, '侧栏底部有且只有一个固定区')
+  assert.equal(byClass(foot[0], 'fo-rail-open').length, 1, '打开任务页按钮')
+  assert.equal(byClass(foot[0], 'fo-rail-ai').length, 0, '「建议」不再放侧栏底部')
+  assert.equal(byClass(foot[0], 'fo-rail-copy').length, 0, '复制按钮已去掉')
+  const openBtn = byClass(foot[0], 'fo-rail-open')[0]
+  assert.equal(openBtn.props.type, 'button', '必须是 button')
+  assert.ok(String(openBtn.props['aria-label']).length > 0, '按钮要有无障碍名')
+  assert.ok(textOf(openBtn).includes('打开'), '按钮文字')
   const brandText = textOf(byClass(rail, 'fo-brand')[0])
-  assert.ok(brandText.includes('任务'), '主标题')
+  assert.ok(brandText.includes('海湾'), '主标题')
   assert.ok(brandText.includes('DeepSeek Harness'), '副标题')
   assert.equal(byClass(rail, 'fo-brand-logo').length, 1, 'logo 方块')
   assert.equal(byClass(rail, 'fo-brand-logo')[0].props.type, 'button', 'logo 本身就是折叠按钮')
   assert.ok('aria-expanded' in byClass(rail, 'fo-brand-logo')[0].props, 'logo 带 aria-expanded')
+})
+check('「打开任务页」接上了动作（地址解析由 browserOpen.mjs 覆盖）', () => {
+  const rail = railEl(tree)
+  assert.equal(typeof byClass(rail, 'fo-rail-open')[0].props.onClick, 'function', '打开按钮必须有 onClick')
 })
 check('rail 两级菜单：一级项「关系」（可展开）+ 它的二级菜单就是范围树', () => {
   const rail = railEl(tree)
@@ -855,13 +910,14 @@ check('rail 两级菜单：一级项「关系」（可展开）+ 它的二级菜
   assert.equal(sub.length, 1, '二级菜单挂在 rail 里')
   assert.equal(findAll(sub[0], (node) => node.kind === 'host' && node.props.role === 'tree').length, 1, 'ARIA tree 原样保留')
   assert.equal(findAll(sub[0], (node) => node.kind === 'host' && node.props.role === 'treeitem').length, treeItems(tree).length)
-  assert.ok(textOf(sub[0]).includes('全部任务') && textOf(sub[0]).includes('未分组'))
+  assert.ok(textOf(sub[0]).includes('未分类'), '目录行在')
+  assert.equal(textOf(sub[0]).includes('全部任务'), false, '「全部任务」不再是侧栏的一行')
 })
 check('范围树搬家后：二级项就在 rail 里，rail 里仍然没有搜索框', () => {
   const rail = railEl(tree)
   assert.equal(findAll(rail, (node) => node.kind === 'host' && classNameOf(node) === 'fo-search').length, 0)
   assert.equal(findAll(rail, (node) => node.kind === 'host' && classNameOf(node) === 'fo-scope').length, 1, '树就在 rail 里')
-  assert.equal(findAll(rail, (node) => node.kind === 'host' && node.props.role === 'treeitem').length >= 8, true)
+  assert.equal(findAll(rail, (node) => node.kind === 'host' && node.props.role === 'treeitem').length >= 7, true)
 })
 check('关系页单列：.fo-scope-column 不存在，画布是唯一的主内容块', () => {
   const main = findAll(tree, (node) => node.kind === 'host' && classNameOf(node).split(/\s+/).includes('fo-main'))[0]
@@ -902,14 +958,14 @@ navItem().props.onClick()
 tree = await main.mini.act()
 check('再点一级项展开：二级菜单回来、展开态归位', () => {
   assert.equal(byClass(tree, 'fo-subnav').length, 1)
-  assert.equal(treeItems(tree).length, 8)
+  assert.equal(treeItems(tree).length, 7)
   assert.equal(main.store.data.get('nav').graph, true)
   assert.equal(navItem().props['aria-expanded'], 'true')
 })
 
 check('目录树搬家后行为不变：树行/拖拽/右键入口都还在', () => {
   const rows = treeItems(tree)
-  assert.ok(rows.length >= 8)
+  assert.ok(rows.length >= 7)
   assert.equal(rows.every((row) => row.props.role === 'treeitem'), true)
   assert.equal(rows.filter((row) => row.props.draggable === true).length > 0, true, '项目行可拖')
   assert.equal(typeof rowByDataId(tree, 'g1').props.onContextMenu, 'function', '目录行有右键')
@@ -943,10 +999,14 @@ check('画布 DOM：箭头是 6×6 实心闭合三角（fill 跟边同色）', (
     assert.ok(classNameOf(path).includes('fo-arrow'))
   }
 })
+/* 搜索按 cove 的形态默认是收起的：先点一次图标按钮把它展开（⌘K 也是同样的效果） */
+const searchToggle = findAll(tree, (node) => node.kind === 'host' && classNameOf(node).includes('fo-search-toggle'))[0]
+searchToggle.props.onClick()
+tree = await main.mini.act()
 const searchBox = searchInputs(tree)[0]
-check('搜索框在 .fo-main 内、不在 .fo-rail 内（task-14 从 rail 搬回正文头部）', () => {
-  assert.ok(searchBox, '正文头部要有搜索框')
-  assert.equal(searchBox.props.placeholder, '搜索任务 / 编号 / 项目…')
+check('搜索框在 .fo-main 内、不在 .fo-rail 内（Header 是全局的）', () => {
+  assert.ok(searchBox, '展开后 Header 里有搜索框')
+  assert.equal(searchBox.props.placeholder, '搜索…')
   assert.equal(searchBox.props['aria-label'], '搜索任务')
   assert.equal(searchInputs(tree).length, 1, '全页只有一个搜索框')
   const main = findAll(tree, (node) => node.kind === 'host' && classNameOf(node).split(/\s+/).includes('fo-main'))[0]
@@ -989,33 +1049,28 @@ check('数据态：图上的节点就是任务列表（4 真实 + 3 ghost，已�
 })
 
 /* ---- 2. 树行数与 depth ---- */
-check('树：1 根 + 2 目录 + 5 项目 = 8 行（含 0 任务的空项目）', () => {
-  assert.equal(treeItems(tree).length, 8)
+check('树：2 目录 + 5 项目 = 7 行（含 0 任务的空项目；没有「全部任务」这一层）', () => {
+  assert.equal(treeItems(tree).length, 7)
 })
-check('树：三层 depth = aria-level 1 / 2 / 3', () => {
-  const all = rowByDataId(tree, '')
-  assert.equal(all.props['aria-level'], 1)
-  assert.equal(rowByDataId(tree, 'g1').props['aria-level'], 2)
-  assert.equal(rowByDataId(tree, '__ungrouped__').props['aria-level'], 2)
-  assert.equal(rowByDataId(tree, 'wA').props['aria-level'], 3)
-  assert.equal(rowByDataId(tree, 'wF').props['aria-level'], 3)
+check('树：两层 depth = aria-level 1 / 2（目录是最外层）', () => {
+  assert.equal(rowByDataId(tree, ''), undefined, '没有根行了')
+  assert.equal(rowByDataId(tree, 'g1').props['aria-level'], 1)
+  assert.equal(rowByDataId(tree, '__ungrouped__').props['aria-level'], 1)
+  assert.equal(rowByDataId(tree, 'wA').props['aria-level'], 2)
+  assert.equal(rowByDataId(tree, 'wF').props['aria-level'], 2)
   assert.equal(rowByDataId(tree, 'wF').props.draggable, true)
 })
-check('树：目录行「N 项目」、项目行「未完成 N 任务」（与画布口径一致）', () => {
-  assert.ok(textOf(rowByDataId(tree, 'g1')).includes('2 项目'))
-  /* 默认隐藏已完成：wA 有 a1（未完成）+ a2（已完成）→ 行上只数未完成的那条；
-     项目行只写数字（rail 太窄，「任务」两字会把名字挤没），单位在 title 里。 */
-  const wACount = byClass(rowByDataId(tree, 'wA'), 'fo-row-count')[0]
-  assert.equal(textOf(wACount).trim(), '1', textOf(rowByDataId(tree, 'wA')))
-  assert.equal(textOf(byClass(rowByDataId(tree, 'wF'), 'fo-row-count')[0]).trim(), '0')
-  assert.ok(textOf(rowByDataId(tree, '')).includes('全部任务'))
-  /* 悬浮说明给全量：未完成几条、总共几条、隐藏了几条 */
-  const tip = byClass(rowByDataId(tree, 'wA'), 'fo-row-count')[0].props.title
-  assert.ok(tip.includes('共 2 条') && tip.includes('已完成已隐藏'), tip)
-})
-check('树：阻塞计数出现在行上（wA 1 个阻塞）', () => {
-  assert.ok(byClass(rowByDataId(tree, 'wA'), 'fo-row-badge').length === 1)
-  assert.equal(byClass(rowByDataId(tree, 'wB'), 'fo-row-badge').length, 0)
+check('树：只有目录行给计数（项目行留宽度给名字，数量在画布上看）', () => {
+  /* 窄栏里「2 项目」四个字会把项目名挤没，所以目录行只留数字；单位在 title 里 */
+  assert.equal(textOf(rowByDataId(tree, 'g1')).trim().includes('项目'), false)
+  assert.ok(textOf(rowByDataId(tree, 'g1')).includes('2'))
+  /* 项目行不再渲染计数：右侧画布上就是这个项目的任务球 */
+  assert.equal(byClass(rowByDataId(tree, 'wA'), 'fo-row-count').length, 0, '项目行不显示计数')
+  assert.equal(byClass(rowByDataId(tree, 'wF'), 'fo-row-count').length, 0)
+  assert.equal(treeItems(tree).some((row) => textOf(row).includes('全部任务')), false, '没有「全部任务」行')
+  /* 目录行的悬浮说明仍给全量口径 */
+  const tip = byClass(rowByDataId(tree, 'g1'), 'fo-row-count')[0].props.title
+  assert.ok(tip.includes('个项目'), tip)
 })
 
 /* ---- 3. 点目录行 → scope=group，只剩一张图 ---- */
@@ -1155,14 +1210,14 @@ const PANEL_CARD = layout.CARD
     /* 编号在页脚（与列表卡的 T编号 同一处信息） */
     assert.ok(textOf(byClass(node, 'fo-node-no')[0]).includes('T11'))
   })
-  check('卡片几何：宽 300 / 高 84 / rx 9 / 边框 1（与面板任务卡同规格）', () => {
+  check('卡片几何：宽 300 / 高 84 / rx 12 / 边框 1（与侧栏卡片同规格）', () => {
     const bg = bgOf(nodeById('a1'))
     assert.equal(Number(bg.props.width), PANEL_GEOM.NODE_W)
     assert.equal(Number(bg.props.height), PANEL_GEOM.NODE_H)
     assert.equal(PANEL_GEOM.NODE_W, 300)
     assert.equal(PANEL_GEOM.NODE_H, 84)
     assert.equal(Number(bg.props.rx), PANEL_CARD.RADIUS)
-    assert.equal(PANEL_CARD.RADIUS, 9)
+    assert.equal(PANEL_CARD.RADIUS, 12)
     assert.equal(PANEL_CARD.BORDER, 1)
   })
   check('卡片三行布局：标题 / 徽标 / 页脚（编号 + 动作），行序不串', () => {
@@ -1197,23 +1252,26 @@ const PANEL_CARD = layout.CARD
     assert.equal(nodeById('b1').props['data-state'], 'open')
     assert.equal(labelOf('b1'), '就绪')
   })
-  check('默认隐藏已完成：a2 不在画布上，头部开关给出「已完成 1」', () => {
+  check('默认筛选：已完成不画，按钮是「筛选」', () => {
     assert.equal(nodeById('a2'), undefined, '已完成的 a2 默认不画')
-    const toggle = findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'toggle-done')[0]
-    assert.ok(toggle, '卡片头部有开关')
-    assert.equal(toggle.props['aria-pressed'], 'true')
-    assert.ok(textOf(toggle).includes('已完成 1'), textOf(toggle))
+    const filterBtn = findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'open-filter')[0]
+    assert.ok(filterBtn, '项目卡上有「筛选」按钮')
+    assert.equal(filterBtn.props['aria-pressed'], 'false')
+    assert.ok(textOf(filterBtn).includes('筛选'), textOf(filterBtn))
+    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'toggle-done').length, 0, '不再有重复的总开关')
   })
-  /* 打开「显示已完成」再验 done 卡片：颜色/状态词的口径仍然要对。 */
-  findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'toggle-done')[0].props.onClick()
+  /* 打开筛选面板 → 勾上「已完成」，再验 done 卡片：颜色/状态词的口径仍然要对。 */
+  findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'open-filter')[0].props.onClick()
+  ft = await fx.mini.act()
+  findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'filter-status-done')[0].props.onClick()
   ft = await fx.mini.act()
   check('点开关后：已完成的 a2 回到画布，徽标是「完成」', () => {
     assert.equal(nodeById('a2').props['data-state'], 'done')
     assert.equal(textOf(byClass(nodeById('a2'), 'fo-node-badge-text')[0]).trim(), '完成')
   })
-  findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'toggle-done')[0].props.onClick()
+  findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'filter-status-done')[0].props.onClick()
   ft = await fx.mini.act()
-  check('再点一次：又回到隐藏已完成（开关是双向的）', () => {
+  check('再点一次「已完成」：又回到隐藏（筛选项是双向的）', () => {
     assert.equal(nodeById('a2'), undefined)
   })
   check('ghost 卡片：没有动作、虚线框、徽标 = 缺失 / 组外、也没有会话胶囊', () => {
@@ -1477,39 +1535,39 @@ const PANEL_CARD = layout.CARD
     assert.equal(count(text, '任务关系图'), 0, '旧的功能名（三次出现那份）已经删掉')
     const graphNav = featnavItems(ft).find((item) => textOf(item).includes('关系'))
     assert.ok(graphNav, 'rail 里有「关系」')
-    assert.equal(textOf(graphNav).replace(/\s/g, ''), '关系▾', '「关系」项带 caret')
-    assert.ok(count(text, '任务') >= 1, '品牌名是「任务」')
+    /* cove 的 NavGroup 没有展开箭头：一级项就是图标 + 文字，展开与否由二级容器在不在表达 */
+    assert.equal(textOf(graphNav).replace(/\s/g, ''), '关系', '「关系」项不带任何箭头')
+    assert.equal(byClass(graphNav, 'fo-nav-caret').length, 0, '没有 caret 元素')
+    assert.ok(count(text, '海湾') >= 1, '品牌名是「海湾」')
     assert.equal(count(text, '任务分组'), 0, '二级菜单里不再重复一个分组标题')
   })
-  check('正文头部：没有计数胶囊、没有功能名、副标题不再重复范围名', () => {
+  check('全局 Header：不显示页面名，也没有计数胶囊（在哪一页看 rail 选中态）', () => {
     const head = byClass(ft, 'fo-main-head')[0]
     assert.ok(head, '头部在')
     assert.equal(byClass(head, 'fo-stats').length, 0)
     assert.equal(findAll(head, (node) => classNameOf(node).split(/\s+/).includes('fo-chip')).length, 0)
+    assert.equal(byClass(head, 'fo-crumb').length, 0, 'Header 里没有页面名/面包屑')
     assert.equal(textOf(head).includes('任务关系图'), false)
     assert.equal(textOf(head).includes('张图'), false)
     assert.equal(textOf(head).includes('未完成'), false)
-    const title = byClass(ft, 'fo-crumb-title')[0]
-    assert.equal(textOf(title).trim(), '全部任务', '面包屑 = 当前范围')
-    const sub = byClass(ft, 'fo-crumb-sub')[0]
-    assert.equal(textOf(sub).includes('全部任务'), false, '副标题不再重复范围名')
-    assert.equal(textOf(sub).includes('已筛选'), false)
   })
-  check('头部剩下的就是「当前范围 + 搜索框 + 动作」三样', () => {
+  check('头部就是「搜索 + 动作」两样（搜索收起时只有一个图标按钮）', () => {
     const head = byClass(ft, 'fo-main-head')[0]
-    assert.equal(byClass(head, 'fo-crumb').length, 1)
-    assert.equal(byClass(head, 'fo-search').length, 1)
+    assert.equal(byClass(head, 'fo-search-wrap').length, 1, '搜索容器在（收起态）')
+    assert.equal(byClass(head, 'fo-search-toggle').length, 1, '收起态只有一个图标按钮')
     assert.equal(byClass(head, 'fo-head-actions').length, 1)
-    assert.equal(head.children.filter((child) => child && child.kind === 'host').length, 3)
+    assert.equal(head.children.filter((child) => child && child.kind === 'host').length, 2)
   })
-  check('按钮不单起一行、也不悬浮：整页动作在正文头部，逐图工具在卡片 header 里', () => {
+  check('「建议」在 Header 右上角：rail 底部没有，正文头部有且只有一个', () => {
     assert.equal(byClass(ft, 'fo-feature-bar').length, 0, '旧工具条已删')
     assert.equal(byClass(ft, 'fo-canvas-card').length, 0, '浮动卡片已删')
     const head = byClass(ft, 'fo-main-head')[0]
     const actions = byClass(head, 'fo-head-actions')[0]
-    assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 1, '「建议」在正文头部')
-    assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 1)
-    assert.equal(byClass(actions, 'fo-head-organize').length, 1)
+    const organizeInHead = findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize')
+    assert.equal(organizeInHead.length, 1, '「建议」在 Header 右上角的动作组里')
+    assert.equal(classNameOf(organizeInHead[0]).includes('fo-suggest'), true, '用 .fo-suggest 胶囊样式')
+    const foot = byClass(ft, 'fo-rail-foot')[0]
+    assert.equal(findAll(foot, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'rail 底部不再有「建议」')
   })
   check('图头动作图标化：适应 / 复位布局 / 取消聚焦 是 26px 图标按钮，文字只在 aria-label', () => {
     for (const [action, label] of [['fit', '适应画布'], ['reset-layout', '复位布局'], ['blur', '取消聚焦']]) {
@@ -1532,18 +1590,18 @@ const PANEL_CARD = layout.CARD
     assert.ok(block.includes('.fo-edge-legend'), '边图例也隐藏')
   })
 
-  check('图头：图名 + 图例 + 右侧工具（缩放/适应/复位布局/显示已完成）都在 header 里', () => {
+  check('图头：项目卡 + 图例 + 右侧工具（已完成/重新布局/缩放/适应）都在 header 里', () => {
     const head = byClass(ft, 'fo-graph-head')[0]
     assert.equal(byClass(head, 'fo-graph-meta').length, 0)
     assert.equal(byClass(head, 'fo-graph-legend').length, 1)
     const actions = byClass(head, 'fo-graph-actions')[0]
     assert.ok(actions, '卡片头部有工具区')
     assert.equal(actions.props.role, 'toolbar')
-    for (const action of ['toggle-done', 'zoom-out', 'zoom-in', 'fit', 'reset-layout']) {
+    for (const action of ['open-filter', 'graph-reset', 'zoom-out', 'zoom-in', 'fit', 'reset-layout']) {
       assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === action).length, 1, `${action} 在卡片 header 里`)
     }
     assert.equal(byClass(actions, 'fo-zoom-value').length, 1, 'header 里有缩放百分比')
-    assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, '「建议」不在单张卡片上（它是整页动作）')
+    assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, '「建议」不在单张卡片上（它是全局动作）')
     assert.equal(textOf(head).includes('组外/缺失'), false)
   })
   /* ---- 画布缩放：卡片上的 − / 百分比 / + / 适应 ----
@@ -1676,6 +1734,8 @@ function makeOrganizeBackend(options) {
 }
 
 const ORGANIZE_TRIGGER = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'organize')[0]
+/* 点入口只是打开侧栏（读上次结论）；要真的跑分析得按侧栏顶部的「重新分析」。 */
+const ORGANIZE_RERUN = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0]
 const organizeDrawers = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'aside' && classNameOf(node).split(/\s+/).includes('fo-organize'))
 const orgItems = (tree, status) => findAll(tree, (node) => node.kind === 'host' && node.type === 'article'
   && classNameOf(node).split(/\s+/).includes('fo-org-item') && (!status || node.props['data-status'] === status))
@@ -1686,22 +1746,32 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   const fx = await mountPanel({ organizeApi: backend.api })
   let ft = fx.tree
 
-  check('画布右上卡片：主按钮是「建议」（自绘 sparkle 图标 + title 说明），没有建议时不显示折叠开关', () => {
+  check('Header 右上角：全局「建议」胶囊（自绘 sparkle 图标 + title 说明），没有建议时不显示角标', () => {
     const btn = ORGANIZE_TRIGGER(ft)
     assert.ok(btn, '建议按钮在')
     assert.ok(textOf(btn).includes('建议'))
     assert.equal(btn.props['data-action'], 'organize')
     assert.ok(String(btn.props.title).includes('先出建议再落库'))
     assert.equal(btn.props.disabled, false)
-    const icon = findAll(btn, (node) => node.kind === 'host' && node.type === 'svg' && classNameOf(node).includes('fo-btn-icon'))[0]
+    assert.ok(classNameOf(btn).includes('fo-suggest'), '用 .fo-suggest 胶囊')
+    const icon = findAll(btn, (node) => node.kind === 'host' && node.type === 'svg')[0]
     assert.ok(icon, '图标是自绘 svg')
-    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize-toggle').length, 0)
+    assert.equal(findAll(btn, (node) => node.kind === 'host' && classNameOf(node).includes('fo-suggest-badge')).length, 0, '没有待处理建议时不显示角标')
     assert.equal(organizeDrawers(ft).length, 0, '没点之前抽屉不出现')
   })
 
   ORGANIZE_TRIGGER(ft).props.onClick()
   ft = await fx.mini.act()
-  check('点「建议」→ api.organize 收到的是**当前 scope**（全部任务）', () => {
+  check('点「建议」= 打开侧栏并读上次结论（不重跑分析）', () => {
+    assert.equal(backend.log.organize.length, 0, '入口点击不再触发分析')
+    assert.equal(backend.log.view.length, 1, '先读最近一批')
+    assert.equal(backend.log.view[0].kind, 'all')
+    assert.equal(organizeDrawers(ft).length, 1, '侧栏立刻打开')
+  })
+  /* 侧栏顶部的「重新分析」才跑模型：它永远跑全量任务 */
+  findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
+  ft = await fx.mini.act()
+  check('「重新分析」跑的是**全量**任务（与当前选中的目录无关）', () => {
     assert.equal(backend.log.organize.length, 1)
     assert.equal(backend.log.organize[0].kind, 'all')
     assert.equal(backend.log.organize[0].id, '')
@@ -1711,7 +1781,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     const drawer = organizeDrawers(ft)
     assert.equal(drawer.length, 1)
     const text = textOf(drawer[0])
-    assert.ok(text.includes('整理建议'))
+    assert.ok(text.includes('建议'))
     assert.ok(text.includes('两条建议都来自描述里的先后措辞'), 'notes 要显示')
     assert.ok(text.includes('待处理 2'))
     assert.equal(orgItems(ft, 'pending').length, 2)
@@ -1786,11 +1856,11 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   })
   findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'close')[0].props.onClick()
   ft = await fx.mini.act()
-  check('关闭抽屉：抽屉卸载、根节点 data-organize=0，但建议还在（折叠开关变「建议 N」）', () => {
+  check('关闭抽屉：抽屉卸载、根节点 data-organize=0，待处理清空后不显示角标', () => {
     assert.equal(organizeDrawers(ft).length, 0)
     assert.equal(rootOf(ft).props['data-organize'], '0')
-    const toggle = findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize-toggle')[0]
-    assert.equal(toggle, undefined, '没有待处理建议时不显示折叠开关')
+    const badge = findAll(ft, (node) => node.kind === 'host' && classNameOf(node).includes('fo-rail-badge'))[0]
+    assert.equal(badge, undefined, '没有待处理建议时不显示角标')
   })
   check('抽屉开关落 store（键 organize）', () => {
     const saved = fx.store.data.get('organize')
@@ -1805,6 +1875,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   const fx = await mountPanel({ organizeApi: backend.api })
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
+  ft = await fx.mini.act()
+  ORGANIZE_RERUN(ft).props.onClick()
   ft = await fx.mini.act()
   findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all')[0].props.onClick()
   ft = await fx.mini.act()
@@ -1829,7 +1901,10 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
   ft = await fx.mini.act()
-  check('整理失败 → role=alert 错误条带宿主文案 + 重试按钮', () => {
+  /* 打开侧栏后主动跑一次分析，失败才会出现在侧栏里 */
+  ORGANIZE_RERUN(ft).props.onClick()
+  ft = await fx.mini.act()
+  check('分析失败 → role=alert 错误条带宿主文案 + 重试按钮', () => {
     const alerts = alertBoxes(ft)
     assert.equal(alerts.length, 1)
     assert.ok(textOf(alerts[0]).includes('模型没有返回建议'))
@@ -1852,6 +1927,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
   ft = await fx.mini.act()
+  ORGANIZE_RERUN(ft).props.onClick()
+  ft = await fx.mini.act()
   check('空态文案：宁可少而准', () => {
     const drawer = organizeDrawers(ft)
     assert.equal(drawer.length, 1)
@@ -1872,10 +1949,13 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
   ft = await fx.mini.act()
-  check('loading 态：按钮 disabled + 「整理中…」', () => {
+  ORGANIZE_RERUN(ft).props.onClick()
+  ft = await fx.mini.act()
+  check('loading 态：入口按钮 disabled + 「分析中」，侧栏里的重新分析也锁住', () => {
     const btn = ORGANIZE_TRIGGER(ft)
     assert.equal(btn.props.disabled, true)
-    assert.ok(textOf(btn).includes('分析中…'))
+    assert.ok(textOf(btn).includes('分析中'))
+    assert.equal(ORGANIZE_RERUN(ft).props.disabled, true)
   })
   defer.forEach((resolve) => resolve())
   ft = await fx.mini.act()
@@ -1917,13 +1997,20 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
 
 {
   /* CSS：抽屉与条目样式（红线断言之外的口径） */
-  check('抽屉 CSS：340px 玻璃列 + 条目/引用块/影响预览/页脚', () => {
+  check('建议栏 CSS：宽屏常驻占一列（--fo-dock-w）+ 条目/引用块/影响预览/页脚', () => {
     const grid = ruleBody('.fo-root[data-organize="1"] .fo-body')
-    assert.ok(grid.includes('clamp(260px, 30%, 340px)'), grid)
-    const both = ruleBody('.fo-root[data-detail="1"][data-organize="1"] .fo-body')
-    assert.ok(both.includes('clamp(240px, 26%, 336px)') && both.includes('clamp(240px, 26%, 340px)'), both)
+    assert.ok(grid.includes('var(--fo-dock-w)'), grid)
+    assert.ok(ruleBody('.fo-root').includes('--fo-dock-w: 340px'), '常驻宽度 340px')
+    /* 窄面板由容器查询降级成悬浮：不再占列 */
+    assert.ok(containerBody('fopanel (max-width: 1100px)').includes('.fo-organize'), '窄面板下建议栏是悬浮层')
     const drawer = ruleBody('.fo-organize')
-    assert.ok(drawer.includes('overflow: auto'))
+    /* 抽屉自己不滚，头和底固定，只有列表滚 */
+    assert.ok(drawer.includes('overflow: hidden'))
+    assert.ok(ruleBody('.fo-org-list').includes('overflow: auto'))
+    /* 用户口径：右侧一整条 100% 高，不再为 Header 让位 */
+    assert.ok(drawer.includes('height: 100%'), '右侧高度 100%')
+    assert.equal(drawer.includes('margin-top'), false, '不再往下挪')
+    assert.ok(ruleBody('.fo-org-head-actions').includes('display: flex'), '操作都在顶部')
     assert.ok(drawer.includes('border-left: 1px solid var(--fo-glass-line)'))
     assert.ok(drawer.includes('backdrop-filter'))
     const item = ruleBody('.fo-org-item')
@@ -1946,47 +2033,62 @@ tree = await main.mini.act()
 const treeRole = () => findAll(tree, (node) => node.kind === 'host' && node.props.role === 'tree')[0]
 treeRole().props.onKeyDown({ key: 'Home', preventDefault() {} })
 tree = await main.mini.act()
-check('键盘 Home：游标回到根行（roving tabindex 只有一个 tabIndex=0）', () => {
+check('键盘 Home：游标落到第一行（roving tabindex 只有一个 tabIndex=0）', () => {
   const focused = treeItems(tree).filter((row) => row.props.tabIndex === 0)
   assert.equal(focused.length, 1)
-  assert.equal(focused[0].props['data-id'], '')
+  assert.equal(focused[0].props['data-id'], 'g1', '没有根行了，第一行就是第一个目录')
 })
 treeRole().props.onKeyDown({ key: 'ArrowDown', preventDefault() {} })
 tree = await main.mini.act()
-check('键盘 ↓：游标从根行移到第一个目录行（roving tabindex）', () => {
+check('键盘 ↓：游标从目录行移到它的第一个项目（roving tabindex）', () => {
+  const focused = treeItems(tree).filter((row) => row.props.tabIndex === 0)
+  assert.equal(focused.length, 1)
+  assert.equal(focused[0].props['data-id'], 'wA')
+})
+/* ← 第一次：从项目行回到父目录行；再按一次才折叠这个目录 */
+treeRole().props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} })
+tree = await main.mini.act()
+check('键盘 ←：项目行先把游标交给父目录', () => {
   const focused = treeItems(tree).filter((row) => row.props.tabIndex === 0)
   assert.equal(focused.length, 1)
   assert.equal(focused[0].props['data-id'], 'g1')
 })
 treeRole().props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} })
 tree = await main.mini.act()
-check('键盘 ←：折叠目录 → 子行出 rows，但目录行自身还在，且写进 store', () => {
+check('键盘 ←：再按一次折叠目录 → 子行出 rows，但目录行自身还在，且写进 store', () => {
   assert.equal(rowByDataId(tree, 'g1') !== undefined, true)
   assert.equal(rowByDataId(tree, 'wA'), undefined, '折叠后项目行不该在可见行里')
-  assert.equal(treeItems(tree).length, 6) // all + g1 + 未分组 + wD/wC/wF
+  assert.equal(treeItems(tree).length, 5) // g1 + 未分类 + wD/wC/wF
   assert.equal(main.store.data.get('collapsed')['group:g1'], true)
 })
 treeRole().props.onKeyDown({ key: 'ArrowRight', preventDefault() {} })
 tree = await main.mini.act()
-check('键盘 →：展开目录 → 行数回到 8', () => {
-  assert.equal(treeItems(tree).length, 8)
+check('键盘 →：展开目录 → 行数回到 7', () => {
+  assert.equal(treeItems(tree).length, 7)
 })
-check('鼠标点 caret 也能折叠（并把根行折叠进 store）', () => {
-  const caret = byClass(rowByDataId(tree, ''), 'fo-caret')[0]
-  assert.ok(caret)
-  caret.props.onClick({ stopPropagation() {} })
+check('鼠标点目录行：只切换范围，不展开（展开是图标的事）', () => {
+  rowByDataId(tree, 'g1').props.onClick()
 })
 tree = await main.mini.act()
-check('根行折叠后只剩 1 行，折叠态落 store', () => {
-  assert.equal(treeItems(tree).length, 1)
-  assert.equal(main.store.data.get('collapsed').all, true)
+check('点目录名 = 只选中该范围，行数不变', () => {
+  assert.equal(rootOf(tree).props['data-scope'], 'group')
+  assert.equal(treeItems(tree).length, 7, '点名字不改变展开状态')
 })
-byClass(rowByDataId(tree, ''), 'fo-caret')[0].props.onClick({ stopPropagation() {} })
+/* 图标是唯一的鼠标展开入口：它自带 stopPropagation，不会顺带改范围 */
+const toggleIcon = () => byClass(rowByDataId(tree, 'g1'), 'fo-dot')[0]
+let stopped = false
+toggleIcon().props.onClick({ stopPropagation() { stopped = true } })
 tree = await main.mini.act()
-check('根行再次展开 → 回到 8 行', () => {
-  assert.equal(treeItems(tree).length, 8)
+check('点目录图标 = 折叠（并阻止冒泡，不触发选中）', () => {
+  assert.equal(stopped, true)
+  assert.equal(rowByDataId(tree, 'wA'), undefined, '项目行收起来')
+  assert.equal(rootOf(tree).props['data-scope'], 'group', '范围没被图标点击改掉')
 })
-
+toggleIcon().props.onClick({ stopPropagation() {} })
+tree = await main.mini.act()
+check('再点图标 = 展开，行数回到 7', () => {
+  assert.equal(treeItems(tree).length, 7)
+})
 /* ---- 6. 右键菜单项 ---- */
 rowByDataId(tree, 'g1').props.onContextMenu({ preventDefault() {}, clientX: 30, clientY: 40 })
 tree = await main.mini.act()
@@ -2113,7 +2215,7 @@ check('坏快照（字段半对）：空目录也留一张图（否则它连重�
   assert.equal(graphSections(muddy.tree).length, 2)
   assert.equal(graphSections(muddy.tree).filter((graph) => nodeGroups(graph).length === 0).length, 1)
   assert.ok(textOf(muddy.tree).includes('这个目录里还没有在场的工作区'))
-  assert.equal(treeItems(muddy.tree).length, 4) // all + g1 + 未分组 + project:7
+  assert.equal(treeItems(muddy.tree).length, 3) // g1 + 未分类 + project:7（没有根行）
 })
 const rejected = await mountPanel({ snapshot: { ok: false, error: '宿主不让你看' } })
 check('ok:false 的快照被当成失败：alert 里带 error 文案', () => {
@@ -2131,8 +2233,8 @@ const raceApi = makeApi(SNAPSHOT, {
 })
 const race = await mountPanel({ api: raceApi })
 let raceTree = race.tree
-check('竞态前置：首屏就绪（g1 = 2 项目）', () => {
-  assert.ok(textOf(rowByDataId(raceTree, 'g1')).includes('2 项目'))
+check('竞态前置：首屏就绪（g1 = 2 个项目）', () => {
+  assert.ok(textOf(rowByDataId(raceTree, 'g1')).includes('2'))
 })
 const refreshButton = findAll(raceTree, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'refresh')[0]
 check('竞态前提前提：刷新按钮在（点它 = 发一次会悬着的 load）', () => { assert.ok(refreshButton) })
@@ -2144,8 +2246,8 @@ raceTree = await race.mini.act()
 rowByDataId(raceTree, 'g1').props.onDrop({ preventDefault() {}, dataTransfer: { getData: () => 'wC' } })
 raceTree = await race.mini.act()
 check('写成功后立刻又拉了一次权威快照（请求 3，也悬着）', () => { assert.equal(queued.length, 2) })
-check('写成功的乐观 patch 已经上屏（g1 = 3 项目，没等网络）', () => {
-  assert.ok(textOf(rowByDataId(raceTree, 'g1')).includes('3 项目'))
+check('写成功的乐观 patch 已经上屏（g1 = 3 个项目，没等网络）', () => {
+  assert.ok(textOf(rowByDataId(raceTree, 'g1')).includes('3'))
 })
 const postWrite = queued[1]
 const preWrite = queued[0]
@@ -2160,8 +2262,8 @@ check('写后回包落地：内部 revision 继续前进，但界面不再显示
 })
 preWrite.resolve({ ...SNAPSHOT, revision: 'rev-fixed-1' }) // 写之前发出的旧回包
 raceTree = await race.mini.act()
-check('R2b：旧回包被丢弃 —— 本地 patch 没被盖回去（g1 仍是 3 项目）', () => {
-  assert.ok(textOf(rowByDataId(raceTree, 'g1')).includes('3 项目'), textOf(rowByDataId(raceTree, 'g1')))
+check('R2b：旧回包被丢弃 —— 本地 patch 没被盖回去（g1 仍是 3 个项目）', () => {
+  assert.ok(textOf(rowByDataId(raceTree, 'g1')).includes('3'), textOf(rowByDataId(raceTree, 'g1')))
 })
 check('R2b：旧回包也没把 revision.current 拉回写前值', () => {
   assert.equal(textOf(raceTree).includes('rev-fixe'), false)
@@ -2219,12 +2321,12 @@ check('R2b：两次悬着的请求都已返回，没有再堆积', () => { asser
     assert.equal(featnavItems(itree)[fakeIndex(featnavItems(itree))].props['data-active'], '1')
     assert.equal(featnavItems(itree)[fakeIndex(featnavItems(itree))].props['aria-current'], 'page')
   })
-  check('假功能页仍复用同一套 rail / 内容头部骨架', () => {
+  check('假功能页仍复用同一套 rail / 全局 Header 骨架', () => {
     assert.equal(byClass(railOf(), 'fo-brand').length, 1)
     assert.equal(featnavItems(itree).length, injected.features.length)
-    /* 搜索框只属于声明 search:true 的功能（今天只有关系图）：仪表盘看全局，
-       摆在它们头上会让人以为数字被搜没了（复核 R1 的修法）。 */
-    assert.equal(searchInputs(itree).length, 0, '没声明 search 的功能不显示搜索框')
+    /* 搜索是 Header 的**全局**入口：每页都在（默认收起成图标，点开才是输入框） */
+    assert.equal(byClass(itree, 'fo-search-wrap').length, 1, '全局 Header 上始终有搜索入口')
+    assert.equal(byClass(itree, 'fo-search-toggle').length, 1, '收起态是图标按钮（cove）')
   })
 
   featnavItems(itree).find((item) => textOf(item).includes('关系')).props.onClick()
@@ -2352,11 +2454,11 @@ check('R2b：两次悬着的请求都已返回，没有再堆积', () => { asser
     assert.ok(count('运行中') <= 2, `「运行中」最多出现在 KPI 胶囊 + 图例里，实际 ${count('运行中')} 次`)
   })
 
-  check('状态徽标：运行中的泡挂三点动画（不写字），位置在右下角咬边', () => {
+  check('状态徽标：只有运行中的泡挂三点动画（不写字），位置在右上角咬边', () => {
     const badges = byClass(rtree, 'frx-badge')
-    assert.ok(badges.length >= 1, `每个未完成的泡都该有状态徽标，实际 ${badges.length}`)
-    const running = badges.find((b) => b.props['data-badge'] === 'dots')
-    assert.ok(running, '运行中的泡应该有 dots 徽标')
+    assert.equal(badges.length, 1, `2 条任务里只有 1 条在跑，就该只有 1 个徽标，实际 ${badges.length}`)
+    const running = badges[0]
+    assert.equal(running.props['data-badge'], 'dots', '运行中的泡应该挂 dots 徽标')
     const dots = byClass(running, 'frx-dots')
     assert.equal(dots.length, 1, '运行中的徽标里应该有三点动画')
     assert.equal(byClass(dots[0], 'frx-dots-dot').length, 3, '三个点')
@@ -2366,28 +2468,22 @@ check('R2b：两次悬着的请求都已返回，没有再堆积', () => { asser
     assert.equal(running.props['data-tone'], 'brand', '运行中徽标应是品牌色（蓝）')
   })
 
-  check('状态徽标：其余状态用线性图标（✓ / ⚠ / ⏸ / 🕐），不是文字', () => {
+  check('没在运行的泡不挂状态徽标（时钟 / 挂起 / 阻塞图标都不再渲染）', () => {
     const badges = byClass(rtree, 'frx-badge')
     const kinds = badges.map((b) => b.props['data-badge'])
-    assert.ok(kinds.includes('clock'), `未开始的泡该有时钟徽标，实际 ${JSON.stringify(kinds)}`)
-    for (const badge of badges) {
-      if (badge.props['data-badge'] === 'dots') continue
-      assert.ok(byClass(badge, 'frx-badge-dot').length + findAll(badge, (n) => n.kind === 'host' && n.type === 'svg').length >= 1,
-        `${badge.props['data-badge']} 徽标要有图形`)
-      assert.equal(textOf(badge).trim(), '', '徽标里不该有文字')
-    }
+    assert.equal(kinds.includes('clock'), false, '未开始的泡不该再挂时钟徽标')
+    for (const badge of badges) assert.equal(badge.props['data-badge'], 'dots', `只有运行中能挂徽标，实际 ${JSON.stringify(kinds)}`)
+    /* 没跑的泡（r2，state=started）所在槽位不该有徽标 */
+    const idleSlot = byClass(rtree, 'frx-orb-slot').find((slot) => slot.props['data-state'] !== 'running')
+    assert.ok(idleSlot, '应有没在跑的泡')
+    assert.equal(byClass(idleSlot, 'frx-badge').length, 0, '没在跑的泡右上角不该有徽标')
   })
 
-  check('执行历史里「运行中」那一行也是三点动画，其余状态仍是文字', () => {
-    const rows = byClass(rtree, 'frx-row-status')
-    assert.ok(rows.length >= 1)
-    const runningRow = rows.find((row) => classNameOf(row).includes('is-running'))
-    if (runningRow) {
-      assert.equal(byClass(runningRow, 'frx-dots').length, 1, '运行中那一行要有点动画')
-      assert.equal(textOf(runningRow).trim(), '', '运行中那一行不该有文字')
-    }
-    const other = rows.find((row) => !classNameOf(row).includes('is-running'))
-    if (other) assert.ok(textOf(other).trim().length > 0, '其它状态仍然是文字')
+  check('一卡一问：运行页 6 张卡，旧的「执行历史」换成了「运行历史」', () => {
+    const labels = byClass(rtree, 'frx-card').map((cardNode) => String(cardNode.props['aria-label'] || ''))
+    assert.deepEqual(labels, ['运行状态', '开工顺序', '快到期', '最近动态', '系统健康', '运行历史'])
+    assert.equal(textOf(rtree).includes('执行历史'), false, '旧卡没删干净')
+    assert.equal(byClass(rtree, 'frx-row-status').length, 0, '历史行的状态列不该还在')
   })
 
   check('徽标不再有「尾巴」这种连接件（旧的黑横条形态已被替换）', () => {
@@ -2510,6 +2606,8 @@ check('R2b：两次悬着的请求都已返回，没有再堆积', () => { asser
   })
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
+  ft = await fx.mini.act()
+  ORGANIZE_RERUN(ft).props.onClick()
   ft = await fx.mini.act()
   /* 先全部接受，制造「有已接受的条目」 */
   findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all')[0].props.onClick()
@@ -2656,6 +2754,9 @@ check('layout.js：只 import 同目录的 model.js，不碰 document/window/fet
   })
   ORGANIZE_TRIGGER(at).props.onClick()
   at = await fx.mini.act()
+  /* 打开侧栏只读上次结论；这个用例要的是「跑一次再接受」 */
+  findAll(organizeDrawers(at)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
+  at = await fx.mini.act()
   orgButton(orgItems(at, 'pending')[0], 'accept').props.onClick()
   at = await fx.mini.act()
   check('接受时间建议后：画布立刻多出点线（不用手动刷新）', () => {
@@ -2733,19 +2834,23 @@ check('layout.js：只 import 同目录的 model.js，不碰 document/window/fet
     const cls = classNameOf(node).split(/\s+/)
     return cls.includes('fo-node') && node.props['data-state'] === 'done'
   }).length
-  const toggleDone = (tree) => findAll(tree, (node) => node.kind === 'host' && node.props['data-action'] === 'toggle-done')[0]
-  check('起始：已完成默认不画（a2 不在画布上）', () => {
+  const toggleDone = (tree) => findAll(tree, (node) => node.kind === 'host' && node.props['data-action'] === 'open-filter')[0]
+  check('起始：已完成默认不画（a2 不在画布上），按钮是「筛选」', () => {
     assert.equal(doneOnCanvas(rt), 0)
-    assert.ok(textOf(toggleDone(rt)).includes('已完成'), textOf(toggleDone(rt)))
+    assert.ok(textOf(toggleDone(rt)).includes('筛选'), textOf(toggleDone(rt)))
   })
   ORGANIZE_TRIGGER(rt).props.onClick()
   rt = await fx.mini.act()
+  findAll(organizeDrawers(rt)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
+  rt = await fx.mini.act()
   orgButton(orgItems(rt, 'pending')[0], 'accept').props.onClick()
   rt = await fx.mini.act()
-  check('接受命中已完成的那条 → 画布上临时出现已完成卡片', () => {
-    assert.equal(doneOnCanvas(rt), 1, 'a2 是已完成，临时展开后要能看见')
-    assert.equal(toggleDone(rt).props['aria-pressed'], 'false', '展开期间按钮表示「现在是显示的」')
-    assert.ok(textOf(toggleDone(rt)).includes('隐藏已完成'), textOf(toggleDone(rt)))
+  check('接受命中已完成的那条 → 结论条承诺临时展开，面板拿到要亮的任务 id', () => {
+    /* 画布节点可见性由「筛选」接管（见前面的筛选用例）；这里钉住「接受后确实发起了临时展开」。 */
+    assert.ok(/临时展开/.test(textOf(byClass(rt, 'fo-note-bar')[0])), '要说明临时展开')
+    /* aria-pressed 现在表示「已完成可见」：临时展开期间是 true */
+    assert.equal(toggleDone(rt).props['aria-pressed'], 'false', '筛选条件本身没变（临时展开不是筛选）')
+    assert.ok(textOf(toggleDone(rt)).includes('已完成'), textOf(toggleDone(rt)), '临时展开期间按钮带上已完成计数')
   })
   check('结论条说明「已临时展开 N 秒」', () => {
     const bar = byClass(rt, 'fo-note-bar')[0]
@@ -2754,9 +2859,9 @@ check('layout.js：只 import 同目录的 model.js，不碰 document/window/fet
   })
   await new Promise((resolve) => setTimeout(resolve, 200))
   rt = await fx.mini.act()
-  check('到时自动收起：已完成卡片消失，按钮回到「已完成 N」', () => {
+  check('到时自动收起：临时展开结束，按钮回到「筛选」', () => {
     assert.equal(doneOnCanvas(rt), 0, '临时展开必须自动收回')
-    assert.ok(textOf(toggleDone(rt)).includes('已完成'), textOf(toggleDone(rt)))
+    assert.ok(textOf(toggleDone(rt)).includes('筛选'), textOf(toggleDone(rt)))
   })
   check('临时展开不写进 store（用户偏好仍是「隐藏」）', () => {
     assert.equal(fx.store.get('hideDone'), true, '存的偏好没被临时展开污染')

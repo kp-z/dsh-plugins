@@ -97,12 +97,18 @@ const relationsBefore = (await json('/api/overview')).data.relations.length
 const made = await post('/api/overview/organize', { scope: { kind: 'all' } })
 check('POST 整理返回 200 且带建议单', made.status === 200 && made.data?.ok === true && made.data.batch?.batchId, JSON.stringify(made.data).slice(0, 200))
 const batch = made.data?.batch || {}
-const pending = (batch.items || []).filter((item) => item.status === 'pending')
-const dropped = (batch.items || []).filter((item) => item.status === 'dropped')
+/* 现在一批建议里既有「改关系」也有「改预期完成时间」（kind=eta），断言按类型分开看 */
+const pendingAll = (batch.items || []).filter((item) => item.status === 'pending')
+const pending = pendingAll.filter((item) => item.kind !== 'eta')
+const etaPending = pendingAll.filter((item) => item.kind === 'eta')
+const dropped = (batch.items || []).filter((item) => item.status === 'dropped' && item.kind !== 'eta')
 check('好建议进入 pending（带标题与影响预览）', pending.length === 1
   && pending[0].from === 't1' && pending[0].to === 't2'
   && pending[0].fromTitle === '实现 topic_timelines 接口' && pending[0].toTitle === '接入 MCAP 解析'
   && pending[0].impact?.blockedCount === 1, JSON.stringify(pending).slice(0, 240))
+check('预期完成建议：待办任务没预期 → 给出未来时间点', etaPending.length >= 1
+  && etaPending.every((item) => Number(item.value) > Date.now() && /预期/.test(item.evidence)),
+  JSON.stringify(etaPending).slice(0, 240))
 check('坏建议被纯函数层丢掉并写明原因（置信度 / 成环）', dropped.length === 2
   && dropped.some((item) => /置信度/.test(item.reason)) && dropped.some((item) => /环/.test(item.reason)),
   JSON.stringify(dropped.map((item) => item.reason)))
@@ -112,7 +118,7 @@ check('生成阶段零副作用：state.relations 一条都没加', relationsAft
 
 /* ── 3. 建议单能取回、也落了盘 ───────────────────────────────────── */
 const again = await json('/api/overview/organize?kind=all')
-check('GET 能取回同一批建议（面板重开还在）', again.data?.batch?.batchId === batch.batchId && again.data.batch.pending === 1, JSON.stringify(again.data).slice(0, 160))
+check('GET 能取回同一批建议（面板重开还在）', again.data?.batch?.batchId === batch.batchId && again.data.batch.pending >= 1, JSON.stringify(again.data).slice(0, 160))
 const scopeMiss = await json('/api/overview/organize?kind=group&id=nope')
 check('别的范围取不到这批建议', scopeMiss.data?.batch === null, JSON.stringify(scopeMiss.data))
 const onDisk = JSON.parse(await readFile(join(HOME, 'dsh-feishu', 'state.json'), 'utf8'))
@@ -132,18 +138,25 @@ check('逐条汇报里写明「只在本机」', /本机/.test(accepted.data.res
 const afterAccept = await json('/api/overview')
 const edges = afterAccept.data.relations || []
 check('接受后关系真的写进去了（t1 → t2 的 depends_on）', edges.some((edge) => edge.from === 't1' && edge.to === 't2' && edge.kind === 'depends_on'), JSON.stringify(edges).slice(0, 200))
-check('接受后建议单状态变成 accepted', accepted.data.batch?.accepted === 1 && accepted.data.batch?.pending === 0, JSON.stringify(accepted.data.batch).slice(0, 160))
+check('接受后建议单状态变成 accepted', accepted.data.batch?.accepted === 1 && accepted.data.batch?.pending === etaPending.length, JSON.stringify(accepted.data.batch).slice(0, 160))
 
+const acceptRest = await post('/api/overview/organize/accept', { batchId: batch.batchId })
+check('再接受剩下的预期完成建议：真的写进了任务', acceptRest.status === 200
+  && acceptRest.data?.ok === true
+  && acceptRest.data.batch?.pending === 0, JSON.stringify(acceptRest.data.batch).slice(0, 160))
+const afterEta = await json('/api/overview')
+const t1 = (afterEta.data.tasks || []).find((task) => task.id === 't1')
+check('接受预期完成建议后：任务上真的有 expectedAt', Number(t1?.expectedAt) > 0, JSON.stringify(t1 && { expectedAt: t1.expectedAt }))
 const repeat = await post('/api/overview/organize/accept', { batchId: batch.batchId })
 check('重复接受没有待处理项 → 400（幂等，不会重复写）', repeat.status === 400 && repeat.data?.ok === false, JSON.stringify(repeat.data).slice(0, 120))
 
 /* ── 6. 撤销：接受必须可回退（设计稿 §9.1：写错一条 depends_on = 后继永远开不了工） ── */
 const undone = await post('/api/overview/organize/undo', { batchId: batch.batchId })
 check('撤销返回 200 且逐条汇报', undone.status === 200 && undone.data?.ok === true
-  && undone.data.results?.length === 1 && undone.data.results[0].ok === true, JSON.stringify(undone.data).slice(0, 200))
+  && undone.data.results?.length >= 1 && undone.data.results.every((row) => row.ok === true), JSON.stringify(undone.data).slice(0, 200))
 const afterUndo = await json('/api/overview')
 check('撤销后那条边真的从关系里没了', !(afterUndo.data.relations || []).some((edge) => edge.from === 't1' && edge.to === 't2'), JSON.stringify(afterUndo.data.relations).slice(0, 160))
-check('撤销后建议单状态变成 undone', undone.data.batch?.undone === 1 && undone.data.batch?.accepted === 0, JSON.stringify(undone.data.batch).slice(0, 160))
+check('撤销后建议单状态变成 undone', undone.data.batch?.undone >= 1 && undone.data.batch?.accepted === 0, JSON.stringify(undone.data.batch).slice(0, 160))
 const undoAgain = await post('/api/overview/organize/undo', { batchId: batch.batchId })
 check('重复撤销 → 400（没有可撤销的条目）', undoAgain.status === 400 && undoAgain.data?.ok === false, JSON.stringify(undoAgain.data).slice(0, 120))
 const undoUnknown = await post('/api/overview/organize/undo', { batchId: 'sg:all:0' })

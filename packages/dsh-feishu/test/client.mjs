@@ -168,7 +168,7 @@ assert.ok(mainPanel, '没有注册 main 面板')
 assert.equal(panellist.options.id, mainPanel.options.key, 'sidebar.panellist.id 与 main.key 必须一致')
 assert.equal(panellist.options.id, 'feishu-overview')
 assert.equal(typeof panellist.options.label, 'function', 'label 要用 thunk（宿主会重读，日后可跟随 locale）')
-assert.equal(panellist.options.label(), '任务')
+assert.equal(panellist.options.label(), '海湾')
 assert.equal(typeof panellist.options.order, 'number')
 assert.equal(typeof panellist.component, 'function')
 assert.ok(typeof mainPanel.component === 'function', 'main 面板必须是组件（不能是 iframe 容器）')
@@ -178,6 +178,15 @@ console.log(`✓ 左侧栏总览：id=${panellist.options.id} label=${panellist.
 const styleIds = appendedStyles.map((node) => node.id)
 assert.ok(styleIds.includes('dsh-feishu-style'), `缺少容器样式表：${styleIds.join(',')}`)
 console.log(`✓ 样式注入：${styleIds.filter(Boolean).join(', ')}`)
+
+/* 「打开任务页」：客户端只请宿主打开**独立任务页**（/dsh-feishu/tasks），
+   不自己拼地址、也不再请求落点标记（那一套随「跳转到 DSH」一起删掉了）。 */
+assert.ok(source.includes('/dsh-feishu/api/open-panel'), '要能请宿主打开任务页')
+assert.equal(source.includes('/api/panel-focus'), false, '落点标记已随旧方案删除')
+assert.equal(/selectPanel/.test(source), false, '客户端不再需要切 DSH 主面板')
+/* 客户端的源码里不该出现任务页地址：地址由宿主拼（桌面端 Host 是 dsh-app://，拼了就是错的） */
+assert.equal(source.includes('/dsh-feishu/tasks'), false, '客户端不许自己拼任务页地址')
+console.log('✓ 打开任务页：POST /api/open-panel（地址由宿主拼成独立任务页）')
 
 /* 服务缺席时不能抛（否则会把宿主打成错误页）。 */
 const emptyCtx = { get: () => undefined, effect: () => {} }

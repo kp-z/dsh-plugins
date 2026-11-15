@@ -309,7 +309,7 @@ test('buildTree：三层结构（全部任务 / 目录 / 项目）', () => {
 
   const group = tree.byKey[`${GROUP_PREFIX}g1`]
   assert.equal(group.kind, 'group')
-  assert.equal(group.depth, 1)
+  assert.equal(group.depth, 0) /* 根行不在侧栏里，目录即最外层 */
   assert.equal(group.label, 'QVIZ')
   assert.equal(group.count, 1)
   assert.deepEqual(group.members, ['wA', 'w-missing'])
@@ -317,7 +317,7 @@ test('buildTree：三层结构（全部任务 / 目录 / 项目）', () => {
 
   const project = tree.byKey['project:wA']
   assert.equal(project.kind, 'project')
-  assert.equal(project.depth, 2)
+  assert.equal(project.depth, 1)
   assert.equal(project.groupId, 'g1')
   assert.equal(project.groupLabel, 'QVIZ')
   assert.equal(project.count, 2)
@@ -328,15 +328,20 @@ test('buildTree：三层结构（全部任务 / 目录 / 项目）', () => {
   assert.equal(tree.byKey['project:wB'].groupId, UNGROUPED_KEY)
   assert.equal(tree.byKey['project:wF'].count, 0)
 
-  // rows 是可见扁平行，顺序 = 深度优先
+  /* 侧栏里**没有「全部任务」这一行**（点一级菜单「关系」就是全量视图，再放根节点是重复）；
+     目录默认全部收起，所以进来只看到目录行。 */
   assert.deepEqual(tree.rows.map((row) => row.key), [
-    'all',
     `${GROUP_PREFIX}g1`,
-    'project:wA',
     `${GROUP_PREFIX}${UNGROUPED_KEY}`,
-    ...tree.rows.slice(4).map((row) => row.key),
   ])
-  assert.equal(tree.rows.length, tree.rows.filter((row) => row.depth <= 2).length)
+  assert.ok(tree.byKey.all, '根行仍在 byKey（范围与计数还要用它），只是不显示')
+  /* 显式展开某个目录 → 它的项目才进 rows（深度优先） */
+  const expanded = buildTree(GROUPS, TASKS, {
+    workspaces: WORKSPACES,
+    collapsed: { [GROUP_PREFIX + 'g1']: false },
+  })
+  assert.deepEqual(expanded.rows.map((row) => row.key).slice(0, 2), [`${GROUP_PREFIX}g1`, 'project:wA'])
+  assert.equal(expanded.rows.length, expanded.rows.filter((row) => row.depth <= 2).length)
   assert.equal(tree.scope.kind, 'all')
   assert.equal(tree.selected.key, 'all')
 })
@@ -356,9 +361,9 @@ test('buildTree：折叠不进 rows，但 byKey 与选中项都还在', () => {
   assert.equal(tree.byKey[GROUP_PREFIX + 'g1'].collapsed, true)
   assert.equal(tree.byKey[GROUP_PREFIX + 'g1'].selected, false)
 
-  // 全部任务折叠 → 只剩 root 行
+  // 目录全收起时，可见行就是目录行本身
   const hidden = buildTree(GROUPS, TASKS, { collapsed: { all: true }, workspaces: WORKSPACES })
-  assert.deepEqual(hidden.rows.map((row) => row.key), ['all'])
+  assert.deepEqual(hidden.rows.map((row) => row.key), [`${GROUP_PREFIX}g1`, `${GROUP_PREFIX}${UNGROUPED_KEY}`])
   assert.equal(Object.keys(hidden.byKey).length > 3, true)
   assert.equal(hidden.byKey['project:wA'].selected, false)
 })
@@ -376,12 +381,13 @@ test('buildTree：scope 选中态落在对应行上', () => {
 
 test('buildTree：空输入 / 坏输入不抛', () => {
   const empty = buildTree(null, null, undefined)
-  assert.deepEqual(empty.rows.map((row) => row.key), ['all'])
+  assert.deepEqual(empty.rows.map((row) => row.key), [], '没有目录就没有可见行')
   assert.equal(empty.byKey.all.count, 0)
   assert.equal(empty.selected.key, 'all')
   const broken = buildTree([{ id: '' }, { id: 1 }, null], [null, 42, { id: 'x' }, { id: 'y', workspaceKey: 7 }], { collapsed: null, selection: 'nope', workspaces: 'nope' })
-  assert.ok(broken.rows.some((row) => row.key === `project:${UNGROUPED_KEY}`), '没写 workspace 的任务落未归属项目')
-  assert.ok(broken.rows.some((row) => row.key === 'project:7'), 'workspaceKey 是数字也要能当 key')
+  /* 目录默认收起，所以看 byKey（全部行都在，折叠只影响可见性） */
+  assert.ok(broken.byKey[`project:${UNGROUPED_KEY}`], '没写 workspace 的任务落未归属项目')
+  assert.ok(broken.byKey['project:7'], 'workspaceKey 是数字也要能当 key')
   assert.equal(broken.scope.kind, 'all')
   assert.equal(buildTree(GROUPS, TASKS, { collapsed: 'x', selection: { kind: 'group', id: 'g1' } }).selected.key, `${GROUP_PREFIX}g1`)
 })

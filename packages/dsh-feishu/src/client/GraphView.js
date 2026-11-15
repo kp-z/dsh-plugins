@@ -25,6 +25,7 @@
 
 import { cardGeometry, describeNode, edgePath, snapToGrid } from '../overview/layout.js'
 import { createTaskNodeCard } from './TaskNodeCard.js'
+import { sideCardParts } from './cardParts.js'
 import { decoVar } from './styles.js'
 
 /* ============ 画布视口（缩放 / 平移）============
@@ -117,6 +118,20 @@ function decoStyle(colorRef) {
 }
 
 const ZOOM_STEP = 1.25
+const DAY_MS = 86_400_000
+/** 每张图的默认筛选：进行中/阻塞/挂起显示；已完成默认不显示，显示时只看最近 7 天完成的。 */
+export const DEFAULT_FILTER = { open: true, blocked: true, suspended: true, done: false, days: 7 }
+export const FILTER_RANGES = [
+  { days: 7, label: '最近一周' },
+  { days: 30, label: '最近一月' },
+  { days: 0, label: '全部' },
+]
+export const FILTER_STATUSES = [
+  ['open', '进行中'],
+  ['blocked', '阻塞'],
+  ['suspended', '挂起'],
+  ['done', '已完成'],
+]
 
 /** 边类型 / 来源的中文说法（悬停提示与图例共用一套词）。 */
 export const EDGE_KIND_LABEL = { depends_on: '前置（必须等它完成）', derived_from: '来源（由它派生）', temporal: '时间先后（不阻塞）' }
@@ -135,25 +150,6 @@ export function resetIcon(h) {
 export function closeIcon(h) {
   return h('svg', { className: 'fo-btn-icon', width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
     h('path', { d: 'M5 5l10 10M15 5L5 15' }))
-}
-
-/** 「一键整理」的图标：20px 线性 sparkle（自绘，不引图标字体/图片）。 */
-export function sparkleIcon(h) {
-  return h('svg', {
-    className: 'fo-btn-icon',
-    width: 14,
-    height: 14,
-    viewBox: '0 0 20 20',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.5,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': 'true',
-  },
-    h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
-    h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
-  )
 }
 
 const asArray = (value) => (Array.isArray(value) ? value : [])
@@ -179,6 +175,12 @@ export function createGraphView(deps) {
       graphs, selectedId = '', focusedId = '', nodePos, onOpenTask, onFocusTask,
       onNodeMove, onResetLayout, onBlur, hostReady, hostReason, onOpenSession,
       hideDone = false, hiddenDone = 0, onToggleHideDone,
+      /* 每个项目单独控制「显示已完成」：面板给已完成任务的 id 集合与「哪些项目已展开」 */
+      /* 任务完成时间：筛选「最近一周完成的」要用（画布节点本身不带时间戳） */
+      completedById,
+      /* 接受建议命中已完成任务时，面板会临时（3 秒）亮出这批 id —— 优先于本地筛选 */
+      revealing = false,
+      revealIds,
     } = props || {}
     const [views, setViews] = useState({})
     const list = Array.isArray(graphs) ? graphs : []
@@ -186,6 +188,10 @@ export function createGraphView(deps) {
     /* 多图折叠：>2 张图时默认只展开第一张，其余收成一行摘要（否则 5 个目录要滚很久）。
        用户手点过的展开/收起记在 collapsed 里，优先级高于默认值。 */
     const [collapsed, setCollapsed] = useState({})
+    /* 每张图各自的筛选条件 + 筛选面板开合（键都是 graph.key） */
+    const [filters, setFilters] = useState({})
+    const [filterOpen, setFilterOpen] = useState({})
+    const patchFilter = (key, patch) => setFilters((prev) => ({ ...prev, [key]: { ...DEFAULT_FILTER, ...(prev[key] || {}), ...patch } }))
     const autoCollapse = list.length > 2
     const isCollapsed = (graph, index) => {
       const explicit = collapsed[graph.key]
@@ -452,8 +458,34 @@ export function createGraphView(deps) {
     return h('div', { className: 'fo-canvas-stage' },
       h('div', { className: 'fo-graphs' }, list.map((graph, index) => {
       const markerBase = `fo-arrow-${index}-${safeId(graph.key)}`
-      const nodes = Array.isArray(graph.nodes) ? graph.nodes : []
-      const edges = Array.isArray(graph.edges) ? graph.edges : []
+      /* 每张图自己的筛选条件（状态 + 已完成的时间窗）：
+         默认进行中/阻塞/挂起都显示，已完成不显示；打开已完成后只显示**最近一周内**完成的，
+         更早的已完成任务默认滤掉（画布上留一堆几个月前结掉的任务没有意义）。 */
+      const filter = { ...DEFAULT_FILTER, ...(filters[graph.key] || {}) }
+      const keepNode = (node) => {
+        if (!node || node.ghost === true) return true
+        const state = node.state || 'open'
+        if (state === 'done') {
+          /* 临时展开：这几个 id 必须可见，其它已完成照旧走筛选 */
+          if (Array.isArray(revealIds) && revealIds.indexOf(node.id) >= 0) return true
+          if (filter.done !== true && revealing !== true && hideDone === true) return false
+          if (filter.days > 0) {
+            const at = Number((completedById || {})[node.id]) || 0
+            if (at > 0 && at < Date.now() - filter.days * DAY_MS) return false
+          }
+          return true
+        }
+        if (state === 'suspended') return filter.suspended !== false
+        if (state === 'blocked') return filter.blocked !== false
+        return filter.open !== false
+      }
+      const allNodes = Array.isArray(graph.nodes) ? graph.nodes : []
+      const nodes = allNodes.filter(keepNode)
+      const visibleIds = new Set(nodes.map((node) => node.id))
+      /* 边两端都必须在画面上，否则隐藏了卡片却把线头留在原地 */
+      const edges = (Array.isArray(graph.edges) ? graph.edges : [])
+        .filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to))
+      const doneCount = allNodes.filter((node) => node.done === true && node.ghost !== true).length
       const ghosts = nodes.filter((node) => node.ghost === true)
       const taskCount = nodes.length - ghosts.length
       const legend = Array.isArray(graph.legend) ? graph.legend : []
@@ -486,6 +518,7 @@ export function createGraphView(deps) {
         refY: '3',
         markerWidth: '6',
         markerHeight: '6',
+        /* 与 adventure 的 workflow 边一致：6×6 实心三角，几何按 marker 自己的箱算 */
         markerUnits: 'userSpaceOnUse',
         orient: 'auto',
       }, h('path', { className: 'fo-arrow', 'data-kind': kind, d: 'M 0 0 L 6 3 L 0 6 z' }))))
@@ -590,20 +623,29 @@ export function createGraphView(deps) {
         'aria-label': label,
         style: { '--fo-i': Math.min(index, 7) },
       },
+        /* 项目卡：**和侧栏卡片同一套内容与类名**（图标 / 名字 / 计数），
+           外面只是不同的容器。两处都走 cardParts 的同一个函数，不会再各自长一套样式。 */
         h('div', { className: 'fo-graph-head' },
-          /* 折叠开关就是图名本身：>2 张图时它变成一行摘要（名字 + 项目/任务数），点一下展开。 */
-          autoCollapse
-            ? h('button', {
-              type: 'button', className: 'fo-graph-toggle',
-              'data-action': 'toggle-graph', 'data-collapsed': folded ? '1' : '0',
-              'aria-expanded': folded ? 'false' : 'true',
-              title: folded ? '展开这张图' : '收起这张图',
-              onClick: () => toggleCollapse(graph),
-            },
-              h('span', { className: 'fo-graph-caret', 'data-collapsed': folded ? '1' : '0', 'aria-hidden': 'true' }, '▾'),
-              h('span', { className: 'fo-graph-name' }, graph.kind === 'ungrouped' ? '未分组' : graph.label),
-              h('span', { className: 'fo-graph-summary' }, summary))
-            : h('span', { className: 'fo-graph-name' }, graph.kind === 'ungrouped' ? '未分组' : graph.label),
+          h('div', { className: 'fo-row fo-row-card', 'data-kind': 'project' },
+            ...sideCardParts(h, {
+              icon: graph.kind === 'ungrouped' ? 'lucide:inbox' : 'lucide:folder',
+              label: graph.kind === 'ungrouped' ? '未分类' : graph.label,
+              title: label,
+              count: taskCount,
+              kind: 'group',
+            }),
+            /* 折叠时这张卡就是全部信息：把「几个项目 / 几个任务」补在名字后面 */
+            folded ? h('span', { className: 'fo-row-summary' }, summary) : null,
+            autoCollapse
+              ? h('button', {
+                type: 'button', className: 'fo-row-action',
+                'data-action': 'toggle-graph', 'data-collapsed': folded ? '1' : '0',
+                'aria-expanded': folded ? 'false' : 'true',
+                title: folded ? '展开这张图' : '收起这张图',
+                onClick: () => toggleCollapse(graph),
+              }, folded ? '展开' : '收起')
+              : null,
+          ),
           /* 边的图例：接受建议后画布变了，这里要能立刻看出「多了几条什么线」
              （时间先后是点线、颜色更淡，只靠眼睛扫画布很容易以为没变化）。折叠时不占位。 */
           folded ? null : h('div', { className: 'fo-edge-legend', 'aria-label': '关系图例' },
@@ -625,15 +667,56 @@ export function createGraphView(deps) {
           ),
           /* 动作就在卡片自己的 header 右侧：不悬浮、不占额外一行。折叠时整组隐藏。 */
           folded ? null : h('div', { className: 'fo-graph-actions', role: 'toolbar', 'aria-label': '画布工具' },
+            /* 筛选：状态（进行中/阻塞/挂起/已完成）+ 已完成的时间窗（默认最近一周） */
+            h('div', { className: 'fo-filter-wrap' },
+              h('button', {
+                type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+                'data-action': 'open-filter',
+                'data-active': filter.done === true ? '1' : '0',
+                'aria-expanded': filterOpen[graph.key] === true ? 'true' : 'false',
+                'aria-pressed': filter.done === true ? 'true' : 'false',
+                title: '筛选这张图里显示哪些状态、以及看多久之内完成的任务',
+                onClick: () => setFilterOpen((prev) => ({ ...prev, [graph.key]: prev[graph.key] !== true })),
+              }, `筛选${filter.done === true || revealing === true || hideDone !== true ? ` · 已完成 ${doneCount}` : ''}`),
+              filterOpen[graph.key] === true
+                ? h('div', { className: 'fo-filter-pop', role: 'group', 'aria-label': '筛选条件' },
+                  h('div', { className: 'fo-filter-row' },
+                    h('span', { className: 'fo-filter-label' }, '状态'),
+                    ...FILTER_STATUSES.map(([key, label]) => h('button', {
+                      key,
+                      type: 'button', className: 'fo-filter-chip',
+                      'data-action': `filter-status-${key}`,
+                      'data-active': filter[key] !== false ? '1' : '0',
+                      onClick: () => patchFilter(graph.key, { [key]: filter[key] === false }),
+                    }, label))),
+                  h('div', { className: 'fo-filter-row' },
+                    h('span', { className: 'fo-filter-label' }, '已完成'),
+                    ...FILTER_RANGES.map((range) => h('button', {
+                      key: range.days,
+                      type: 'button', className: 'fo-filter-chip',
+                      'data-action': 'filter-range',
+                      'data-days': String(range.days),
+                      'data-active': Number(filter.days) === range.days ? '1' : '0',
+                      onClick: () => patchFilter(graph.key, { days: range.days }),
+                    }, range.label))),
+                  h('div', { className: 'fo-filter-row' },
+                    h('button', {
+                      type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+                      'data-action': 'filter-reset',
+                      onClick: () => { setFilters((prev) => ({ ...prev, [graph.key]: { ...DEFAULT_FILTER } })); setFilterOpen((prev) => ({ ...prev, [graph.key]: false })) },
+                    }, '恢复默认'),
+                    h('span', { className: 'fo-filter-hint' }, '默认隐藏一周前完成的'),
+                  ),
+                )
+                : null,
+            ),
+            /* 「重新布局」= 只重排这一张图（清掉这个项目里手动拖过的位置） */
             h('button', {
               type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-              'data-action': 'toggle-done',
-              'aria-pressed': hideDone ? 'true' : 'false',
-              title: hideDone
-                ? `已完成的任务默认不画${hiddenDone > 0 ? `（这次隐藏了 ${hiddenDone} 条）` : ''}；点一下显示它们`
-                : '点一下把已完成的任务从画布上收起来',
-              onClick: () => { if (typeof onToggleHideDone === 'function') onToggleHideDone() },
-            }, hideDone ? `已完成${hiddenDone > 0 ? ` ${hiddenDone}` : ''}` : '隐藏已完成'),
+              'data-action': 'graph-reset',
+              title: '按依赖重新排布这张图（清掉手动拖过的位置）',
+              onClick: () => { if (typeof onResetLayout === 'function') onResetLayout(graph.key) },
+            }, '重新布局'),
             h('div', { className: 'fo-zoom-group' },
               h('button', {
                 type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',

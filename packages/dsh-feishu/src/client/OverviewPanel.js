@@ -20,14 +20,18 @@
 
 import * as modelModule from '../overview/model.js'
 import * as layoutModule from '../overview/layout.js'
+import { coveMark } from './coveLogo.js'
 import { createDetailPanel } from './DetailPanel.js'
 import { createFeatures, featureById } from './features.js'
-import { sparkleIcon } from './GraphView.js'
 import { createOrganizeDrawer } from './OrganizeDrawer.js'
 import { renderIcon, searchIcons, suggestIcons, iconLabel, emojiGroups, searchEmojiGroups, ICON_COLORS, normalizeIcon, ICON_IDS } from './projectIcons.js'
 import { BUILD_LABEL } from './buildInfo.js'
+import { openPanelInBrowser } from './browserOpen.js'
 
 const MIN_POLL_MS = 15000
+/* 侧栏可拖范围：太窄放不下「运行/洞察/关系」三个字，太宽会把正文挤没 */
+const RAIL_MIN = 160
+const RAIL_MAX = 420
 const DEFAULT_POLL_MS = 30000
 
 const asArray = (value) => (Array.isArray(value) ? value : [])
@@ -304,6 +308,29 @@ export function createOverviewPanel(deps) {
       return model.isObj(saved) ? saved : {}
     })
     const [railOpen, setRailOpen] = useState(() => readStore(store, 'rail') !== false)
+    /* 拖动侧栏右边缘调宽度：从当前实测宽度起算，clamp 到 [RAIL_MIN, RAIL_MAX]，松手即落 store */
+    const beginRailResize = (event) => {
+      if (!event || (event.button != null && event.button !== 0)) return
+      const aside = event.currentTarget && event.currentTarget.parentElement
+      if (!aside) return
+      event.preventDefault()
+      const startX = Number(event.clientX) || 0
+      const startWidth = aside.getBoundingClientRect().width
+      const move = (moveEvent) => {
+        const next = Math.round(startWidth + (Number(moveEvent.clientX) || 0) - startX)
+        setRailWidth(Math.max(RAIL_MIN, Math.min(RAIL_MAX, next)))
+      }
+      const finish = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', finish)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', finish)
+    }
     const [collapsed, setCollapsed] = useState(() => {
       const value = readStore(store, 'collapsed')
       return model.isObj(value) ? value : {}
@@ -315,6 +342,10 @@ export function createOverviewPanel(deps) {
     const [nodePos, setNodePos] = useState(() => readNodePos(readStore(store, 'nodePos')))
     /* 宿主动作（打开会话）失败时的可读提示：role=status，绝不静默。 */
     const [hostNote, setHostNote] = useState('')
+    /* 侧栏「打开任务页」的瞬时回执：只改按钮文字（用户口径：不要正文头提示）。
+       opened / openFailed，1.8 秒后自动回到默认。 */
+    const [railAction, setRailAction] = useState('')
+    const railTimer = useRef(null)
     /* 项目图标选择器：{ key, title } | null（纯本地展示配置，不写飞书） */
     const [logoPicker, setLogoPicker] = useState(null)
     /* 图标选择器的临时状态：搜索词 / 图标或 emoji 页 / 选中的颜色 */
@@ -336,6 +367,15 @@ export function createOverviewPanel(deps) {
       }
     })
     const [keyword, setKeyword] = useState(() => model.str(readStore(store, 'keyword')))
+    /* 全局搜索：cove 的做法是先一个 42px 图标按钮，点开才是输入框（⌘K 直接展开并聚焦） */
+    const searchRef = useRef(null)
+    const [searchOpen, setSearchOpen] = useState(false)
+    /* 侧栏宽度可拖：0 = 用 CSS 默认（展开 192 / 窄面板 196）；拖过就记住，双击把手复位。 */
+    const [railWidth, setRailWidth] = useState(() => {
+      const saved = Math.round(Number(readStore(store, 'railWidth')))
+      return saved >= RAIL_MIN && saved <= RAIL_MAX ? saved : 0
+    })
+    useEffect(() => { if (railWidth) writeStore(store, 'railWidth', railWidth) }, [railWidth])
     /* 整理后的结果提示（接受了几条、有几条落在隐藏的已完成任务上）。 */
     const [orgNote, setOrgNote] = useState('')
     /* 已完成默认不画（用户口径）：「全部任务」里已完成往往占绝大多数（实测 57 条里 49 条已完成），
@@ -345,13 +385,23 @@ export function createOverviewPanel(deps) {
        这时把已完成展开几秒让人确认关系真的写进去了，再自动收回——不改用户存下来的偏好，
        也不算进 store（刷新后仍是隐藏）。 */
     const [revealDone, setRevealDone] = useState(false)
+    /* 临时展开时**具体**要亮出来的已完成任务 id：比「全局都亮」准确，
+       也不跟每张图自己的筛选打架（筛选默认藏已完成，但这几个必须可见）。 */
+    const [revealIds, setRevealIds] = useState([])
     const revealTimer = useRef(null)
     const revealDoneTemporarily = useCallback((ms = 3000) => {
       if (revealTimer.current) clearTimeout(revealTimer.current)
       setRevealDone(true)
-      revealTimer.current = setTimeout(() => { revealTimer.current = null; setRevealDone(false) }, ms)
+      revealTimer.current = setTimeout(() => { revealTimer.current = null; setRevealDone(false); setRevealIds([]) }, ms)
     }, [])
     useEffect(() => () => { if (revealTimer.current) clearTimeout(revealTimer.current) }, [])
+    /* 「在浏览器打开」的按钮文字回执：不弹正文提示，只在按钮上闪一下。 */
+    const flashRailAction = useCallback((value) => {
+      setRailAction(value)
+      if (railTimer.current) clearTimeout(railTimer.current)
+      railTimer.current = setTimeout(() => { railTimer.current = null; setRailAction('') }, 1800)
+    }, [])
+    useEffect(() => () => { if (railTimer.current) clearTimeout(railTimer.current) }, [])
     /* 有效口径：用户偏好 + 临时展开。画布、计数、边裁剪全部只认这一个值。 */
     const showDone = hideDone ? revealDone : true
     const [renamingId, setRenamingId] = useState('')
@@ -440,6 +490,21 @@ export function createOverviewPanel(deps) {
     useEffect(() => { writeStore(store, 'nodePos', nodePos) }, [nodePos])
     useEffect(() => { writeStore(store, 'organize', { open: org.open, batchId: org.batchId }) }, [org.open, org.batchId])
 
+    /* ⌘K / Ctrl+K：聚焦全局搜索（Search 是 Header 的固定入口，快捷键只是加速） */
+    useEffect(() => {
+      if (typeof window === 'undefined') return undefined
+      const onKeyDown = (event) => {
+        if ((event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === 'k') {
+          event.preventDefault()
+          setSearchOpen(true)
+          /* 输入框下一帧才渲染，等一拍再聚焦 */
+          setTimeout(() => { if (searchRef.current && typeof searchRef.current.focus === 'function') searchRef.current.focus() }, 0)
+        }
+      }
+      window.addEventListener('keydown', onKeyDown)
+      return () => window.removeEventListener('keydown', onKeyDown)
+    }, [])
+
     useEffect(() => {
       if (!detailId || typeof document === 'undefined' || !document.addEventListener) return undefined
       const onKey = (event) => { if (event.key === 'Escape') { setDetailId(''); setFocusedId('') } }
@@ -474,16 +539,21 @@ export function createOverviewPanel(deps) {
     /* 画布上的任务集 = 可见任务 − （默认）已完成。
        树仍按全部可见任务统计：那里是「这个项目有多少活」的全局口径，画布才是「现在看什么」。 */
     const hiddenDone = useMemo(() => (showDone ? 0 : visibleTasks.filter((task) => task.done === true).length), [visibleTasks, showDone])
-    const graphTasks = useMemo(() => (showDone ? visibleTasks : visibleTasks.filter((task) => task.done !== true)), [visibleTasks, showDone])
+    /* 画布任务集：**已完成也一起交给布局**，由每个项目自己决定画不画。
+       （之前是在这里就滤掉，导致「某个项目想看已完成」根本拿不到那些节点。） */
+    const graphTasks = visibleTasks
+    const doneIds = useMemo(() => new Set(visibleTasks.filter((task) => task.done === true).map((task) => model.str(task.id))), [visibleTasks])
+    /* 哪些项目单独开了「显示已完成」（按图 key） */
+    const [doneGraphs, setDoneGraphs] = useState({})
+    const toggleGraphDone = useCallback((graph) => {
+      const key = model.str(graph && graph.key)
+      if (!key) return
+      setDoneGraphs((prev) => ({ ...prev, [key]: prev[key] !== true }))
+    }, [])
     /* 边两端都必须在画布上：否则每条指向已完成任务的边都会长出一个 ghost 节点，
        等于「隐藏了卡片但把线头留在原地」，比不隐藏更乱。 */
-    const graphRelations = useMemo(() => {
-      if (showDone) return relations
-      /* 只砍「端点是被隐藏的已完成任务」的边。指向**根本不存在**的任务的边要留着：
-         那是「依赖一个已经没了的任务」的真实缺口，藏起来反而丢信号（图上仍是缺失 ghost）。 */
-      const hidden = new Set(visibleTasks.filter((task) => task.done === true).map((task) => model.str(task.id)))
-      return relations.filter((edge) => edge && !hidden.has(model.str(edge.from)) && !hidden.has(model.str(edge.to)))
-    }, [relations, showDone, visibleTasks])
+    /* 边也全给：GraphView 会按「两端节点是否画出来」再过滤一遍（每个项目各管各的） */
+    const graphRelations = relations
     const drawing = useMemo(() => layout.layoutScope({ tasks: graphTasks, relations: graphRelations, groups, workspaces: scopeWorkspaces, scope }), [graphTasks, graphRelations, groups, scopeWorkspaces, scope])
     /* 搜索时只留有节点的图：空目录不必在筛选态下占一屏 */
     const graphs = useMemo(() => {
@@ -493,6 +563,18 @@ export function createOverviewPanel(deps) {
       return keywordNeedle ? list.filter((graph) => asArray(graph.nodes).length > 0) : list
     }, [drawing, keywordNeedle])
     const scopedTasks = useMemo(() => model.scopeTasks(visibleTasks, scope, groups), [visibleTasks, scope, groups])
+    /* 当前功能（rail 选中项）：Header 标题、搜索是否收窄数据、正文渲染都用它 */
+    const activeFeature = featureById(features, activeFeatureId)
+    /* 只有注册了 search:true 的功能（关系）才让搜索收窄页面数据；运行/洞察只弹浮层 */
+    const filtersBySearch = Boolean(activeFeature && activeFeature.search === true)
+    /* 运行/洞察页的搜索不走「过滤页面数据」，只在 Header 下弹结果（点一条直接开会话/详情） */
+    const searchHits = useMemo(() => {
+      const needle = model.collapse(keyword).toLowerCase()
+      if (!needle || filtersBySearch) return []
+      return tasks
+        .filter((item) => model.collapse(`${model.str(item.title)} ${model.taskNo(item) || ''} ${model.str(item.workspaceTitle)}`).toLowerCase().includes(needle))
+        .slice(0, 6)
+    }, [keyword, filtersBySearch, tasks])
     const colorOf = useMemo(() => {
       const map = {}
       asArray(tree && tree.lanes).forEach((lane) => {
@@ -587,16 +669,35 @@ export function createOverviewPanel(deps) {
         .catch((error) => { setHostNote(String((error && error.message) || error) || '设置项目图标失败'); return false })
     }, [load, logoPicker, logoColor])
 
+    /* 点行 = 选中该范围；**再点一次已选中的目录/根行 = 折叠或展开它**。
+       去掉 caret 之后这是鼠标唯一的折叠入口（键盘左右键不变）。 */
     const onSelectRow = useCallback((row) => {
       if (!row) return
-      if (row.kind === 'group') setScope({ kind: 'group', id: row.id })
-      else if (row.kind === 'project') setScope({ kind: 'project', id: row.id })
-      else setScope({ kind: 'all', id: '' })
-    }, [])
+      if (row.kind === 'project') {
+        setScope({ kind: 'project', id: row.id })
+        return
+      }
+      if (row.kind === 'all') {
+        if (scope.kind === 'all') {
+          setCollapsed((prev) => ({ ...prev, all: prev.all !== true }))
+          return
+        }
+        setScope({ kind: 'all', id: '' })
+        return
+      }
+      /* 点目录行 = 只切换范围（不展开）。展开/收起是行首图标的事，见 TreeNav 的 onToggle。 */
+      setScope({ kind: 'group', id: row.id })
+    }, [scope])
 
+    /* 折叠键是三态的（true 收 / false 开 / 没记录 = 用模型默认）。
+       目录默认是「收起」，所以第一次点图标必须是**展开** —— 直接取反会算成 true（还是收着）。 */
     const onToggleRow = useCallback((row) => {
       if (!row) return
-      setCollapsed((prev) => ({ ...prev, [row.key]: prev[row.key] !== true }))
+      setCollapsed((prev) => {
+        const current = prev[row.key]
+        if (typeof current === 'boolean') return { ...prev, [row.key]: !current }
+        return { ...prev, [row.key]: row.kind !== 'group' }
+      })
     }, [])
 
     const onMenu = useCallback((row, at) => {
@@ -708,13 +809,14 @@ export function createOverviewPanel(deps) {
 
     /* ---------------- 一键整理（task-16）：只出建议、人点了才落库 ---------------- */
 
-    /* 换范围或首次挂载：把这个范围最近一批建议取回来（没有就是 null），抽屉内容跟着走。 */
+    /* 首次挂载：把最近一批建议取回来（没有就是 null），抽屉一打开就有内容。
+       建议永远按**全量任务**算，所以这里不跟 scope 走。 */
     useEffect(() => {
       const fn = apiRef.current.organizeView
       if (!fn) return undefined
       let stale = false
       Promise.resolve()
-        .then(() => fn(scope))
+        .then(() => fn({ kind: 'all', id: '' }))
         .then((batch) => {
           if (stale || !alive.current || !batch) return
           setOrg((prev) => ({
@@ -726,7 +828,37 @@ export function createOverviewPanel(deps) {
         })
         .catch(() => { /* 恢复失败不打扰用户：画布照用，按钮还在 */ })
       return () => { stale = true }
-    }, [scope])
+    }, [])
+
+    /* 建议栏：默认「自动」（宽屏固定成列、窄面板变浮层），用户可以手动钉成固定或浮层。
+       值落 store 键 organizeDock：'1' 固定 / '0' 浮层 / 未设置 = 自动。 */
+    const [organizeDock, setOrganizeDock] = useState(() => {
+      const saved = model.str(readStore(store, 'organizeDock'))
+      return saved === '1' || saved === '0' ? saved : ''
+    })
+    useEffect(() => { writeStore(store, 'organizeDock', organizeDock) }, [organizeDock])
+    /* 当前**实际**是固定还是浮层：容器查询会按面板宽度自动切换，光看 organizeDock 判断不了。
+       直接量布局（position === 'static' 就是占列的固定模式），按钮文案与切换目标都按它来。 */
+    const [organizeEffective, setOrganizeEffective] = useState('dock')
+    useEffect(() => {
+      if (org.open !== true) return undefined
+      const el = typeof document !== 'undefined' ? document.querySelector('.fo-organize') : null
+      if (!el) return undefined
+      const read = () => setOrganizeEffective(window.getComputedStyle(el).position === 'static' ? 'dock' : 'float')
+      read()
+      const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(read) : null
+      if (ro) ro.observe(el)
+      window.addEventListener('resize', read)
+      return () => {
+        if (ro) ro.disconnect()
+        window.removeEventListener('resize', read)
+      }
+    }, [org.open, organizeDock, state.status])
+
+    /* 按钮 = 切到另一种模式：现在是固定 → 钉成浮层；现在是浮层 → 钉成固定。 */
+    const toggleOrganizeDock = useCallback(() => {
+      setOrganizeDock(organizeEffective === 'dock' ? '0' : '1')
+    }, [organizeEffective])
 
     const toggleOrganize = useCallback(() => {
       setOrg((prev) => ({ ...prev, open: prev.open !== true }))
@@ -740,13 +872,26 @@ export function createOverviewPanel(deps) {
       setOrg((prev) => ({ ...prev, droppedOpen: prev.droppedOpen !== true }))
     }, [])
 
-    /** 跑一次整理：零副作用，只出建议；失败给 role=alert 的错误条（重试按钮再跑一次）。 */
+    /**
+     * 打开建议栏：只负责「打开」。上次那批建议由挂载时的那次 organizeView 取回（见上面的 effect），
+     * 入口点击不再等于「跑一次几十秒的分析」——要重算按侧栏顶部的「重新分析」。
+     */
+    const openOrganize = useCallback(() => {
+      setOrg((prev) => ({ ...prev, open: true }))
+      return Promise.resolve(org.batch || null)
+    }, [org.batch])
+
+    /** 跑一次分析：零副作用，只出建议；失败给 role=alert 的错误条（重试按钮再跑一次）。 */
     const runOrganize = useCallback(() => {
       const fn = apiRef.current.organize
       if (!fn) return Promise.resolve(null)
-      setOrg((prev) => ({ ...prev, status: 'running', error: '', failed: {} }))
+      /* 点「建议」就**立刻**把右侧建议栏打开（分析可能要几十秒 —— 先给用户一个在跑的侧栏，
+         而不是让按钮干转、什么也没发生）。 */
+      setOrg((prev) => ({ ...prev, open: true, status: 'running', error: '', failed: {} }))
+      /* 建议**永远跑全量任务**（和当前侧栏选中的目录无关）：用户口径是「跑所有任务的分析」，
+         范围只影响画布，不该让建议随点击的目录变来变去。 */
       return Promise.resolve()
-        .then(() => fn(scope))
+        .then(() => fn({ kind: 'all', id: '' }))
         .then((res) => {
           if (!alive.current) return null
           const batch = res && res.batch ? res.batch : null
@@ -819,10 +964,10 @@ export function createOverviewPanel(deps) {
               status: 'ready',
               failed,
             }))
-            /* 接受过的关系要立刻出现在画布上：拉一次权威快照。 */
-            load(true)
             /* 已完成的任务默认不画，落在它们身上的关系在画布上看不见 —— 明确说一句，
-               否则用户会以为「接受了但没生效」。 */
+               否则用户会以为「接受了但没生效」。
+               注意：临时展开必须等**新快照落地之后**再开计时，否则 3 秒在 refetch 期间就走完了，
+               等边真的画上来时已经又收起来（这正是「接受了但画布没变化」的原因之一）。 */
             const accepted = asArray(res && res.results).filter((row) => row && row.ok === true)
             const doneIds = new Set(tasks.filter((task) => task.done === true).map((task) => model.str(task.id)))
             /* 判定用 batch 里的条目（带 from/to），results 只保证 ok/id —— 宿主两种都给了，
@@ -835,13 +980,19 @@ export function createOverviewPanel(deps) {
             const hiddenHits = pairs.filter(([from, to]) => doneIds.has(from) || doneIds.has(to)).length
             const localOnly = accepted.filter((row) => model.str(row.warning)).length
             const bits = []
-            if (accepted.length) bits.push(`已接受 ${accepted.length} 条关系，画布已更新`)
+            if (accepted.length) bits.push(`已接受 ${accepted.length} 条建议`)
             if (hiddenHits > 0) {
               bits.push(`其中 ${hiddenHits} 条连的是已完成任务——已临时展开 ${Math.round(REVEAL_MS / 1000 * 10) / 10} 秒，之后自动收起`)
+              /* 立刻亮一次（用户马上能看到反馈），快照落地后再续一次计时（见下面 then） */
+              setRevealIds(pairs.filter(([from, to]) => doneIds.has(from) || doneIds.has(to)).map(([from, to]) => (doneIds.has(from) ? from : to)))
               revealDoneTemporarily(REVEAL_MS)
             }
             if (localOnly > 0) bits.push(`${localOnly} 条只写进了本机，飞书同步待完成`)
             setOrgNote(bits.length ? `${bits.join('；')}。` : '')
+            /* 先重拉快照让新边进数据，**再**开始临时展开的计时 —— 顺序反了就等于没展开。 */
+            Promise.resolve(load(true)).then(() => {
+              if (alive.current && hiddenHits > 0) revealDoneTemporarily(REVEAL_MS)
+            })
           }
           return res
         })
@@ -937,10 +1088,9 @@ export function createOverviewPanel(deps) {
        - 副标题不再重复范围名；只留这份视图独有的上下文（revision / 快照时钟）。 */
     const scopeName = model.scopeLabel(scope, groups)
 
-    /* 用户口径：「QVIZ / revision 6d8e44d9 · 09:28:57」这个信息好像也不需要。
-       revision 是不透明指纹、时钟是快照时刻 —— 都是排错信息，不该占用户版面（要看可以看 DevTools）。 */
-    const subtitle = []
-
+     /* 用户口径：「QVIZ / revision 6d8e44d9 · 09:28:57」也不需要。
+        revision 是不透明指纹、时钟是快照时刻 —— 排错信息，不该占版面。
+        Header 也不显示页面名：在哪一页看 rail 的选中态就够了。 */
     /* 骨架只负责「数据层面还没法渲染功能页」的几种状态；有数据时正文交给功能注册表。 */
     let shellNode = null
     if (state.status === 'loading' && !data) {
@@ -964,7 +1114,6 @@ export function createOverviewPanel(deps) {
       )
     }
 
-    const activeFeature = featureById(features, activeFeatureId)
     const featureComponent = activeFeature && typeof activeFeature.Component === 'function' ? activeFeature.Component : null
     const featureHint = activeFeature ? model.str(activeFeature.hint) : ''
     const hostCan = hostCapability(host)
@@ -972,6 +1121,8 @@ export function createOverviewPanel(deps) {
     /* 功能页的 ctx：数据 + 交互全在这里，功能组件自己不取数据、不碰 store。 */
     const featureCtx = {
       featureHint,
+      /* 功能页要自己取数的能力面（运行页的「系统健康」用它读 /api/health） */
+      api: apiRef.current,
       graphs,
       selectedId: detailTask ? detailId : '',
       focusedId,
@@ -988,8 +1139,16 @@ export function createOverviewPanel(deps) {
       /* 画布看到的是「有效口径」：临时展开期间它就是 false，按钮会显示「隐藏已完成」，
          这时点一下 = 立刻收起（而不是先取消临时展开、再等一次才生效）。 */
       hideDone: !showDone,
+      /* 每个项目自己的「显示已完成」：id 集合 + 已展开的项目 key 表 */
+      doneIds,
+      /* 筛选「最近一周完成的」要用完成时间 */
+      completedById: tasks.reduce((acc, task) => {
+        if (task && task.done === true) acc[model.str(task.id)] = Number(task.completedAt) || 0
+        return acc
+      }, {}),
       /* 只表示「因为你刚接受建议、我临时帮你展开了」，用于提示条文案；不是持久状态。 */
       revealing: hideDone === true && revealDone === true,
+      revealIds,
       hiddenDone,
       onToggleHideDone: () => {
         if (revealTimer.current) { clearTimeout(revealTimer.current); revealTimer.current = null }
@@ -1050,6 +1209,10 @@ export function createOverviewPanel(deps) {
       'data-organize': org.open ? '1' : '0',
       /* 构建号：DevTools 里 document.querySelector('.fo-root').dataset.build 就能确认跑的是哪次构建 */
       'data-build': BUILD_LABEL,
+      /* 建议栏位置：'1' 固定成列 / '0' 浮层 / 不写 = 按容器宽度自动 */
+      'data-organize-dock': organizeDock || undefined,
+      /* 只有用户真的拖过才写行内变量：没拖过就让 CSS 默认值（含窄面板的容器查询）生效 */
+      style: railWidth ? { '--fo-rail-w': railWidth + 'px' } : undefined,
     },
       /* 侧栏三段：品牌 / 功能导航 / 底部固定区（折叠按钮在这里，折起来 rail 变 56px 图标条） */
       h('aside', { className: 'fo-rail', 'aria-label': '功能导航' },
@@ -1064,14 +1227,11 @@ export function createOverviewPanel(deps) {
             title: railOpen ? '收起侧栏' : '展开侧栏',
             onClick: () => setRailOpen((prev) => prev !== true),
           },
-            h('svg', { width: 20, height: 20, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' },
-              h('path', { d: 'M3 5.5h9M3 10h14M3 14.5h7' }),
-              h('circle', { cx: 15.5, cy: 5.5, r: 1.4 }),
-              h('circle', { cx: 13, cy: 14.5, r: 1.4 }),
-            ),
+            /* 品牌标（cove）：这个方块本身仍是「收起 / 展开 rail」的按钮 */
+            coveMark(h, 22),
           ),
           h('span', { className: 'fo-brand-text' },
-            h('span', { className: 'fo-brand-title' }, model.str(options.title) || '任务'),
+            h('span', { className: 'fo-brand-title' }, model.str(options.title) || '海湾'),
             h('span', { className: 'fo-brand-sub' }, model.str(options.subtitle) || 'DeepSeek Harness'),
           ),
         ),
@@ -1094,6 +1254,9 @@ export function createOverviewPanel(deps) {
                 title: model.str(feature.hint) || model.str(feature.label),
                 onClick: () => {
                   if (active && expandable) {
+                    /* 再点一次当前功能 = 回到「全部」范围并收起/展开它的二级菜单。
+                       侧栏里没有「全部任务」这一行，这就是回到全量的入口。 */
+                    setScope({ kind: 'all', id: '' })
                     setNavOpen((prev) => ({ ...prev, [feature.id]: prev[feature.id] === false }))
                     return
                   }
@@ -1102,85 +1265,167 @@ export function createOverviewPanel(deps) {
               },
                 typeof feature.icon === 'function' ? feature.icon(h) : null,
                 h('span', { className: 'fo-nav-label' }, model.str(feature.label) || feature.id),
-                expandable ? h('span', { className: 'fo-nav-caret', 'data-open': open ? '1' : '0', 'aria-hidden': 'true' }, '▾') : null,
+                /* cove 的 NavGroup 没有展开箭头：一级项就是图标 + 文字，
+                   展开由「点当前项」控制，展开与否看二级容器在不在。 */
               ),
               open ? h(feature.SubNav, { key: 'sub', ...featureCtx }) : null,
             )
           }),
         ),
+        /* 右边缘拖动把手：调宽窄（双击复位成 CSS 默认）。折叠态没有把手。 */
+        railOpen
+          ? h('div', {
+            className: 'fo-rail-resizer',
+            role: 'separator',
+            'aria-orientation': 'vertical',
+            'aria-label': '拖动调整侧栏宽度',
+            title: '拖动调整宽度 · 双击复位',
+            onPointerDown: beginRailResize,
+            onDoubleClick: () => setRailWidth(0),
+          })
+          : null,
+        h('div', { className: 'fo-rail-foot' },
+          h('button', {
+            type: 'button',
+            className: 'fo-rail-action fo-rail-open',
+            title: '在浏览器打开海湾页',
+            'aria-label': '在浏览器打开海湾页',
+            onClick: () => {
+              void (async () => {
+                let opened = null
+                try {
+                  opened = await openPanelInBrowser()
+                } catch (error) {
+                  opened = null
+                }
+                flashRailAction(opened && opened.ok ? 'opened' : 'openFailed')
+              })()
+            },
+          },
+            h('svg', {
+              className: 'fo-nav-icon',
+              width: 18, height: 18, viewBox: '0 0 24 24',
+              fill: 'none', stroke: 'currentColor', strokeWidth: 1.7,
+              strokeLinecap: 'round', strokeLinejoin: 'round',
+              'aria-hidden': 'true',
+            },
+              h('path', { d: 'M15 3h6v6' }),
+              h('path', { d: 'M10 14 21 3' }),
+              h('path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }),
+            ),
+            h('span', { className: 'fo-nav-label' },
+              railAction === 'opened' ? '已打开' : railAction === 'openFailed' ? '打开失败' : '打开页面'),
+          ),
+        ),
       ),
       h('div', { className: 'fo-body' },
         h('div', { className: 'fo-main' },
-          /* 内容头部：面包屑/标题 + 搜索框（42px / 圆角 14 / 左侧 40px 图标位）+ 动作 */
+          /* 全局 Header：与左上品牌栏严格齐平（同为 48px + 同一条底边线）。
+             三页共用：左=页面名，中=全局搜索，右=建议 + 刷新。 */
           h('header', { className: 'fo-main-head' },
-            h('div', { className: 'fo-crumb' },
-              h('span', { className: 'fo-crumb-title' }, scopeName),
-              h('span', { className: 'fo-crumb-sub' }, subtitle.join(' · ')),
-            ),
-            /* 搜索框只属于「会按搜索收窄」的功能（注册表里 search:true，今天只有关系图）：
-               洞察/运行看全局，摆在它们头上会让人以为数字被搜没了（复核 R1）。 */
-            activeFeature && activeFeature.search === true
-              ? h('div', { className: 'fo-search-wrap' },
-                h('span', { className: 'fo-search-icon', 'aria-hidden': 'true' },
-                  h('svg', { width: 16, height: 16, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' },
-                    h('circle', { cx: 8.5, cy: 8.5, r: 5 }),
-                    h('path', { d: 'M12.3 12.3 16.5 16.5' }),
-                  ),
+            /* Header 不放页面名：当前在哪一页由 rail 的选中态表达（cove 的 TopBar 也不放标题）。 */
+            /* 搜索全局常驻。只有注册了 search:true 的功能（关系）会**收窄页面数据**；
+               运行/洞察只弹结果浮层 —— 免得 KPI 与图表被搜索悄悄改掉。 */
+            /* 搜索（cove TopBar 同款）：默认只是 42px 圆形图标，点开变 320px 胶囊；Esc 收起 */
+            h('div', { className: 'fo-search-wrap', 'data-open': searchOpen ? '1' : '0' },
+              h('button', {
+                type: 'button',
+                className: 'fo-search-toggle',
+                title: '搜索（⌘K）',
+                'aria-label': searchOpen ? '收起搜索' : '搜索',
+                'aria-expanded': searchOpen ? 'true' : 'false',
+                onClick: () => {
+                  if (searchOpen) setKeyword('')
+                  setSearchOpen((prev) => prev !== true)
+                },
+              },
+                h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
+                  h('circle', { cx: 11, cy: 11, r: 7 }),
+                  h('path', { d: 'm20 20-3.6-3.6' }),
                 ),
-                h('input', {
+              ),
+              searchOpen
+                ? h('input', {
+                  ref: searchRef,
                   className: 'fo-search',
                   type: 'text',
                   value: keyword,
-                  placeholder: '搜索任务 / 编号 / 项目…',
+                  placeholder: '搜索…',
                   'aria-label': '搜索任务',
                   onChange: (event) => setKeyword(event.currentTarget.value),
-                  onKeyDown: (event) => { if (event.key === 'Escape') setKeyword('') },
-                }),
-                keyword ? h('span', { className: 'fo-search-hint' }, `匹配 ${scopedTasks.length} 条`) : null,
-              )
-              : null,
-            h('div', { className: 'fo-head-actions' },
-              activeFeature && activeFeature.search === true && scope.kind !== 'all'
-                ? h('button', { type: 'button', className: 'fo-btn', 'data-size': 'sm', onClick: () => setScope({ kind: 'all', id: '' }) }, '全部任务')
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Escape') return
+                    setKeyword('')
+                    setSearchOpen(false)
+                  },
+                })
                 : null,
-              /* 一键整理 = 整页动作（作用在当前范围），所以它属于正文头部，而不是某一张卡片。
-                 卡片 header 里只有逐图的东西（缩放 / 复位 / 显示已完成）。 */
-              activeFeatureId === 'graph' && typeof apiRef.current.organize === 'function'
-                ? h('span', { className: 'fo-head-organize' },
-                  Number(org.batch && org.batch.pending) > 0
-                    ? h('button', {
-                      type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-                      'data-action': 'organize-toggle',
-                      'aria-expanded': org.open ? 'true' : 'false',
-                      'aria-controls': 'fo-organize-column',
-                      onClick: toggleOrganize,
-                    }, org.open ? '收起建议' : `建议 ${Number(org.batch && org.batch.pending)}`)
+              searchOpen && keyword && !filtersBySearch
+                ? h('div', { className: 'fo-search-pop', role: 'listbox', 'aria-label': '搜索结果' },
+                  searchHits.length
+                    ? searchHits.map((item) => h('button', {
+                      key: model.str(item.id),
+                      type: 'button',
+                      className: 'fo-search-hit',
+                      role: 'option',
+                      onClick: () => { setKeyword(''); setSearchOpen(false); openTask(model.str(item.id)) },
+                    },
+                      h('span', { className: 'fo-search-hit-no' }, 'T' + (model.taskNo(item) || '')),
+                      h('span', { className: 'fo-search-hit-title' }, model.str(item.title) || model.str(item.id)),
+                    ))
+                    : h('div', { className: 'fo-search-pop-empty' }, '没有匹配的任务'))
+                : null,
+              searchOpen && keyword && filtersBySearch
+                ? h('span', { className: 'fo-search-hint' }, `匹配 ${scopedTasks.length} 条`)
+                : null,
+            ),
+            h('div', { className: 'fo-head-actions' },
+              /* 这里曾经有一个「全部任务」按钮：切到关系页时会自动冒出来，占 header 又没用
+                 （回到全部任务点侧栏第一行就行）。已删。 */
+              /* 建议 = 全局 AI 入口：唯一入口在 Header 右上角，点开右侧建议栏 */
+              typeof apiRef.current.organize === 'function'
+                ? h('button', {
+                  type: 'button',
+                  className: 'fo-capsule fo-suggest',
+                  'data-action': 'organize',
+                  'data-active': org.open ? '1' : '0',
+                  'data-running': org.status === 'running' ? '1' : '0',
+                  'aria-expanded': org.open ? 'true' : 'false',
+                  'aria-controls': 'fo-suggest-panel',
+                  disabled: org.status === 'running',
+                  title: '建议：让 AI 找前置/后置/来源关系，并按完成时间补一条时间先后；先出建议再落库',
+                  /* 点「建议」= 打开侧栏并**先显示上次的结论**（没有才提示去跑分析）；
+                     重新分析是侧栏里的按钮，不在这个入口上反复跑。 */
+                  onClick: () => {
+                    if (org.open) return toggleOrganize()
+                    return openOrganize()
+                  },
+                },
+                  h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
+                    h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
+                    h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
+                  ),
+                  h('span', { className: 'fo-suggest-label' }, org.status === 'running' ? '分析中' : '建议'),
+                  Number(org.batch && org.batch.pending) > 0 && !org.open
+                    ? h('span', { className: 'fo-suggest-badge', 'aria-label': `${Number(org.batch.pending)} 条待处理建议` }, String(Number(org.batch.pending)))
                     : null,
-                  h('button', {
-                    type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'primary', 'data-action': 'organize',
-                    disabled: org.status === 'running',
-                    title: '让 AI 找前置/后置/来源关系，并按完成时间补一条时间先后；先出建议再落库',
-                    onClick: runOrganize,
-                  }, org.status === 'running' ? '分析中…' : '建议', org.status === 'running' ? null : sparkleIcon(h)),
                 )
                 : null,
-              /* 侧栏不再放刷新（用户口径）；刷新挪到正文头部，做成只有图标的按钮，不抢视线。 */
               h('button', {
                 type: 'button',
-                className: 'fo-btn',
-                'data-size': 'sm',
-                'data-variant': 'ghost',
+                className: 'fo-capsule',
+                'data-icon': '1',
                 'data-action': 'refresh',
                 title: state.status === 'loading' ? '正在刷新…' : '刷新',
                 'aria-label': '刷新',
                 disabled: state.status === 'loading' || busy,
                 onClick: () => load(false),
               }, h('svg', {
-                width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor',
-                strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
+                width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+                strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
               },
-                h('path', { d: 'M16.5 10a6.5 6.5 0 1 1-2-4.6' }),
-                h('path', { d: 'M16.8 2.6v4.2h-4.2' }),
+                h('path', { d: 'M21 12a9 9 0 1 1-3-6.7' }),
+                h('path', { d: 'M21 3v6h-6' }),
               )),
             ),
           ),
@@ -1241,6 +1486,10 @@ export function createOverviewPanel(deps) {
             onUndo: undoOrganize,
             onClose: closeOrganize,
             onToggleDropped: toggleDropped,
+            /* 顶部的「固定 / 浮层」切换与「重新分析」 */
+            docked: organizeEffective === 'dock',
+            onToggleDock: toggleOrganizeDock,
+            onRerun: runOrganize,
           })
           : null,
       ),

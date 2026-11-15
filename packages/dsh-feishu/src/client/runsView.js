@@ -111,6 +111,169 @@ export const TURN_BUCKETS = [
   { key: 'high', label: '10+ 轮', hint: '长会话' },
 ]
 
+/** 优先级顺序：P0 最前；没填的排最后（不猜成 P2）。 */
+export const PRIORITY_ORDER = ['P0', 'P1', 'P2', 'P3']
+
+export function priorityRank(value) {
+  const hit = PRIORITY_ORDER.indexOf(str(value).toUpperCase())
+  return hit < 0 ? PRIORITY_ORDER.length : hit
+}
+
+/**
+ * 「开工顺序」：现在能动手的任务。
+ * 口径（只回答「该动哪条」）：未完成、未挂起、前置全完成、**没在跑**。
+ * 排序：优先级 → 等得最久（createdAt 越早越靠前）→ 编号。
+ * 不在这里看逾期（那是「快到期」卡的职责），也不看时长。
+ */
+export function readyQueue(tasks, now, limit = 6) {
+  const at = num(now, Date.now())
+  return arr(tasks)
+    .filter((task) => isObj(task) && task.done !== true && task.suspended !== true)
+    .filter((task) => task.ready === true && arr(task.blockedBy).length === 0)
+    .filter((task) => task.running !== true)
+    .map((task) => {
+      const createdAt = Number(task.createdAt) || 0
+      const startedAt = Number(task.startedAt) || 0
+      const since = createdAt > 0 ? createdAt : startedAt
+      const waitMs = since > 0 ? Math.max(0, at - since) : 0
+      return {
+        id: str(task.id),
+        no: num(task.no, 0),
+        title: str(task.title) || str(task.id),
+        workspaceTitle: str(task.workspaceTitle) || '未归属项目',
+        priority: str(task.priority).toUpperCase(),
+        priorityRank: priorityRank(task.priority),
+        sessionId: str(task.sessionId),
+        waitMs,
+        waitDays: Math.floor(waitMs / 86_400_000),
+        waitText: waitMs > 0 ? formatDuration(waitMs) : '',
+      }
+    })
+    .sort((a, b) => (a.priorityRank - b.priorityRank) || (b.waitMs - a.waitMs) || (a.no - b.no))
+    .slice(0, Math.max(1, limit))
+}
+
+/**
+ * 「快到期」：按**预期完成**分桶（只回答「什么时候必须交」）。
+ * 不看依赖、不排优先级；没设预期完成的不进任何桶（单独计数，提示去飞书里填）。
+ * 返回 { buckets: { overdue, today, week, later }, items, overdueCount, todayCount, weekCount, unset }
+ */
+export function dueBuckets(tasks, now, limit = 8) {
+  const at = num(now, Date.now())
+  const dayStart = startOfDay(at)
+  const dayEnd = dayStart + 86_400_000
+  const weekEnd = dayStart + 7 * 86_400_000
+  const rows = arr(tasks)
+    .filter((task) => isObj(task) && task.done !== true && task.suspended !== true)
+    .map((task) => ({
+      id: str(task.id),
+      no: num(task.no, 0),
+      title: str(task.title) || str(task.id),
+      workspaceTitle: str(task.workspaceTitle) || '未归属项目',
+      expectedAt: Number(task.expectedAt) || 0,
+    }))
+  const unsetRows = rows.filter((row) => row.expectedAt <= 0)
+  const unset = unsetRows.length
+  const items = rows
+    .filter((row) => row.expectedAt > 0)
+    .map((row) => {
+      /* 逾期的判据是**已经过了那个点**，不是「不在今天之内」。
+         踩过的坑：20:00 到期、现在 21:30，旧口径按 dayStart 分桶 → 落进「今天」，
+         文案成了「剩 2 小时」，逾期计数始终是 0 —— 用户看到的就是「延期不生效」。 */
+      const bucket = row.expectedAt <= at ? 'overdue'
+        : (row.expectedAt < dayEnd ? 'today'
+          : (row.expectedAt < weekEnd ? 'week' : 'later'))
+      const deltaMs = row.expectedAt - at
+      const lateMs = bucket === 'overdue' ? at - row.expectedAt : 0
+      return {
+        ...row,
+        bucket,
+        lateMs,
+        lateDays: bucket === 'overdue' ? Math.max(1, Math.ceil(lateMs / 86_400_000)) : 0,
+        dueText: formatDueText(deltaMs, bucket),
+      }
+    })
+    .sort((a, b) => a.expectedAt - b.expectedAt)
+  const buckets = { overdue: 0, today: 0, week: 0, later: 0 }
+  items.forEach((row) => { buckets[row.bucket] += 1 })
+  return {
+    buckets,
+    items: items.slice(0, Math.max(1, limit)),
+    total: items.length,
+    unset,
+    /** 没设预期完成的任务（最多 3 条）：卡片空白处列出来，点一下就能去补，而不是只报一个数字 */
+    unsetItems: unsetRows.slice(0, 3),
+    /** 图表用的窗口（天）：左 -14，右 +7 */
+    windowStart: dayStart - 14 * 86_400_000,
+    windowEnd: weekEnd,
+  }
+}
+
+/** 到期文案：逾期 3 天 / 逾期 2 小时 / 剩 3 小时 / 3 天后。 */
+function formatDueText(deltaMs, bucket) {
+  const abs = Math.abs(deltaMs)
+  if (bucket === 'overdue') {
+    /* 当天就逾期时用小时（「逾期 1 天」会显得比实际严重）。 */
+    if (abs < 3_600_000) return '刚过期'
+    if (abs < 86_400_000) return `逾期 ${Math.max(1, Math.round(abs / 3_600_000))} 小时`
+    return `逾期 ${Math.max(1, Math.ceil(abs / 86_400_000))} 天`
+  }
+  if (abs < 3_600_000) return '不到 1 小时'
+  if (abs < 86_400_000) return `剩 ${Math.max(1, Math.round(abs / 3_600_000))} 小时`
+  return `${Math.round(abs / 86_400_000)} 天后`
+}
+
+/**
+ * 「最近动态」：任务的生命周期事件（创建/开工/完成/挂起），按时间倒序。
+ * 只回答「刚才发生了什么」——不是任务列表，也不按状态分组。
+ * 同时给出覆盖最近 24 小时的每小时计数（柱状图用）。
+ */
+export function activityTimeline(tasks, now, limit = 12) {
+  const at = num(now, Date.now())
+  const events = []
+  const push = (task, kind, when, text) => {
+    const value = Number(when) || 0
+    if (value <= 0 || value > at + 60_000) return
+    events.push({
+      id: `${str(task.id)}:${kind}`,
+      taskId: str(task.id),
+      no: num(task.no, 0),
+      title: str(task.title) || str(task.id),
+      kind,
+      at: value,
+      agoText: formatAgo(at - value),
+      text,
+    })
+  }
+  arr(tasks).forEach((task) => {
+    if (!isObj(task)) return
+    push(task, 'done', task.completedAt, '完成')
+    push(task, 'start', task.startedAt, '开工')
+    push(task, 'suspended', task.suspendedAt, '挂起')
+    push(task, 'created', task.createdAt, '创建')
+  })
+  events.sort((a, b) => b.at - a.at)
+  /* 24 根柱子的边界必须与 last24h 完全一致（age ∈ [0, 24h)），否则「柱子和 ≠ 总数」，
+     测试当场抓到过一次（边界那条事件在两处口径里一进一出）。 */
+  const WINDOW = 24 * 3_600_000
+  const ageOf = (event) => at - event.at
+  const inWindow = (event) => ageOf(event) >= 0 && ageOf(event) < WINDOW
+  const hourly = []
+  for (let i = 23; i >= 0; i -= 1) {
+    hourly.push({ start: at - (i + 1) * 3_600_000, count: 0 })
+  }
+  events.forEach((event) => {
+    if (!inWindow(event)) return
+    const index = 23 - Math.floor(ageOf(event) / 3_600_000)
+    if (hourly[index]) hourly[index].count += 1
+  })
+  return {
+    events: events.slice(0, Math.max(1, limit)),
+    hourly,
+    last24h: events.filter(inWindow).length,
+  }
+}
+
 /**
  * 主入口。返回：
  *   empty      没有任何任务
@@ -350,9 +513,21 @@ export function buildRuns(snapshot) {
         canOpenSession: bubble.canOpenSession,
         lastActiveAt,
         agoText: lastActiveAt > 0 ? formatAgo(now - lastActiveAt) : '时间未记录',
+        /* 「运行历史」要的列：这一轮跑了多久、跑到第几轮、起点是什么口径 */
+        sessionTurn: bubble.sessionTurn,
+        elapsed: bubble.elapsed,
+        elapsedText: bubble.elapsedText,
+        startFrom: bubble.startFrom,
+        startedText: bubble.startedText,
+        /* 时长条的比例（0..1）：卡里用它画一条微条形，避免整页又变成纯列表 */
+        elapsedRatio: 0,
       }
     })
     .sort((a, b) => (b.lastActiveAt - a.lastActiveAt) || (b.no - a.no) || a.id.localeCompare(b.id))
+  const maxHistoryElapsed = history.reduce((max, row) => Math.max(max, row.elapsed), 0)
+  history.forEach((row) => {
+    row.elapsedRatio = maxHistoryElapsed > 0 ? Math.max(0, Math.min(1, row.elapsed / maxHistoryElapsed)) : 0
+  })
 
   return {
     empty: tasks.length === 0,
@@ -379,6 +554,12 @@ export function buildRuns(snapshot) {
     longest,
     longestUntimed: untimed,
     alerts,
+    /** 「开工顺序」：能动手的任务（依赖就绪 + 优先级排序） */
+    ready: readyQueue(tasks, now),
+    /** 「快到期」：按预期完成分桶（含图表窗口） */
+    due: dueBuckets(tasks, now),
+    /** 「最近动态」：生命周期事件时间线 + 24h 每小时计数（含已完成/挂起，它们也是事件） */
+    timeline: activityTimeline(allTasks, now),
   }
 }
 

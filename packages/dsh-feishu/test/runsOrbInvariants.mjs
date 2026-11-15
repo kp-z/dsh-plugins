@@ -4,10 +4,10 @@
  * 为什么用「读源码做断言」而不是渲染：这几条都踩过一次真实事故，而且事故形态都是
  * 「DOM 里结构看着对、渲染出来却看不见」，普通渲染断言抓不到：
  *
- * 1. **SVG 的 fill/stroke 不接受 `color-mix()`** —— 水面矩形、水位波浪线、两层外发光全是这个写法，
+ * 1. **SVG 的 fill/stroke 不接受 `color-mix()`** —— 水面矩形、水面波浪线、两层外发光全是这个写法，
  *    结果整块不可见（用户：「气泡里的水面动画和效果都失效了」）。这里禁止 orbSvg 区域出现 color-mix。
- * 2. **水位只在 running 时画** —— 真实数据里常年 0 条在跑，于是整片气泡都没有水面。
- *    这里禁止「水位外面套 running 三元」这种写法。
+ * 2. **完成率水面只在 running 时画** —— 真实数据里常年 0 条在跑，于是整片气泡都没有水面。
+ *    这里禁止「水面外面套 running 三元」这种写法。
  * 3. **图标太大** —— 曾经占圆内 54/100，圆里显得糊；口径是约 1/3（32/100）。
  * 4. **放大档位** —— 用户明确说不要档位（「我要的是图标变小其他的都不变」），不该再回来。
  * 5. **页头统计行 / 卡片刷新按钮 / 头部 revision** —— 用户逐条要求删掉，不该复活。
@@ -44,7 +44,7 @@ const stripComments = (text) => text
 const orbBody = (() => {
   const start = src.indexOf('const orbInner = (o) => {')
   assert.ok(start > 0, '找不到 orbInner')
-  const end = src.indexOf('/** 圆内水位', start)
+  const end = src.indexOf('/** 圆内完成率水面', start)
   return stripComments(src.slice(start, end > 0 ? end : src.length))
 })()
 
@@ -53,13 +53,13 @@ check('气泡 SVG 里不出现 color-mix()（表现属性不认，会整块不�
 })
 
 check('水面画在每个泡上（不是只在运行中才画）', () => {
-  /* orbBody 已去注释，所以按矩形定位水位段 */
+  /* orbBody 已去注释，所以按矩形定位水面段 */
   const water = orbBody.indexOf("h('rect'")
-  assert.ok(water > 0, '找不到水位矩形')
+  assert.ok(water > 0, '找不到完成率水面矩形')
   const tail = orbBody.slice(water, water + 700)
   assert.equal(/\brunning\s*\n?\s*\?/.test(tail.split('h(\'g\'')[0] || ''), false,
-    '水位不该再套 running ? … : null —— 真实数据里常年 0 条在跑，那样整片气泡都没水面')
-  assert.ok(tail.includes('h(\'rect\''), '水位必须有一个填充矩形')
+    '水面不该再套 running ? … : null —— 真实数据里常年 0 条在跑，那样整片气泡都没水面')
+  assert.ok(tail.includes('h(\'rect\''), '完成率水面必须有一个填充矩形')
   assert.ok(tail.includes('animate'), '波浪线必须带 SMIL 动画')
 })
 
@@ -116,9 +116,10 @@ check('历史行的状态色口径：运行=蓝 / 阻塞=黄 / 完成=绿（样�
   assert.ok(css.includes('.frx-avatar-dot.is-running { background: #3b82f6; }'), '运行中小圆点应为蓝')
   assert.ok(css.includes('.frx-avatar-dot.is-blocked { background: #f59e0b; }'), '阻塞小圆点应为黄')
   assert.ok(css.includes('.frx-avatar-dot.is-done { background: #22c55e; }'), '完成小圆点应为绿')
-  assert.ok(css.includes('.frx-row-status.is-blocked { color: #fbbf24; }'), '阻塞文字应为黄')
-  assert.ok(css.includes('.frx-row-status.is-done { color: #4ade80; }'), '完成文字应为绿')
-  assert.ok(src.includes("state === 'blocked' ? '阻塞'"), '历史行文案要能表达阻塞')
+  /* 历史列表卡已经删掉：状态文字的配色口径随 .frx-row-status 一起消失，
+     现在只有事件流里的小圆点表达状态（上面三条就是全部）。 */
+  assert.equal(css.includes('.frx-row-status'), false, '历史列表卡删掉后不该再有 .frx-row-status')
+  assert.ok(src.includes("state === 'blocked' ? '阻塞'"), '气泡状态文案要能表达阻塞')
 })
 
 check('运行页自己是滚动容器（宿主 .fo-feature-host 不滚，页面比一屏高）', () => {
@@ -130,16 +131,21 @@ check('运行页自己是滚动容器（宿主 .fo-feature-host 不滚，页面�
   assert.ok(block.includes('overscroll-behavior: contain'), '滚到底不要带着宿主页面一起滚')
 })
 
-check('已完成的气泡不挂徽标（用户口径：运行完成的气泡不用显示时间图标）', () => {
-  assert.ok(src.includes("if (row.state === 'done') return null"), 'done 的泡应直接不渲染徽标')
+check('状态徽标只挂在运行中的泡上（用户口径：没在跑的气泡右上角不要状态泡）', () => {
+  assert.ok(src.includes('if (!isRunning) return null'), '非运行中的泡应直接不渲染徽标')
   const tooltip = src.slice(src.indexOf("className: 'frx-orb-tip-meta'"), src.indexOf("className: 'frx-orb-tip-hint'"))
   assert.ok(tooltip.includes('已完成'), '已完成气泡的 hover 浮层要写「已完成」，不能落成「未开始」')
 })
 
-check('水位颜色跟着剩余量（绿→黄→红），且不动状态色', () => {
-  assert.ok(src.includes('const waterLevel = pct >= 66 ? [34, 197, 94]'), '水位要达到 2/3 才是绿')
+check('这个指标叫「完成率」，不再叫「水位」（用户口径）', () => {
+  assert.equal(src.includes('水位'), false, '运行页里不该再出现「水位」')
+  assert.ok(src.includes('完成率'), 'hover 浮层 / 标签说明要写「完成率」')
+})
+
+check('水色跟着剩余量（绿→黄→红），且不动状态色', () => {
+  assert.ok(src.includes('const waterLevel = pct >= 66 ? [34, 197, 94]'), '完成率要达到 2/3 才是绿')
   assert.ok(src.includes('pct >= 33 ? [245, 158, 11] : [239, 68, 68]'), '中间黄、过低红')
-  assert.ok(src.includes('rgba(waterLevel, 0.3)') && src.includes('rgba(waterLevel, 0.82)'), '水与波浪线都用水位色')
+  assert.ok(src.includes('rgba(waterLevel, 0.3)') && src.includes('rgba(waterLevel, 0.82)'), '水与波浪线都用水色')
   /* 描边/发光仍然是状态色：search 一下 accent 有没有被 waterLevel 顶掉 */
   assert.ok(src.includes('const stroke = rgba(accent,'), '描边还得是状态色')
   assert.ok(src.includes('const glowOuter = rgba(accent,'), '外发光还得是状态色')
@@ -197,41 +203,43 @@ check('状态卡：KPI 胶囊在**右上**、底部不再有项目名列表', ()
   assert.ok(head.indexOf('frx-kpis') < head.indexOf('frx-bubbles'), 'KPI 胶囊要在卡片头部（右上）')
 })
 
-check('项目卡是旭日图，并且按自定义目录合并项目', () => {
-  assert.ok(src.includes("card('projects'"), '缺项目卡')
-  assert.ok(src.includes('frx-sun'), '项目卡要用旭日图（frx-sun）')
-  assert.ok(src.includes('arcPath(cx, cy, r0, r1'), '要有内圈（项目）')
-  assert.ok(/arcPath\(cx, cy, r1 \+ \d+, r2/.test(src), '要有外圈（状态拆分）')
-  assert.equal(src.includes("className: 'frx-bars'"), true, '阻塞排行仍然是横条')
-  assert.equal(src.includes('byProject'), false, '旧的项目横条聚合应已删除')
-  const view = readFileSync(new URL('../src/client/runsView.js', import.meta.url), 'utf8')
-  assert.ok(view.includes('snap.groups') && view.includes('group.members'), '合并规则要读自定义目录的成员')
-  assert.ok(view.includes("key: `group:${group.id}`"), '合并后的项目 key 用目录 id')
+check('一卡一问：运行页只有 6 张卡，旧卡一张都不剩', () => {
+  const keys = [...src.matchAll(/const \w+Card = card\('([a-z]+)'/g)].map((m) => m[1])
+  assert.deepEqual(keys, ['status', 'ready', 'due', 'timeline', 'health', 'history'], `卡片集合不对：${keys.join(',')}`)
+  /* 注意：`card('history'` 现在指的是**运行历史**（保留的），不在删除名单里 */
+  for (const gone of ["card('projects'", "card('blockers'", "card('todo'", "card('longest'", "card('suspended'", "card('timing'", "card('actions'"]) {
+    assert.equal(src.includes(gone), false, `旧卡没删干净：${gone}`)
+  }
+  /* 每张卡只回答一个问题：副标题里就能读出来（口径：越短越好，别重复卡名和下面的行名） */
+  for (const sub of ["'依赖就绪'", "'按预期完成排序'", "'过去 24 小时'", "'按最近活动排序'"]) {
+    assert.ok(src.includes(sub), `缺卡片职责说明：${sub}`)
+  }
+  /* 用户口径「文字描述有的比较啰嗦」：这几句长文案不许再回来（只看代码，注释里提一下没问题） */
+  const code = stripComments(src)
+  for (const verbose of ['会话正在跑 · 实时同步', '空闲 · 等待任务开工', "'同步 / 授权 / CLI'", '每条任务跑了多久 · 按最近活动排序', '越靠上越紧迫']) {
+    assert.equal(code.includes(verbose), false, `啰嗦文案又回来了：${verbose}`)
+  }
 })
 
-check('运行状态右侧恢复两张「图统计」卡，且数字不与胶囊重复', () => {
-  assert.ok(src.includes("card('projects'"), '缺「按项目分布」卡')
-  assert.ok(src.includes("card('blockers'"), '缺「阻塞排行」卡')
-  /* 布局口径（用户：最起码 2×4）：整页一个 4 列网格，卡片自带跨度 */
+check('布局：2 行 × 4 列（在跑 2 + 开工 1 + 到期 1 ／ 动态 2 + 健康 2）', () => {
   assert.ok(src.includes("className: 'frx-grid'"), '整页应是一个 4 列网格容器')
-  /* 用户口径「应该是 3*4」：三行、每行四列，跨度之和每行 = 4 */
-  assert.ok(src.includes('statusCard, projectCard, blockerCard,'), '第 1 行：状态卡(2) + 两张图卡(1+1)')
-  assert.ok(src.includes('todoCard, longestCard, suspendedCard, timingCard,'), '第 2 行：待处理 + 跑得最久 + 暂缓 + 计时覆盖')
-  assert.ok(src.includes('historyCard, actionCard'), '第 3 行：执行历史(2) + 快捷操作(2)')
-  for (const span of ["card('status', {\n      span: 2", "card('history', {\n      span: 2", "card('actions', {\n      span: 2"]) {
+  assert.ok(src.includes('statusCard, readyCard, dueCard,'), '第 1 行：在跑(2) + 开工顺序(1) + 快到期(1)')
+  assert.ok(src.includes('timelineCard, healthCard,'), '第 2 行：最近动态(2) + 系统健康(2)')
+  assert.ok(src.includes('historyCard'), '第 3 行：运行历史(4)')
+  for (const span of ["card('status', {\n      span: 2", "card('timeline', {\n      span: 2", "card('health', {\n      span: 2"]) {
     assert.ok(src.includes(span), `跨度不对：${span}`)
   }
-  assert.equal(src.includes('span: 4'), false, '3×4 口径下不该再有占满整行的卡')
+  /* 只有「运行历史」占满一行（它是表格，跨 4 列才读得下去） */
+  assert.equal((src.match(/span: 4/g) || []).length, 1, 'span:4 只该出现在运行历史卡上')
   assert.ok(src.includes('is-span${span}'), 'card() 要把跨度落成 class，容器查询才压得住')
-  const bars = stripComments(src.slice(src.indexOf("const blockers = (() =>"), src.indexOf("const blockerCard")))
-  assert.ok(bars.includes('blockedBy'), '阻塞排行要按依赖关系聚合（blockedBy）')
 })
 
-check('监控卡回来了（用户口径：卡片太少，必要的监控都要有）', () => {
-  for (const key of ["card('todo'", "card('longest'", "card('history'", "card('actions'"]) {
-    assert.ok(src.includes(key), `缺监控卡 ${key}`)
-  }
-  assert.ok(src.includes("'待处理'") && src.includes("'跑得最久'"), '两张新卡要有标题')
+check('图表不是列表：开工用条形、到期用时间轴、动态用柱状、健康用环形', () => {
+  assert.ok(src.includes("className: 'frx-rank-track'"), '开工顺序要有条形')
+  assert.ok(src.includes("className: 'frx-due-bands'"), '快到期要有逾期/未来背景带')
+  assert.ok(src.includes("className: 'frx-due-track'") && src.includes('frx-due-dot'), '快到期要有时间轴点')
+  assert.ok(src.includes("className: 'frx-cols'"), '最近动态要有 24 根柱子')
+  assert.ok(src.includes('RING_C') && src.includes('strokeDasharray'), '系统健康要有环形进度')
 })
 
 check('只有「正在运行」常驻；其余状态到点自动消失（并留墓碑不会闪回）', () => {

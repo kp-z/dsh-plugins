@@ -258,7 +258,7 @@ check('时间建议：同一时刻并列不连，没有时间的任务不参与'
   assert.deepEqual(pairs, ['d>a'])
 })
 
-check('时间建议：待办与已完成分开串、跨项目不连', () => {
+check('时间建议：只串待办（已完成不再生成，画布默认也不画）、跨项目不连', () => {
   const { items } = buildTemporalSuggestions({
     tasks: [
       TX('open1', { expectedAt: 100 }),
@@ -272,8 +272,9 @@ check('时间建议：待办与已完成分开串、跨项目不连', () => {
     format: fmt,
   })
   const pairs = items.map((item) => `${item.from}>${item.to}`)
-  assert.deepEqual(pairs.sort(), ['done1>done2', 'open1>open2', 'other1>other2'].sort())
-  assert.equal(pairs.some((pair) => pair.includes('open') && pair.includes('done')), false)
+  /* 已完成的任务不参与：先后顺序对它们没有可操作性，接受了也看不见（默认隐藏已完成） */
+  assert.deepEqual(pairs.sort(), ['open1>open2', 'other1>other2'].sort())
+  assert.equal(pairs.some((pair) => pair.includes('done')), false)
 })
 
 check('时间建议：已存在的时间边不重复提，且受上限约束', () => {

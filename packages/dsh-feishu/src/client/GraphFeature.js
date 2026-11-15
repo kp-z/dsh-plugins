@@ -18,9 +18,7 @@
  * ctx.nodePos、ctx.onNodeMove、ctx.hostReady、ctx.organize …
  */
 
-import { createGraphView, sparkleIcon } from './GraphView.js'
-
-export { sparkleIcon }
+import { createGraphView } from './GraphView.js'
 
 export function createGraphFeature(deps) {
   const { h } = deps || {}
@@ -59,6 +57,11 @@ export function createGraphFeature(deps) {
             hideDone: ctx.hideDone,
             hiddenDone: ctx.hiddenDone,
             onToggleHideDone: ctx.onToggleHideDone,
+            /* 每张图自己的筛选（状态 + 已完成时间窗）要用完成时间 */
+            completedById: ctx.completedById,
+            /* 接受建议后临时展开已完成（3 秒） */
+            revealing: ctx.revealing === true,
+            revealIds: ctx.revealIds,
             onOpenTask: ctx.onOpenTask,
             onFocusTask: ctx.onFocusTask,
             onNodeMove: ctx.onNodeMove,

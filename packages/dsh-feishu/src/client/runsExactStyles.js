@@ -134,54 +134,9 @@ export const CSS = `
 .frx-kpi b { font-size: 15px; font-weight: 700; color: var(--frx-text-strong); font-variant-numeric: tabular-nums; }
 .frx-kpi-label { font-size: 11px; color: var(--frx-text-dim); }
 
-/* ---------- 旭日图（项目分布卡） ---------- */
-.frx-sun-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.frx-sun { flex: 0 0 auto; display: block; }
-.frx-sun-total { fill: #f9fafb; font-size: 22px; font-weight: 700; }
-.frx-sun-unit { fill: #9ca3af; font-size: 9px; }
-.frx-sun-legend { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 auto; }
-.frx-sun-legend-row { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--frx-text-dim); min-width: 0; }
-.frx-sun-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 999px; }
-.frx-sun-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-sun-merged {
-  flex: 0 0 auto; font-size: 9px; padding: 0 5px; border-radius: 999px;
-  color: #c7d2fe; background: rgba(99, 102, 241, 0.18); border: 1px solid rgba(99, 102, 241, 0.35);
-}
-.frx-sun-count { margin-left: auto; flex: 0 0 auto; font-weight: 700; color: var(--frx-text-strong); font-variant-numeric: tabular-nums; }
 
-/* ---------- 横向柱：按项目分布 / 阻塞排行（右侧两张统计卡） ---------- */
-.frx-bars { display: flex; flex-direction: column; gap: 9px; }
-.frx-bar-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) 84px auto; align-items: center; gap: 10px;
-  font: inherit; color: inherit; width: 100%; text-align: left;
-  background: none; border: none; padding: 0; margin: 0;
-}
-.frx-bar-row.is-click { cursor: pointer; }
-.frx-bar-row.is-click:hover .frx-bar-label { color: var(--frx-text-strong); }
-.frx-bar-label { font-size: 11px; color: var(--frx-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-bar-track {
-  height: 6px; border-radius: 999px; overflow: hidden;
-  background: color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
-}
-.frx-bar-track > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, rgba(96, 165, 250, 0.9), rgba(59, 130, 246, 0.35)); }
-.frx-bar-track.is-warn > i { background: linear-gradient(to right, rgba(251, 191, 36, 0.9), rgba(245, 158, 11, 0.35)); }
-.frx-bar-value { font-size: 11px; font-weight: 700; color: var(--frx-text-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* ---------- 历史列表（History 卡） ---------- */
-.frx-rows { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; }
-.frx-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 16px; border-radius: 12px; background: var(--frx-surface);
-  transition: background .2s ease; cursor: pointer; text-align: left; border: 0; width: 100%;
-  color: inherit;
-}
-.frx-row:hover { background: var(--frx-surface-hover); }
-.frx-row-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.frx-avatar {
-  position: relative; width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; overflow: hidden;
-  border: 1px solid var(--frx-avatar-border); display: flex; align-items: center; justify-content: center;
-  background: var(--frx-avatar-bg); font-size: 12px; font-weight: 700; color: var(--frx-text);
-}
+/* ---------- 事件流里的状态点（最近动态卡） ---------- */
 .frx-avatar-dot {
   position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 999px;
   border: 2px solid var(--frx-avatar-ring); background: #6b7280;
@@ -190,20 +145,6 @@ export const CSS = `
 .frx-avatar-dot.is-blocked { background: #f59e0b; }   /* 阻塞/报错=黄 */
 .frx-avatar-dot.is-done { background: #22c55e; }      /* 完成=绿 */
 .frx-avatar-dot.is-suspended { background: #f59e0b; }
-.frx-row-main { min-width: 0; }
-.frx-row-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--frx-text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-row-meta { margin: 0; font-size: 11px; color: var(--frx-text-dim); }
-.frx-row-status { font-size: 11px; font-weight: 700; letter-spacing: .04em; }
-.frx-row-status.is-running { color: #60a5fa; }
-.frx-row-status.is-blocked { color: #fbbf24; }
-.frx-row-status.is-done { color: #4ade80; }
-.frx-row-status.is-suspended { color: #fbbf24; }
-.frx-row-status.is-idle { color: #9ca3af; }
-.frx-row-btn {
-  padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer;
-  background: var(--frx-inner); border: 1px solid var(--frx-border); color: var(--frx-text);
-}
-.frx-row-btn:hover { background: var(--frx-surface-hover); }
 
 /* ---------- 「运行中」的三点动画 ----------
    用户口径：运行中的状态不要写字（「运行中***」），改成一个个… 的动画。
@@ -347,33 +288,130 @@ export const CSS = `
   75% { transform: translateY(-10px) translateX(2px); }
 }
 
-/* ---------- 快捷操作（Quick Actions） ---------- */
-.frx-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: auto; flex: 1 1 auto; align-content: stretch; }
-.frx-action {
-  display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 16px; min-width: 0; min-height: 84px;
-  cursor: pointer; text-align: left; border: 1px solid transparent; color: #fff;
-  transition: filter .2s ease;
+/* ---------- 开工顺序：横向条形图（条长 = 等了多久） ---------- */
+.frx-rank { display: flex; flex-direction: column; gap: 9px; }
+.frx-rank-row {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px;
+  font: inherit; color: inherit; width: 100%; text-align: left;
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
 }
-.frx-action:hover { filter: brightness(1.15); }
-.frx-action.is-blue { background: linear-gradient(to right, rgba(37, 99, 235, 0.9), rgba(59, 130, 246, 0.9)); }
-.frx-action.is-purple { background: color-mix(in oklab, var(--dsw-alias-brand-primary) 88%, transparent); }
-/* ghost：参考项目那种「次要动作」——半透明底 + 细边框，铺满网格但视觉更轻 */
-.frx-action.is-ghost {
-  background: var(--frx-surface);
-  border: 1px solid var(--frx-border);
-  color: var(--frx-text);
+.frx-rank-p {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 18px; border-radius: 6px; font-size: 9px; font-weight: 700;
+  background: color-mix(in oklab, var(--dsw-alias-label-secondary) 14%, transparent);
+  color: var(--frx-text-dim);
 }
-.frx-action.is-ghost:hover { background: var(--frx-surface-hover); }
-.frx-action-icon {
-  width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
-  background: rgba(255, 255, 255, 0.18);
+.frx-rank-p[data-p="P0"] { background: rgba(239, 68, 68, 0.16); color: #fca5a5; }
+.frx-rank-p[data-p="P1"] { background: rgba(245, 158, 11, 0.16); color: #fcd34d; }
+.frx-rank-p[data-p="P2"] { background: rgba(59, 130, 246, 0.16); color: #93c5fd; }
+.frx-rank-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.frx-rank-title { font-size: 12px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-rank-track { height: 5px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
+.frx-rank-track > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, rgba(59, 130, 246, 0.85), rgba(59, 130, 246, 0.28)); }
+.frx-rank-wait { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+.frx-rank-row:hover .frx-rank-title { color: var(--frx-text-strong); }
+
+/* ---------- 快到期：时间轴（逾期区 / 今天 / 未来） ---------- */
+.frx-due { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.frx-due-axis { position: relative; display: flex; justify-content: space-between; height: 12px; font-size: 9px; color: var(--frx-text-faint); }
+.frx-due-axis .frx-due-today { position: absolute; top: 0; transform: translateX(-50%); color: var(--dsw-alias-state-warn-primary); }
+.frx-due-bands { position: relative; height: 3px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
+.frx-due-bands > i { position: absolute; top: 0; bottom: 0; display: block; }
+.frx-due-bands .is-over { left: 0; background: rgba(239, 68, 68, 0.55); }
+.frx-due-bands .is-future { background: rgba(34, 197, 94, 0.45); }
+.frx-due-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 8px;
+  font: inherit; color: inherit; width: 100%; text-align: left;
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer; height: 20px;
 }
-.frx-action-title { margin: 0; font-size: 14px; font-weight: 700; }
-.frx-action-sub { margin: 0; font-size: 11px; opacity: .85; }
+.frx-due-title { font-size: 11px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-due-track { position: relative; display: block; height: 8px; }
+.frx-due-bar { position: absolute; top: 3px; height: 2px; border-radius: 999px; background: rgba(148, 163, 184, 0.55); }
+.frx-due-dot { position: absolute; top: 1px; width: 6px; height: 6px; margin-left: -3px; border-radius: 999px; background: #22c55e; }
+.frx-due-row[data-bucket="overdue"] .frx-due-dot { background: #ef4444; }
+.frx-due-row[data-bucket="overdue"] .frx-due-when { color: #fca5a5; }
+.frx-due-row[data-bucket="today"] .frx-due-dot { background: #f59e0b; }
+.frx-due-row[data-bucket="today"] .frx-due-when { color: #fcd34d; }
+.frx-due-when { font-size: 10px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.frx-due-unset { margin: 8px 0 0; font-size: 10px; color: var(--frx-text-faint); display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.frx-due-unset-label { flex: 0 0 auto; }
+.frx-due-unset-chip {
+  max-width: 100%; font: inherit; font-size: 10px; padding: 1px 6px; border-radius: 6px; cursor: pointer;
+  color: var(--frx-text-dim); background: var(--frx-inner); border: 1px solid var(--frx-border);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.frx-due-unset-chip:hover { color: var(--frx-text-strong); border-color: var(--frx-border-hover); }
+
+/* ---------- 最近动态：24 根柱子 + 3 条事件 ---------- */
+.frx-cols { display: flex; align-items: flex-end; gap: 2px; height: 62px; padding: 0 1px; }
+.frx-col { flex: 1 1 0; min-width: 2px; border-radius: 2px 2px 0 0; background: linear-gradient(to top, rgba(59, 130, 246, 0.9), rgba(59, 130, 246, 0.45)); }
+.frx-col[data-empty="1"] { background: var(--frx-inner); }
+.frx-cols-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 9px; color: var(--frx-text-faint); }
+.frx-events { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.frx-event {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  font: inherit; color: inherit; width: 100%; text-align: left;
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+}
+.frx-event-text { font-size: 11px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-event-kind { font-size: 10px; color: var(--frx-text-dim); }
+.frx-event-ago { font-size: 10px; color: var(--frx-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.frx-event:hover .frx-event-text { color: var(--frx-text-strong); }
+
+/* ---------- 系统健康：环形图 + 状态行 + 计时覆盖 ---------- */
+.frx-health { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
+.frx-health-ring { position: relative; width: 84px; height: 84px; flex: 0 0 auto; }
+.frx-health-ring-text {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: var(--frx-text-strong); font-variant-numeric: tabular-nums;
+}
+.frx-health-rows { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.frx-health-row { display: grid; grid-template-columns: 8px 64px minmax(0, 1fr); align-items: center; gap: 8px; }
+.frx-health-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--frx-inner); }
+.frx-health-dot.is-ok { background: #22c55e; }
+.frx-health-dot.is-warn { background: #f59e0b; }
+.frx-health-label { font-size: 11px; color: var(--frx-text-dim); }
+.frx-health-value { font-size: 11px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-health-cover { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 4px; }
+.frx-health-cover-text { font-size: 10px; color: var(--frx-text-faint); }
+.frx-health-cover-track { height: 4px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
+.frx-health-cover-track > i { display: block; height: 100%; border-radius: 999px; background: rgba(34, 197, 94, 0.7); }
+.frx-health-cover-value { font-size: 10px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+/* ---------- 运行历史：表格 + 时长微条形 ---------- */
+.frx-hist { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.frx-hist-cols, .frx-hist-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 88px 56px 168px 88px;
+  align-items: center; gap: 12px;
+}
+.frx-hist-cols { padding: 0 8px 4px; font-size: 9px; color: var(--frx-text-faint); }
+.frx-hist-row {
+  font: inherit; color: inherit; text-align: left; width: 100%;
+  background: none; border: 0; border-radius: 8px; padding: 5px 8px; cursor: pointer;
+  transition: background-color .18s ease;
+}
+.frx-hist-row:hover { background: var(--frx-surface-hover); }
+.frx-hist-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.frx-hist-no { flex: 0 0 auto; font-size: 10px; color: var(--frx-text-faint); font-variant-numeric: tabular-nums; }
+.frx-hist-title { font-size: 12px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-hist-state { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--frx-text-dim); }
+.frx-hist-state .frx-avatar-dot { position: static; width: 7px; height: 7px; border: 0; flex: 0 0 auto; }
+.frx-hist-turn { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+.frx-hist-elapsed { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.frx-hist-bar { flex: 1 1 auto; height: 4px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
+.frx-hist-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, rgba(59, 130, 246, 0.9), rgba(59, 130, 246, 0.35)); }
+.frx-hist-dur { flex: 0 0 auto; min-width: 52px; text-align: right; font-size: 10px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+.frx-hist-ago { font-size: 10px; color: var(--frx-text-faint); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- 键盘焦点 ----------
+   卡片里的行都是 button，但取消了默认边框/背景，没有焦点环就完全看不出选到哪。
+   只在 focus-visible 画（鼠标点击不会留一圈）。 */
+.frx-page :where(button):focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 
 /* ---------- 细滚动条 ---------- */
-.frx-rows::-webkit-scrollbar { width: 6px; }
-.frx-rows::-webkit-scrollbar-thumb { background: var(--frx-scrollbar); border-radius: 999px; }
 
 /* ---------- 窄屏：参考项目的 md/lg 断点 ---------- */
 @container frxpage (max-width: 1100px) {

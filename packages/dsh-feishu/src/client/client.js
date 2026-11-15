@@ -29,7 +29,8 @@ import * as layout from '../overview/layout.js';
 
 /* sidebar.panellist 的 id 同时就是 main 面板的 key（DSH 约定），两处必须同源。 */
 const OVERVIEW_KEY = 'feishu-overview';
-const OVERVIEW_LABEL = '任务';
+/* 面板在左侧栏显示的名字（用户口径：叫「海湾」）。id 不变：改了会让已存的 activeFeature 失效。 */
+const OVERVIEW_LABEL = '海湾';
 const SCROLL_HOST_CSS = [
   '.dfe-wrap{display:flex;flex-direction:column;width:100%;height:100%;min-height:0}',
   '.dfe-frame{flex:1;min-height:0;width:100%;border:0;background:transparent;display:block}',

@@ -35,6 +35,7 @@ import { listLarkPages } from './larkPages.js'
 import { createLarkComment, listLarkComments } from './larkComments.js'
 import { createLarkTasklistActions } from './larkTasklist.js'
 import { createActivityFeed } from './activity.js'
+import { launchUrl, openTaskPageFor, probeUrl } from './openBrowser.js'
 import { DEFAULT_TASKLIST_NAME, TASKLIST_SCHEMA_VERSION, tasklistFields, schemaSignature, selectTaskList } from './tasklistSchema.js'
 import { beginSyncHistory, finishSyncHistory, recordSyncStage, recoverSyncHistory, safeSyncDetail } from './syncHistory.js'
 import { createCommentCoordinator } from './comments.js'
@@ -47,8 +48,10 @@ const backendIOContext = new AsyncLocalStorage()
 import { matchWorkspace, titleChangeOf } from './workspace.js'
 import { updateRelations, projectRelations, relationStats } from './relations.js'
 import {
+  MAX_ETA_ITEMS,
   MAX_TEMPORAL_ITEMS,
   ORGANIZE_SYSTEM,
+  buildEtaSuggestions,
   buildEvidencePack,
   buildTemporalSuggestions,
   makeOrganizeBatch,
@@ -4543,6 +4546,8 @@ function createSyncEngine(ctx) {
         startedAt: Number(task.startedAt) || 0,
         completedAt: Number(task.completedAt) || Number(task.endAt) || 0,
         suspendedAt: Number(state.suspensions?.[task.id]?.at) || 0,
+        /* 预期完成（本地承诺时间）：运行页「快到期」卡按它分桶，不拿 due/创建时间冒充。 */
+        expectedAt: Number(task.expectedAt) || 0,
         predecessors,
         successors: link.successors.map(summary),
         sourceTasks: link.sourceTasks.map(summary),
@@ -4561,7 +4566,7 @@ function createSyncEngine(ctx) {
       /* 哈希要覆盖**用户看得见的一切**：任务标题/完成/工作区/阻塞，以及挂起与绑定会话——
          这两项曾经漏掉，导致挂起或换绑后 revision 不变，页面按「变了才刷」就不会重拉。 */
       .update(JSON.stringify([
-        tasks.map((task) => [task.id, task.title, task.done, task.workspaceKey, task.blocked, task.suspended, task.sessionId, task.running, task.runningSince, task.completedAt, task.startedAt, task.predecessors.length]),
+        tasks.map((task) => [task.id, task.title, task.done, task.workspaceKey, task.blocked, task.suspended, task.sessionId, task.running, task.runningSince, task.completedAt, task.startedAt, task.expectedAt, task.predecessors.length]),
         relations,
         groups,
       ]))
@@ -6224,6 +6229,15 @@ function createSyncEngine(ctx) {
       max: MAX_TEMPORAL_ITEMS,
       format: (at) => formatEta(Number(at), tz),
     })
+    /* 预期完成建议与关系建议分开算：它是确定性的、和关系图无关，而且**永远都要有**
+       （用户口径：建议不只是任务关系，也要推荐预期完成时间这类配置）。 */
+    const eta = buildEtaSuggestions({
+      tasks: views,
+      now: nowMs(),
+      tz,
+      max: MAX_ETA_ITEMS,
+      format: (at) => formatEta(Number(at), tz),
+    })
     const pack = buildEvidencePack({ tasks: views, relations: state.relations })
     const models = await awaitService(ctx, 'agentDefaultModel')
     const selection = typeof models?.currentSelection === 'function' ? models.currentSelection() : undefined
@@ -6239,10 +6253,11 @@ function createSyncEngine(ctx) {
         else { modelItems = parsed.items; notes = parsed.notes }
       }
     }
-    if (!modelItems.length && !temporal.items.length) {
+    if (!modelItems.length && !temporal.items.length && !eta.items.length) {
       return { ok: false, error: modelError || '没有可用的任务内容' }
     }
-    const checked = validateOrganizeItems({ items: [...modelItems, ...temporal.items], tasks: views, relations: state.relations, now: nowMs() })
+    /* 关系在前、预期完成在后：关系是"改图"，预期是"改配置"，先看图的改动。 */
+    const checked = validateOrganizeItems({ items: [...modelItems, ...temporal.items, ...eta.items], tasks: views, relations: state.relations, now: nowMs() })
     const batch = makeOrganizeBatch({
       batchId: organizeBatchId(s, nowMs()),
       at: nowMs(),
@@ -6254,6 +6269,7 @@ function createSyncEngine(ctx) {
         truncated: pack.truncated > 0,
         error: modelError,
         temporal: temporal.items.length,
+        eta: eta.items.length,
       },
       notes,
       items: checked.items,
@@ -6327,6 +6343,30 @@ function createSyncEngine(ctx) {
       let written
       let warning = ''
       try {
+        /* 预期完成：走 setTaskEta（会记一条承诺变更，并按设置写回飞书「预期完成」列）。 */
+        if (item.kind === 'eta') {
+          const at = Number(item.value) || 0
+          const result = await setTaskEta(item.from, {
+            when: at ? formatEta(at, settings.schedule?.timeZone) : '',
+            reason: `建议采纳（batchId=${found.batch.batchId}）：${asString(item.evidence).slice(0, 60)}`,
+          })
+          written = result.ok
+            ? { ok: true }
+            : { ok: false, error: asString(result.error) || '预期时间没有写进去' }
+          if (result.ok && result.sync && result.sync.ok === false && !result.sync.skipped) {
+            warning = `已存到本机；飞书同步未完成（${asString(result.sync.error)}）`
+          }
+          results.push({ id: item.id, kind: item.kind, from: item.from, to: '', ok: written.ok === true, error: written.error || '', warning })
+          if (written.ok) {
+            item.status = 'accepted'
+            item.acceptedAt = nowMs()
+            item.reason = ''
+            item.warning = warning
+          } else {
+            item.reason = asString(written.error) || '写入失败'
+          }
+          continue
+        }
         written = item.kind === 'temporal'
           ? applyTemporalRelation(item, 'merge')
           : await setTaskRelations(item.to, {
@@ -6388,7 +6428,11 @@ function createSyncEngine(ctx) {
       const fromId = asString(item.from)
       let written
       try {
-        if (item.kind === 'temporal') {
+        /* 预期完成：撤销 = 把预期清空（走同一条 promiseUpdate，会记一次承诺变更） */
+        if (item.kind === 'eta') {
+          const result = await setTaskEta(item.from, { when: '', reason: `撤销建议（batchId=${batch.batchId}）` })
+          written = result.ok ? { ok: true } : { ok: false, error: asString(result.error) || '预期清空失败' }
+        } else if (item.kind === 'temporal') {
           written = applyTemporalRelation(item, 'replace')
         } else {
           const field = item.kind === 'depends_on' ? 'predecessorIds' : 'sourceTaskIds'
@@ -9741,6 +9785,54 @@ bucket 只能从枚举里选：
    * 自定义目录：把一组 workspace 合成一个「项目」。纯本地组织方式——
    * 不触发同步、不调模型、不写飞书；失败只返回错误，不改内存态。
    */
+  /* 「系统健康」卡：插件自己还正常吗？
+     只回答这一个问题 —— 同步（上次/下次/成功率）、授权、CLI。
+     计时覆盖这类数据质量口径放客户端（快照里就有），不在这里重复算。 */
+  let healthCache = { at: 0, value: null }
+  async function healthView() {
+    if (healthCache.value && nowMs() - healthCache.at < 60_000) return healthCache.value
+    const asList = (value) => (Array.isArray(value) ? value : [])
+    const history = asList(state.syncHistory)
+    const last = history[0] ?? null
+    const recent = history.slice(0, 20)
+    const interval = Math.max(1, Number(settings.syncIntervalMinutes) || 30)
+    let cli = null
+    try {
+      const rows = await cliStatus()
+      cli = rows[asString(settings.cliBackend) || 'feishu-sync'] ?? null
+    } catch {
+      cli = null
+    }
+    const value = {
+      sync: {
+        lastAt: Number(last?.finishedAt || last?.startedAt) || 0,
+        lastStatus: asString(last?.status) || '',
+        lastSource: asString(last?.source) || '',
+        lastDurationMs: Number(last?.durationMs) || 0,
+        lastErrorCount: asList(last?.errors).length,
+        lastError: asString(asList(last?.errors)[0]) || '',
+        syncing: state.syncing === true,
+        autoSync: settings.autoSync !== false,
+        intervalMinutes: interval,
+        nextAt: settings.autoSync !== false && state.lastSyncAt ? Number(state.lastSyncAt) + interval * 60_000 : 0,
+        recentOk: recent.filter((row) => row.status === 'success').length,
+        recentFail: recent.filter((row) => row.status === 'failed' || row.status === 'interrupted').length,
+        recentTotal: recent.length,
+      },
+      auth: {
+        ok: state.auth?.ok === true,
+        detail: asString(state.auth?.detail) || '',
+        checkedAt: Number(state.auth?.checkedAt) || 0,
+      },
+      cli: cli
+        ? { backend: asString(cli.backend), found: cli.found === true, version: cli.version ?? null }
+        : { backend: asString(settings.cliBackend) || 'feishu-sync', found: false, version: null },
+      now: nowMs(),
+    }
+    healthCache = { at: nowMs(), value }
+    return value
+  }
+
   async function setWorkspaceGroups(input = {}) {
     const updated = applyGroupAction(state.workspaceGroups, input)
     if (!updated.ok) return updated
@@ -9753,6 +9845,7 @@ bucket 只能从枚举里选：
     load,
     snapshot,
     overviewView,
+    healthView,
     setWorkspaceGroups,
     organizeScope: (...args) => runEngineOperation(organizeScope, args),
     writeRelationManually: (...args) => runEngineOperation(writeRelationManually, args),
@@ -9957,6 +10050,81 @@ function mountRoutes(ctx, engine) {
             const html = await readFile(panelFile, 'utf8')
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
             res.end(req.method === 'HEAD' ? undefined : html)
+            return
+          }
+
+          /* 在系统浏览器打开**独立任务页**（/dsh-feishu/tasks），不跳 DSH 本身。
+             地址用 DSH_WEB_URL 解析（桌面端页面在 dsh-app:// 下，客户端自己拼是错的），
+             但这一页是插件的公开路由，不需要 Web UI 的 token，也就没有鉴权页。 */
+          if (req.method === 'POST' && route === '/api/open-panel') {
+            const target = openTaskPageFor({ req })
+            if (!target.ok) {
+              sendJson(res, 400, { ok: false, error: target.error })
+              return
+            }
+            /* 独立任务页是插件自己的公开路由：没有 token、没有鉴权页，探一下只是为了
+               在服务没起来时给按钮一个明确的失败回执，而不是打开一个空页。 */
+            const reachable = await probeUrl(target.url)
+            if (reachable === 'unreachable') {
+              sendJson(res, 200, { ok: false, error: '任务页暂时不可用（宿主没响应）' })
+              return
+            }
+            const result = await launchUrl(target.url)
+            sendJson(res, result.ok ? 200 : 500, result.ok ? { ok: true, url: target.url } : { ok: false, error: result.error || '无法启动浏览器' })
+            return
+          }
+
+          /* 独立海湾页（/dsh-feishu/tasks）：不加载 DSH 外壳、不需要 Web UI 的 token。
+             它跑的是**面板自己的组件**，所以这里要直出 boot / 迷你 React / 以及 src/client 整棵模块树。 */
+          if (req.method === 'GET' && (route === '/tasks' || route === '/tasks/')) {
+            const html = await readFile(join(HERE, 'tasks.html'), 'utf8')
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+            res.end(html)
+            return
+          }
+
+          const TASK_FILES = {
+            '/tasks/boot.js': [join(HERE, 'tasksBoot.js'), 'text/javascript; charset=utf-8'],
+            '/tasks/logo.png': [join(HERE, 'logo.png'), 'image/png'],
+            /* 品牌标：客户端组件（侧栏 logo）用它，放在插件根下，
+               与「独立任务页地址」区分开 —— 客户端源码里不该出现 /tasks 前缀。 */
+            '/logo.png': [join(HERE, 'logo.png'), 'image/png'],
+            /* 官方 React（vendor 在 lib/vendor），面板组件跑在它上面 */
+            '/tasks/vendor/react.js': [join(HERE, 'lib', 'vendor', 'react.production.min.js'), 'text/javascript; charset=utf-8'],
+            '/tasks/vendor/react-dom.js': [join(HERE, 'lib', 'vendor', 'react-dom.production.min.js'), 'text/javascript; charset=utf-8'],
+          }
+          if (req.method === 'GET' && TASK_FILES[route]) {
+            const [file, type] = TASK_FILES[route]
+            /* 按 Buffer 读：logo.png 是二进制，用 utf8 读会把字节改坏（EF BF BD 替换字符） */
+            const source = await readFile(file)
+            res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' })
+            res.end(source)
+            return
+          }
+
+          /* 面板的组件树直出：/tasks/src/<文件>.js → src/client/<文件>.js，
+             /tasks/overview/<文件>.js → src/overview/<文件>.js（组件会 ../overview 引纯模型）。
+             组件之间是相对 import，按同样的相对路径直出，浏览器自己能解析。
+             只放行单层 .js 文件名（不允许 ../、不允许子目录）。 */
+          const srcMatch = req.method === 'GET' && route.match(/^\/tasks\/(src|overview)\/([A-Za-z0-9_-]+\.js)$/)
+          if (srcMatch) {
+            const file = join(HERE, 'src', srcMatch[1] === 'overview' ? 'overview' : 'client', srcMatch[2])
+            try {
+              const source = await readFile(file, 'utf8')
+              res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' })
+              res.end(source)
+            } catch (error) {
+              res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+              res.end('not found')
+            }
+            return
+          }
+
+
+
+          /* 「系统健康」卡的数据面：同步 / 授权 / CLI，不夹带整份 state。 */
+          if (req.method === 'GET' && route === '/api/health') {
+            sendJson(res, 200, { ok: true, ...(await engine.healthView()) })
             return
           }
 

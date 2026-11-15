@@ -7,12 +7,15 @@
  *
  * 跑法：node test/overviewRoute.mjs
  */
-import { createServer } from 'node:http'
+import { createServer, request } from 'node:http'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isolatedHome } from './isolatedHome.mjs'
 
 const HOME = await isolatedHome('dsh-feishu-overview-route-')
+/* 这条测试会故意发一个非法 Host 去验证「不启动浏览器」；
+   若继承了运行环境的 DSH_WEB_URL，宿主会拿它拼出合法地址并真的去 open —— 必须隔离掉。 */
+delete process.env.DSH_WEB_URL
 const { apply } = await import('../index.js')
 
 const routes = []
@@ -53,6 +56,12 @@ const check = (label, ok, detail = '') => {
 const json = async (path, init) => {
   const res = await fetch(base + path, init)
   return { status: res.status, data: await res.json().catch(() => null), headers: res.headers }
+}
+/* 静态件（HTML / JS / CSS）按文本取，JSON 解析会失败 */
+const get = async (path, init) => {
+  const res = await fetch(base + path, init)
+  const body = await res.text().catch(() => '')
+  return { status: res.status, body, contentType: res.headers.get('content-type') || '' }
 }
 
 /* ── 瘦快照 ─────────────────────────────────────────────────────────── */
@@ -95,6 +104,88 @@ const legacy = await json('/overview')
 check('旧的 GET /overview 整页路由已移除（404）', legacy.status === 404, `status=${legacy.status}`)
 const panel = await fetch(base + '/panel')
 check('右侧栏面板仍然 200（旧入口没被挤掉）', panel.status === 200, `status=${panel.status}`)
+/* 「快到期」卡的数据面：预期完成必须投影到任务项上（否则这张卡永远是空的） */
+{
+  const withEta = (await json('/api/overview')).data
+  const row = (withEta.tasks || [])[0]
+  check('任务项带 expectedAt（快到期卡的数据面）', Boolean(row) && typeof row.expectedAt === 'number', JSON.stringify(row && { id: row.id, expectedAt: row.expectedAt }))
+}
+
+/* 「系统健康」卡的数据面：同步 / 授权 / CLI，且不夹带整份 state */
+{
+  const health = await json('/api/health')
+  const data = health.data || {}
+  check('GET /api/health 返回同步状态', health.status === 200 && data.ok === true
+    && typeof data.sync?.autoSync === 'boolean' && typeof data.sync?.intervalMinutes === 'number',
+    JSON.stringify(data.sync))
+  check('GET /api/health 返回授权与 CLI', typeof data.auth?.ok === 'boolean' && typeof data.cli?.found === 'boolean',
+    JSON.stringify({ auth: data.auth, cli: data.cli }))
+  check('GET /api/health 不下发任务/设置本体', !('tasks' in data) && !('settings' in data) && !('syncHistory' in data))
+}
+
+/* 独立海湾页：不加载 DSH 外壳、不需要 token。它**跑的是面板自己的组件**，
+   所以静态资源是 boot + 迷你 React + src/client|src/overview 整棵模块树。
+   （删掉了 /api/panel-debug 与 /api/panel-focus —— 跳转目标不是 DSH 本身了。） */
+const tasksPage = await get('/tasks')
+check('GET /tasks 直出独立海湾页（HTML，不重定向到 DSH）',
+  tasksPage.status === 200 && tasksPage.body.includes('独立海湾页') && tasksPage.body.includes('/dsh-feishu/tasks/boot.js'),
+  `status=${tasksPage.status}`)
+
+const tasksBoot = await get('/tasks/boot.js')
+check('GET /tasks/boot.js 挂载的是面板自己的组件（import OverviewPanel）',
+  tasksBoot.status === 200 && tasksBoot.contentType?.includes('javascript') && tasksBoot.body.includes("from './src/OverviewPanel.js'"),
+  tasksBoot.contentType)
+
+/* 面板组件跑在**官方 React** 上（vendor 在 lib/vendor），不是自研运行时 */
+const vendorReact = await get('/tasks/vendor/react.js')
+check('GET /tasks/vendor/react.js 回官方 React UMD',
+  vendorReact.status === 200 && vendorReact.contentType?.includes('javascript') && vendorReact.body.includes('React'), vendorReact.contentType)
+
+const vendorDom = await get('/tasks/vendor/react-dom.js')
+check('GET /tasks/vendor/react-dom.js 回官方 ReactDOM UMD',
+  vendorDom.status === 200 && vendorDom.contentType?.includes('javascript') && vendorDom.body.includes('createRoot'), vendorDom.contentType)
+
+/* 组件树本身：少一个文件，独立页就白屏 */
+for (const [path, marker] of [
+  ['/tasks/src/OverviewPanel.js', 'createOverviewPanel'],
+  ['/tasks/src/RunsFeature.js', 'createRunsFeature'],
+  ['/tasks/src/InsightFeature.js', 'createInsightFeature'],
+  ['/tasks/src/GraphFeature.js', 'createGraphFeature'],
+  ['/tasks/src/runsView.js', 'buildRuns'],
+  ['/tasks/overview/layout.js', 'layoutScope'],
+  ['/tasks/overview/model.js', 'export'],
+]) {
+  const res = await get(path)
+  check(`GET ${path} 直出（含 ${marker}）`, res.status === 200 && res.body.includes(marker), `status=${res.status}`)
+}
+
+/* 只放行单层 .js：不能顺着 ../ 读到 src 以外的东西 */
+for (const bad of ['/tasks/src/..%2F..%2Fpackage.json', '/tasks/src/OverviewPanel.mjs', '/tasks/overview/model.js.bak']) {
+  const res = await get(bad)
+  check(`拒绝非模块路径 ${bad}`, res.status === 404, `status=${res.status}`)
+}
+
+check('旧的诊断/落点接口已移除（跳转不再走 DSH 页面）',
+  (await get('/api/panel-debug')).status === 404 && (await get('/api/panel-focus')).status === 404)
+
+/* ── 「在浏览器打开」：非法 Host 必须在启动浏览器之前被拦下 ─────────── */
+const badHost = await new Promise((resolve, reject) => {
+  const req = request({
+    host: '127.0.0.1',
+    port: server.address().port,
+    path: '/dsh-feishu/api/open-panel',
+    method: 'POST',
+    headers: { host: 'evil host', 'content-length': 0 },
+  }, (res) => {
+    let body = ''
+    res.on('data', (chunk) => { body += chunk })
+    res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(body || 'null') }))
+  })
+  req.on('error', reject)
+  req.end()
+})
+check('POST /api/open-panel 非法 Host → 400，且不启动浏览器', badHost.status === 400 && badHost.data?.ok === false,
+  JSON.stringify(badHost.data))
 
 /* ── 自定义目录：总览页唯一写接口 ───────────────────────────────────── */
 const post = (body) => json('/api/workspace-groups', {
