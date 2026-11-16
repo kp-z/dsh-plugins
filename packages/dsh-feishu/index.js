@@ -7361,7 +7361,7 @@ function createSyncEngine(ctx) {
     const result = await backend().actions(settings, [
       { op: 'ensure_custom_field', tasklist: task.tasklistGuid, name: '处理状态', type: 'single_select', accepted_types: ['text', 'single_select', 'multi_select'], options: ['正常', '挂起'], allow_duplicates: true },
       /* 不写 expected_type：旧清单里它可能是 text，set_custom_field 会按实际类型编码。 */
-      { op: 'set_custom_field', task: task.id, tasklist: task.tasklistGuid, name: '处理状态', allow_duplicates: true, value: entry.active ? '挂起' : '正常' },
+      { op: 'set_custom_field', task: task.id, tasklist: task.tasklistGuid, name: '处理状态', accepted_types: ['text', 'single_select', 'multi_select'], allow_duplicates: true, value: entry.active ? '挂起' : '正常' },
     ])
     const error = result.actions?.filter((item) => !item.ok).map((item) => item.error).join('; ') || result.errors?.join('; ')
     return { ok: result.ok && !error, error }
@@ -9629,7 +9629,7 @@ bucket 只能从枚举里选：
     const result = await backend().actions(settings, [
       { op: 'ensure_custom_field', tasklist: listGuid, name: fieldName, type: 'single_select', accepted_types: ['text', 'single_select', 'multi_select'], options, allow_duplicates: true },
       /* 旧清单里优先级可能是文本字段：不写 expected_type，交给宿主按实际类型编码。 */
-      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, allow_duplicates: true, value: want },
+      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, accepted_types: ['text', 'single_select', 'multi_select'], allow_duplicates: true, value: want },
     ])
     const ensure = (result.actions ?? [])[0]
     const applied = (result.actions ?? [])[1]

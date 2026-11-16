@@ -268,7 +268,11 @@ export function createLarkTasklistActions(api) {
         if (matches.length !== 1) {
           if (!matches.length) throw new Error('没有匹配的字段')
           if (byGuid || action.allow_duplicates !== true) throw new Error('字段重名/重复 GUID，拒绝写入')
-          const typed = action.expected_type != null ? matches.filter(field => field.type === action.expected_type) : matches
+          const accepted = Array.isArray(action.accepted_types) && action.accepted_types.length ? action.accepted_types : null
+          const typed = accepted
+            ? matches.filter(field => accepted.includes(field.type))
+            : (action.expected_type != null ? matches.filter(field => field.type === action.expected_type) : matches)
+          /* 与 ensure_custom_field 的选法保持一致：类型可接受 + guid 字典序，避免 ensure 选 A、write 选 B。 */
           const pool = (typed.length ? typed : matches).slice().sort((a, b) => String(a.guid).localeCompare(String(b.guid)))
           matches = [pool[0]]
           result.warnings.push(`字段「${key}」有重复定义，写入 guid=${pool[0].guid}`)

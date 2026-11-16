@@ -60,7 +60,11 @@ export function createOrganizeDrawer(deps) {
     const latestPending = latestItems.filter((item) => item.status === 'pending')
 
     const [expanded, setExpanded] = useState({})
+    /* 「当前组」= 用户正在看/展开的那一组（默认最新）。接受以上只作用于它。 */
+    const latestId = model.str(latest && latest.batchId)
+    const [activeId, setActiveId] = useState(latestId)
     const listRef = useRef ? useRef(null) : null
+    useEffect(() => { if (latestId) setActiveId(latestId) }, [latestId])
 
     /* 打开 / 有新组 / 加载更多：滚到最底（最新一组在底部）。 */
     useEffect(() => {
@@ -70,6 +74,8 @@ export function createOrganizeDrawer(deps) {
     }, [p.open, groups.length, visible, status])
 
     const toggleGroup = (batchId) => {
+      const opening = !isOpen({ batchId })
+      if (opening) setActiveId(batchId)
       setExpanded((prev) => ({ ...prev, [batchId]: !(prev[batchId] === true) }))
     }
     const isOpen = (batch) => {
@@ -162,13 +168,15 @@ export function createOrganizeDrawer(deps) {
       const current = batch === latest
       const open = isOpen(batch)
       const batchId = model.str(batch && batch.batchId)
+      const isActive = !!batchId && batchId === (activeId || latestId)
       const archived = !current && pending.length === 0 && (accepted.length + rejected.length) > 0
       const scopeText = typeof p.scopeLabel === 'function' ? p.scopeLabel(batch) : ''
       return h('section', {
         key: batchId,
-        className: 'fo-org-group' + (current ? ' is-current' : '') + (archived ? ' is-archived' : ''),
+        className: 'fo-org-group' + (current ? ' is-current' : '') + (archived ? ' is-archived' : '') + (isActive ? ' is-active' : ''),
         'data-group': batchId,
         'data-current': current ? '1' : '0',
+        'data-active': isActive ? '1' : '0',
       },
         h('button', {
           type: 'button', className: 'fo-org-group-head', 'data-action': 'toggle-group',
@@ -185,7 +193,7 @@ export function createOrganizeDrawer(deps) {
         open
           ? h('div', { className: 'fo-org-group-body' },
             items.length
-              ? items.map((item) => itemNode(item, batch, current))
+              ? items.map((item) => itemNode(item, batch, isActive))
               : h('p', { className: 'fo-org-empty' }, running
                 ? '正在生成…'
                 : (current && batch === latest && !pending.length && !items.some((item) => item.status === 'accepted' || item.status === 'rejected')
@@ -200,7 +208,11 @@ export function createOrganizeDrawer(deps) {
     const latestBatch = latest || {}
     const latestDropped = latestItems.filter((item) => item.status === 'dropped')
     const droppedOpen = p.droppedOpen === true
-    const latestScope = typeof p.scopeLabel === 'function' && latest ? p.scopeLabel(latest) : ''
+    /** 底栏永远跟着「当前组」：用户展开哪一组，接受以上就作用于哪一组。 */
+    const activeBatch = groups.find((batch) => model.str(batch && batch.batchId) === (activeId || latestId)) || latest
+    const activeItems = Array.isArray(activeBatch && activeBatch.items) ? activeBatch.items : []
+    const activePending = activeItems.filter((item) => item.status === 'pending')
+    const latestScope = typeof p.scopeLabel === 'function' && activeBatch ? p.scopeLabel(activeBatch) : ''
 
     return h('aside', { className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
       h('div', { className: 'fo-org-head' },
@@ -269,22 +281,22 @@ export function createOrganizeDrawer(deps) {
       h('div', { className: 'fo-org-foot' },
         h('button', {
           type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-action': 'accept-all',
-          disabled: running || !latestPending.length,
-          title: '只接受当前这一组的待处理建议',
-          onClick: () => { if (typeof p.onAcceptGroup === 'function' && latest) p.onAcceptGroup(model.str(latest.batchId), []) },
-        }, `接受以上（${latestPending.length}）`),
+          disabled: running || !activePending.length,
+          title: '只接受当前这一组（你正在看的那组）的待处理建议',
+          onClick: () => { if (typeof p.onAcceptGroup === 'function' && activeBatch) p.onAcceptGroup(model.str(activeBatch.batchId), []) },
+        }, `接受以上（${activePending.length}）`),
         h('button', {
           type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'reject-all',
-          disabled: running || !latestPending.length,
-          onClick: () => { if (typeof p.onRejectGroup === 'function' && latest) p.onRejectGroup(model.str(latest.batchId), []) },
+          disabled: running || !activePending.length,
+          onClick: () => { if (typeof p.onRejectGroup === 'function' && activeBatch) p.onRejectGroup(model.str(activeBatch.batchId), []) },
         }, '拒绝以上'),
-        typeof p.onUndoGroup === 'function' && latest && countOf(latest, latestItems, 'accepted', 'accepted')
+        typeof p.onUndoGroup === 'function' && activeBatch && countOf(activeBatch, activeItems, 'accepted', 'accepted')
           ? h('button', {
             type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'undo-accepted',
             disabled: running,
             title: '把这一组已接受的关系撤掉（依赖会同时写回飞书，时间先后只在本机）',
-            onClick: () => p.onUndoGroup(model.str(latest.batchId), []),
-          }, `撤销已接受 ${countOf(latest, latestItems, 'accepted', 'accepted')}`)
+            onClick: () => p.onUndoGroup(model.str(activeBatch.batchId), []),
+          }, `撤销已接受 ${countOf(activeBatch, activeItems, 'accepted', 'accepted')}`)
           : null,
       ),
     )

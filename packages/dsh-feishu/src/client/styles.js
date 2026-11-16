@@ -1136,7 +1136,7 @@ export const CSS = `
 }
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
 .fo-org-group { border: 1px solid var(--fo-glass-line); border-radius: 12px; overflow: hidden; }
-.fo-org-group.is-current { border-color: color-mix(in oklab, ${T.brand} 32%, transparent); }
+.fo-org-group.is-current, .fo-org-group.is-active { border-color: color-mix(in oklab, ${T.brand} 32%, transparent); }
 .fo-org-group.is-archived { opacity: .72; }
 .fo-org-group-head {
   display: flex; align-items: center; gap: 8px; width: 100%;
