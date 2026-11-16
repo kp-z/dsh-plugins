@@ -310,7 +310,7 @@ lark-cli 后端已实现的动作：
 | `task_subtasks` / `task_attachments` | `GET /task/v2/tasks/{guid}/subtasks`、`GET /task/v2/attachments` |
 | `create_docx` / `update_docx` / `rename_docx` / `delete_file` / `ensure_folder` / `add_tasklist` / `append_description` | 对应 docs/drive/task 官方接口 |
 
-两种后端共享受管任务清单状态机与完整字段契约。`ensure_tasklist` 使用稳定 `client_token`、明确 GUID 与全分页唯一名称查找；字段创建回执未知不会盲目重建。
+两种后端共享受管任务清单的选择/创建（`ensure_tasklist` 使用稳定 `client_token`、明确 GUID 与全分页唯一名称查找）。字段不再有固定契约：写回时按名查找已有字段（任意可存类型），不存在才按需创建为文本；不校验类型/选项，也不批量初始化。
 评论的 `task-v1` 模式通过 raw API 提及原作者（包括本人），保留统一 AI 卡片；权限失败不切换接口重发。只有显式 `native` 才发送无 @ 的原生回复。POST 超时/5xx/回执不符标为 `unknownDelivery=true`；评论和任务分页缺游标/循环/超过上限标为不完整。通知实际到达未验证。
 
 ### `POST /dsh-feishu/api/sync`

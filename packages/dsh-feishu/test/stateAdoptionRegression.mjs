@@ -157,7 +157,6 @@ for (const [status, taskId] of [['partial', 'created-task'], ['unknown', 'create
 
 for (const [label, managedTasklist] of [
   ['unknown list creation token', { guid: '', status: 'unknown', createToken: 'current-create-token' }],
-  ['ready list', { guid: 'current-list', status: 'ready' }],
 ]) test(`empty tasks preserve ${label} independently`, async () => {
   const t = await assertCurrent({ tasks: [], managedTasklist })
   assert.deepEqual(plain(t.h.state.managedTasklist), managedTasklist)

@@ -27,12 +27,12 @@ function harness({ backend = 'feishu-sync', tasks = [], initial = {}, disabled =
     persistState: async () => { persists++ }, writeJson: async () => {}, SETTINGS_FILE: 'fake', safeSyncDetail: String,
   }
   vm.createContext(h); vm.runInContext(source.slice(start, end), h)
-  return { h, calls, bridge, get persists() { return persists } }
+  return { h, calls, bridge, countPersists: () => persists }
 }
 
 // Fresh init: create/reuse list, persist GUID, ready, and no field contract is enforced.
 {
-  const { h, calls, persists } = harness()
+  const { h, calls, countPersists } = harness()
   const result = await h.ensureManagedTasklist()
   assert.equal(result.ok, true)
   assert.equal(result.guid, 'list-1')
@@ -40,7 +40,7 @@ function harness({ backend = 'feishu-sync', tasks = [], initial = {}, disabled =
   assert.equal(h.state.managedTasklist.status, 'ready')
   assert.equal(h.state.managedTasklist.backend, 'feishu-sync')
   assert.equal(h.state.managedTasklist.errors.length, 0)
-  assert.ok(persists >= 2)
+  assert.ok(countPersists() >= 2)
   assert.equal(calls.filter(p => p.actions?.some(a => a.op === 'ensure_custom_field')).length, 0, 'no bulk field ensure')
   const listCalls = calls.filter(p => p.actions?.some(a => a.op === 'ensure_tasklist')).length
   assert.equal(listCalls, 1)

@@ -24,13 +24,13 @@ const server=createServer((q,s)=>routes[0].handler(q,s));await new Promise(r=>se
 const request=async(path,body)=>{const r=await fetch(base+path,{...(body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});return r.json()}
 try{
  await until(async()=> (await request('/state')).state.managedTasklist?.status==='ready')
- const state=(await request('/state')).state;assert.equal(state.managedTasklist.guid,'managed-list');assert.equal(state.managedTasklist.fields.length,12)
+ const state=(await request('/state')).state;assert.equal(state.managedTasklist.guid,'managed-list');assert.equal(state.managedTasklist.status,'ready');assert.equal(state.managedTasklist.errors.length,0)
  const persisted=JSON.parse(await readFile(join(data,'settings.json'),'utf8'));assert.equal(persisted.managedTasklist.guid,'managed-list')
  await request('/auth/check',{})
  const calls=(await readFile(log,'utf8')).trim().split('\n').map(JSON.parse)
  const lists=calls.flatMap(p=>p.actions||[]).filter(a=>a.op==='ensure_tasklist')
  assert.ok(lists.length>=2);assert.ok(!('guid' in lists[0]));assert.ok(lists.slice(1).every(a=>a.guid==='managed-list'),'Later checks reuse persisted GUID')
- assert.ok(calls.flatMap(p=>p.actions||[]).filter(a=>a.op==='ensure_custom_field').length>=12)
+ assert.equal(calls.flatMap(p=>p.actions||[]).filter(a=>a.op==='ensure_custom_field').length,0,'no bulk field ensure in the new contract')
  assert.ok(!calls.some(x=>x.cli?.[1]==='create'),'Authorization only initializes list, not tasks')
- console.log('TASKLIST_BRIDGE_OK: real Host apply + fresh fake CLI authorization initializes all fields and persists/reuses destination')
+ console.log('TASKLIST_BRIDGE_OK: real Host apply + fresh fake CLI authorization creates/reuses destination list without a field contract')
 }finally{for(const f of effects.reverse())await f();server.closeAllConnections();await new Promise(r=>server.close(r))}
