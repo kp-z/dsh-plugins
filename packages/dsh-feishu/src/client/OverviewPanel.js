@@ -1511,7 +1511,8 @@ export function createOverviewPanel(deps) {
             )
             : null,
           /* 一键整理失败：同一套错误条口径（role=alert + 重试），不静默。 */
-          org.error
+          /* 面板打开时错误显示在面板里（不被抽屉挡在背后），关闭时才用页面横幅。 */
+          org.error && !org.open
             ? h('div', { className: 'fo-banner', role: 'alert' },
               h('span', null, org.error),
               h('button', { type: 'button', className: 'fo-btn', 'data-size': 'sm', onClick: () => runOrganize() }, '重试'),
@@ -1548,6 +1549,7 @@ export function createOverviewPanel(deps) {
             groups: org.groups && org.groups.length ? org.groups : (org.batch ? [org.batch] : []),
             visible: org.visible,
             status: org.status,
+            error: org.error,
             failed: org.failed,
             droppedOpen: org.droppedOpen,
             scopeLabel: scopeLabelOf,

@@ -1118,6 +1118,7 @@ export const CSS = `
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
 }
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
+.fo-org-notes[data-tone="error"] { color: ${T.error}; }
 /* 组只是「一段」：用分割线隔开，不再套卡片；真正的卡片始终是每一条建议。 */
 .fo-org-group {
   border: 0; border-radius: 0; overflow: visible;
