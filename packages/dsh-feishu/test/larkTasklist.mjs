@@ -172,6 +172,27 @@ test('accepted_types reuses legacy text without coercion or option mutation', as
   assert.equal(result.guid, 'field-1')
   assert.equal(writes(calls).length, 0)
 })
+test('allow_duplicates reuses a deterministic usable duplicate instead of failing init', async () => {
+  const duplicates = page([field({ guid: 'b', name: '开始时间', type: 'text' }), field({ guid: 'a', name: '开始时间', type: 'text' })])
+  const ensureRun = fake([duplicates])
+  const result = await ensureRun.run({ op: 'ensure_custom_field', tasklist: 'list-1', name: '开始时间', type: 'datetime', accepted_types: ['datetime', 'text'], allow_duplicates: true })
+  assert.equal(result.ok, true)
+  assert.equal(result.guid, 'a')
+  assert.ok(result.warnings.some((w) => /重复定义/.test(w)))
+  assert.equal(writes(ensureRun.calls).length, 0)
+  const setRun = fake([page([field({ guid: 'b', name: '开始时间', type: 'text' }), field({ guid: 'a', name: '开始时间', type: 'text' })]), ok({})])
+  const written = await setRun.run({ op: 'set_custom_field', tasklist: 'list-1', task: 'task/1', name: '开始时间', accepted_types: ['datetime', 'text'], allow_duplicates: true, value: '2026-11-16' })
+  assert.equal(written.ok, true)
+  assert.equal(written.guid, 'a')
+  assert.equal(writes(setRun.calls)[0].data.task.custom_fields[0].text_value, '2026-11-16')
+})
+test('allow_duplicates still fails closed when no duplicate has an accepted type', async () => {
+  const { run, calls } = fake([page([field({ guid: 'a', name: '开始时间', type: 'text' }), field({ guid: 'b', name: '开始时间', type: 'text' })])])
+  const result = await run({ op: 'ensure_custom_field', tasklist: 'list-1', name: '开始时间', type: 'datetime', accepted_types: ['datetime'], allow_duplicates: true })
+  assert.equal(result.ok, false)
+  assert.match(result.error, /没有可用类型/)
+  assert.equal(writes(calls).length, 0)
+})
 test('invalid accepted_types reject before reads', async () => {
   for (const accepted_types of ['text', [], ['number']]) {
     const { run, calls } = fake([])

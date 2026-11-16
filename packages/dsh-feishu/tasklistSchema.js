@@ -13,8 +13,9 @@ export function tasklistFields(settings = {}, workspaceNames = []) {
     { key: 'doc', name: f.doc || '文档', type: 'text' },
     { key: 'priority', name: f.priority || '优先级', type: 'single_select', accepts: ['text', 'single_select', 'multi_select'], options: settings.priorityOptions || ['P0', 'P1', 'P2', 'P3'] },
     { key: 'eta', name: f.eta || '预期完成', type: 'text' },
-    { key: 'startCol', name: f.startCol || '开始时间', type: 'datetime' },
-    { key: 'endCol', name: f.endCol || '结束时间', type: 'datetime' },
+    /* 日期列也可能是历史文本（老版本按 text 建过），见上：只读不改旧字段。 */
+    { key: 'startCol', name: f.startCol || '开始时间', type: 'datetime', accepts: ['datetime', 'text'] },
+    { key: 'endCol', name: f.endCol || '结束时间', type: 'datetime', accepts: ['datetime', 'text'] },
     { key: 'suspension', name: '处理状态', type: 'single_select', accepts: ['text', 'single_select', 'multi_select'], options: ['正常', '挂起'] },
     { key: 'predecessors', name: '前置任务', type: 'text' },
     { key: 'successors', name: '后置任务', type: 'text' },
