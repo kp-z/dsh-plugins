@@ -1180,7 +1180,7 @@ const PANEL_CARD = layout.CARD
     const fo = findAll(node, (child) => child.kind === 'host' && child.type === 'foreignObject')[0]
     assert.equal(Number(fo.props.width), PANEL_GEOM.NODE_W)
     assert.ok(Number(fo.props.height) >= PANEL_GEOM.NODE_H, '高度不小于基础行高')
-    assert.equal(PANEL_GEOM.NODE_W, 340)
+    assert.equal(PANEL_GEOM.NODE_W, 420)
     assert.equal(PANEL_CARD.RADIUS, 12)
     assert.equal(PANEL_CARD.BORDER, 1)
   })

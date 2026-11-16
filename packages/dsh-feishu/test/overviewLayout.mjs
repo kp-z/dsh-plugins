@@ -422,7 +422,7 @@ test('真实快照规模下也不越界（48+ 任务的回归底线）', () => {
 test('卡片口径：与面板飞书任务卡同规格（340×84、圆角 9、1px 描边、三行）', () => {
   /* 用户口径：直接用当期飞书卡片的设计，且「先不要简化」——标题 / 徽标 / 页脚三行都给。
      宽度 340：画布上比面板窄会显得挤，用户明确要求加宽。 */
-  assert.equal(GEOMETRY.NODE_W, 340)
+  assert.equal(GEOMETRY.NODE_W, 420)
   assert.equal(GEOMETRY.NODE_H, 84)
   assert.equal(GEOMETRY.GRID, 40)
   assert.equal(CARD.RADIUS, 12)

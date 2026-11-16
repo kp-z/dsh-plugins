@@ -902,6 +902,10 @@ export const CSS = `
    18px 徽标（radius 5）、会话胶囊（16 高、全圆角、10px 字）。 */
 .fo-node { cursor: grab; transition: opacity var(--fo-dur) var(--fo-ease); }
 .fo-node:active { cursor: grabbing; }
+/* 拖动中：去掉卡片阴影/过渡/filter —— foreignObject 移动时 box-shadow 会在 Chromium 里留下一层「虚影」。 */
+.fo-node.is-dragging { filter: none; transition: none; }
+.fo-node.is-dragging .fo-node-dom { outline: none; }
+.fo-node.is-dragging .fo-node-dom * { box-shadow: none; transition: none; }
 
 /* ============ 节点卡片：foreignObject 里的面板卡 ============
    卡片本体（描边/圆角/间距）由 src/card/taskCardStyles.js 提供；这里只画「画布这一层」的
