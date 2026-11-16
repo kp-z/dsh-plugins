@@ -817,32 +817,54 @@ export function createOverviewPanel(deps) {
 
     /* ---------------- 一键整理（task-16）：只出建议、人点了才落库 ---------------- */
 
+    /* 把最近一批/历史组写回抽屉状态（挂载、轮询、回前台共用）。 */
+    const applyOrganizeView = useCallback((res) => {
+      /* 兼容旧宿主/测试桩：直接返回 batch 对象时当成 { batch }。 */
+      const batch = res && res.batch ? res.batch : (res && (res.batchId || Array.isArray(res.items)) ? res : null)
+      const batches = asArray(res && res.batches)
+      if (!batch && !batches.length) return
+      const groups = batches.length ? batches : (batch ? [batch] : [])
+      const newestId = model.str((groups[0] && groups[0].batchId) || (batch && batch.batchId))
+      setOrg((prev) => {
+        /* 本地正在跑时不要被上一次查询的旧结果覆盖。 */
+        if (prev.status === 'running') return prev
+        const prevNewest = model.str((prev.groups && prev.groups[0] && prev.groups[0].batchId) || prev.batchId)
+        if (newestId && newestId === prevNewest && prev.groups.length === groups.length) return prev
+        return {
+          ...prev,
+          batch,
+          groups,
+          visible: 1,
+          batchId: newestId || prev.batchId,
+          status: 'ready',
+        }
+      })
+    }, [])
+
+    const refreshOrganizeView = useCallback(() => {
+      const fn = apiRef.current.organizeView
+      if (!fn) return Promise.resolve(null)
+      return Promise.resolve()
+        .then(() => fn({ kind: 'all', id: '' }))
+        .then((res) => { if (alive.current) applyOrganizeView(res); return res })
+        .catch(() => null)
+    }, [applyOrganizeView])
+
     /* 首次挂载：把最近一批建议取回来（没有就是 null），抽屉一打开就有内容。
        建议永远按**全量任务**算，所以这里不跟 scope 走。 */
+    useEffect(() => { refreshOrganizeView() }, [refreshOrganizeView])
+
+    /* 面板打开时轮询 + 回前台补拉：在别的页面等生成结果，切回来也能看到新组。 */
     useEffect(() => {
-      const fn = apiRef.current.organizeView
-      if (!fn) return undefined
-      let stale = false
-      Promise.resolve()
-        .then(() => fn({ kind: 'all', id: '' }))
-        .then((res) => {
-          /* 兼容旧宿主/测试桩：直接返回 batch 对象时当成 { batch }。 */
-          const batch = res && res.batch ? res.batch : (res && (res.batchId || Array.isArray(res.items)) ? res : null)
-          const batches = asArray(res && res.batches)
-          if (stale || !alive.current || (!batch && !batches.length)) return
-          const groups = batches.length ? batches : (batch ? [batch] : [])
-          setOrg((prev) => ({
-            ...prev,
-            batch,
-            groups,
-            visible: 1,
-            batchId: model.str(batch && batch.batchId) || prev.batchId,
-            status: 'ready',
-          }))
-        })
-        .catch(() => { /* 恢复失败不打扰用户：画布照用，按钮还在 */ })
-      return () => { stale = true }
-    }, [])
+      if (org.open !== true) return undefined
+      const timer = setInterval(() => { refreshOrganizeView() }, 4000)
+      const onVisible = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') refreshOrganizeView() }
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
+      return () => {
+        clearInterval(timer)
+        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
+      }
+    }, [org.open, refreshOrganizeView])
 
     /* 建议栏：默认「自动」（宽屏固定成列、窄面板变浮层），用户可以手动钉成固定或浮层。
        值落 store 键 organizeDock：'1' 固定 / '0' 浮层 / 未设置 = 自动。 */
