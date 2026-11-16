@@ -76,6 +76,8 @@ export function createOrganizeDrawer(deps) {
     const status = model.str(p.status) || 'idle'
     const failed = p.failed
     const running = status === 'running'
+    /* 只有「生成建议」才显示分析动画；接受/拒绝/撤销的 running 不算。 */
+    const generating = running && model.str(p.phase) === 'organize'
     const docked = p.docked === true
     const visible = Math.max(1, Number(p.visible) || 1)
     const groups = Array.isArray(p.groups) && p.groups.length
@@ -214,28 +216,32 @@ export function createOrganizeDrawer(deps) {
               + (rejected.length ? ` · 已拒绝 ${rejected.length}` : '')
               + (archived ? ' · 已归档' : '')),
           ),
-          /* 接受/拒绝跟着**这一组**走，不再固定在抽屉底部。 */
-          h('div', { className: 'fo-org-group-actions' },
-            iconBtn('accept-all', 'check', `接受本组全部（${pending.length} 条）`, () => {
-              if (typeof p.onAcceptGroup === 'function') p.onAcceptGroup(batchId, [])
-            }, { disabled: running || !pending.length }),
-            iconBtn('reject-all', 'reject', `拒绝本组全部（${pending.length} 条）`, () => {
-              if (typeof p.onRejectGroup === 'function') p.onRejectGroup(batchId, [])
-            }, { disabled: running || !pending.length }),
-            accepted.length && typeof p.onUndoGroup === 'function'
-              ? iconBtn('undo-accepted', 'undo', `撤销本组已接受（${accepted.length} 条）`, () => p.onUndoGroup(batchId, []), { disabled: running })
-              : null,
-          ),
+          /* 归档后收起时，撤销仍留在组头，避免必须先展开才能回退。 */
+          !open && accepted.length && typeof p.onUndoGroup === 'function'
+            ? h('div', { className: 'fo-org-group-actions' },
+              iconBtn('undo-accepted', 'undo', `撤销本组已接受（${accepted.length} 条）`, () => p.onUndoGroup(batchId, []), { disabled: running }))
+            : null,
         ),
         open
           ? h('div', { className: 'fo-org-group-body' },
             items.length
               ? items.map((item) => itemNode(item, batch, isActive))
-              : h('p', { className: 'fo-org-empty' }, running
+              : h('p', { className: 'fo-org-empty' }, generating
                 ? '正在生成…'
                 : (current && batch === latest && !pending.length && !items.some((item) => item.status === 'accepted' || item.status === 'rejected')
                   ? '没有找到关系'
-                  : '这一组没有建议')))
+                  : '这一组没有建议')),
+            h('div', { className: 'fo-org-group-actions' },
+              iconBtn('accept-all', 'check', `接受本组全部（${pending.length} 条）`, () => {
+                if (typeof p.onAcceptGroup === 'function') p.onAcceptGroup(batchId, [])
+              }, { disabled: running || !pending.length }),
+              iconBtn('reject-all', 'reject', `拒绝本组全部（${pending.length} 条）`, () => {
+                if (typeof p.onRejectGroup === 'function') p.onRejectGroup(batchId, [])
+              }, { disabled: running || !pending.length }),
+              accepted.length && typeof p.onUndoGroup === 'function'
+                ? iconBtn('undo-accepted', 'undo', `撤销本组已接受（${accepted.length} 条）`, () => p.onUndoGroup(batchId, []), { disabled: running })
+                : null,
+            ))
           : null,
       )
     }
@@ -262,7 +268,7 @@ export function createOrganizeDrawer(deps) {
             { pressed: docked }),
           /* 不是「重新分析覆盖」，而是再生成一组新的建议（追加到时间轴）。 */
           iconBtn('rerun', 'sparkles',
-            running ? '正在提供新的建议…' : '提供新的建议（按当前范围新加一组）',
+            generating ? '正在提供新的建议…' : '提供新的建议（按当前范围新加一组）',
             () => { if (typeof p.onRerun === 'function') p.onRerun() },
             { disabled: running }),
           iconBtn('close', 'close', '关闭建议栏', () => { if (typeof p.onClose === 'function') p.onClose() }),
@@ -317,9 +323,9 @@ export function createOrganizeDrawer(deps) {
           : null,
         shown.length
           ? shown.map(groupNode)
-          : (running ? null : h('p', { className: 'fo-org-empty' }, '暂无建议')),
+          : (generating ? null : h('p', { className: 'fo-org-empty' }, '暂无建议')),
         /* 生成中：spinner 放在列表底部（最新组的位置），不占顶部。 */
-        running
+        generating
           ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
           : null,
       ),

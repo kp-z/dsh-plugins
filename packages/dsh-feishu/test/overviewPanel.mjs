@@ -1764,9 +1764,10 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.deepEqual(backend.log.reject, [{ batchId: 'b-1', itemIds: ['it-2'] }])
     assert.ok(textOf(organizeDrawers(ft)[0]).includes('已拒绝 1'))
   })
-  check('待处理清空后：全部接受/全部拒绝按钮禁用', () => {
-    const drawer = organizeDrawers(ft)[0]
-    const acceptAll = findAll(drawer, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all')[0]
+  findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'toggle-group')[0].props.onClick()
+  ft = await fx.mini.act()
+  check('待处理清空后：组自动收起；展开后全部接受/全部拒绝按钮禁用', () => {
+    const acceptAll = findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all')[0]
     assert.equal(acceptAll.props.disabled, true)
   })
   findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'close')[0].props.onClick()
