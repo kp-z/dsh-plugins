@@ -1930,6 +1930,9 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     const item = ruleBody('.fo-org-item')
     assert.ok(item.includes('border-radius: 12px'))
     assert.ok(item.includes('background: var(--fo-glass-sub)'))
+    /* 钉住 dock 也必须叠 data-organize="1"：面板关了不能再留一列空白 */
+    assert.ok(ruleBody('.fo-root[data-organize="1"][data-organize-dock="1"] .fo-body').includes('var(--fo-dock-w)'))
+    assert.equal(ruleBody('.fo-root[data-organize-dock="1"] .fo-body').length, 0, '关闭态不能只靠 dock 占列')
     const quote = ruleBody('.fo-org-evidence')
     assert.ok(quote.includes('border-left: 2px solid var(--fo-selected-line)'), '引用块有竖线')
     const impact = ruleBody('.fo-org-impact')
