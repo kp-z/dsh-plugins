@@ -1135,19 +1135,24 @@ export const CSS = `
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
 }
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
-.fo-org-group { border: 1px solid var(--fo-glass-line); border-radius: 12px; overflow: hidden; }
-.fo-org-group.is-current, .fo-org-group.is-active { border-color: color-mix(in oklab, ${T.brand} 32%, transparent); }
+/* 组只是「一段」：用分割线隔开，不再套卡片；真正的卡片始终是每一条建议。 */
+.fo-org-group {
+  border: 0; border-radius: 0; overflow: visible;
+  padding-top: 12px; border-top: 1px dashed var(--fo-glass-line);
+}
+.fo-org-group:first-of-type { border-top: 0; padding-top: 0; }
 .fo-org-group.is-archived { opacity: .72; }
 .fo-org-group-head {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 8px 10px; border: 0; background: transparent; cursor: pointer;
-  font: inherit; text-align: left; color: ${T.label1};
+  padding: 0 2px 8px; border: 0; background: transparent; cursor: pointer;
+  font: inherit; text-align: left; color: ${T.label2};
 }
-.fo-org-group.is-current .fo-org-group-head { background: color-mix(in oklab, ${T.brand} 8%, transparent); }
+.fo-org-group-head:hover { color: ${T.label1}; }
+.fo-org-group.is-active .fo-org-group-scope { color: ${T.label1}; font-weight: 600; }
 .fo-org-group-time { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 .fo-org-group-scope { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .fo-org-group-counts { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
-.fo-org-group-body { display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px; }
+.fo-org-group-body { display: flex; flex-direction: column; gap: 10px; padding: 0; }
 .fo-org-foot {
   flex: 0 0 auto; position: sticky; bottom: 0; z-index: 2; margin-top: auto;
   padding-top: 8px; border-top: 1px solid var(--fo-glass-line);
