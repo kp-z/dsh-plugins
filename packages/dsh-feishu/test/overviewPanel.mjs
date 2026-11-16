@@ -1704,6 +1704,10 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.ok(text.includes('待处理 2'))
     assert.equal(orgItems(ft, 'pending').length, 2)
     assert.equal(rootOf(ft).props['data-organize'], '1')
+    const resize = findAll(drawer[0], (node) => node.kind === 'host' && classNameOf(node).includes('fo-org-resize'))[0]
+    assert.ok(resize, '建议栏左缘要有拖拽把手')
+    assert.equal(resize.props.role, 'separator')
+    assert.equal(resize.props['aria-orientation'], 'vertical')
   })
   check('条目：kind 徽标（前置/来源）+ 两端标题 + 置信度 + evidence 原文引用块', () => {
     const first = orgItems(ft, 'pending')[0]

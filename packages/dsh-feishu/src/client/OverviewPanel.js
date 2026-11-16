@@ -875,6 +875,19 @@ export function createOverviewPanel(deps) {
       return saved === '1' || saved === '0' ? saved : ''
     })
     useEffect(() => { writeStore(store, 'organizeDock', organizeDock) }, [organizeDock])
+    /* 建议栏宽度：拖动左边缘调整（280~560），落 store，刷新后保持。 */
+    const ORGANIZE_W_MIN = 280
+    const ORGANIZE_W_MAX = 560
+    const [organizeWidth, setOrganizeWidth] = useState(() => {
+      const saved = Number(readStore(store, 'organizeWidth'))
+      return Number.isFinite(saved) && saved > 0 ? Math.min(ORGANIZE_W_MAX, Math.max(ORGANIZE_W_MIN, saved)) : 340
+    })
+    useEffect(() => { writeStore(store, 'organizeWidth', organizeWidth) }, [organizeWidth])
+    const resizeOrganize = useCallback((next) => {
+      const width = Number(next)
+      if (!Number.isFinite(width)) return
+      setOrganizeWidth(Math.min(ORGANIZE_W_MAX, Math.max(ORGANIZE_W_MIN, Math.round(width))))
+    }, [])
     /* 当前**实际**是固定还是浮层：容器查询会按面板宽度自动切换，光看 organizeDock 判断不了。
        直接量布局（position === 'static' 就是占列的固定模式），按钮文案与切换目标都按它来。 */
     const [organizeEffective, setOrganizeEffective] = useState('dock')
@@ -1326,7 +1339,12 @@ export function createOverviewPanel(deps) {
       /* 建议栏位置：'1' 固定成列 / '0' 浮层 / 不写 = 按容器宽度自动 */
       'data-organize-dock': organizeDock || undefined,
       /* 只有用户真的拖过才写行内变量：没拖过就让 CSS 默认值（含窄面板的容器查询）生效 */
-      style: railWidth ? { '--fo-rail-w': railWidth + 'px' } : undefined,
+      style: (railWidth || organizeWidth !== 340)
+        ? {
+          ...(railWidth ? { '--fo-rail-w': railWidth + 'px' } : {}),
+          ...(organizeWidth !== 340 ? { '--fo-dock-w': organizeWidth + 'px' } : {}),
+        }
+        : undefined,
     },
       /* 侧栏三段：品牌 / 功能导航 / 底部固定区（折叠按钮在这里，折起来 rail 变 56px 图标条） */
       h('aside', { className: 'fo-rail', 'aria-label': '功能导航' },
@@ -1592,6 +1610,8 @@ export function createOverviewPanel(deps) {
             onToggleDropped: toggleDropped,
             /* 顶部的「固定 / 浮层」切换与「重新分析」 */
             docked: organizeEffective === 'dock',
+            width: organizeWidth,
+            onResize: resizeOrganize,
             onToggleDock: toggleOrganizeDock,
             onRerun: () => runOrganize(org.scope || (org.batch && org.batch.scope) || undefined),
           })

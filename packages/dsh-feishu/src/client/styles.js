@@ -588,8 +588,15 @@ export const CSS = `
 /* 必须同时 data-organize="1"：面板关闭后不能还占着一列（否则关闭后右侧一大片空白）。 */
 .fo-root[data-organize="1"][data-organize-dock="1"] .fo-body { grid-template-columns: minmax(0, 1fr) var(--fo-dock-w) !important; }
 .fo-root[data-organize-dock="1"] .fo-organize {
-  position: static !important; width: auto; max-width: none; border-radius: 0; box-shadow: none;
+  position: relative !important; width: auto; max-width: none; border-radius: 0; box-shadow: none;
 }
+/* 左缘拖拽把手：拖动调建议栏宽度 */
+.fo-org-resize {
+  position: absolute; top: 0; bottom: 0; left: 0; z-index: 6;
+  width: 6px; cursor: col-resize; touch-action: none;
+  background: transparent; transition: background-color .15s ease;
+}
+.fo-org-resize:hover, .fo-org-resize:active { background: ${g(T.brand, 26)}; }
 .fo-root[data-organize="1"][data-organize-dock="0"] .fo-body { grid-template-columns: minmax(0, 1fr) !important; }
 .fo-root[data-organize-dock="0"] .fo-organize {
   position: absolute; top: 0; right: 0; bottom: 0; z-index: 30;
@@ -1027,6 +1034,7 @@ export const CSS = `
    每条建议 = 一次「改一条关系」的动作，所以卡片上必须同时有：类型徽标、两端标题、模型自评的把握、
    evidence 原文（引用块）、代价预览（会让谁变阻塞）。健康色/警告色都走宿主状态令牌。 */
 .fo-organize {
+  position: relative;
   display: flex; flex-direction: column; gap: 10px;
   min-width: 0; min-height: 0; overflow: hidden;
   /* 高度铺满：右侧一整条。**不要**再减一个固定值——之前 calc(100dvh - 56px)
