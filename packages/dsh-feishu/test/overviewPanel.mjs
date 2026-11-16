@@ -1843,11 +1843,10 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   ft = await fx.mini.act()
   ORGANIZE_RERUN(ft).props.onClick()
   ft = await fx.mini.act()
-  check('空态文案：宁可少而准', () => {
+  check('空态文案：短句「没有找到关系」', () => {
     const drawer = organizeDrawers(ft)
     assert.equal(drawer.length, 1)
-    /* 时间兜底也会出建议，所以这里不再把「没有找到关系」归因给 AI。 */
-    assert.ok(textOf(drawer[0]).includes('没有找到新的关系——这常常是正确答案，宁可少而准'))
+    assert.ok(textOf(drawer[0]).includes('没有找到关系'))
   })
   check('空态也不给假的「全部接受」按钮（禁用）', () => {
     const acceptAll = findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all')[0]

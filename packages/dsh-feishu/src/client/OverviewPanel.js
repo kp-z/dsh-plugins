@@ -1484,10 +1484,12 @@ export function createOverviewPanel(deps) {
                     return null
                   },
                 },
-                  h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
-                    h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
-                    h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
-                  ),
+                  org.status === 'running'
+                    ? h('span', { className: 'fo-spinner', 'aria-hidden': 'true' })
+                    : h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
+                      h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
+                      h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
+                    ),
                   h('span', { className: 'fo-suggest-label' }, org.status === 'running' ? '分析中' : '建议'),
                   Number(org.batch && org.batch.pending) > 0 && !org.open
                     ? h('span', { className: 'fo-suggest-badge' }, String(Number(org.batch.pending)))

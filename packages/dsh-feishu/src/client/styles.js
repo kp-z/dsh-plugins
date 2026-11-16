@@ -1135,6 +1135,13 @@ export const CSS = `
 .fo-org-group-toggle:hover { color: ${T.label1}; }
 .fo-org-group-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .fo-org-load-more { display: flex; justify-content: center; }
+.fo-org-loading { display: flex; justify-content: center; padding: 8px 0; }
+@keyframes fo-spin { to { transform: rotate(360deg); } }
+.fo-spinner {
+  width: 14px; height: 14px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid ${g(T.brand, 20)}; border-top-color: ${T.brand};
+  animation: fo-spin .8s linear infinite;
+}
 .fo-org-load-more-btn { gap: 6px; }
 /* 面板里的按钮统一图标态：文字只留在 title / aria-label。 */
 .fo-icon-btn {
