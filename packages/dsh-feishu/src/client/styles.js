@@ -1142,22 +1142,30 @@ export const CSS = `
 }
 .fo-org-group:first-of-type { border-top: 0; padding-top: 0; }
 .fo-org-group.is-archived { opacity: .72; }
-.fo-org-group-head {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 0 2px 8px; border: 0; background: transparent; cursor: pointer;
+.fo-org-group-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 8px; }
+.fo-org-group-toggle {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px;
+  padding: 0; border: 0; background: transparent; cursor: pointer;
   font: inherit; text-align: left; color: ${T.label2};
 }
-.fo-org-group-head:hover { color: ${T.label1}; }
+.fo-org-group-toggle:hover { color: ${T.label1}; }
+.fo-org-group-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+.fo-org-load-more { display: flex; justify-content: center; }
+/* 面板里的按钮统一图标态：文字只留在 title / aria-label。 */
+.fo-icon-btn {
+  width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: ${T.label2}; cursor: pointer;
+}
+.fo-icon-btn:hover { color: ${T.label1}; background: ${g(T.label1, 8)}; }
+.fo-icon-btn:disabled { opacity: .4; cursor: default; background: transparent; }
+.fo-icon-btn[aria-pressed="true"] { color: ${T.brand}; background: ${g(T.brand, 12)}; }
+.fo-org-icon { display: block; }
 .fo-org-group.is-active .fo-org-group-scope { color: ${T.label1}; font-weight: 600; }
 .fo-org-group-time { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 .fo-org-group-scope { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .fo-org-group-counts { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 .fo-org-group-body { display: flex; flex-direction: column; gap: 10px; padding: 0; }
-.fo-org-foot {
-  flex: 0 0 auto; position: sticky; bottom: 0; z-index: 2; margin-top: auto;
-  padding-top: 8px; border-top: 1px solid var(--fo-glass-line);
-  background: linear-gradient(180deg, transparent, var(--fo-glass-card) 38%);
-}
 .fo-org-item {
   display: flex; flex-direction: column; gap: 6px;
   padding: 10px 12px; border-radius: 12px;
@@ -1198,10 +1206,6 @@ export const CSS = `
 .fo-org-dropped-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; background: var(--fo-glass-sub); }
 .fo-org-dropped-route { font-size: 11px; color: ${T.label2}; }
 .fo-org-dropped-reason { font-size: 11px; color: ${T.label2}; }
-.fo-org-foot {
-  margin-top: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding-top: 8px; border-top: 1px solid var(--fo-glass-line);
-}
 .fo-btn-icon { flex: 0 0 auto; width: 14px; height: 14px; }
 
 /* ============ 空态 / 加载态 ============ */

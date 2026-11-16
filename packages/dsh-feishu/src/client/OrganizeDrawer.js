@@ -15,6 +15,18 @@ import * as modelModule from '../overview/model.js'
 
 const KIND_LABEL = { depends_on: '前置', derived_from: '来源', temporal: '时间', eta: '预期完成' }
 
+/* 面板里的按钮全部用图标；文案只放在 title / aria-label 里。 */
+const ICON_PATHS = {
+  dock: ['M4 4h16v16H4z', 'M15 4v16'],
+  sparkles: ['M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z', 'M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z'],
+  close: ['M6 6l12 12', 'M18 6L6 18'],
+  check: ['M5 13l4 4L19 7'],
+  reject: ['M6 6l12 12', 'M18 6L6 18'],
+  undo: ['M9 7H5v4', 'M5 11a7 7 0 1 0 2.5-5.4'],
+  more: ['M6 14l6-6 6 6'],
+  sync: ['M20 12a8 8 0 1 1-2.3-5.7', 'M20 4v5h-5'],
+}
+
 /** 时间戳 → 「10-30 18:00」。 */
 export function etaText(value) {
   const n = Number(value)
@@ -43,6 +55,20 @@ export function createOrganizeDrawer(deps) {
   const { h, React } = deps || {}
   const model = (deps && deps.model) || modelModule
   const { useState, useEffect, useRef } = React || {}
+
+  const icon = (name) => h('svg', {
+    className: 'fo-org-icon', width: 14, height: 14, viewBox: '0 0 24 24',
+    fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  }, (ICON_PATHS[name] || []).map((d, i) => h('path', { key: i, d })))
+
+  const iconBtn = (action, name, title, onClick, options = {}) => h('button', {
+    type: 'button', className: 'fo-icon-btn', 'data-action': action,
+    title, 'aria-label': title,
+    disabled: options.disabled === true,
+    'aria-pressed': options.pressed === undefined ? undefined : (options.pressed ? 'true' : 'false'),
+    onClick,
+  }, icon(name))
 
   return function OrganizeDrawer(props) {
     const p = props || {}
@@ -123,25 +149,15 @@ export function createOrganizeDrawer(deps) {
         children.push(h('p', { key: 'warn', className: 'fo-org-impact', 'data-tone': 'idle' }, model.str(item.warning)))
         if (typeof p.onRetrySync === 'function' && item.kind !== 'eta') {
           children.push(h('div', { key: 'sync', className: 'fo-org-item-actions' },
-            h('button', {
-              type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-action': 'retry-sync', disabled: running,
-              title: '把这条关系重新写回飞书',
-              onClick: () => p.onRetrySync(item),
-            }, '同步到飞书'),
+            iconBtn('retry-sync', 'sync', '同步到飞书', () => p.onRetrySync(item), { disabled: running }),
           ))
         }
       }
       if (isPending) {
         const batchId = model.str(batch && batch.batchId)
         children.push(h('div', { key: 'actions', className: 'fo-org-item-actions' },
-          h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-action': 'accept', disabled: running,
-            onClick: () => { if (typeof p.onAcceptGroup === 'function') p.onAcceptGroup(batchId, [item.id]) },
-          }, '接受'),
-          h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'reject', disabled: running,
-            onClick: () => { if (typeof p.onRejectGroup === 'function') p.onRejectGroup(batchId, [item.id]) },
-          }, '拒绝'),
+          iconBtn('accept', 'check', '接受这条', () => { if (typeof p.onAcceptGroup === 'function') p.onAcceptGroup(batchId, [item.id]) }, { disabled: running }),
+          iconBtn('reject', 'reject', '拒绝这条', () => { if (typeof p.onRejectGroup === 'function') p.onRejectGroup(batchId, [item.id]) }, { disabled: running }),
         ))
       } else {
         children.push(h('span', { key: 'done', className: 'fo-org-done' },
@@ -178,17 +194,31 @@ export function createOrganizeDrawer(deps) {
         'data-current': current ? '1' : '0',
         'data-active': isActive ? '1' : '0',
       },
-        h('button', {
-          type: 'button', className: 'fo-org-group-head', 'data-action': 'toggle-group',
-          'aria-expanded': open ? 'true' : 'false',
-          onClick: () => toggleGroup(batchId),
-        },
-          h('span', { className: 'fo-org-group-time' }, etaText(batch.at)),
-          h('span', { className: 'fo-org-group-scope' }, scopeText),
-          h('span', { className: 'fo-org-group-counts' },
-            `待处理 ${pending.length}` + (accepted.length ? ` · 已接受 ${accepted.length}` : '')
-            + (rejected.length ? ` · 已拒绝 ${rejected.length}` : '')
-            + (archived ? ' · 已归档' : '')),
+        h('div', { className: 'fo-org-group-head' },
+          h('button', {
+            type: 'button', className: 'fo-org-group-toggle', 'data-action': 'toggle-group',
+            'aria-expanded': open ? 'true' : 'false',
+            onClick: () => toggleGroup(batchId),
+          },
+            h('span', { className: 'fo-org-group-time' }, etaText(batch.at)),
+            h('span', { className: 'fo-org-group-scope' }, scopeText),
+            h('span', { className: 'fo-org-group-counts' },
+              `待处理 ${pending.length}` + (accepted.length ? ` · 已接受 ${accepted.length}` : '')
+              + (rejected.length ? ` · 已拒绝 ${rejected.length}` : '')
+              + (archived ? ' · 已归档' : '')),
+          ),
+          /* 接受/拒绝跟着**这一组**走，不再固定在抽屉底部。 */
+          h('div', { className: 'fo-org-group-actions' },
+            iconBtn('accept-all', 'check', `接受本组全部（${pending.length} 条）`, () => {
+              if (typeof p.onAcceptGroup === 'function') p.onAcceptGroup(batchId, [])
+            }, { disabled: running || !pending.length }),
+            iconBtn('reject-all', 'reject', `拒绝本组全部（${pending.length} 条）`, () => {
+              if (typeof p.onRejectGroup === 'function') p.onRejectGroup(batchId, [])
+            }, { disabled: running || !pending.length }),
+            accepted.length && typeof p.onUndoGroup === 'function'
+              ? iconBtn('undo-accepted', 'undo', `撤销本组已接受（${accepted.length} 条）`, () => p.onUndoGroup(batchId, []), { disabled: running })
+              : null,
+          ),
         ),
         open
           ? h('div', { className: 'fo-org-group-body' },
@@ -210,8 +240,6 @@ export function createOrganizeDrawer(deps) {
     const droppedOpen = p.droppedOpen === true
     /** 底栏永远跟着「当前组」：用户展开哪一组，接受以上就作用于哪一组。 */
     const activeBatch = groups.find((batch) => model.str(batch && batch.batchId) === (activeId || latestId)) || latest
-    const activeItems = Array.isArray(activeBatch && activeBatch.items) ? activeBatch.items : []
-    const activePending = activeItems.filter((item) => item.status === 'pending')
     const latestScope = typeof p.scopeLabel === 'function' && activeBatch ? p.scopeLabel(activeBatch) : ''
 
     return h('aside', { className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
@@ -221,32 +249,24 @@ export function createOrganizeDrawer(deps) {
           h('span', { className: 'fo-org-counts' }, latestScope ? `当前：${latestScope}` : ''),
         ),
         h('div', { className: 'fo-org-head-actions' },
-          h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-            'data-action': 'dock', 'aria-pressed': docked ? 'true' : 'false',
-            title: docked ? '现在固定在右侧（占一列），点击改成浮层' : '现在是浮层（盖在画布上），点击固定到右侧',
-            'aria-label': docked ? '切换为浮层' : '切换为固定',
-            onClick: () => { if (typeof p.onToggleDock === 'function') p.onToggleDock() },
-          }, docked ? '改浮层' : '改固定'),
-          h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-            'data-action': 'rerun', disabled: running,
-            title: '按当前范围重新跑一遍分析（会新加一组）',
-            onClick: () => { if (typeof p.onRerun === 'function') p.onRerun() },
-          }, running ? '分析中…' : '重新分析'),
-          h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-            'data-action': 'close', 'aria-label': '关闭建议栏', title: '关闭',
-            onClick: () => { if (typeof p.onClose === 'function') p.onClose() },
-          }, '关闭'),
+          iconBtn('dock', 'dock',
+            docked ? '现在固定在右侧，点击改成浮层' : '现在是浮层，点击固定到右侧',
+            () => { if (typeof p.onToggleDock === 'function') p.onToggleDock() },
+            { pressed: docked }),
+          /* 不是「重新分析覆盖」，而是再生成一组新的建议（追加到时间轴）。 */
+          iconBtn('rerun', 'sparkles',
+            running ? '正在提供新的建议…' : '提供新的建议（按当前范围新加一组）',
+            () => { if (typeof p.onRerun === 'function') p.onRerun() },
+            { disabled: running }),
+          iconBtn('close', 'close', '关闭建议栏', () => { if (typeof p.onClose === 'function') p.onClose() }),
         ),
       ),
       h('div', { className: 'fo-org-list', ref: listRef },
         more > 0
-          ? h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'load-more',
-            onClick: () => { if (typeof p.onLoadMore === 'function') p.onLoadMore() },
-          }, `加载更多（还有 ${more} 组）`)
+          ? h('div', { className: 'fo-org-load-more' },
+            iconBtn('load-more', 'more', `加载更多（还有 ${more} 组）`, () => {
+              if (typeof p.onLoadMore === 'function') p.onLoadMore()
+            }))
           : null,
         model.str(latestBatch.notes)
           ? h('p', { className: 'fo-org-notes' }, model.str(latestBatch.notes))
@@ -277,27 +297,6 @@ export function createOrganizeDrawer(deps) {
           : h('p', { className: 'fo-org-empty', 'aria-live': 'polite' }, running
             ? '正在读任务、找前置 / 后置 / 来源关系…（可能十几秒）'
             : '还没有建议：点画布卡片上的「整理」，让 AI 先出一组。'),
-      ),
-      h('div', { className: 'fo-org-foot' },
-        h('button', {
-          type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-action': 'accept-all',
-          disabled: running || !activePending.length,
-          title: '只接受当前这一组（你正在看的那组）的待处理建议',
-          onClick: () => { if (typeof p.onAcceptGroup === 'function' && activeBatch) p.onAcceptGroup(model.str(activeBatch.batchId), []) },
-        }, `接受以上（${activePending.length}）`),
-        h('button', {
-          type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'reject-all',
-          disabled: running || !activePending.length,
-          onClick: () => { if (typeof p.onRejectGroup === 'function' && activeBatch) p.onRejectGroup(model.str(activeBatch.batchId), []) },
-        }, '拒绝以上'),
-        typeof p.onUndoGroup === 'function' && activeBatch && countOf(activeBatch, activeItems, 'accepted', 'accepted')
-          ? h('button', {
-            type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', 'data-action': 'undo-accepted',
-            disabled: running,
-            title: '把这一组已接受的关系撤掉（依赖会同时写回飞书，时间先后只在本机）',
-            onClick: () => p.onUndoGroup(model.str(activeBatch.batchId), []),
-          }, `撤销已接受 ${countOf(activeBatch, activeItems, 'accepted', 'accepted')}`)
-          : null,
       ),
     )
   }

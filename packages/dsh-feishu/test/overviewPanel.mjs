@@ -1945,7 +1945,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.ok(impact.includes('color: var(--dsw-alias-state-warn-primary)'), '影响预览用 warn 色')
     const kind = ruleBody('.fo-org-kind')
     assert.ok(kind.includes('border-radius: 999px'), 'kind 徽标是胶囊')
-    assert.ok(ruleBody('.fo-org-foot').includes('margin-top: auto'))
+    assert.ok(ruleBody('.fo-icon-btn').includes('width: 26px'), '按钮是图标态')
     assert.ok(ruleBody('.fo-btn-icon').includes('width: 14px'))
   })
 }
@@ -2554,7 +2554,8 @@ delete globalThis.document
   const undoBtn = findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'undo-accepted')[0]
   check('有已接受的条目时，抽屉里出现「撤销已接受 N」按钮', () => {
     assert.ok(undoBtn, '撤销按钮要在')
-    assert.ok(textOf(undoBtn).includes('撤销已接受'), textOf(undoBtn))
+    assert.ok(String(undoBtn.props.title || '').includes('撤销'), undoBtn.props.title)
+    assert.equal(undoBtn.props['aria-label'], undoBtn.props.title)
     assert.equal(undoBtn.props.disabled, false)
   })
   undoBtn.props.onClick()
