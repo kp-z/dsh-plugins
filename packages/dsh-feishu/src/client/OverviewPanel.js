@@ -365,6 +365,8 @@ export function createOverviewPanel(deps) {
         batch: null,
         groups: [],
         visible: 1,
+        /* 点图头「建议」时记住要生成的范围；抽屉里的「提供新的建议」用它。 */
+        scope: { kind: 'all', id: '' },
         status: 'idle',
         error: '',
         failed: {},
@@ -927,7 +929,7 @@ export function createOverviewPanel(deps) {
          而不是让按钮干转、什么也没发生）。 */
       setOrg((prev) => ({ ...prev, open: true, status: 'running', error: '', failed: {} }))
       /* 默认全量；从画布卡片的「整理」进来时按那张图的范围跑（项目 / 目录）。 */
-      const scopeToRun = scopeArg && typeof scopeArg === 'object' ? scopeArg : { kind: 'all', id: '' }
+      const scopeToRun = (scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope || { kind: 'all', id: '' }
       return Promise.resolve()
         .then(() => fn(scopeToRun))
         .then((res) => {
@@ -951,14 +953,15 @@ export function createOverviewPanel(deps) {
           if (alive.current) setOrg((prev) => ({ ...prev, status: 'error', error: message }))
           return null
         })
-    }, [scope])
+    }, [org.scope])
 
-    /** 画布卡片上的「整理」：打开右侧建议栏，按这张图的范围跑。 */
+    /** 画布图头的「建议」：唯一入口，打开右侧建议栏并记住这张图的范围。 */
     const organizeGraph = useCallback((graph) => {
       const scopeToRun = scopeOfGraph(graph)
-      setOrg((prev) => ({ ...prev, open: true }))
-      return runOrganize(scopeToRun)
-    }, [runOrganize, scopeOfGraph])
+      /* 只负责「打开右侧建议面板」，不在入口上直接跑分析（生成新的建议在面板里点）。 */
+      setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun }))
+      return Promise.resolve(null)
+    }, [scopeOfGraph])
 
     /**
      * 手动连边 / 断开：走宿主的 /api/overview/relations（与建议接受同一条落库路径）。
@@ -1464,41 +1467,7 @@ export function createOverviewPanel(deps) {
                 ? h('span', { className: 'fo-search-hint' }, `匹配 ${scopedTasks.length} 条`)
                 : null,
             ),
-            h('div', { className: 'fo-head-actions' },
-              /* 这里曾经有一个「全部任务」按钮：切到关系页时会自动冒出来，占 header 又没用
-                 （回到全部任务点侧栏第一行就行）。已删。 */
-              /* 建议 = 全局 AI 入口：唯一入口在 Header 右上角，点开右侧建议栏 */
-              typeof apiRef.current.organize === 'function'
-                ? h('button', {
-                  type: 'button',
-                  className: 'fo-capsule fo-suggest',
-                  'data-action': 'organize',
-                  'data-active': org.open ? '1' : '0',
-                  'data-running': org.status === 'running' ? '1' : '0',
-                  'aria-expanded': org.open ? 'true' : 'false',
-                  'aria-controls': 'fo-suggest-panel',
-                  disabled: org.status === 'running',
-                  title: '建议：让 AI 找前置/后置/来源关系，并按完成时间补一条时间先后；先出建议再落库',
-                  /* 点「建议」= 打开侧栏并**先显示上次的结论**（没有才提示去跑分析）；
-                     重新分析是侧栏里的按钮，不在这个入口上反复跑。 */
-                  onClick: () => {
-                    if (org.open) return toggleOrganize()
-                    return openOrganize()
-                  },
-                },
-                  h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
-                    h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
-                    h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
-                  ),
-                  h('span', { className: 'fo-suggest-label' }, org.status === 'running' ? '分析中' : '建议'),
-                  Number(org.batch && org.batch.pending) > 0 && !org.open
-                    ? h('span', { className: 'fo-suggest-badge', 'aria-label': `${Number(org.batch.pending)} 条待处理建议` }, String(Number(org.batch.pending)))
-                    : null,
-                )
-                : null,
-              /* 页头刷新按钮已删（用户口径：自动轮询 + 回前台补刷已经覆盖，
-                 手动重读本地快照只会多一次没用网络往返）。 */
-            ),
+            /* 建议入口已收进关系面板的图头（唯一入口）；页头不再放第二个「建议」按钮。 */
           ),
           /* 宿主动作失败的提示（role=status）：打开会话没成功时给一句人话，别静默。 */
           hostNote
@@ -1566,7 +1535,7 @@ export function createOverviewPanel(deps) {
             /* 顶部的「固定 / 浮层」切换与「重新分析」 */
             docked: organizeEffective === 'dock',
             onToggleDock: toggleOrganizeDock,
-            onRerun: () => runOrganize((org.batch && org.batch.scope) || undefined),
+            onRerun: () => runOrganize(org.scope || (org.batch && org.batch.scope) || undefined),
           })
           : null,
       ),

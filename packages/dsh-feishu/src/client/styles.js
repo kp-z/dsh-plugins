@@ -488,38 +488,6 @@ export const CSS = `
 .fo-search:focus-visible { outline: none; }
 .fo-search-hint { flex: 0 0 auto; padding-right: 12px; font-size: 11px; color: ${T.label2}; white-space: nowrap; }
 
-.fo-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; margin-left: auto; }
-
-/* 右上角按钮 = cove Capsule：h-8 px-3 rounded-full ·
-   bg-white/[0.04] border-white/[0.08] · hover 7%/14% + scale 1.02 · active 缩回 0.98 */
-.fo-capsule {
-  display: inline-flex; align-items: center; gap: 8px;
-  height: 32px; padding: 0 12px; border-radius: 999px;
-  font: inherit; font-size: 13px; font-weight: 500;
-  color: ${T.label1};
-  background: ${g(T.label1, 4)};
-  border: 1px solid ${g(T.label1, 8)};
-  cursor: pointer; will-change: transform;
-  transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
-}
-.fo-capsule:hover { background: ${g(T.label1, 7)}; border-color: ${g(T.label1, 14)}; transform: scale(1.02); }
-.fo-capsule:active { transform: scale(.98); }
-.fo-capsule:disabled { opacity: .5; cursor: default; transform: none; }
-/* 建议胶囊：cove 的 active 变体（border-blue-400/30 bg-blue-500/12，hover 18%） */
-.fo-suggest[data-active="1"] {
-  background: ${g(T.brand, 12)};
-  border-color: ${g(T.brand, 30)};
-}
-.fo-suggest[data-active="1"]:hover { background: ${g(T.brand, 18)}; }
-.fo-suggest[data-running="1"] { opacity: .7; cursor: progress; transform: none; }
-.fo-suggest-label { white-space: nowrap; }
-.fo-suggest-badge {
-  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
-  color: ${T.bgBase}; background: ${T.brand};
-}
-
 /* 搜索结果浮层（cove 的 Popover 观感：玻璃卡片 + 圆角 12） */
 .fo-search-pop {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
