@@ -269,9 +269,6 @@ export function createOrganizeDrawer(deps) {
         ),
       ),
       h('div', { className: 'fo-org-list', ref: listRef },
-        p.status === 'running'
-          ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
-          : null,
         more > 0
           ? h('div', { className: 'fo-org-load-more' },
             h('button', {
@@ -321,6 +318,10 @@ export function createOrganizeDrawer(deps) {
         shown.length
           ? shown.map(groupNode)
           : (running ? null : h('p', { className: 'fo-org-empty' }, '暂无建议')),
+        /* 生成中：spinner 放在列表底部（最新组的位置），不占顶部。 */
+        running
+          ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
+          : null,
       ),
     )
   }
