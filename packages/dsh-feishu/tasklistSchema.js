@@ -6,14 +6,16 @@ export function tasklistFields(settings = {}, workspaceNames = []) {
   const f = settings.taskFields || {}
   const rows = [
     { key: 'workspace', name: f.workspace || '工作区', type: 'single_select', options: [...new Set(workspaceNames.filter(Boolean))], accepts: ['text', 'single_select', 'multi_select'] },
-    { key: 'trigger', name: f.trigger || '触发条件', type: 'single_select', options: ['人工触发', '自动执行', '按时执行'] },
-    { key: 'legacyAuto', name: f.legacyAuto || '自动开工', type: 'single_select', options: ['是', '否'], optional: true },
+    /* 兼容旧清单：这些字段历史上可能是文本（老版本写回时按 text 建的）。
+       schema 只**新增**，不改/不删旧字段；文本也能存同样的值，读取时按文本解析。 */
+    { key: 'trigger', name: f.trigger || '触发条件', type: 'single_select', accepts: ['text', 'single_select', 'multi_select'], options: ['人工触发', '自动执行', '按时执行'] },
+    { key: 'legacyAuto', name: f.legacyAuto || '自动开工', type: 'single_select', accepts: ['text', 'single_select', 'multi_select'], options: ['是', '否'], optional: true },
     { key: 'doc', name: f.doc || '文档', type: 'text' },
-    { key: 'priority', name: f.priority || '优先级', type: 'single_select', options: settings.priorityOptions || ['P0', 'P1', 'P2', 'P3'] },
+    { key: 'priority', name: f.priority || '优先级', type: 'single_select', accepts: ['text', 'single_select', 'multi_select'], options: settings.priorityOptions || ['P0', 'P1', 'P2', 'P3'] },
     { key: 'eta', name: f.eta || '预期完成', type: 'text' },
     { key: 'startCol', name: f.startCol || '开始时间', type: 'datetime' },
     { key: 'endCol', name: f.endCol || '结束时间', type: 'datetime' },
-    { key: 'suspension', name: '处理状态', type: 'single_select', options: ['正常', '挂起'] },
+    { key: 'suspension', name: '处理状态', type: 'single_select', accepts: ['text', 'single_select', 'multi_select'], options: ['正常', '挂起'] },
     { key: 'predecessors', name: '前置任务', type: 'text' },
     { key: 'successors', name: '后置任务', type: 'text' },
     { key: 'source', name: '来源任务', type: 'text' },

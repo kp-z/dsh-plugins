@@ -191,8 +191,20 @@ export function createLarkTasklistActions(api) {
         if (!Array.isArray(accepted) || !accepted.length || accepted.some(type => !TYPES.has(type))) throw new Error('不支持 accepted_types')
         const names = namesOf(action.options)
         const items = await fields(action.tasklist)
-        const matches = items.filter(field => field.name === name)
-        if (matches.length > 1) throw new Error('字段重名，拒绝创建/写入')
+        let matches = items.filter(field => field.name === name)
+        let duplicatesWarning = ''
+        if (matches.length > 1) {
+          /* 兼容历史清单：同名字段可能是旧版本重复建出来的。
+             只在调用方显式 allow_duplicates 时容忍，并且选一个**类型可接受**的、按 guid 排序后的第一个，
+             保证每次运行选同一个（不会这次写 A、下次写 B）。 */
+          if (action.allow_duplicates !== true) throw new Error('字段重名，拒绝创建/写入')
+          const usable = matches.filter(field => TYPES.has(field.type) && accepted.includes(field.type))
+          if (!usable.length) throw new Error('字段重名且没有可用类型，拒绝创建/写入')
+          usable.sort((a, b) => String(a.guid).localeCompare(String(b.guid)))
+          matches = [usable[0]]
+          duplicatesWarning = `字段「${name}」有重复定义，使用 guid=${usable[0].guid}（类型 ${usable[0].type}）`
+          result.warnings.push(duplicatesWarning)
+        }
         const key = JSON.stringify(['field', action.tasklist, name])
         if (matches.length) {
           const target = matches[0]
@@ -252,8 +264,15 @@ export function createLarkTasklistActions(api) {
         const items = await fields(action.tasklist)
         const byGuid = action.field_guid != null
         const key = identifier(byGuid ? action.field_guid : action.name, byGuid ? 'field_guid' : 'name')
-        const matches = items.filter(field => field[byGuid ? 'guid' : 'name'] === key)
-        if (matches.length !== 1) throw new Error(matches.length ? '字段重名/重复 GUID，拒绝写入' : '没有匹配的字段')
+        let matches = items.filter(field => field[byGuid ? 'guid' : 'name'] === key)
+        if (matches.length !== 1) {
+          if (!matches.length) throw new Error('没有匹配的字段')
+          if (byGuid || action.allow_duplicates !== true) throw new Error('字段重名/重复 GUID，拒绝写入')
+          const typed = action.expected_type != null ? matches.filter(field => field.type === action.expected_type) : matches
+          const pool = (typed.length ? typed : matches).slice().sort((a, b) => String(a.guid).localeCompare(String(b.guid)))
+          matches = [pool[0]]
+          result.warnings.push(`字段「${key}」有重复定义，写入 guid=${pool[0].guid}`)
+        }
         let target = matches[0]
         if (byGuid && action.name != null && target.name !== action.name) throw new Error('field_guid 与 name 不匹配')
         Object.assign(result, { guid: target.guid, name: target.name, type: target.type })
