@@ -1135,6 +1135,7 @@ export const CSS = `
 .fo-org-group-toggle:hover { color: ${T.label1}; }
 .fo-org-group-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .fo-org-load-more { display: flex; justify-content: center; }
+.fo-org-load-more-btn { gap: 6px; }
 /* 面板里的按钮统一图标态：文字只留在 title / aria-label。 */
 .fo-icon-btn {
   width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;

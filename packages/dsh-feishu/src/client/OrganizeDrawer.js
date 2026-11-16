@@ -92,12 +92,13 @@ export function createOrganizeDrawer(deps) {
     const listRef = useRef ? useRef(null) : null
     useEffect(() => { if (latestId) setActiveId(latestId) }, [latestId])
 
-    /* 打开 / 有新组 / 加载更多：滚到最底（最新一组在底部）。 */
+    /* 打开 / 出新组时滚到最底（最新一组在底部）；「加载更多」不动滚动位置，
+       否则用户点完加载却被拽回底部，看不到刚展开的旧归档组。 */
     useEffect(() => {
       const node = listRef && listRef.current
       if (!node) return
       node.scrollTop = node.scrollHeight
-    }, [p.open, groups.length, visible, status])
+    }, [p.open, latestId, status])
 
     const toggleGroup = (batchId) => {
       const opening = !isOpen({ batchId })
@@ -270,9 +271,15 @@ export function createOrganizeDrawer(deps) {
       h('div', { className: 'fo-org-list', ref: listRef },
         more > 0
           ? h('div', { className: 'fo-org-load-more' },
-            iconBtn('load-more', 'more', `加载更多（还有 ${more} 组）`, () => {
-              if (typeof p.onLoadMore === 'function') p.onLoadMore()
-            }))
+            h('button', {
+              type: 'button', className: 'fo-btn fo-org-load-more-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+              'data-action': 'load-more',
+              title: `加载更多（还有 ${more} 组已归档，可回看）`,
+              onClick: () => { if (typeof p.onLoadMore === 'function') p.onLoadMore() },
+            },
+              icon('more'),
+              h('span', null, `加载更多已归档（${more}）`),
+            ))
           : null,
         model.str(p.error)
           ? h('div', { className: 'fo-org-notes', 'data-tone': 'error', role: 'alert' },
