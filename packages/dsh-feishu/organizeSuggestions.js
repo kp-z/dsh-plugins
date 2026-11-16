@@ -55,9 +55,17 @@ export function scopeKeyOf(scope) {
 }
 
 /** 批次 id：同一范围在同一时间窗内只生成一个批次（小时窗）。 */
+/* 每次「提供新的建议」都必须是一组独立批次：批次 ID 曾经只用「范围 + 小时窗」，
+   同一小时内再整理会**覆盖上一批**（已接受的状态、历史组全被顶掉）。
+   现在保留 scope+bucket 前缀（便于排查），后面追加毫秒 + 进程内序号，保证每次唯一。 */
+let batchSeq = 0
 export function organizeBatchId(scope, at, windowMs = 3600_000) {
-  const bucket = Math.floor(num(at, 0) / Math.max(1, num(windowMs, 3600_000)))
-  return `sg:${scopeKeyOf(scope)}:${bucket}`
+  const ts = num(at, 0)
+  const bucket = Math.floor(ts / Math.max(1, num(windowMs, 3600_000)))
+  const ms = String(Math.max(0, Math.floor(ts)) % 1000).padStart(3, '0')
+  batchSeq = (batchSeq + 1) % 46656
+  const seq = batchSeq.toString(36).padStart(3, '0')
+  return `sg:${scopeKeyOf(scope)}:${bucket}-${ms}${seq}`
 }
 
 const workspaceOfTask = (task) => str(task?.meta?.workspace) || str(task?.workspaceTitle) || str(task?.workspacePath) || ''
