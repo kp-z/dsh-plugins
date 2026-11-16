@@ -582,11 +582,12 @@ export const CSS = `
   }
 }
 /* 手动钉住：dock=1 永远占列，dock=0 永远悬浮 */
-.fo-root[data-organize-dock="1"] .fo-body { grid-template-columns: minmax(0, 1fr) var(--fo-dock-w) !important; }
+/* 必须同时 data-organize="1"：面板关闭后不能还占着一列（否则关闭后右侧一大片空白）。 */
+.fo-root[data-organize="1"][data-organize-dock="1"] .fo-body { grid-template-columns: minmax(0, 1fr) var(--fo-dock-w) !important; }
 .fo-root[data-organize-dock="1"] .fo-organize {
   position: static !important; width: auto; max-width: none; border-radius: 0; box-shadow: none;
 }
-.fo-root[data-organize-dock="0"] .fo-body { grid-template-columns: minmax(0, 1fr) !important; }
+.fo-root[data-organize="1"][data-organize-dock="0"] .fo-body { grid-template-columns: minmax(0, 1fr) !important; }
 .fo-root[data-organize-dock="0"] .fo-organize {
   position: absolute; top: 0; right: 0; bottom: 0; z-index: 30;
   width: var(--fo-dock-w); max-width: 86%;
