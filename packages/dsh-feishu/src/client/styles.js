@@ -943,8 +943,13 @@ export const CSS = `
 }
 .fo-node-dom > * { height: 100%; box-sizing: border-box; }
 .fo-node:hover .fo-node-dom { outline: 1px solid ${g(T.label1, 18)}; outline-offset: -1px; }
-.fo-node.is-selected { filter: drop-shadow(0 0 10px ${g(T.brand, 35)}); }
-.fo-node.is-selected .fo-node-dom { outline: 1px solid ${T.brand}; outline-offset: -1px; }
+/* 选中态不要用 SVG filter：foreignObject 上的 drop-shadow 在 Chromium 合成层里会留下竖条纹残影。
+   改成卡片的 box-shadow（在 foreignObject 内部，安全）。 */
+.fo-node.is-selected { filter: none; }
+.fo-node.is-selected .fo-node-dom {
+  outline: 1px solid ${T.brand}; outline-offset: -1px;
+  box-shadow: 0 0 10px ${g(T.brand, 35)};
+}
 /* 状态只给一个安静的提示：阻塞/挂起时描边带一点状态色，扫一眼画布就能找到卡住的那几张 */
 .fo-node[data-state="blocked"] .fo-node-dom { outline: 1px solid ${g(T.error, 34)}; outline-offset: -1px; }
 .fo-node[data-state="suspended"] .fo-node-dom { outline: 1px solid ${g(T.warn, 32)}; outline-offset: -1px; }
@@ -1024,9 +1029,10 @@ export const CSS = `
 .fo-organize {
   display: flex; flex-direction: column; gap: 10px;
   min-width: 0; min-height: 0; overflow: hidden;
-  /* 高度铺满：右侧一整条；max-height 再兜一层，避免宿主容器高度是 auto 时抽屉跟着内容长高、列表没有可滚动区。 */
+  /* 高度铺满：右侧一整条。**不要**再减一个固定值——之前 calc(100dvh - 56px)
+     会在面板底部留一条空白带，看起来就是「下方多了一块」。 */
   height: 100%;
-  max-height: calc(100dvh - 56px);
+  max-height: 100%;
   padding: 14px;
   border-left: 1px solid var(--fo-glass-line);
   background: var(--fo-glass-card);
