@@ -314,7 +314,7 @@ export function createOrganizeDrawer(deps) {
               onClick: () => { if (typeof p.onLoadMore === 'function') p.onLoadMore() },
             },
               icon('more'),
-              h('span', null, `加载更多已归档（${more}）`),
+              h('span', null, '加载'),
             ))
           : null,
         model.str(p.error)
