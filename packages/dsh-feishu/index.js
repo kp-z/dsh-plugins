@@ -3375,7 +3375,7 @@ function createSyncEngine(ctx) {
         await persistState()
         if (cancelled()) return cancelUnsent()
       }
-      const checked = await managedBridge({ actions: fields.map(row => ({ op: 'ensure_custom_field', tasklist: list.guid, name: row.name, type: row.type, accepted_types: row.accepts, options: row.options || [] })) })
+      const checked = await managedBridge({ actions: fields.map(row => ({ op: 'ensure_custom_field', tasklist: list.guid, name: row.name, type: row.type, accepted_types: row.accepts, options: row.options || [], allow_duplicates: true })) })
       const unresolvedReceipts = fields.filter((field, index) => !checked.actions?.[index] || checked.actions[index].unknownDelivery).map(field => field.name)
       state.managedTasklist.unknownFields = unresolvedReceipts
       const uncertain = unresolvedReceipts.length ? { backend: capturedSettings.cliBackend, guid: list.guid, names: unresolvedReceipts, phase: 'unknown' } : null
@@ -7359,8 +7359,9 @@ function createSyncEngine(ctx) {
   async function writeSuspensionField(task, entry) {
     if (!task.tasklistGuid) return { ok: false, error: '任务没有清单，处理状态仅本地保存' }
     const result = await backend().actions(settings, [
-      { op: 'ensure_custom_field', tasklist: task.tasklistGuid, name: '处理状态', options: ['正常', '挂起'] },
-      { op: 'set_custom_field', task: task.id, tasklist: task.tasklistGuid, name: '处理状态', expected_type: 'single_select', value: entry.active ? '挂起' : '正常' },
+      { op: 'ensure_custom_field', tasklist: task.tasklistGuid, name: '处理状态', type: 'single_select', accepted_types: ['text', 'single_select', 'multi_select'], options: ['正常', '挂起'], allow_duplicates: true },
+      /* 不写 expected_type：旧清单里它可能是 text，set_custom_field 会按实际类型编码。 */
+      { op: 'set_custom_field', task: task.id, tasklist: task.tasklistGuid, name: '处理状态', allow_duplicates: true, value: entry.active ? '挂起' : '正常' },
     ])
     const error = result.actions?.filter((item) => !item.ok).map((item) => item.error).join('; ') || result.errors?.join('; ')
     return { ok: result.ok && !error, error }
@@ -9626,8 +9627,9 @@ bucket 只能从枚举里选：
     const previous = task.priority || ''
     /* 统一走 backend 抽象：官方 lark-cli 直接打自定义字段接口，内部 CLI 走 Python 桥。 */
     const result = await backend().actions(settings, [
-      { op: 'ensure_custom_field', tasklist: listGuid, name: fieldName, options },
-      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, expected_type: 'single_select', value: want },
+      { op: 'ensure_custom_field', tasklist: listGuid, name: fieldName, type: 'single_select', accepted_types: ['text', 'single_select', 'multi_select'], options, allow_duplicates: true },
+      /* 旧清单里优先级可能是文本字段：不写 expected_type，交给宿主按实际类型编码。 */
+      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, allow_duplicates: true, value: want },
     ])
     const ensure = (result.actions ?? [])[0]
     const applied = (result.actions ?? [])[1]

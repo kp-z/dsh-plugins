@@ -9,7 +9,13 @@ import { listLarkPages } from '../larkPages.js'
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8')
 assert.match(source, /name: settings\.taskFields\.doc \|\| '文档',\s*expected_type: 'text'/)
 assert.match(source, /name, expected_type: 'datetime', value/)
-assert.match(source, /name: '处理状态', expected_type: 'single_select'/)
+/* 兼容旧清单：处理状态/优先级可能是文本字段，写入不再强制 single_select，而是按实际类型编码。 */
+assert.match(source, /name: '处理状态', allow_duplicates: true, value/)
+const legacyFields = tasklistFields({}, [])
+for (const name of ['触发条件', '自动开工', '优先级', '处理状态']) {
+  const row = legacyFields.find((field) => field.name === name)
+  assert.ok(row && row.accepts && row.accepts.includes('text'), name + ' 应接受旧的文本字段')
+}
 // Task creation cannot resume on another authenticated backend after POST.
 const create = source.match(/  async function createTaskFromSession\([^]*?\n  }/)?.[0]
 assert.ok(create)
