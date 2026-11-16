@@ -614,7 +614,7 @@ export function createGraphView(deps) {
         return h('g', {
           key: node.key,
           ref: (el) => { nodeRefs.current[node.key] = el },
-          className: `fo-node${node.ghost ? ' is-ghost' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`,
+          className: `fo-node${node.ghost ? ' is-ghost' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${drag && drag.key === node.key ? ' is-dragging' : ''}`,
           'data-id': node.id,
           'data-state': state,
           'data-focused': focused ? '1' : '0',
