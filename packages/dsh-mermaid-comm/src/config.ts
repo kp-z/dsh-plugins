@@ -24,8 +24,15 @@ export interface MermaidCommConfig {
   maxFileBytes: number
 }
 
-/** dsh-mermaid-comm 插件配置 schema（运行时校验 + 默认值）。 */
-export const MermaidCommConfig: z<MermaidCommConfig> = z.object({
+/**
+ * dsh-mermaid-comm 插件配置 schema（运行时校验 + 默认值）。
+ *
+ * 类型断言说明：新版 cordis/schemastery 给 `.default()` 的结果加了 `Volatile<T>` 模式泛型
+ * （为配置热改写服务），与这里「纯值」的 interface 在 `exactOptionalPropertyTypes` 下对不上。
+ * 运行时形状没变（仍是 boolean/string/number + default），所以按对外契约断言回 `z<MermaidCommConfig>`，
+ * 让 d.ts 里保留可移植的配置类型。
+ */
+export const MermaidCommConfig = z.object({
   /** 总开关：false 时不注入 prompt、不注册校验工具。 */
   enabled: z.boolean().default(true),
   /** 行为引导强度：toggle=由对话输入框的勾选按钮控制（默认）；global=始终注入；off=关闭 prompt 注入（工具仍可用）。 */
@@ -46,7 +53,7 @@ export const MermaidCommConfig: z<MermaidCommConfig> = z.object({
   injectIndex: z.boolean().default(true),
   /** 单文件大小上限（字节）。 */
   maxFileBytes: z.number().default(256 * 1024),
-})
+}) as unknown as z<MermaidCommConfig>
 
 /** 兼容别名：从 schema 推导的配置类型（schemastery 无 z.infer，用全局命名空间 TypeT）。 */
 export type MermaidCommConfigType = MermaidCommConfig

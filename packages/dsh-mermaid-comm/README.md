@@ -22,7 +22,7 @@ As of 0.3.0 prompt injection is **off by default** and driven by a checkbox at t
 | Unchecked (default) | Neither the guidance nor the vault index is injected — the model sees no Mermaid guidance at all |
 | Checked | Injected from the next turn on; the system prompt is re-assembled every turn, so the change takes effect immediately |
 
-**The host owns the truth** (`ctx.settings`, namespace `mermaid-comm-inject`), and it is **globally sticky**: check it once, every conversation follows, and it survives a restart. The button in the composer is only the switch's remote control — it lives in a per-session slot that the official renderer remounts on every session change (its own rule: component-local state must not leak between sessions), so the state cannot live in the component.
+**The host owns the truth** (since DSH 0.2.x it persists in `mermaid-comm/state.json` under the profile directory; on 0.1.x it still uses the `mermaid-comm-inject` `ctx.settings` namespace), and it is **globally sticky**: check it once, every conversation follows, and it survives a restart. The button in the composer is only the switch's remote control — it lives in a per-session slot that the official renderer remounts on every session change (its own rule: component-local state must not leak between sessions), so the state cannot live in the component.
 
 `promptLevel` has three states: `toggle` (default, driven by the button) / `global` (always inject, button hides itself) / `off` (never inject, button hides itself).
 
@@ -49,6 +49,23 @@ Four model-visible tools:
 The vault index is injected into the system prompt (lightweight table only — diagram contents are read on demand via `mermaid_vault_read`). When a topic already exists, the model is guided to read its history and evolve it with `save` (creating v2/v3/...) rather than redrawing from zero — that is how later conversations see the diagram's continuous change and stay consistent with earlier work.
 
 Safety: topic names are sanitized to `[a-zA-Z0-9-_]` (no path traversal), writes are locked inside the vault directory, files are written atomically, and size/version limits prevent unbounded growth.
+
+## Compatibility (DSH versions)
+
+0.3.2 requires **DSH ≥ 0.2.0**. 0.2.x changed several session contracts that are only enforced at
+runtime, which is why 0.3.1 silently lost its output gate and its toggle persistence on newer DSH
+builds while `tsc` stayed green:
+
+| Contract | 0.1.x | 0.2.x+ (implemented here) |
+|---|---|---|
+| surface replace range keys | `{op:'replace', start, end}` | `{op:'replace', startSeq, endSeq}` |
+| `sourceEventSeqs` on `assistant/message` | allowed | **forbidden** (it embeds its provider stream) |
+| `data.stream` on `assistant/message` | optional | **required**; missing breaks session restore |
+| toggle persistence | `ctx.settings.register(ns, schema)` | API removed → profile state file |
+
+A replacement carries the original `stream` / `usage` / `interrupted`, so rewritten events still pass
+Session restore validation; the trajectory view keeps the original deltas while the visible body is
+the corrected one.
 
 ## Installation
 

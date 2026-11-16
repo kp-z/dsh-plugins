@@ -22,7 +22,7 @@
 | 未勾选（默认） | 不注入 guidance，也不注入图库索引——模型看不到任何 Mermaid 引导 |
 | 勾选 | 从下一轮开始注入；system prompt 每轮实时重算，改动立刻生效 |
 
-**真值住在 host**（`ctx.settings`，namespace `mermaid-comm-inject`），**全局粘性**：勾一次所有会话都生效，重启后仍在。输入框里那颗按钮只是这台开关的遥控器——它挂在 per-session 插槽上，切换会话会重挂载（官方 renderer 明确要求组件局部状态不得跨会话泄漏），所以状态不能放在组件里。
+**真值住在 host**（DSH 0.2.x 起落在 profile 目录的 `mermaid-comm/state.json`；0.1.x 老版本仍走 `ctx.settings` 的 `mermaid-comm-inject` namespace），**全局粘性**：勾一次所有会话都生效，重启后仍在。输入框里那颗按钮只是这台开关的遥控器——它挂在 per-session 插槽上，切换会话会重挂载（官方 renderer 明确要求组件局部状态不得跨会话泄漏），所以状态不能放在组件里。
 
 `promptLevel` 三态：`toggle`（默认，由按钮控制）/ `global`（恒定注入，按钮自动隐藏）/ `off`（从不注入，按钮自动隐藏）。
 
@@ -49,6 +49,21 @@
 图库索引会注入系统提示（只注入轻量表格，图内容按需用 `mermaid_vault_read` 读取）。当某主题已在库中时，模型被引导先读历史再 `save` 演进（生成 v2/v3/...），而不是从零重画——这样后续对话能看到图的持续变化，并与之前的工作保持一致。
 
 安全边界：主题名 sanitize 为 `[a-zA-Z0-9-_]`（杜绝路径穿越）、写入锁定在 vault 目录内、原子写、大小与版本上限防止无限膨胀。
+
+## 兼容性（DSH 版本）
+
+自 0.3.2 起要求 **DSH ≥ 0.2.0**。0.2.x 改了几处只有运行时才校验的 session 契约，0.3.1 因此在
+新 DSH 上「闸门静默失效、开关不再持久化」，类型检查却全绿：
+
+| 契约 | 0.1.x | 0.2.x 起（本版按此实现） |
+|---|---|---|
+| surface replace 区间键 | `{op:'replace', start, end}` | `{op:'replace', startSeq, endSeq}` |
+| `assistant/message` 的 `sourceEventSeqs` | 允许 | **禁止**（它自带 provider stream） |
+| `assistant/message` 的 `data.stream` | 选填 | **必填**，缺失会让会话恢复失败 |
+| 开关持久化 | `ctx.settings.register(ns, schema)` | 该 API 已移除 → 改为 profile 状态文件 |
+
+输出闸在替换时会原样带上原事件的 `stream`/`usage`/`interrupted`，因此被替换的事件
+与原始流仍能通过 Session 的恢复校验；轨迹/流视图里看到的仍是原始增量，正文以修正版为准。
 
 ## 安装
 

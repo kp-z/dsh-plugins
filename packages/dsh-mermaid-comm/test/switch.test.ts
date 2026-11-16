@@ -7,9 +7,31 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Readable } from 'node:stream'
-import { registerInjectSwitch, registerSwitchRoutes, SWITCH_ROUTE } from '../lib/switch.js'
+import {
+  readPersistedState,
+  registerInjectSwitch,
+  registerSwitchRoutes,
+  resolveStateDir,
+  stateFilePath,
+  SWITCH_ROUTE,
+} from '../lib/switch.js'
 import { registerMermaidPrompt } from '../lib/prompt.js'
+
+// 关键：状态文件默认落在 $DSH_PROFILE_DIR/mermaid-comm/state.json —— 跑测试的进程本身
+// 就在 DSH 里，若不隔离就会读写真实 profile。这里把 profile 目录指到临时目录。
+const TEST_PROFILE_DIR = mkdtempSync(join(tmpdir(), 'dmc-switch-'))
+process.env['DSH_PROFILE_DIR'] = TEST_PROFILE_DIR
+
+/** 清掉状态文件，让「没存过」的用例不受前面用例影响。 */
+function resetStateFile(): void {
+  const file = stateFilePath()
+  if (file === undefined) return
+  try { rmSync(file, { force: true }) } catch { /* 不存在即可 */ }
+}
 
 /** 最小 cordis ctx 替身：只实现本插件用到的 inject / effect / systemPrompt.section。 */
 function fakeCtx(services: Record<string, unknown> = {}) {
@@ -98,6 +120,7 @@ test('prompt 段：不传 isOn 时保持老行为（恒定注入）', () => {
 // ---------- 开关状态 ----------
 
 test('开关：settings 可用时以已存值为准，watch 跟随，set 落盘', async () => {
+  resetStateFile()
   const { service, updates, fire } = fakeSettings(true)
   const { ctx } = fakeCtx({ settings: service })
   const sw = registerInjectSwitch(ctx, { defaultInject: false })
@@ -113,6 +136,7 @@ test('开关：settings 可用时以已存值为准，watch 跟随，set 落盘'
 })
 
 test('开关：settings 缺失时降级为进程内状态，功能仍可用', async () => {
+  resetStateFile()
   const { ctx } = fakeCtx()
   const sw = registerInjectSwitch(ctx, { defaultInject: false })
   assert.equal(sw.isOn(), false)
@@ -121,12 +145,58 @@ test('开关：settings 缺失时降级为进程内状态，功能仍可用', as
 })
 
 test('开关：settings.register 抛错时降级而不炸掉插件', async () => {
+  resetStateFile()
   const service = { register() { throw new Error('namespace taken') } }
   const { ctx } = fakeCtx({ settings: service })
   const sw = registerInjectSwitch(ctx, { defaultInject: true })
   assert.equal(sw.isOn(), true)
   await sw.set(false)
   assert.equal(sw.isOn(), false)
+})
+
+// ---------- 状态文件持久化（DSH 0.2.x：settings.register 已移除） ----------
+
+test('状态文件：DSH 0.2.x 无 settings.register 时，set 落盘且「重启」后读回', async () => {
+  // 模拟 0.2.x 的 settings 服务：只有 configure/describe，没有 register。
+  const settings022 = { configure() {}, describe() { return [] } }
+  const first = registerInjectSwitch(fakeCtx({ settings: settings022 }).ctx, { defaultInject: false })
+  assert.equal(first.isOn(), false, '没存过 → 用 defaultInject')
+
+  await first.set(true)
+  const file = stateFilePath()
+  assert.ok(file, '应解析出状态文件路径')
+  assert.deepEqual(JSON.parse(readFileSync(file!, 'utf8')).inject, true, '落盘内容')
+
+  // 新建一个开关实例 = 模拟进程重启
+  const second = registerInjectSwitch(fakeCtx({ settings: settings022 }).ctx, { defaultInject: false })
+  assert.equal(second.isOn(), true, '重启后仍是 true')
+})
+
+test('状态文件：损坏/超限/缺 inject 的文件被忽略，回落到默认值', () => {
+  const file = stateFilePath()!
+  for (const bad of ['{oops', JSON.stringify({ inject: 'yes' }), JSON.stringify([1, 2])]) {
+    writeFileSync(file, bad, 'utf8')
+    const sw = registerInjectSwitch(fakeCtx().ctx, { defaultInject: true })
+    assert.equal(sw.isOn(), true, '坏文件不该影响默认值: ' + bad)
+  }
+  writeFileSync(file, 'x'.repeat(9 * 1024), 'utf8')
+  assert.equal(readPersistedState(file), undefined, '超限文件按坏文件处理')
+  writeFileSync(file, JSON.stringify({ inject: false }), 'utf8')
+})
+
+test('状态目录优先级：DSH_PROFILE_DIR → DSH_HOME → HOME/.dsh', () => {
+  assert.equal(resolveStateDir({ DSH_PROFILE_DIR: '/p', DSH_HOME: '/h', HOME: '/u' } as any), join('/p', 'mermaid-comm'))
+  assert.equal(resolveStateDir({ DSH_HOME: '/h', HOME: '/u' } as any), join('/h', 'mermaid-comm'))
+  assert.equal(resolveStateDir({ HOME: '/u' } as any), join('/u', '.dsh', 'mermaid-comm'))
+  assert.equal(resolveStateDir({} as any), undefined, '一个都没有 → 放弃持久化')
+  assert.equal(stateFilePath({} as any), undefined)
+})
+
+test('状态文件：legacy settings 可用时以 settings 为准（老部署升级上来的值）', async () => {
+  const { service } = fakeSettings(false) // 老 namespace 里存的是 false
+  writeFileSync(stateFilePath()!, JSON.stringify({ inject: true }), 'utf8')
+  const sw = registerInjectSwitch(fakeCtx({ settings: service }).ctx, { defaultInject: true })
+  assert.equal(sw.isOn(), false, 'settings 文档比状态文件权威')
 })
 
 // ---------- HTTP 路由 ----------
