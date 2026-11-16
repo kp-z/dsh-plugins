@@ -1134,6 +1134,11 @@ export const CSS = `
 }
 .fo-org-group-toggle:hover { color: ${T.label1}; }
 .fo-org-group-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+/* 组底部的接受/拒绝/撤销：跟着这一组的最后一张卡，不用再跑到面板底部找。 */
+.fo-org-group-body > .fo-org-group-actions {
+  justify-content: flex-end; padding-top: 6px; margin-top: 2px;
+  border-top: 1px solid var(--fo-glass-line);
+}
 .fo-org-load-more { display: flex; justify-content: center; }
 .fo-org-loading { display: flex; justify-content: center; padding: 8px 0; }
 @keyframes fo-spin { to { transform: rotate(360deg); } }

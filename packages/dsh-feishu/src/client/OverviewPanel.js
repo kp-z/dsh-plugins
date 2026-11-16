@@ -368,6 +368,8 @@ export function createOverviewPanel(deps) {
         /* 点图头「建议」时记住要生成的范围；抽屉里的「提供新的建议」用它。 */
         scope: { kind: 'all', id: '' },
         status: 'idle',
+        /* running 的细分：organize=正在生成建议；accept=正在接受/拒绝/撤销。 */
+        phase: '',
         error: '',
         failed: {},
         droppedOpen: false,
@@ -836,7 +838,7 @@ export function createOverviewPanel(deps) {
           groups,
           visible: 1,
           batchId: newestId || prev.batchId,
-          status: 'ready',
+          status: 'ready', phase: '',
         }
       })
     }, [])
@@ -949,7 +951,7 @@ export function createOverviewPanel(deps) {
       if (!fn) return Promise.resolve(null)
       /* 点「建议」就**立刻**把右侧建议栏打开（分析可能要几十秒 —— 先给用户一个在跑的侧栏，
          而不是让按钮干转、什么也没发生）。 */
-      setOrg((prev) => ({ ...prev, open: true, status: 'running', error: '', failed: {} }))
+      setOrg((prev) => ({ ...prev, open: true, status: 'running', phase: 'organize', error: '', failed: {} }))
       /* 默认全量；从画布卡片的「整理」进来时按那张图的范围跑（项目 / 目录）。 */
       const scopeToRun = (scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope || { kind: 'all', id: '' }
       return Promise.resolve()
@@ -964,7 +966,7 @@ export function createOverviewPanel(deps) {
             groups: batch ? [batch, ...(prev.groups || []).filter((group) => group && group.batchId !== batch.batchId)] : prev.groups,
             visible: 1,
             batchId: model.str(batch && batch.batchId) || prev.batchId,
-            status: 'ready',
+            status: 'ready', phase: '',
             error: '',
             failed: {},
           }))
@@ -1042,7 +1044,7 @@ export function createOverviewPanel(deps) {
       const fn = apiRef.current.organizeAccept
       const batchId = model.str(batchIdArg) || org.batchId
       if (!fn || !batchId) return Promise.resolve(null)
-      setOrg((prev) => ({ ...prev, status: 'running' }))
+      setOrg((prev) => ({ ...prev, status: 'running', phase: 'accept' }))
       return Promise.resolve()
         .then(() => fn(batchId, itemIds || []))
         .then((res) => {
@@ -1058,7 +1060,7 @@ export function createOverviewPanel(deps) {
               return {
                 ...next,
                 batchId: model.str(batch && batch.batchId) || prev.batchId,
-                status: 'ready',
+                status: 'ready', phase: '',
                 failed,
               }
             })
@@ -1090,6 +1092,8 @@ export function createOverviewPanel(deps) {
             /* 先重拉快照让新边进数据，**再**开始临时展开的计时 —— 顺序反了就等于没展开。 */
             Promise.resolve(load(true)).then(() => {
               if (alive.current && hiddenHits > 0) revealDoneTemporarily(REVEAL_MS)
+              /* 引擎落库/写回偶尔比第一次快照稍慢：800ms 后再补拉一次，避免「接受了但关系没出现」。 */
+              if (alive.current) setTimeout(() => { if (alive.current) load(true) }, 800)
             })
           }
           return res
@@ -1105,7 +1109,7 @@ export function createOverviewPanel(deps) {
       const fn = apiRef.current.organizeReject
       const batchId = model.str(batchIdArg) || org.batchId
       if (!fn || !batchId) return Promise.resolve(null)
-      setOrg((prev) => ({ ...prev, status: 'running' }))
+      setOrg((prev) => ({ ...prev, status: 'running', phase: 'accept' }))
       return Promise.resolve()
         .then(() => fn(batchId, itemIds || []))
         .then((res) => {
@@ -1116,7 +1120,7 @@ export function createOverviewPanel(deps) {
               return {
                 ...next,
                 batchId: model.str(batch && batch.batchId) || prev.batchId,
-                status: 'ready',
+                status: 'ready', phase: '',
               }
             })
           }
@@ -1137,7 +1141,7 @@ export function createOverviewPanel(deps) {
       const fn = apiRef.current.organizeUndo
       const batchId = model.str(batchIdArg) || org.batchId
       if (!fn || !batchId) return Promise.resolve(null)
-      setOrg((prev) => ({ ...prev, status: 'running' }))
+      setOrg((prev) => ({ ...prev, status: 'running', phase: 'accept' }))
       return Promise.resolve()
         .then(() => fn(batchId, itemIds || []))
         .then((res) => {
@@ -1153,7 +1157,7 @@ export function createOverviewPanel(deps) {
               return {
                 ...next,
                 batchId: model.str(batch && batch.batchId) || prev.batchId,
-                status: 'ready',
+                status: 'ready', phase: '',
                 failed,
               }
             })
@@ -1496,7 +1500,7 @@ export function createOverviewPanel(deps) {
                   type: 'button', className: 'fo-btn fo-suggest-btn', 'data-size': 'sm', 'data-variant': 'ghost',
                   'data-action': 'organize',
                   'data-active': org.open ? '1' : '0',
-                  'data-running': org.status === 'running' ? '1' : '0',
+                  'data-running': org.status === 'running' && org.phase === 'organize' ? '1' : '0',
                   'aria-expanded': org.open ? 'true' : 'false',
                   'aria-controls': 'fo-suggest-panel',
                   title: org.open ? '收起建议面板' : '打开建议面板（在这里生成/查看建议）',
@@ -1506,13 +1510,13 @@ export function createOverviewPanel(deps) {
                     return null
                   },
                 },
-                  org.status === 'running'
+                  org.status === 'running' && org.phase === 'organize'
                     ? h('span', { className: 'fo-spinner', 'aria-hidden': 'true' })
                     : h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
                       h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
                       h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
                     ),
-                  h('span', { className: 'fo-suggest-label' }, org.status === 'running' ? '分析中' : '建议'),
+                  h('span', { className: 'fo-suggest-label' }, org.status === 'running' && org.phase === 'organize' ? '分析中' : '建议'),
                   Number(org.batch && org.batch.pending) > 0 && !org.open
                     ? h('span', { className: 'fo-suggest-badge' }, String(Number(org.batch.pending)))
                     : null,
@@ -1573,6 +1577,7 @@ export function createOverviewPanel(deps) {
             groups: org.groups && org.groups.length ? org.groups : (org.batch ? [org.batch] : []),
             visible: org.visible,
             status: org.status,
+            phase: org.phase,
             error: org.error,
             failed: org.failed,
             droppedOpen: org.droppedOpen,
