@@ -4028,7 +4028,7 @@ function createSyncEngine(ctx) {
     if (cache.etaGuid) return { ok: true, guid: cache.etaGuid }
     if (cache.etaMissing) return { ok: false, error: `清单上没有「${etaFieldName()}」字段（同名但类型不符，未重建）` }
     const result = await backend().actions(settings, [
-      { op: 'ensure_custom_field', tasklist: listGuid, name: etaFieldName(), type: 'text' },
+      { op: 'ensure_custom_field', tasklist: listGuid, name: etaFieldName(), type: 'text', accepted_types: ['text'], allow_duplicates: true },
     ])
     const item = (result.actions ?? [])[0]
     if (!item?.ok) {
@@ -4053,7 +4053,7 @@ function createSyncEngine(ctx) {
     if (!field.ok) return field
     const value = task.expectedAt ? formatEta(task.expectedAt, settings.schedule?.timeZone) : ''
     const result = await backend().actions(settings, [
-      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: etaFieldName(), expected_type: 'text', value },
+      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: etaFieldName(), accepted_types: ['text'], allow_duplicates: true, value },
     ])
     const item = (result.actions ?? [])[0]
     if (!item?.ok) return { ok: false, error: item?.error || '写回失败' }
@@ -4074,7 +4074,7 @@ function createSyncEngine(ctx) {
     if (cache[missingKey]) return { ok: true, skipped: 'missing' }
     const value = formatEta(ts, settings.schedule?.timeZone).slice(0, 10)
     const result = await backend().actions(settings, [
-      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name, expected_type: 'datetime', value },
+      { op: 'set_custom_field', task: task.id, tasklist: listGuid, name, accepted_types: ['datetime', 'text'], allow_duplicates: true, value },
     ])
     const item = (result.actions ?? [])[0]
     if (item?.ok) return { ok: true, value }

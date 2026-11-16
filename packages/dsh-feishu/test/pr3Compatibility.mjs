@@ -8,7 +8,9 @@ import { createBackendScope } from '../backendScope.js'
 import { listLarkPages } from '../larkPages.js'
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8')
 assert.match(source, /name: settings\.taskFields\.doc \|\| '文档',\s*expected_type: 'text'/)
-assert.match(source, /name, expected_type: 'datetime', value/)
+assert.match(source, /name, accepted_types: \['datetime', 'text'\], allow_duplicates: true, value/)
+/* 预期完成是老文本列，且清单上可能被历史重试建成了两份：写入必须能容忍重名。 */
+assert.match(source, /name: etaFieldName\(\), type: 'text', accepted_types: \['text'\], allow_duplicates: true/)
 /* 兼容旧清单：处理状态/优先级可能是文本字段，写入不再强制 single_select，而是按实际类型编码。 */
 assert.match(source, /name: '处理状态', accepted_types: \['text', 'single_select', 'multi_select'\], allow_duplicates: true, value/)
 const legacyFields = tasklistFields({}, [])

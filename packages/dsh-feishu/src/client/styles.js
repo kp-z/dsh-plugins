@@ -1058,13 +1058,14 @@ export const CSS = `
   -webkit-backdrop-filter: var(--fo-glass-blur);
 }
 /* 顶部：标题 + 计数一行，操作按钮一行（关闭/重新分析/固定-浮层都在上面，底部不再有"关闭"） */
+/* 标题和图标按钮同一行，永远不换行：范围文案超长就省略，别把 header 撑成两行。 */
 .fo-org-head {
   flex: 0 0 auto;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
   padding-bottom: 10px; border-bottom: 1px solid var(--fo-glass-line);
 }
-.fo-org-head-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.fo-org-head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fo-org-head-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.fo-org-head-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; flex-wrap: nowrap; }
 /* 项目卡 header 一行到底：不换行（按钮多了就压缩图例，不把 header 撑成两行） */
 .fo-graph-head { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
 .fo-graph-head .fo-row-card { flex: 0 1 240px; max-width: 240px; min-width: 0; }
@@ -1125,8 +1126,8 @@ export const CSS = `
   background: ${g(T.label1, 6)}; border: 1px solid transparent; cursor: pointer;
 }
 .fo-row-action:hover { background: ${g(T.label1, 10)}; }
-.fo-org-title { font-size: 13px; font-weight: 600; }
-.fo-org-counts { margin-left: auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
+.fo-org-title { flex: 0 0 auto; font-size: 13px; font-weight: 600; }
+.fo-org-counts { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 /* 建议栏自己不滚动，只有列表滚（头和底固定） */
 .fo-organize { overflow: hidden; }
 /* 时间轴：只有列表滚，头和底固定；底栏 sticky，永远点得到「接受以上」。 */
