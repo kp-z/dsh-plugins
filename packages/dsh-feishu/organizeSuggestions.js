@@ -217,6 +217,41 @@ export function buildTemporalSuggestions(input) {
       })
     }
   }
+  /* 兜底：如果按预期完成时间一条都串不出来（常见于「所有任务预期时间相同」或没排期），
+     用开始 / 创建时间在**同一项目内**再串一次。用户口径：最少也要给按时间的关系建议。 */
+  if (!items.length && o.fallback !== false) {
+    const fallback = new Map()
+    for (const task of tasks) {
+      if (task.done === true) continue
+      const at = num(task.startedAt, 0) || num(task.createdAt, 0)
+      if (!(at > 0)) continue
+      const project = str(task.workspaceKey) || str(task.meta?.workspace) || str(task.workspaceTitle)
+      const key = `${project}|started`
+      if (!fallback.has(key)) fallback.set(key, [])
+      fallback.get(key).push({ task, at })
+    }
+    for (const key of [...fallback.keys()].sort()) {
+      fallback.get(key).sort((a, b) => (a.at - b.at) || str(a.task.id).localeCompare(str(b.task.id)))
+      const rows = fallback.get(key)
+      for (let i = 1; i < rows.length; i += 1) {
+        const prev = rows[i - 1]
+        const next = rows[i]
+        if (!(next.at > prev.at)) continue
+        if (existing.has(`temporal|${prev.task.id}|${next.task.id}`)) continue
+        if (items.length >= max) { truncated += 1; continue }
+        items.push({
+          type: 'relation',
+          kind: 'temporal',
+          from: str(prev.task.id),
+          to: str(next.task.id),
+          confidence: 1,
+          evidence: `预期完成时间相同/缺失，按开始时间 ${stamp(prev.at)} 早于 ${stamp(next.at)}（按时间先后排序，不代表必须等待）`,
+          status: 'pending',
+          reason: '',
+        })
+      }
+    }
+  }
   return { items, truncated, groups: groups.size }
 }
 

@@ -262,6 +262,20 @@ check('时间建议：同一时刻并列不连，没有时间的任务不参与'
   assert.deepEqual(pairs, ['d>a'])
 })
 
+check('时间建议兜底：预期时间全相同或缺失时，按开始时间在同一项目内串', () => {
+  const { items } = buildTemporalSuggestions({
+    tasks: [
+      TX('a', { expectedAt: 10, startedAt: 1 }),
+      TX('b', { expectedAt: 10, startedAt: 2 }),
+      TX('c', { expectedAt: 10, startedAt: 1, workspaceKey: 'w2' }),
+    ],
+    relations: [],
+    format: fmt,
+  })
+  assert.deepEqual(items.map((item) => `${item.from}>${item.to}`), ['a>b'])
+  assert.match(items[0].evidence, /按开始时间/)
+})
+
 check('时间建议：只串待办（已完成不再生成，画布默认也不画）、跨项目不连', () => {
   const { items } = buildTemporalSuggestions({
     tasks: [
