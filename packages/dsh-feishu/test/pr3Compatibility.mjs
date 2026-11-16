@@ -1,23 +1,17 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
-import { schemaSignature, tasklistFields, TASKLIST_SCHEMA_VERSION } from '../tasklistSchema.js'
 import { createHash } from 'node:crypto'
 import { createCreationLedger } from '../creationLedger.js'
 import { createBackendScope } from '../backendScope.js'
 import { listLarkPages } from '../larkPages.js'
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8')
-assert.match(source, /name: settings\.taskFields\.doc \|\| '文档',\s*expected_type: 'text'/)
+assert.match(source, /name: settings\.taskFields\.doc \|\| '文档',\s*accepted_types: \['text'\],\s*allow_duplicates: true/)
 assert.match(source, /name, accepted_types: \['datetime', 'text'\], allow_duplicates: true, value/)
 /* 预期完成是老文本列，且清单上可能被历史重试建成了两份：写入必须能容忍重名。 */
 assert.match(source, /name: etaFieldName\(\), type: 'text', accepted_types: \['text'\], allow_duplicates: true/)
 /* 兼容旧清单：处理状态/优先级可能是文本字段，写入不再强制 single_select，而是按实际类型编码。 */
 assert.match(source, /name: '处理状态', accepted_types: \['text', 'single_select', 'multi_select'\], allow_duplicates: true, value/)
-const legacyFields = tasklistFields({}, [])
-for (const name of ['触发条件', '自动开工', '优先级', '处理状态']) {
-  const row = legacyFields.find((field) => field.name === name)
-  assert.ok(row && row.accepts && row.accepts.includes('text'), name + ' 应接受旧的文本字段')
-}
 // Task creation cannot resume on another authenticated backend after POST.
 const create = source.match(/  async function createTaskFromSession\([^]*?\n  }/)?.[0]
 assert.ok(create)
@@ -38,27 +32,6 @@ releaseCreate({ ok: true, guid: 'created', tasklistGuid: 'list' })
 const result = await pending
 assert.equal(result.partial, true); assert.equal(result.taskId, 'created'); assert.deepEqual(calls, ['create:lark-cli']); assert.equal(ctx.state.tasks[0].creationBackend, 'lark-cli')
 assert.equal((await ctx.createTaskFromSession('s', { summary: 'Retry' })).ok, false, 'saved receipt binding blocks accidental repeat')
-// Uncertain field creates survive a settings change before readiness publication.
-const start = source.indexOf('  let tasklistFlight = null'), end = source.indexOf('  const settingsHooks = []', start)
-let releaseFields, enterFields, fieldCalls = 0
-const enteredFields = new Promise(resolve => { enterFields = resolve })
-const bridge = async (_python, payload) => {
-  if (payload.fields) return { ok: true, fields: { list: [] } }
-  if (payload.actions[0].op === 'ensure_tasklist') return { ok: true, actions: [{ ok: true, guid: 'list', name: 'DSH 任务清单' }] }
-  fieldCalls++; enterFields()
-  return new Promise(resolve => { releaseFields = () => resolve({ ok: true, actions: payload.actions.map(a => ({ op: a.op, name: a.name, ok: false, unknownDelivery: true, error: 'lost create receipt' })) }) })
-}
-const managed = { settings: { cliBackend: 'feishu-sync', managedTasklist: { enabled: true, name: 'DSH 任务清单', guid: '' }, taskFields: {} }, state: { tasks: [], managedTasklist: {}, feishuFields: {} }, lifecycleDisposed: false, backendGeneration: 0, schemaSignature, tasklistFields, TASKLIST_SCHEMA_VERSION, randomUUID: () => 'stable-token', nowMs: Date.now, resolvePython: () => 'fake-python', resolveCli: () => 'fake-cli', workspaces: () => [], persistState: async () => {}, writeJson: async () => {}, SETTINGS_FILE: 'none', safeSyncDetail: String, remoteCache: { fields: new Map() }, runBridgeRaw: bridge }
-vm.createContext(managed); vm.runInContext(source.slice(start, end), managed)
-const flight = managed.ensureManagedTasklist()
-await enteredFields
-managed.settings.priorityOptions = ['P0', 'P1']
-releaseFields()
-assert.equal((await flight).ok, false)
-assert.equal(managed.state.managedTasklist.pendingFieldChecks.names.length, 12)
-assert.equal(managed.state.managedTasklist.unknownFields.length, 12)
-assert.equal((await managed.ensureManagedTasklist({ force: true })).ok, false)
-assert.equal(fieldCalls, 1, 'stale uncertain field batch is never blindly recreated')
 // Drive lists have files, not items: all pages still precede any create decision.
 let page = 0
 const folders = await listLarkPages(async () => ({ ok: true, data: ++page === 1 ? { files: [], has_more: true, page_token: 'second' } : { files: [{ token: 'existing', name: 'DSH', type: 'folder' }], has_more: false } }), '/drive/files', {}, () => true, 100, 'files')

@@ -30,8 +30,6 @@ const legacy = {
   syncHistory: [{ id: 'legacy-sync', status: 'done' }],
 }
 const newReceipt = { backend: 'lark-cli', document: 'NEW', url: NEW, at: 2 }
-const fieldScope = JSON.stringify(['lark-cli', 'current-list'])
-const fieldIntent = { backend: 'lark-cli', guid: 'current-list', names: ['文档'], phase: 'unknown' }
 const makeTaskReceipt = (status, taskId = 'created-task') => ({
   key: 'current-create', status, sessionId: 'current-session', backend: 'lark-cli',
   summary: 'Current uncertain task', ...(taskId ? { taskId } : {}),
@@ -158,9 +156,8 @@ for (const [status, taskId] of [['partial', 'created-task'], ['unknown', 'create
 }
 
 for (const [label, managedTasklist] of [
-  ['scoped fieldCreationIntents', { guid: 'current-list', status: 'unknown', fieldCreationIntents: { [fieldScope]: fieldIntent } }],
-  ['legacy pendingFieldChecks', { guid: 'current-list', status: 'unknown', pendingFieldChecks: fieldIntent }],
   ['unknown list creation token', { guid: '', status: 'unknown', createToken: 'current-create-token' }],
+  ['ready list', { guid: 'current-list', status: 'ready' }],
 ]) test(`empty tasks preserve ${label} independently`, async () => {
   const t = await assertCurrent({ tasks: [], managedTasklist })
   assert.deepEqual(plain(t.h.state.managedTasklist), managedTasklist)
@@ -189,7 +186,7 @@ test('transactional empty snapshot keeps current sync history, not legacy histor
   const syncHistory = [{ id: 'current-sync', status: 'done' }]
   const current = { tasks: [], syncHistory, pendingDocReceipts: { task: newReceipt },
     taskCreationReceipts: { 'current-create': makeTaskReceipt('partial') },
-    managedTasklist: { guid: 'current-list', fieldCreationIntents: { [fieldScope]: fieldIntent } } }
+    managedTasklist: { guid: 'current-list', status: 'ready' } }
   const t = await assertCurrent(current)
   for (const key of ['syncHistory', 'pendingDocReceipts', 'taskCreationReceipts', 'managedTasklist']) {
     assert.deepEqual(plain(t.h.state[key]), current[key], `${key} must remain current authority`)

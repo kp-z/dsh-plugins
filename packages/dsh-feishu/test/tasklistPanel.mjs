@@ -127,24 +127,15 @@ for (const status of ['uninitialized', 'checking', 'ready', 'failed', 'unknown',
   assert.equal(n(controls[2]).value, 'draft-guid')
 }
 const hostile = '<img src=x onerror="boom()"><script>bad()</script>'
-const fields = Array.from({ length: 35 }, (_, i) => ({ key: `key-${i}`, name: `name-${i}${hostile}`, guid: `guid-${i}`, type: i === 0 ? 0 : 'text', ok: i % 2 === 0, error: i % 2 ? `type mismatch ${hostile}` : '' }))
-context.app.snap.managedTasklist = { guid: hostile, name: hostile, status: 'failed', fields, errors: [hostile, { code: 'type_mismatch', message: hostile }] }
+context.app.snap.managedTasklist = { guid: hostile, name: hostile, status: 'failed', errors: [hostile, { code: 'type_mismatch', message: hostile }] }
 context.renderManagedTasklistStatus()
-assert.equal(n('managedTasklistFields').children.length, fields.length, 'full field list is not truncated')
 assert.equal(n('managedTasklistErrors').children.length, 2)
-assert.match(text(n('managedTasklistFields')), /key-34/)
-assert.match(text(n('managedTasklistFields')), /guid-34/)
-assert.match(text(n('managedTasklistFields')), /类型：0/)
-assert.match(text(n('managedTasklistFields')), /检查通过/)
-assert.match(text(n('managedTasklistFields')), /检查失败/)
-assert.ok(text(n('managedTasklistFields')).includes(hostile))
 assert.ok(text(n('managedTasklistErrors')).includes('type_mismatch'))
 const tags = (node) => [node.tag, ...node.children.flatMap(tags)]
-for (const id of ['managedTasklistStatus', 'managedTasklistFields', 'managedTasklistErrors']) assert.ok(tags(n(id)).every((tag) => ['div', 'ul', 'li', 'span'].includes(tag)), 'hostile markup is literal text')
+for (const id of ['managedTasklistStatus', 'managedTasklistErrors']) assert.ok(tags(n(id)).every((tag) => ['div', 'ul', 'li', 'span'].includes(tag)), 'hostile markup is literal text')
 context.app.snap = {}
 context.renderManagedTasklistStatus()
 assert.match(text(n('managedTasklistStatus')), /unknown/)
-assert.match(text(n('managedTasklistFields')), /暂无/)
 assert.equal(n('managedTasklistErrors').children.length, 0, 'stale errors cleared')
 assert.equal(pending, undefined, 'all configuration/DOM operations stay offline')
 

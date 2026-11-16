@@ -1482,9 +1482,8 @@ const PANEL_CARD = layout.CARD
     assert.equal(findAll(head, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'Header 里没有「建议」')
     const foot = byClass(ft, 'fo-rail-foot')[0]
     assert.equal(findAll(foot, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'rail 底部没有「建议」')
-    const graphActions = findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize')
-    assert.ok(graphActions.length >= 1, '图头有「建议」按钮')
-    assert.equal(textOf(graphActions[0]).trim(), '建议')
+    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize' && classNameOf(node).includes('fo-suggest-tab')).length >= 1, true, '右缘有「建议」标签')
+    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize' && !classNameOf(node).includes('fo-suggest-tab')).length, 0, '没有第二个「建议」按钮')
   })
   check('图头动作图标化：适应 / 复位布局 / 取消聚焦 是 26px 图标按钮，文字只在 aria-label', () => {
     for (const [action, label] of [['fit', '适应画布'], ['reset-layout', '复位布局'], ['blur', '取消聚焦']]) {
@@ -1518,9 +1517,7 @@ const PANEL_CARD = layout.CARD
       assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === action).length, 1, `${action} 在卡片 header 里`)
     }
     assert.equal(byClass(actions, 'fo-zoom-value').length, 1, 'header 里有缩放百分比')
-    const organizeBtn = findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize')
-    assert.equal(organizeBtn.length, 1, '画布卡片上有唯一的「建议」入口')
-    assert.equal(textOf(organizeBtn[0]).trim(), '建议')
+    assert.equal(findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, '图头不再放第二个「建议」入口')
     assert.equal(textOf(head).includes('组外/缺失'), false)
   })
   /* ---- 画布缩放：卡片上的 − / 百分比 / + / 适应 ----
@@ -1665,14 +1662,15 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   const fx = await mountPanel({ organizeApi: backend.api })
   let ft = fx.tree
 
-  check('图头的「建议」是唯一入口：点开右侧面板，入口本身留在图头', () => {
+  check('右缘「建议」标签是唯一入口：点开右侧面板，标签仍贴在面板上', () => {
     const btn = ORGANIZE_TRIGGER(ft)
-    assert.ok(btn, '建议按钮在')
-    assert.equal(textOf(btn).trim(), '建议')
+    assert.ok(btn, '建议入口在')
+    assert.ok(textOf(btn).includes('建议'))
     assert.equal(btn.props['data-action'], 'organize')
-    assert.ok(String(btn.props.title).includes('打开建议栏'))
+    assert.ok(String(btn.props.title).includes('打开建议面板'))
     assert.ok(!btn.props.disabled, '入口不因分析运行而禁用（它只是开关）')
-    assert.ok(classNameOf(btn).includes('fo-btn'), '仍在图头工具组里')
+    assert.ok(classNameOf(btn).includes('fo-suggest-tab'), '是右缘竖标签')
+    assert.equal(btn.props['aria-expanded'], 'false')
     assert.equal(organizeDrawers(ft).length, 0, '没点之前抽屉不出现')
   })
 
@@ -1684,14 +1682,14 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(backend.log.view[0].kind, 'all')
     assert.equal(organizeDrawers(ft).length, 1, '侧栏立刻打开')
   })
-  /* 面板里的「提供新的建议」才跑模型：范围 = 点开面板时那张图的范围 */
+  /* 面板里的「提供新的建议」才跑模型：范围 = 打开面板时的页面范围 */
   findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
   ft = await fx.mini.act()
-  check('「提供新的建议」按当前图的范围跑（不再固定全量）', () => {
+  check('「提供新的建议」按当前页面范围跑', () => {
     assert.equal(backend.log.organize.length, 1)
     const scope = backend.log.organize[0]
-    assert.ok(['group', 'project', 'all'].includes(scope.kind), JSON.stringify(scope))
-    assert.equal(typeof scope.id, 'string')
+    assert.equal(scope.kind, 'all')
+    assert.equal(scope.id, '')
     assert.ok(scope.members === undefined || Array.isArray(scope.members))
   })
   check('数据态：抽屉打开、标题/notes/计数都在，待处理 2 条', () => {
