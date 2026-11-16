@@ -60,11 +60,13 @@ check('scopeKeyOf：all / group / project 三类稳定 key', () => {
   assert.equal(scopeKeyOf({ kind: 'group', id: 'g1' }), scopeKeyOf({ kind: 'group', id: 'g1' }))
 })
 
-check('批次的幂等键只用「范围 + 小时窗」：同窗同 id、跨窗不同 id（设计稿 §7）', () => {
+check('批次 ID：同范围同小时窗共享前缀，但每次整理都唯一（不能覆盖上一批）', () => {
   const a = organizeBatchId({ kind: 'group', id: 'g1' }, 1_000_000)
   const b = organizeBatchId({ kind: 'group', id: 'g1' }, 1_000_000 + 60_000)
   const c = organizeBatchId({ kind: 'group', id: 'g1' }, 1_000_000 + 3_600_000)
-  assert.equal(a, b)
+  assert.ok(a.startsWith('sg:group:g1:'))
+  assert.ok(b.startsWith('sg:group:g1:'))
+  assert.notEqual(a, b, '每次整理必须是独立批次，否则会覆盖上一组')
   assert.notEqual(a, c)
 })
 
@@ -192,11 +194,13 @@ check('影响预览：前置已完成 → 不阻塞；derived_from → 不阻塞
 })
 
 /* ---- 6. 批次与视图 ---- */
-check('makeOrganizeBatch：补稳定 id、缺 batchId 时按范围+时间窗生成', () => {
+check('makeOrganizeBatch：补稳定 id、缺 batchId 时按范围+时间生成且每次唯一', () => {
   const batch = makeOrganizeBatch({ scope: { kind: 'group', id: 'g1' }, at: 5000, items: [{ ...GOOD }] })
+  const other = makeOrganizeBatch({ scope: { kind: 'group', id: 'g1' }, at: 5000, items: [{ ...GOOD }] })
   assert.equal(batch.items[0].id, 'it-1')
   assert.equal(batch.items[0].status, 'pending')
-  assert.equal(batch.batchId, organizeBatchId({ kind: 'group', id: 'g1' }, 5000))
+  assert.ok(batch.batchId.startsWith('sg:group:g1:'))
+  assert.notEqual(batch.batchId, other.batchId)
 })
 
 check('projectOrganize：补标题、统计四种状态、带影响', () => {
