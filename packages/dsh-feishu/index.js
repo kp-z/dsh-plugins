@@ -6221,6 +6221,15 @@ function createSyncEngine(ctx) {
     return found
   }
 
+  /** 整理会话用完即归档（不删日志，只是从会话列表收起），避免 cove 里越积越多。 */
+  async function archiveOrganizeSession(sessionId) {
+    if (!sessionId) return
+    try {
+      const registry = await awaitService(ctx, 'workspaceRegistry')
+      if (registry && typeof registry.archiveSession === 'function') await registry.archiveSession(sessionId, { stopActivity: true })
+    } catch { /* 归档失败不影响建议本身 */ }
+  }
+
   /** 在 cove 项目里建会话 → 投喂证据包 → 轮询取结构化输出。 */
   async function organizeViaSession(pack) {
     const cove = await ensureCoveWorkspace()
@@ -6259,6 +6268,7 @@ function createSyncEngine(ctx) {
       '',
       '只返回一个 JSON 对象（可以放在 \`\`\`json 围栏里）：',
       '{"items":[{"kind":"depends_on|derived_from|temporal","from":"任务id","to":"任务id","confidence":0.8,"evidence":"原文证据"}],"notes":"一句话"}',
+      '输出要求：不要复述分析过程；evidence 不超过 40 字；notes 不超过 30 字；没有可靠关系就返回 {"items":[],"notes":"..."}。',
     ].join('\n')
     try {
       await sessions.prompt({
@@ -6271,15 +6281,20 @@ function createSyncEngine(ctx) {
       return { error: '投递整理提示失败：' + (error instanceof Error ? error.message : String(error)), sessionId }
     }
 
-    const deadline = Date.now() + 90_000
+    /* 会话实测 4~100 秒（模型有时会写很长的推理），90 秒会误杀；给到 150 秒。 */
+    const deadline = Date.now() + 150_000
     while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await new Promise((resolve) => setTimeout(resolve, 1200))
       const agent = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
       const running = !!(agent && (agent.phase?.kind === 'running' || agent.isRunning === true))
       const text = await lastAssistantText(sessionId)
-      if (text.trim() && !running) return { text, sessionId }
+      if (text.trim() && !running) {
+        /* 跑完就归档这条临时会话：cove 里只留工作区，不留一堆「整理建议」会话。 */
+        await archiveOrganizeSession(sessionId)
+        return { text, sessionId }
+      }
     }
-    return { error: '会话 90 秒内没有给出结果', sessionId }
+    return { error: '会话 150 秒内没有给出结果', sessionId }
   }
 
   async function organizeScope(scope) {
@@ -6336,7 +6351,11 @@ function createSyncEngine(ctx) {
          单独记 sessionError，便于排查。 */
     }
     if (!modelItems.length && !temporal.items.length && !eta.items.length) {
-      return { ok: false, error: modelError || '没有可用的任务内容' }
+      /* 有任务、模型也确实回答过（哪怕 items 为空）：照样落一组空建议，
+         让面板明确显示「看过，没有可靠关系」，而不是一个用户看不见的报错。
+         只有「没任务」或「模型真的失败」才返回错误。 */
+      if (!modelSource || modelError) return { ok: false, error: modelError || '没有可用的任务内容' }
+      notes = notes || 'AI 看过这些任务，没有找到可落库的前置 / 来源 / 时间关系。'
     }
     /* 关系在前、预期完成在后：关系是"改图"，预期是"改配置"，先看图的改动。 */
     const checked = validateOrganizeItems({ items: [...modelItems, ...temporal.items, ...eta.items], tasks: views, relations: state.relations, now: nowMs() })

@@ -107,6 +107,11 @@ export function createOrganizeDrawer(deps) {
     const isOpen = (batch) => {
       const id = model.str(batch && batch.batchId)
       if (Object.prototype.hasOwnProperty.call(expanded, id)) return expanded[id] === true
+      /* 处理完（无 pending 且有已接受/已拒绝）的组默认收起成「已归档」，点组头可再展开回看。 */
+      const items = Array.isArray(batch && batch.items) ? batch.items : []
+      const pending = items.filter((item) => item.status === 'pending').length
+      const processed = items.filter((item) => item.status === 'accepted' || item.status === 'rejected').length
+      if (pending === 0 && processed > 0) return false
       return batch === latest
     }
 
@@ -185,7 +190,8 @@ export function createOrganizeDrawer(deps) {
       const open = isOpen(batch)
       const batchId = model.str(batch && batch.batchId)
       const isActive = !!batchId && batchId === (activeId || latestId)
-      const archived = !current && pending.length === 0 && (accepted.length + rejected.length) > 0
+      /* 不再要求「不是最新」：最新一组处理完也自动归档（否则永远停在当前态、没法收起来）。 */
+      const archived = pending.length === 0 && (accepted.length + rejected.length) > 0
       const scopeText = typeof p.scopeLabel === 'function' ? p.scopeLabel(batch) : ''
       return h('section', {
         key: batchId,
@@ -267,6 +273,16 @@ export function createOrganizeDrawer(deps) {
             iconBtn('load-more', 'more', `加载更多（还有 ${more} 组）`, () => {
               if (typeof p.onLoadMore === 'function') p.onLoadMore()
             }))
+          : null,
+        model.str(p.error)
+          ? h('div', { className: 'fo-org-notes', 'data-tone': 'error', role: 'alert' },
+            h('span', null, model.str(p.error)),
+            typeof p.onRerun === 'function'
+              ? h('button', {
+                type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+                'data-action': 'retry-error', onClick: () => p.onRerun(),
+              }, '重试')
+              : null)
           : null,
         model.str(latestBatch.notes)
           ? h('p', { className: 'fo-org-notes' }, model.str(latestBatch.notes))
