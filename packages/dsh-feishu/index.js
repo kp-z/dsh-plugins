@@ -36,7 +36,7 @@ import { createLarkComment, listLarkComments } from './larkComments.js'
 import { createLarkTasklistActions } from './larkTasklist.js'
 import { createActivityFeed } from './activity.js'
 import { launchUrl, openTaskPageFor, probeUrl } from './openBrowser.js'
-import { DEFAULT_TASKLIST_NAME, TASKLIST_SCHEMA_VERSION, tasklistFields, schemaSignature, selectTaskList } from './tasklistSchema.js'
+import { DEFAULT_TASKLIST_NAME, selectTaskList } from './tasklistSchema.js'
 import { beginSyncHistory, finishSyncHistory, recordSyncStage, recoverSyncHistory, safeSyncDetail } from './syncHistory.js'
 import { createCommentCoordinator } from './comments.js'
 import { createTaskMentionResolver } from './taskMentions.js'
@@ -185,7 +185,7 @@ export async function adoptPreviousState(currentFile) {
     const bound = tasks.filter((task) => task?.sessionId).length
     const hasRecords = value => value != null && (typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 0)
     const managed = data?.managedTasklist || {}
-    const transactions = hasRecords(data?.taskCreationReceipts) || hasRecords(data?.pendingDocReceipts) || hasRecords(managed.fieldCreationIntents) || Boolean(managed.pendingFieldChecks?.names?.length) || ['checking','unknown'].includes(managed.status)
+    const transactions = hasRecords(data?.taskCreationReceipts) || hasRecords(data?.pendingDocReceipts) || ['checking','unknown'].includes(managed.status)
     if (!bound && !transactions) continue
     let mtimeMs = 0
     try {
@@ -2908,7 +2908,7 @@ function createSyncEngine(ctx) {
   }
 
   function captureBackendScope(fresh = false) {
-    return (!fresh && backendContext.getStore()) || createBackendScope({ getSettings: () => settings, getGeneration: () => backendGeneration, isDisposed: () => lifecycleDisposed, resolveBackend: backendFor, beforeActions: actions => pendingCreationWriteBlocked(actions) || managedFieldWriteBlocked(actions) })
+    return (!fresh && backendContext.getStore()) || createBackendScope({ getSettings: () => settings, getGeneration: () => backendGeneration, isDisposed: () => lifecycleDisposed, resolveBackend: backendFor, beforeActions: actions => pendingCreationWriteBlocked(actions) })
   }
   function runEngineOperation(action, args) {
     if (lifecycleDisposed) return Promise.resolve({ ok: false, error: '插件已重载，旧操作已停止' })
@@ -2923,36 +2923,8 @@ function createSyncEngine(ctx) {
   const earlyReopenTurns = new Map()
   let inFlight = null
   let cli = { found: false, version: null, path: null }
-  /**
-   * 受管清单（feishu-sync 后端的清单字段契约）的字段写回闸门。
-   * 只拦「写受管清单字段」这一类动作；显式指向历史清单的写回照旧放行，
-   * 且按字段逐个判断：一个字段配置不明确不该把优先级/预期全冻住。
-   *
-   * 官方 lark-cli 后端不走受管清单（它自己维护固定清单），因此没有配置 GUID 时直接放行。
-   */
-  function managedFieldWriteBlocked(actions) {
-    const listActions = Array.isArray(actions) ? actions : []
-    if (settings.managedTasklist?.enabled === false) return null
-    const managedGuid = settings.managedTasklist?.guid || state.managedTasklist?.guid
-    if (!managedGuid) return null
-    const current = state.managedTasklist?.signature === schemaSignature(settings, workspaces().map(row => row.title))
-    const status = state.managedTasklist?.status
-    const fieldOk = new Map((state.managedTasklist?.fields || []).map(row => [row.name, row.ok === true]))
-    const blocked = listActions.filter(action => {
-      if (!['set_custom_field', 'ensure_select_options', 'ensure_custom_field'].includes(action.op)) return false
-      if (action.tasklist !== managedGuid) return false
-      if (!current) return true
-      if (status === 'ready') return false
-      return fieldOk.get(action.name) !== true
-    })
-    if (!blocked.length) return null
-    const error = '受管清单字段未就绪，暂停字段写回：' + [...new Set(blocked.map(row => row.name || row.field_guid))].join('、')
-    return { ok: false, actions: listActions.map(action => ({ op: action.op, ok: false, error })), errors: [error] }
-  }
-
   async function runBridge(python, payload) {
-    const blocked = managedFieldWriteBlocked(payload.actions)
-    return blocked ? blocked : runBridgeRaw(python, payload)
+    return runBridgeRaw(python, payload)
   }
   const commentsFile = join(DATA_DIR, 'comments.json')
   const commentsLock = commentsFile + '.lock'
@@ -3257,20 +3229,15 @@ function createSyncEngine(ctx) {
     if (settings.managedTasklist?.enabled === false) return { ok: true, skipped: 'disabled' }
     if (tasklistFlight) {
       const pending = tasklistFlight
-      const wanted = schemaSignature(settings, workspaces().map(row => row.title))
       const result = await pending
-      if (!lifecycleDisposed && (schemaSignature(settings, workspaces().map(row => row.title)) !== wanted || /配置已变化|配置已重载|字段检查期间配置/.test(result.error || ''))) return ensureManagedTasklist({ force: true })
+      if (!lifecycleDisposed && /配置已变化|配置已重载|字段检查期间配置/.test(result.error || '')) return ensureManagedTasklist({ force: true })
       return result
     }
     tasklistFlight = (async () => {
       const previous = state.managedTasklist || {}
       const capturedGeneration = backendGeneration
       const capturedSettings = JSON.parse(JSON.stringify(settings))
-      const capturedWorkspaces = workspaces().map(row => row.title)
-      let signature
-      try { signature = schemaSignature(capturedSettings, capturedWorkspaces) }
-      catch (error) { return { ok: false, error: error.message } }
-      if (!force && previous.status === 'ready' && previous.backend === capturedSettings.cliBackend && previous.signature === signature && nowMs() - previous.checkedAt < TASKLIST_CHECK_TTL) return { ok: true, guid: previous.guid }
+      if (!force && previous.status === 'ready' && previous.backend === capturedSettings.cliBackend && previous.guid && nowMs() - previous.checkedAt < TASKLIST_CHECK_TTL) return { ok: true, guid: previous.guid }
       const python = capturedSettings.cliBackend === 'feishu-sync' ? resolvePython(resolveCli(capturedSettings.cliPath)) : null
       if (capturedSettings.cliBackend === 'feishu-sync' && !python) return { ok: false, error: '找不到 Python，无法初始化任务清单' }
       const impl = capturedSettings.cliBackend === 'feishu-sync' ? null : backendFor(capturedSettings.cliBackend)
@@ -3297,105 +3264,28 @@ function createSyncEngine(ctx) {
       const token = previous.createToken || randomUUID()
       state.managedTasklist = { ...previous, createToken: token, status: 'checking', errors: [] }
       await persistState()
-      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend || schemaSignature(settings, workspaces().map(row => row.title)) !== signature) {
+      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend) {
         state.managedTasklist = { ...previous, status: 'uninitialized', errors: [] }
         await persistState()
         return { ok: false, error: '配置已变化，尚未发起清单初始化' }
       }
       const result = await managedBridge({ actions: [{ op: 'ensure_tasklist', ...(guid ? { guid } : {}), name: capturedSettings.managedTasklist.name, create_token: token }] })
       const list = result.actions?.[0]
-      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend || schemaSignature(settings, workspaces().map(row => row.title)) !== signature) return { ok: false, error: '配置已变化或插件已重载，请重新检查清单' }
+      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend) return { ok: false, error: '配置已变化或插件已重载，请重新检查清单' }
       if (!list?.ok || !list.guid) {
         const error = list?.error || result.errors?.join('; ') || '任务清单初始化失败'
         state.managedTasklist = { ...state.managedTasklist, status: list?.unknownDelivery || (!list && !guid) ? 'unknown' : 'failed', errors: [error], checkedAt: nowMs() }
         await persistState()
         return { ok: false, error }
       }
-      // Persist the remote GUID before any field mutation, making retries reuse this list.
-      state.managedTasklist = { ...state.managedTasklist, guid: list.guid, name: list.name || settings.managedTasklist.name }
+      // Persist the remote GUID. No bulk field contract is enforced: fields are
+      // resolved/created lazily at write time, and legacy text/duplicate fields are used as-is.
+      state.managedTasklist = { ...state.managedTasklist, guid: list.guid, name: list.name || settings.managedTasklist.name, backend: capturedSettings.cliBackend, status: 'ready', checkedAt: nowMs(), errors: [] }
       settings.managedTasklist.guid = list.guid
+      state.feishuFields[list.guid] = {}
       await writeJson(SETTINGS_FILE, settings)
       await persistState()
-      capturedSettings.managedTasklist.guid = list.guid
-      const expectedSignature = schemaSignature(capturedSettings, capturedWorkspaces)
-      const fields = tasklistFields(capturedSettings, capturedWorkspaces)
-      // Existing workspace fields may be text/single/multi-select; preserve their type.
-      const definitions = await managedBridge({ fields: [list.guid] })
-      if (definitions.errors?.length || !Array.isArray(definitions.fields?.[list.guid])) throw new Error(definitions.errors?.join('; ') || '字段定义读取不完整')
-      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend || schemaSignature(settings, workspaces().map(row => row.title)) !== expectedSignature) return { ok: false, error: '配置已变化，取消过期字段初始化' }
-      // A lost create receipt is not permission to create the same field again.
-      // Reconcile only against a complete authoritative definition list.
-      const scopeKey = JSON.stringify([capturedSettings.cliBackend, list.guid])
-      const intents = { ...(previous.fieldCreationIntents || {}) }
-      const legacyIntent = previous.pendingFieldChecks
-      if (legacyIntent?.names?.length && legacyIntent.phase !== 'prepared') {
-        const legacyKey = JSON.stringify([legacyIntent.backend, legacyIntent.guid])
-        if (!intents[legacyKey]) intents[legacyKey] = { ...legacyIntent, phase: legacyIntent.phase || 'unknown' }
-      }
-      // A prepared intent is durable proof of no IO: dispatch is separately marked
-      // before issuing a create batch. Empty or other-backend intents cannot lock it.
-      if (intents[scopeKey]?.phase === 'prepared') delete intents[scopeKey]
-      const pending = intents[scopeKey]
-      state.managedTasklist.fieldCreationIntents = intents
-      state.managedTasklist.pendingFieldChecks = pending || null
-      const unresolved = [...new Set(pending?.names || [])].filter(name => definitions.fields[list.guid].filter(row => row.name === name).length !== 1)
-      if (unresolved.length) {
-        const error = '字段创建回执不明，请先核对：' + unresolved.join('、')
-        state.managedTasklist = { ...state.managedTasklist, status: 'unknown', unknownFields: unresolved, errors: [error] }
-        await persistState()
-        return { ok: false, error }
-      }
-      const workspace = fields.find(row => row.key === 'workspace')
-      const matches = definitions.fields[list.guid].filter(row => row.name === workspace.name)
-      if (matches.length === 1 && workspace.accepts.includes(matches[0].type)) workspace.type = matches[0].type
-      // Initialization is the trusted setup path; it must not be blocked by its own 'checking' status.
-      // Durable create intent precedes every possible field POST; an interrupted or
-      // superseded batch must reconcile this intent before any field is recreated.
-      const createNames = fields.filter(field => !definitions.fields[list.guid].some(row => row.name === field.name)).map(field => field.name)
-      const intent = createNames.length ? { backend: capturedSettings.cliBackend, guid: list.guid, names: createNames, phase: 'prepared' } : null
-      if (intent) intents[scopeKey] = intent
-      else delete intents[scopeKey]
-      state.managedTasklist.fieldCreationIntents = intents
-      state.managedTasklist.pendingFieldChecks = intent
-      state.managedTasklist.unknownFields = pending?.names || []
-      const cancelled = () => lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend || schemaSignature(settings, workspaces().map(row => row.title)) !== expectedSignature
-      const cancelUnsent = async () => {
-        delete intents[scopeKey]
-        state.managedTasklist.fieldCreationIntents = intents
-        state.managedTasklist.pendingFieldChecks = null
-        state.managedTasklist.unknownFields = []
-        state.managedTasklist.status = 'uninitialized'
-        await persistState()
-        return { ok: false, error: '字段初始化前配置已变化；尚未发送，创建意图已取消' }
-      }
-      await persistState()
-      if (cancelled()) return cancelUnsent()
-      if (intent) {
-        intent.phase = 'sending'
-        await persistState()
-        if (cancelled()) return cancelUnsent()
-      }
-      const checked = await managedBridge({ actions: fields.map(row => ({ op: 'ensure_custom_field', tasklist: list.guid, name: row.name, type: row.type, accepted_types: row.accepts, options: row.options || [], allow_duplicates: true })) })
-      const unresolvedReceipts = fields.filter((field, index) => !checked.actions?.[index] || checked.actions[index].unknownDelivery).map(field => field.name)
-      state.managedTasklist.unknownFields = unresolvedReceipts
-      const uncertain = unresolvedReceipts.length ? { backend: capturedSettings.cliBackend, guid: list.guid, names: unresolvedReceipts, phase: 'unknown' } : null
-      if (uncertain) intents[scopeKey] = uncertain
-      else delete intents[scopeKey]
-      state.managedTasklist.fieldCreationIntents = intents
-      state.managedTasklist.pendingFieldChecks = uncertain
-      await persistState()
-      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend || schemaSignature(settings, workspaces().map(row => row.title)) !== expectedSignature) return { ok: false, error: '字段检查期间配置已变化，请重新检查' }
-      const errors = (checked.actions || []).filter(row => !row.ok).map(row => row.error || '字段初始化失败')
-      if (!checked.ok || checked.actions?.length !== fields.length) errors.push(checked.errors?.join('; ') || '字段初始化返回不完整')
-      /* Duplicate/hidden legacy options only make that one value unwritable; keep the field usable. */
-      const warnings = (checked.actions || []).flatMap(row => Array.isArray(row.warnings) ? row.warnings : [])
-      const unknownFields = (checked.actions || []).filter(row => row.unknownDelivery).map(row => row.name).filter(Boolean)
-      state.managedTasklist = { ...state.managedTasklist, backend: capturedSettings.cliBackend, unknownFields, status: unknownFields.length ? 'unknown' : errors.length ? 'failed' : 'ready', checkedAt: nowMs(), schemaVersion: TASKLIST_SCHEMA_VERSION, signature: expectedSignature, fields: (checked.actions || []).map((row, i) => ({ key: fields[i]?.key, name: fields[i]?.name, guid: row.guid, type: row.type, ok: row.ok, warning: (row.warnings || []).join('；') || null, error: row.error })), errors, warnings }
-      remoteCache.fields.delete(list.guid)
-      state.feishuFields[list.guid] = {}
-      await persistState()
-      if (lifecycleDisposed || capturedGeneration !== backendGeneration || capturedSettings.cliBackend !== settings.cliBackend || schemaSignature(settings, workspaces().map(row => row.title)) !== expectedSignature) return { ok: false, error: '配置已变化，请按新配置重新检查' }
-      return { ok: !errors.length, guid: list.guid, errors, error: errors.join('; ') }
+      return { ok: true, guid: list.guid, errors: [] }
     })().catch(async error => {
       state.managedTasklist = { ...(state.managedTasklist || {}), status: 'failed', errors: [safeSyncDetail(error?.message || error)], checkedAt: nowMs() }
       await persistState().catch(() => {})
@@ -6067,8 +5957,8 @@ function createSyncEngine(ctx) {
         else {
           const actions = []
           for (const [name, ids] of [['前置任务', view.predecessors], ['后置任务', view.successors], ['来源任务', view.sourceTasks]]) {
-            actions.push({ op: 'ensure_custom_field', tasklist: task.tasklistGuid, name, type: 'text' },
-              { op: 'set_custom_field', task: taskId, tasklist: task.tasklistGuid, name, expected_type: 'text', value: ids.map((item) => item.id).join('\n') })
+            actions.push({ op: 'ensure_custom_field', tasklist: task.tasklistGuid, name, type: 'text', allow_duplicates: true },
+              { op: 'set_custom_field', task: taskId, tasklist: task.tasklistGuid, name, accepted_types: ['text'], allow_duplicates: true, value: ids.map((item) => item.id).join('\n') })
           }
           const result = await scope.actions(actions)
           if (!result.ok || result.actions?.some((item) => !item.ok)) error = result.actions?.filter((item) => !item.ok).map((item) => item.error).join('; ') || result.errors?.join('; ') || '文本列投影失败'
@@ -8814,7 +8704,8 @@ bucket 只能从枚举里选：
         task: task.id,
         tasklist: listGuid,
         name: settings.taskFields.doc || '文档',
-        expected_type: 'text',
+        accepted_types: ['text'],
+        allow_duplicates: true,
         value: docFieldValue(task),
       },
     ])
@@ -9437,7 +9328,7 @@ bucket 只能从枚举里选：
     let result
     try {
       result = await backend().actions(settings, [
-        { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, value: title },
+        { op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, accepted_types: ['text', 'single_select', 'multi_select'], allow_duplicates: true, value: title },
       ])
     } catch (error) {
       return { ok: false, error: String(error).slice(0, 120) }
@@ -9523,7 +9414,7 @@ bucket 只能从枚举里选：
     for (const { task, title } of batch) {
       const listGuid = task.tasklistGuid
       if (!listGuid) continue
-      actions.push({ op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, value: title })
+      actions.push({ op: 'set_custom_field', task: task.id, tasklist: listGuid, name: fieldName, accepted_types: ['text', 'single_select', 'multi_select'], allow_duplicates: true, value: title })
     }
     if (!actions.length) return 0
     let result
@@ -9579,6 +9470,8 @@ bucket 只能从枚举里选：
         task: task.id,
         tasklist: listGuid,
         name: fieldName,
+        accepted_types: ['text', 'single_select', 'multi_select'],
+        allow_duplicates: true,
         value: label,
       })),
     )
@@ -9669,7 +9562,7 @@ bucket 只能从枚举里选：
 
     const actions = []
     const push = (name, value) => {
-      if (value) actions.push({ op: 'set_custom_field', task: task.id, tasklist: listGuid, name, value })
+      if (value) actions.push({ op: 'set_custom_field', task: task.id, tasklist: listGuid, name, accepted_types: ['text', 'single_select', 'multi_select'], allow_duplicates: true, value })
     }
     /* 本地没解析出工作区时，从绑定会话的 cwd 反查项目名，避免写空值。 */
     let workspaceLabel = task.workspaceTitle || task.workspaceName || ''

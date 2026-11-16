@@ -1027,6 +1027,35 @@ export const CSS = `
   -webkit-backdrop-filter: var(--fo-glass-blur);
 }
 /* 顶部：标题 + 计数一行，操作按钮一行（关闭/重新分析/固定-浮层都在上面，底部不再有"关闭"） */
+/* 建议 = 唯一入口：贴右缘的竖向标签，面板打开时贴在面板左缘（不遮挡内容）。 */
+.fo-suggest-tab {
+  position: absolute; right: 0; top: 50%; z-index: 25;
+  transform: translateY(-50%);
+  display: inline-flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 5px; cursor: pointer; font: inherit; font-size: 11px;
+  color: ${T.label2}; letter-spacing: .08em;
+  background: var(--fo-glass-card);
+  border: 1px solid var(--fo-glass-line); border-right: 0;
+  border-radius: 10px 0 0 10px;
+  backdrop-filter: var(--fo-glass-blur);
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.fo-suggest-tab-label { writing-mode: vertical-rl; }
+.fo-suggest-tab:hover { color: ${T.label1}; border-color: var(--fo-glass-line-hover); }
+.fo-suggest-tab[data-active="1"] { color: ${T.brand}; border-color: ${g(T.brand, 30)}; background: ${g(T.brand, 8)}; }
+.fo-suggest-tab[data-running="1"] { opacity: .7; cursor: progress; }
+.fo-suggest-tab-badge {
+  position: absolute; top: -6px; right: -6px;
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: ${T.bgBase}; background: ${T.brand};
+}
+.fo-root[data-organize="1"] .fo-suggest-tab { right: var(--fo-dock-w); }
+@container fopanel (max-width: 1100px) {
+  .fo-root[data-organize="1"] .fo-suggest-tab { right: min(var(--fo-dock-w), 86%); }
+}
+
 /* 标题和图标按钮同一行，永远不换行：范围文案超长就省略，别把 header 撑成两行。 */
 .fo-org-head {
   flex: 0 0 auto;

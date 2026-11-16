@@ -688,15 +688,7 @@ export function createGraphView(deps) {
           ),
           /* 动作就在卡片自己的 header 右侧：不悬浮、不占额外一行。折叠时整组隐藏。 */
           folded ? null : h('div', { className: 'fo-graph-actions', role: 'toolbar', 'aria-label': '画布工具' },
-            /* 整理：打开右侧建议栏，按这张图的范围跑一次「找关系」分析（宿主没有 organize 接口就不渲染） */
-            typeof onOrganize === 'function'
-              ? h('button', {
-                type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-                'data-action': 'organize',
-                title: '打开建议栏（按这张图的范围生成/查看建议）',
-                onClick: () => onOrganize(graph),
-              }, '建议')
-              : null,
+            /* 建议入口不在这里：统一由页面右缘的「建议」标签负责（唯一入口）。 */
             /* 筛选：状态（进行中/阻塞/挂起/已完成）+ 已完成的时间窗（默认最近一周） */
             h('div', { className: 'fo-filter-wrap' },
               h('button', {
