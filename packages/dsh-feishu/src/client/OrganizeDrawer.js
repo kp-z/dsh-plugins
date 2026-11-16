@@ -234,7 +234,7 @@ export function createOrganizeDrawer(deps) {
               : h('p', { className: 'fo-org-empty' }, running
                 ? '正在生成…'
                 : (current && batch === latest && !pending.length && !items.some((item) => item.status === 'accepted' || item.status === 'rejected')
-                  ? '没有找到新的关系——这常常是正确答案，宁可少而准'
+                  ? '没有找到关系'
                   : '这一组没有建议')))
           : null,
       )
@@ -253,7 +253,7 @@ export function createOrganizeDrawer(deps) {
       h('div', { className: 'fo-org-head' },
         h('div', { className: 'fo-org-head-main' },
           h('span', { className: 'fo-org-title' }, '建议'),
-          h('span', { className: 'fo-org-counts' }, latestScope ? `当前：${latestScope}` : ''),
+          h('span', { className: 'fo-org-counts' }, latestScope),
         ),
         h('div', { className: 'fo-org-head-actions' },
           iconBtn('dock', 'dock',
@@ -269,6 +269,9 @@ export function createOrganizeDrawer(deps) {
         ),
       ),
       h('div', { className: 'fo-org-list', ref: listRef },
+        p.status === 'running'
+          ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
+          : null,
         more > 0
           ? h('div', { className: 'fo-org-load-more' },
             h('button', {
@@ -296,7 +299,7 @@ export function createOrganizeDrawer(deps) {
           : null,
         model.str(latestBatch?.model?.error) && latestPending.length
           ? h('p', { className: 'fo-org-notes', 'data-tone': 'muted' },
-            `AI 这次没有给出建议（${model.str(latestBatch.model.error)}）；下面是按完成时间排序的兜底建议。`)
+            'AI 未给出建议，显示时间兜底')
           : null,
         latestDropped.length
           ? h('div', { className: 'fo-org-dropped' },
@@ -317,9 +320,7 @@ export function createOrganizeDrawer(deps) {
           : null,
         shown.length
           ? shown.map(groupNode)
-          : h('p', { className: 'fo-org-empty', 'aria-live': 'polite' }, running
-            ? '正在读任务、找前置 / 后置 / 来源关系…（可能十几秒）'
-            : '还没有建议：点画布卡片上的「整理」，让 AI 先出一组。'),
+          : (running ? null : h('p', { className: 'fo-org-empty' }, '暂无建议')),
       ),
     )
   }
