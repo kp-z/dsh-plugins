@@ -1700,7 +1700,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(drawer.length, 1)
     const text = textOf(drawer[0])
     assert.ok(text.includes('建议'))
-    assert.ok(text.includes('两条建议都来自描述里的先后措辞'), 'notes 要显示')
+    assert.equal(text.includes('两条建议都来自描述里的先后措辞'), false, '不再显示 AI notes 废话')
     assert.ok(text.includes('待处理 2'))
     assert.equal(orgItems(ft, 'pending').length, 2)
     assert.equal(rootOf(ft).props['data-organize'], '1')
@@ -1856,9 +1856,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(drawer.length, 1)
     assert.ok(textOf(drawer[0]).includes('没有找到关系'))
   })
-  check('空态也不给假的「全部接受」按钮（禁用）', () => {
-    const acceptAll = findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all')[0]
-    assert.equal(acceptAll.props.disabled, true)
+  check('空态不再显示组操作按钮', () => {
+    assert.equal(findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'accept-all').length, 0)
   })
 }
 

@@ -1179,9 +1179,9 @@ export const CSS = `
 .fo-icon-btn:disabled { opacity: .4; cursor: default; background: transparent; }
 .fo-icon-btn[aria-pressed="true"] { color: ${T.brand}; background: ${g(T.brand, 12)}; }
 .fo-org-icon { display: block; }
-.fo-org-group.is-active .fo-org-group-scope { color: ${T.label1}; font-weight: 600; }
+
 .fo-org-group-time { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
-.fo-org-group-scope { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
 .fo-org-group-counts { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 .fo-org-group-body { display: flex; flex-direction: column; gap: 10px; padding: 0; }
 .fo-org-item {

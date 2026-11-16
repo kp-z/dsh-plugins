@@ -85,7 +85,7 @@ export function createOrganizeDrawer(deps) {
       : (p.batch ? [p.batch] : [])
     const latest = groups[0] || null
     const latestItems = Array.isArray(latest && latest.items) ? latest.items : []
-    const latestPending = latestItems.filter((item) => item.status === 'pending')
+
 
     const [expanded, setExpanded] = useState({})
     /* 「当前组」= 用户正在看/展开的那一组（默认最新）。接受以上只作用于它。 */
@@ -195,7 +195,6 @@ export function createOrganizeDrawer(deps) {
       const isActive = !!batchId && batchId === (activeId || latestId)
       /* 不再要求「不是最新」：最新一组处理完也自动归档（否则永远停在当前态、没法收起来）。 */
       const archived = pending.length === 0 && (accepted.length + rejected.length) > 0
-      const scopeText = typeof p.scopeLabel === 'function' ? p.scopeLabel(batch) : ''
       return h('section', {
         key: batchId,
         className: 'fo-org-group' + (current ? ' is-current' : '') + (archived ? ' is-archived' : '') + (isActive ? ' is-active' : ''),
@@ -210,10 +209,10 @@ export function createOrganizeDrawer(deps) {
             onClick: () => toggleGroup(batchId),
           },
             h('span', { className: 'fo-org-group-time' }, etaText(batch.at)),
-            h('span', { className: 'fo-org-group-scope' }, scopeText),
             h('span', { className: 'fo-org-group-counts' },
-              `待处理 ${pending.length}` + (accepted.length ? ` · 已接受 ${accepted.length}` : '')
-              + (rejected.length ? ` · 已拒绝 ${rejected.length}` : '')
+              (pending.length ? `待处理 ${pending.length}` : '')
+              + (accepted.length ? `${pending.length ? ' · ' : ''}已接受 ${accepted.length}` : '')
+              + (rejected.length ? `${(pending.length || accepted.length) ? ' · ' : ''}已拒绝 ${rejected.length}` : '')
               + (archived ? ' · 已归档' : '')),
           ),
           /* 归档后收起时，撤销仍留在组头，避免必须先展开才能回退。 */
@@ -226,12 +225,10 @@ export function createOrganizeDrawer(deps) {
           ? h('div', { className: 'fo-org-group-body' },
             items.length
               ? items.map((item) => itemNode(item, batch, isActive))
-              : h('p', { className: 'fo-org-empty' }, generating
-                ? '正在生成…'
-                : (current && batch === latest && !pending.length && !items.some((item) => item.status === 'accepted' || item.status === 'rejected')
-                  ? '没有找到关系'
-                  : '这一组没有建议')),
-            h('div', { className: 'fo-org-group-actions' },
+              : h('p', { className: 'fo-org-empty' }, generating ? '正在生成…' : '没有找到关系'),
+            /* 只有存在可操作/可撤销的条目时才显示组操作行；空组不再放两个灰按钮。 */
+            (pending.length || accepted.length)
+              ? h('div', { className: 'fo-org-group-actions' },
               iconBtn('accept-all', 'check', `接受本组全部（${pending.length} 条）`, () => {
                 if (typeof p.onAcceptGroup === 'function') p.onAcceptGroup(batchId, [])
               }, { disabled: running || !pending.length }),
@@ -241,7 +238,9 @@ export function createOrganizeDrawer(deps) {
               accepted.length && typeof p.onUndoGroup === 'function'
                 ? iconBtn('undo-accepted', 'undo', `撤销本组已接受（${accepted.length} 条）`, () => p.onUndoGroup(batchId, []), { disabled: running })
                 : null,
-            ))
+            )
+              : null,
+          )
           : null,
       )
     }
@@ -328,13 +327,7 @@ export function createOrganizeDrawer(deps) {
               }, '重试')
               : null)
           : null,
-        model.str(latestBatch.notes)
-          ? h('p', { className: 'fo-org-notes' }, model.str(latestBatch.notes))
-          : null,
-        model.str(latestBatch?.model?.error) && latestPending.length
-          ? h('p', { className: 'fo-org-notes', 'data-tone': 'muted' },
-            'AI 未给出建议，显示时间兜底')
-          : null,
+
         latestDropped.length
           ? h('div', { className: 'fo-org-dropped' },
             h('button', {
