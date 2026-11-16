@@ -9763,7 +9763,7 @@ bucket 只能从枚举里选：
           return { ok: failures.length === 0, failures }
         })
         const taskSync = await stage('任务同步', syncTasks)
-        if (taskSync?.ok) await stage('清单与字段初始化', ensureManagedTasklist)
+        if (taskSync?.ok) await stage('清单初始化', ensureManagedTasklist)
         if (adoptFeishuSchedule()) await persistState()
         retryWorkspaceWrites()
         await stage('工作区对账', reconcileWorkspaces, { optional: true })

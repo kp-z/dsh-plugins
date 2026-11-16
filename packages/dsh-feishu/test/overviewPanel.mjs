@@ -718,8 +718,8 @@ check('Header 搜索/按钮 = cove TopBar 规格（42px 图标 → 320px 胶囊�
   assert.ok(input.includes('background: transparent'), '输入框透明（底色在容器上）')
   assert.ok(input.includes('font-size: 14px'), '输入 14px（cove text-sm）')
   assert.equal(input.includes('border-radius: 14px'), false, '旧的 14px 圆角搜索框已不用')
-  assert.equal(ruleBody('.fo-capsule').length, 0, 'Capsule 已随 Header 动作组删除')
-  assert.equal(ruleBody('.fo-head-actions').length, 0, 'Header 动作组已删')
+  assert.equal(ruleBody('.fo-capsule').length, 0, 'Capsule 已弃用，Header 用 fo-btn')
+  assert.ok(ruleBody('.fo-head-actions').includes('margin-left: auto'), 'Header 右侧动作组在')
 })
 
 check('画布：16px 圆角 + border-l1 35% 描边 + 品牌调渐变底 + 24px 内边距', () => {
@@ -1472,18 +1472,18 @@ const PANEL_CARD = layout.CARD
     const head = byClass(ft, 'fo-main-head')[0]
     assert.equal(byClass(head, 'fo-search-wrap').length, 1, '搜索容器在（收起态）')
     assert.equal(byClass(head, 'fo-search-toggle').length, 1, '收起态只有一个图标按钮')
-    assert.equal(byClass(head, 'fo-head-actions').length, 0, 'Header 不再有动作组')
-    assert.equal(head.children.filter((child) => child && child.kind === 'host').length, 1)
+    assert.equal(byClass(head, 'fo-head-actions').length, 1, 'Header 右侧动作组在')
+    assert.equal(head.children.filter((child) => child && child.kind === 'host').length, 2)
   })
-  check('「建议」唯一入口在图头：Header / rail 底部都没有第二个', () => {
+  check('「建议」唯一入口在 Header：图头 / rail 底部都没有第二个', () => {
     assert.equal(byClass(ft, 'fo-feature-bar').length, 0, '旧工具条已删')
     assert.equal(byClass(ft, 'fo-canvas-card').length, 0, '浮动卡片已删')
     const head = byClass(ft, 'fo-main-head')[0]
-    assert.equal(findAll(head, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'Header 里没有「建议」')
+    const headActions = byClass(head, 'fo-head-actions')[0]
+    assert.equal(findAll(headActions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 1, 'Header 里有唯一的「建议」按钮')
     const foot = byClass(ft, 'fo-rail-foot')[0]
     assert.equal(findAll(foot, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'rail 底部没有「建议」')
-    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize' && classNameOf(node).includes('fo-suggest-tab')).length >= 1, true, '右缘有「建议」标签')
-    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize' && !classNameOf(node).includes('fo-suggest-tab')).length, 0, '没有第二个「建议」按钮')
+    assert.equal(findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 1, '全页只有这一个入口')
   })
   check('图头动作图标化：适应 / 复位布局 / 取消聚焦 是 26px 图标按钮，文字只在 aria-label', () => {
     for (const [action, label] of [['fit', '适应画布'], ['reset-layout', '复位布局'], ['blur', '取消聚焦']]) {
@@ -1669,7 +1669,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(btn.props['data-action'], 'organize')
     assert.ok(String(btn.props.title).includes('打开建议面板'))
     assert.ok(!btn.props.disabled, '入口不因分析运行而禁用（它只是开关）')
-    assert.ok(classNameOf(btn).includes('fo-suggest-tab'), '是右缘竖标签')
+    assert.ok(classNameOf(btn).includes('fo-suggest-btn'), '是 Header 上的建议按钮')
     assert.equal(btn.props['aria-expanded'], 'false')
     assert.equal(organizeDrawers(ft).length, 0, '没点之前抽屉不出现')
   })

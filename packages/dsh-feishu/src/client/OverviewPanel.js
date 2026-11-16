@@ -1407,31 +1407,6 @@ export function createOverviewPanel(deps) {
         ),
       ),
       h('div', { className: 'fo-body' },
-        /* 建议 = 唯一入口：贴在右侧边缘的竖向标签。面板打开时它贴在面板左缘（见 CSS data-organize）。 */
-        typeof apiRef.current.organize === 'function'
-          ? h('button', {
-            type: 'button', className: 'fo-suggest-tab', 'data-action': 'organize',
-            'data-active': org.open ? '1' : '0',
-            'data-running': org.status === 'running' ? '1' : '0',
-            'aria-expanded': org.open ? 'true' : 'false',
-            'aria-controls': 'fo-suggest-panel',
-            title: org.open ? '收起建议面板' : '打开建议面板（在这里生成/查看建议）',
-            onClick: () => {
-              if (org.open) return toggleOrganize()
-              setOrg((prev) => ({ ...prev, open: true, scope }))
-              return null
-            },
-          },
-            h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
-              h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
-              h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
-            ),
-            h('span', { className: 'fo-suggest-tab-label' }, '建议'),
-            Number(org.batch && org.batch.pending) > 0 && !org.open
-              ? h('span', { className: 'fo-suggest-tab-badge' }, String(Number(org.batch.pending)))
-              : null,
-          )
-          : null,
         h('div', { className: 'fo-main' },
           /* 全局 Header：与左上品牌栏严格齐平（同为 48px + 同一条底边线）。
              三页共用：左=页面名，中=全局搜索，右=建议 + 刷新。 */
@@ -1492,7 +1467,34 @@ export function createOverviewPanel(deps) {
                 ? h('span', { className: 'fo-search-hint' }, `匹配 ${scopedTasks.length} 条`)
                 : null,
             ),
-            /* 建议入口已收进关系面板的图头（唯一入口）；页头不再放第二个「建议」按钮。 */
+            /* 建议 = 唯一入口：Header 右侧一个按钮，负责开/收右侧建议面板。 */
+            h('div', { className: 'fo-head-actions' },
+              typeof apiRef.current.organize === 'function'
+                ? h('button', {
+                  type: 'button', className: 'fo-btn fo-suggest-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+                  'data-action': 'organize',
+                  'data-active': org.open ? '1' : '0',
+                  'data-running': org.status === 'running' ? '1' : '0',
+                  'aria-expanded': org.open ? 'true' : 'false',
+                  'aria-controls': 'fo-suggest-panel',
+                  title: org.open ? '收起建议面板' : '打开建议面板（在这里生成/查看建议）',
+                  onClick: () => {
+                    if (org.open) return toggleOrganize()
+                    setOrg((prev) => ({ ...prev, open: true, scope }))
+                    return null
+                  },
+                },
+                  h('svg', { width: 14, height: 14, viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
+                    h('path', { d: 'M10 2.4l1.5 4.1 4.1 1.5-4.1 1.5L10 13.6 8.5 9.5 4.4 8l4.1-1.5z' }),
+                    h('path', { d: 'M15.6 13.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z' }),
+                  ),
+                  h('span', { className: 'fo-suggest-label' }, org.status === 'running' ? '分析中' : '建议'),
+                  Number(org.batch && org.batch.pending) > 0 && !org.open
+                    ? h('span', { className: 'fo-suggest-badge' }, String(Number(org.batch.pending)))
+                    : null,
+                )
+                : null,
+            ),
           ),
           /* 宿主动作失败的提示（role=status）：打开会话没成功时给一句人话，别静默。 */
           hostNote

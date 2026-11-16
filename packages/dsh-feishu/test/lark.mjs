@@ -290,14 +290,14 @@ try {
   check('cli.backend 标记正确', switched.data.state?.cli?.backend === 'lark-cli')
   check('版本号来自 lark-cli', switched.data.state?.cli?.version === '1.0.98')
   check('切换后授权体检通过', switched.data.state?.auth?.ok === true)
-  check('体检完成 main 的全字段受管清单', switched.data.state?.auth?.tasklistReady === true && switched.data.state?.managedTasklist?.fields?.length === 12)
+  check('体检完成清单初始化（不再批量建字段）', switched.data.state?.auth?.tasklistReady === true && switched.data.state?.managedTasklist?.status === 'ready')
   const larkArgs = await readFile(join(BIN, 'args.log'), 'utf8').catch(() => '')
   check(
     '清单不存在时自动创建（name=DSH 任务）',
     /POST \/open-apis\/task\/v2\/tasklists.*DSH 任务/.test(larkArgs),
   )
   check(
-    '已有完整 schema 不重复建字段',
+    '清单初始化不批量建字段',
     !/POST \/open-apis\/task\/v2\/custom_fields/.test(larkArgs),
   )
 
