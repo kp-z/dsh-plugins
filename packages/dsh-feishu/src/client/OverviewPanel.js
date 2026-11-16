@@ -1094,6 +1094,9 @@ export function createOverviewPanel(deps) {
             const localOnly = accepted.filter((row) => model.str(row.warning)).length
             const bits = []
             if (accepted.length) bits.push(`已接受 ${accepted.length} 条建议`)
+            const temporalAccepted = (acceptedItems.length ? acceptedItems : accepted)
+              .filter((item) => model.str(item.kind) === 'temporal').length
+            if (temporalAccepted > 0) bits.push(`${temporalAccepted} 条时间先后已画成虚线（不阻塞开工）`)
             if (hiddenHits > 0) {
               bits.push(`其中 ${hiddenHits} 条连的是已完成任务——已临时展开 ${Math.round(REVEAL_MS / 1000 * 10) / 10} 秒，之后自动收起`)
               /* 立刻亮一次（用户马上能看到反馈），快照落地后再续一次计时（见下面 then） */

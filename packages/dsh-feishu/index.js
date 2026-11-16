@@ -6131,6 +6131,9 @@ function createSyncEngine(ctx) {
       /* 时间兜底要用的两个时间：待办看预期完成、已完成看实际完成。 */
       expectedAt: Number(task.expectedAt) || 0,
       completedAt: Number(task.completedAt) || Number(task.endAt) || 0,
+      /* 时间兜底的次级排序：预期时间并列/缺失时，用开始 / 创建时间给待办排序。 */
+      startedAt: Number(task.startedAt) || Number(task.startAt) || 0,
+      createdAt: Number(task.createdAt) || 0,
       /* 项目 key 必须与画布同一个口径，否则时间链会跨项目连出假关系。 */
       workspaceKey: workspaceKeyOf(enrichWorkspace(task, workspaceRows)),
       meta: { workspace: asString(task.meta?.workspace) || asString(task.workspaceTitle) },
@@ -6308,6 +6311,8 @@ function createSyncEngine(ctx) {
       relations: state.relations,
       max: MAX_TEMPORAL_ITEMS,
       format: (at) => formatEta(Number(at), tz),
+      /* 先只按预期完成时间串；如果 AI 也没给出关系，再用开始/创建时间兜底。 */
+      fallback: false,
     })
     /* 预期完成建议与关系建议分开算：它是确定性的、和关系图无关，而且**永远都要有**
        （用户口径：建议不只是任务关系，也要推荐预期完成时间这类配置）。 */
@@ -6350,7 +6355,19 @@ function createSyncEngine(ctx) {
       /* 回退成功时不要把会话失败塞进 model.error（UI 会误报「AI 没给建议」）；
          单独记 sessionError，便于排查。 */
     }
-    if (!modelItems.length && !temporal.items.length && !eta.items.length) {
+    /* AI 一条关系都没给时，才用开始/创建时间兜底出时间线建议（避免和 AI 的关系建议重复）。
+       用户口径：最少也要有按时间的关系建议。 */
+    let temporalItems = temporal.items
+    if (!temporalItems.length && !modelItems.length) {
+      const started = buildTemporalSuggestions({
+        tasks: views,
+        relations: state.relations,
+        max: MAX_TEMPORAL_ITEMS,
+        format: (at) => formatEta(Number(at), tz),
+      })
+      temporalItems = started.items
+    }
+    if (!modelItems.length && !temporalItems.length && !eta.items.length) {
       /* 有任务、模型也确实回答过（哪怕 items 为空）：照样落一组空建议，
          让面板明确显示「看过，没有可靠关系」，而不是一个用户看不见的报错。
          只有「没任务」或「模型真的失败」才返回错误。 */
@@ -6358,7 +6375,7 @@ function createSyncEngine(ctx) {
       notes = notes || 'AI 看过这些任务，没有找到可落库的前置 / 来源 / 时间关系。'
     }
     /* 关系在前、预期完成在后：关系是"改图"，预期是"改配置"，先看图的改动。 */
-    const checked = validateOrganizeItems({ items: [...modelItems, ...temporal.items, ...eta.items], tasks: views, relations: state.relations, now: nowMs() })
+    const checked = validateOrganizeItems({ items: [...modelItems, ...temporalItems, ...eta.items], tasks: views, relations: state.relations, now: nowMs() })
     const batch = makeOrganizeBatch({
       batchId: organizeBatchId(s, nowMs()),
       at: nowMs(),
@@ -6372,7 +6389,7 @@ function createSyncEngine(ctx) {
         source: modelSource,
         sessionId,
         sessionError,
-        temporal: temporal.items.length,
+        temporal: temporalItems.length,
         eta: eta.items.length,
       },
       notes,
@@ -6389,7 +6406,7 @@ function createSyncEngine(ctx) {
       dropped: checked.dropped,
       complete: pack.complete,
       candidates: pack.items.length,
-      temporal: temporal.items.length,
+      temporal: temporalItems.length,
       temporalTruncated: temporal.truncated,
       modelError,
     }
@@ -6829,17 +6846,24 @@ function createSyncEngine(ctx) {
 
     /* 任务名 = 会话名：AI 先给一个像任务的名字，失败再用首行启发式兜底。 */
     const draft = deriveTaskDraft(text, id)
+    /* 兜底标题「会话工作整理（xxxx）」只在正文没抽出来时出现（空文本 / 整段都是代码围栏）。
+       这种情况建出来的任务标题是占位符、描述是空的，正是用户报的「名字很奇怪、内容都不对」。
+       宁可明确失败，也不要落一条垃圾任务。 */
+    if (!draft.title || /^会话工作整理/.test(draft.title)) {
+      return { ok: false, error: '没从会话里抽出可用正文（可能最后一条回复只有代码块），先聊一轮再点「同步为飞书任务」' }
+    }
     const named = await generateSessionTitle(text, draft.title, asString(draft.workspace))
     const result = await createTaskFromSession(id, { title: named.title, description: draft.description })
     if (!result.ok) return result
 
-    const renamed = await renameSession(id, named.title)
+    /* createTaskFromSession 内部已经通过 linkTask 把会话改名为**装饰后**的任务名（表情 + T<n>-），
+       这里再改一次会把装饰名覆盖成未装饰的草稿名，导致「会话名 ≠ 任务名」且丢掉表情/编号。 */
     return {
       ok: true,
       taskId: result.taskId,
       title: result.title,
       ai: named.ai,
-      renamed: renamed.ok,
+      renamed: true,
       note: named.ai ? '已用 AI 命名并创建任务' : '已从会话记录创建任务',
     }
   }
