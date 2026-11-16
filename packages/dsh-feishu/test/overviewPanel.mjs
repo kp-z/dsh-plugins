@@ -718,13 +718,8 @@ check('Header 搜索/按钮 = cove TopBar 规格（42px 图标 → 320px 胶囊�
   assert.ok(input.includes('background: transparent'), '输入框透明（底色在容器上）')
   assert.ok(input.includes('font-size: 14px'), '输入 14px（cove text-sm）')
   assert.equal(input.includes('border-radius: 14px'), false, '旧的 14px 圆角搜索框已不用')
-  const cap = ruleBody('.fo-capsule')
-  assert.ok(cap.includes('height: 32px'), 'Capsule h-8')
-  assert.ok(cap.includes('border-radius: 999px'), 'Capsule 全圆角')
-  assert.ok(cap.includes('padding: 0 12px'), 'Capsule px-3')
-  assert.ok(ruleBody('.fo-capsule:hover').includes('scale(1.02)'), 'hover 放大 1.02')
-  assert.ok(ruleBody('.fo-capsule:active').includes('scale(.98)'), 'active 缩回 0.98')
-  assert.ok(ruleBody('.fo-suggest[data-active="1"]').includes('12%'), '建议 active = 品牌 12% 底')
+  assert.equal(ruleBody('.fo-capsule').length, 0, 'Capsule 已随 Header 动作组删除')
+  assert.equal(ruleBody('.fo-head-actions').length, 0, 'Header 动作组已删')
 })
 
 check('画布：16px 圆角 + border-l1 35% 描边 + 品牌调渐变底 + 24px 内边距', () => {
@@ -1473,23 +1468,23 @@ const PANEL_CARD = layout.CARD
     assert.equal(textOf(head).includes('张图'), false)
     assert.equal(textOf(head).includes('未完成'), false)
   })
-  check('头部就是「搜索 + 动作」两样（搜索收起时只有一个图标按钮）', () => {
+  check('Header 只保留搜索：动作组已删（「建议」入口收进图头）', () => {
     const head = byClass(ft, 'fo-main-head')[0]
     assert.equal(byClass(head, 'fo-search-wrap').length, 1, '搜索容器在（收起态）')
     assert.equal(byClass(head, 'fo-search-toggle').length, 1, '收起态只有一个图标按钮')
-    assert.equal(byClass(head, 'fo-head-actions').length, 1)
-    assert.equal(head.children.filter((child) => child && child.kind === 'host').length, 2)
+    assert.equal(byClass(head, 'fo-head-actions').length, 0, 'Header 不再有动作组')
+    assert.equal(head.children.filter((child) => child && child.kind === 'host').length, 1)
   })
-  check('「建议」在 Header 右上角：rail 底部没有，正文头部有且只有一个', () => {
+  check('「建议」唯一入口在图头：Header / rail 底部都没有第二个', () => {
     assert.equal(byClass(ft, 'fo-feature-bar').length, 0, '旧工具条已删')
     assert.equal(byClass(ft, 'fo-canvas-card').length, 0, '浮动卡片已删')
     const head = byClass(ft, 'fo-main-head')[0]
-    const actions = byClass(head, 'fo-head-actions')[0]
-    const organizeInHead = findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize')
-    assert.equal(organizeInHead.length, 1, '「建议」在 Header 右上角的动作组里')
-    assert.equal(classNameOf(organizeInHead[0]).includes('fo-suggest'), true, '用 .fo-suggest 胶囊样式')
+    assert.equal(findAll(head, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'Header 里没有「建议」')
     const foot = byClass(ft, 'fo-rail-foot')[0]
-    assert.equal(findAll(foot, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'rail 底部不再有「建议」')
+    assert.equal(findAll(foot, (node) => node.kind === 'host' && node.props['data-action'] === 'organize').length, 0, 'rail 底部没有「建议」')
+    const graphActions = findAll(ft, (node) => node.kind === 'host' && node.props['data-action'] === 'organize')
+    assert.ok(graphActions.length >= 1, '图头有「建议」按钮')
+    assert.equal(textOf(graphActions[0]).trim(), '建议')
   })
   check('图头动作图标化：适应 / 复位布局 / 取消聚焦 是 26px 图标按钮，文字只在 aria-label', () => {
     for (const [action, label] of [['fit', '适应画布'], ['reset-layout', '复位布局'], ['blur', '取消聚焦']]) {
@@ -1524,8 +1519,8 @@ const PANEL_CARD = layout.CARD
     }
     assert.equal(byClass(actions, 'fo-zoom-value').length, 1, 'header 里有缩放百分比')
     const organizeBtn = findAll(actions, (node) => node.kind === 'host' && node.props['data-action'] === 'organize')
-    assert.equal(organizeBtn.length, 1, '画布卡片上有「整理」入口')
-    assert.equal(textOf(organizeBtn[0]).trim(), '整理')
+    assert.equal(organizeBtn.length, 1, '画布卡片上有唯一的「建议」入口')
+    assert.equal(textOf(organizeBtn[0]).trim(), '建议')
     assert.equal(textOf(head).includes('组外/缺失'), false)
   })
   /* ---- 画布缩放：卡片上的 − / 百分比 / + / 适应 ----
@@ -1670,17 +1665,14 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   const fx = await mountPanel({ organizeApi: backend.api })
   let ft = fx.tree
 
-  check('Header 右上角：全局「建议」胶囊（自绘 sparkle 图标 + title 说明），没有建议时不显示角标', () => {
+  check('图头的「建议」是唯一入口：点开右侧面板，入口本身留在图头', () => {
     const btn = ORGANIZE_TRIGGER(ft)
     assert.ok(btn, '建议按钮在')
-    assert.ok(textOf(btn).includes('建议'))
+    assert.equal(textOf(btn).trim(), '建议')
     assert.equal(btn.props['data-action'], 'organize')
-    assert.ok(String(btn.props.title).includes('先出建议再落库'))
-    assert.equal(btn.props.disabled, false)
-    assert.ok(classNameOf(btn).includes('fo-suggest'), '用 .fo-suggest 胶囊')
-    const icon = findAll(btn, (node) => node.kind === 'host' && node.type === 'svg')[0]
-    assert.ok(icon, '图标是自绘 svg')
-    assert.equal(findAll(btn, (node) => node.kind === 'host' && classNameOf(node).includes('fo-suggest-badge')).length, 0, '没有待处理建议时不显示角标')
+    assert.ok(String(btn.props.title).includes('打开建议栏'))
+    assert.ok(!btn.props.disabled, '入口不因分析运行而禁用（它只是开关）')
+    assert.ok(classNameOf(btn).includes('fo-btn'), '仍在图头工具组里')
     assert.equal(organizeDrawers(ft).length, 0, '没点之前抽屉不出现')
   })
 
@@ -1692,14 +1684,15 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(backend.log.view[0].kind, 'all')
     assert.equal(organizeDrawers(ft).length, 1, '侧栏立刻打开')
   })
-  /* 侧栏顶部的「重新分析」才跑模型：它永远跑全量任务 */
+  /* 面板里的「提供新的建议」才跑模型：范围 = 点开面板时那张图的范围 */
   findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
   ft = await fx.mini.act()
-  check('「重新分析」跑的是**全量**任务（与当前选中的目录无关）', () => {
+  check('「提供新的建议」按当前图的范围跑（不再固定全量）', () => {
     assert.equal(backend.log.organize.length, 1)
-    assert.equal(backend.log.organize[0].kind, 'all')
-    assert.equal(backend.log.organize[0].id, '')
-    assert.ok(backend.log.organize[0].members === undefined || Array.isArray(backend.log.organize[0].members))
+    const scope = backend.log.organize[0]
+    assert.ok(['group', 'project', 'all'].includes(scope.kind), JSON.stringify(scope))
+    assert.equal(typeof scope.id, 'string')
+    assert.ok(scope.members === undefined || Array.isArray(scope.members))
   })
   check('数据态：抽屉打开、标题/notes/计数都在，待处理 2 条', () => {
     const drawer = organizeDrawers(ft)
@@ -1874,18 +1867,16 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   ft = await fx.mini.act()
   ORGANIZE_RERUN(ft).props.onClick()
   ft = await fx.mini.act()
-  check('loading 态：入口按钮 disabled + 「分析中」，侧栏里的重新分析也锁住', () => {
-    const btn = ORGANIZE_TRIGGER(ft)
-    assert.equal(btn.props.disabled, true)
-    assert.ok(textOf(btn).includes('分析中'))
+  check('loading 态：面板里的「提供新的建议」锁住（图头入口只是开关，不跑分析）', () => {
     assert.equal(ORGANIZE_RERUN(ft).props.disabled, true)
+    assert.ok(String(ORGANIZE_RERUN(ft).props.title).includes('正在提供新的建议'))
+    assert.ok(!ORGANIZE_TRIGGER(ft).props.disabled)
   })
   defer.forEach((resolve) => resolve())
   ft = await fx.mini.act()
   check('跑完回到可点状态，抽屉有内容', () => {
-    const btn = ORGANIZE_TRIGGER(ft)
-    assert.equal(btn.props.disabled, false)
-    assert.ok(textOf(btn).includes('建议'))
+    assert.equal(ORGANIZE_RERUN(ft).props.disabled, false)
+    assert.ok(textOf(ORGANIZE_TRIGGER(ft)).includes('建议'))
     assert.equal(organizeDrawers(ft).length, 1)
   })
 }

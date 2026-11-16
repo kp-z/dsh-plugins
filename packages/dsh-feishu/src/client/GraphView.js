@@ -693,9 +693,9 @@ export function createGraphView(deps) {
               ? h('button', {
                 type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
                 'data-action': 'organize',
-                title: '让 AI 看这个项目里的任务，找出可连的关系',
+                title: '打开建议栏（按这张图的范围生成/查看建议）',
                 onClick: () => onOrganize(graph),
-              }, '整理')
+              }, '建议')
               : null,
             /* 筛选：状态（进行中/阻塞/挂起/已完成）+ 已完成的时间窗（默认最近一周） */
             h('div', { className: 'fo-filter-wrap' },
