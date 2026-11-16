@@ -15,6 +15,7 @@ import {
   MIN_CONFIDENCE,
   ORGANIZE_SYSTEM,
   buildEvidencePack,
+  buildHeuristicRelations,
   buildTemporalSuggestions,
   describeImpact,
   makeOrganizeBatch,
@@ -302,6 +303,37 @@ check('时间建议：已存在的时间边不重复提，且受上限约束', (
   assert.equal(result.items.length, 5)
   assert.equal(result.truncated > 0, true)
   assert.equal(result.items.some((item) => item.from === 't0' && item.to === 't1'), false)
+})
+
+
+check('关系线索兜底：正文出现另一条任务的编号 → derived_from 线索', () => {
+  const { items } = buildHeuristicRelations({
+    tasks: [
+      TX('a', { no: 'T100020', title: '接口', description: '', createdAt: 1 }),
+      TX('b', { no: 'T100021', title: '接入', description: '等 T100020-接口 完成后再做', createdAt: 2 }),
+    ],
+    relations: [],
+  })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].kind, 'derived_from')
+  assert.equal(items[0].from, 'a')
+  assert.equal(items[0].to, 'b')
+  assert.ok(items[0].confidence >= MIN_CONFIDENCE.derived_from)
+  assert.match(items[0].evidence, /编号/)
+})
+
+check('关系线索兜底：同项目创建时间相邻，给低置信度线索；已有关系不重复', () => {
+  const tasks = [
+    TX('a', { title: '写接口', createdAt: 100, workspaceKey: 'w1' }),
+    TX('b', { title: '补测试', createdAt: 200, workspaceKey: 'w1' }),
+    TX('c', { title: '别的项目', createdAt: 300, workspaceKey: 'w2' }),
+  ]
+  const first = buildHeuristicRelations({ tasks, relations: [] }).items
+  assert.deepEqual(first.map((item) => `${item.from}>${item.to}`), ['a>b'])
+  assert.equal(first[0].confidence, 0.6)
+  assert.match(first[0].evidence, /线索/)
+  const second = buildHeuristicRelations({ tasks, relations: [{ kind: 'derived_from', from: 'a', to: 'b' }] }).items
+  assert.equal(second.length, 0)
 })
 
 check('校验：temporal 走时间方向，不阻塞也不被当成依赖', () => {

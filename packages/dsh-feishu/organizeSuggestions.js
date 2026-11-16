@@ -256,6 +256,106 @@ export function buildTemporalSuggestions(input) {
 }
 
 /**
+ * 关系线索（**确定性兜底**，不依赖模型）。
+ *
+ * AI 只在正文里有明确「等 / 基于 / 拆分自」时才给关系；很多任务描述是会话摘要，
+ * 互不引用，于是 AI 返回空、面板里一条关系建议都没有。这里在 AI 为空时补三类**线索**：
+ *  - 文本引用：B 的标题/描述里出现 A 的编号或标题 → A derived_from B 的候选；
+ *  - 同一会话：两条任务来自同一个会话 → 可能是同一条工作的拆分；
+ *  - 同项目且创建时间相邻 → 只作线索，置信度 0.6（derived_from 不阻塞开工）。
+ *
+ * 全部标成 derived_from（只表示来源，不产生「等」），并明确写「线索」；用户可以拒绝。
+ */
+export function buildHeuristicRelations(input) {
+  const o = isObj(input) ? input : {}
+  const tasks = arr(o.tasks).filter((task) => isObj(task) && str(task.id))
+  const relations = arr(o.relations).filter(isObj)
+  const max = Math.max(1, num(o.max, 3))
+  const existing = new Set(relations.map((edge) => `${str(edge.from)}|${str(edge.to)}`))
+  const related = (a, b) => existing.has(`${a}|${b}`) || existing.has(`${b}|${a}`)
+  const norm = (value) => str(value).toLowerCase().replace(/[\s\-_:：，。,.、|/]/g, '')
+  const bareTitle = (task) => norm(str(task.title)).replace(/^t\d+/, '')
+  const textOf = (task) => norm(`${str(task.title)} ${str(task.description)}`)
+  const items = []
+  const seen = new Set()
+  const push = (from, to, evidence, confidence = 0.7) => {
+    if (!from || !to || from === to || related(from, to)) return
+    const key = `${from}|${to}`
+    if (seen.has(key)) return
+    if (items.length >= max) return
+    seen.add(key)
+    items.push({
+      type: 'relation',
+      kind: 'derived_from',
+      from,
+      to,
+      confidence,
+      evidence: str(evidence).slice(0, 240),
+      status: 'pending',
+      reason: '',
+    })
+  }
+
+  /* 1) 文本引用：B 提到 A 的编号或标题 */
+  for (const toTask of tasks) {
+    if (toTask.done === true) continue
+    const text = textOf(toTask)
+    for (const fromTask of tasks) {
+      if (fromTask === toTask || fromTask.done === true) continue
+      const no = norm(str(fromTask.no))
+      const title = bareTitle(fromTask)
+      if (no.length >= 2 && text.includes(no)) {
+        push(str(fromTask.id), str(toTask.id), `正文里出现编号 ${str(fromTask.no)}，可能是它的后续（线索）`, 0.7)
+        break
+      }
+      if (title.length >= 4 && text.includes(title)) {
+        push(str(fromTask.id), str(toTask.id), `正文里出现标题「${str(fromTask.title).slice(0, 40)}」，可能是它的后续（线索）`, 0.7)
+        break
+      }
+    }
+  }
+
+  /* 2) 同一会话产生 */
+  for (let i = 0; i < tasks.length; i += 1) {
+    for (let j = i + 1; j < tasks.length; j += 1) {
+      const a = tasks[i]
+      const b = tasks[j]
+      if (a.done === true || b.done === true) continue
+      const session = str(a.sessionId)
+      if (session && session === str(b.sessionId)) {
+        push(str(a.id), str(b.id), '来自同一个会话，可能是同一条工作的拆分（线索）', 0.65)
+      }
+    }
+  }
+
+  /* 3) 同项目、创建时间相邻 */
+  if (!items.length) {
+    const groups = new Map()
+    for (const task of tasks) {
+      if (task.done === true) continue
+      const at = num(task.createdAt, 0)
+      if (!(at > 0)) continue
+      const project = str(task.workspaceKey) || str(task.meta?.workspace) || str(task.workspaceTitle)
+      const key = project || '（未分组）'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push({ task, at })
+    }
+    for (const [key, rows] of groups) {
+      if (rows.length < 2 || items.length >= max) continue
+      rows.sort((x, y) => (x.at - y.at) || str(x.task.id).localeCompare(str(y.task.id)))
+      for (let i = 1; i < rows.length && items.length < max; i += 1) {
+        const prev = rows[i - 1]
+        const next = rows[i]
+        if (!(next.at > prev.at)) continue
+        push(str(prev.task.id), str(next.task.id), `同一项目「${key.slice(0, 40)}」、创建时间相邻，无原文引用，仅作关系线索`, 0.6)
+      }
+    }
+  }
+
+  return { items, total: items.length }
+}
+
+/**
  * 校验：逐条判断，坏的只丢这一条并记明原因，不整批失败（设计稿 §4.2 第 3 段）。
  * 返回 items 里每条都有 `status`（pending / dropped）与 `reason`（被丢时）。
  */

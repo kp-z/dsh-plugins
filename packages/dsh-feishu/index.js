@@ -53,6 +53,7 @@ import {
   ORGANIZE_SYSTEM,
   buildEtaSuggestions,
   buildEvidencePack,
+  buildHeuristicRelations,
   buildTemporalSuggestions,
   makeOrganizeBatch,
   organizeBatchId,
@@ -6134,6 +6135,8 @@ function createSyncEngine(ctx) {
       /* 时间兜底的次级排序：预期时间并列/缺失时，用开始 / 创建时间给待办排序。 */
       startedAt: Number(task.startedAt) || Number(task.startAt) || 0,
       createdAt: Number(task.createdAt) || 0,
+      sessionId: asString(task.sessionId),
+      taskNo: asString(task.no),
       /* 项目 key 必须与画布同一个口径，否则时间链会跨项目连出假关系。 */
       workspaceKey: workspaceKeyOf(enrichWorkspace(task, workspaceRows)),
       meta: { workspace: asString(task.meta?.workspace) || asString(task.workspaceTitle) },
@@ -6355,17 +6358,25 @@ function createSyncEngine(ctx) {
       /* 回退成功时不要把会话失败塞进 model.error（UI 会误报「AI 没给建议」）；
          单独记 sessionError，便于排查。 */
     }
-    /* AI 一条关系都没给时，才用开始/创建时间兜底出时间线建议（避免和 AI 的关系建议重复）。
-       用户口径：最少也要有按时间的关系建议。 */
-    let temporalItems = temporal.items
-    if (!temporalItems.length && !modelItems.length) {
+    /* AI 一条关系都没给时：先用「文本引用 / 同一会话 / 同项目相邻」给关系线索，
+       再补按开始/创建时间的时间线建议（两条兜底可以同时出现）。 */
+    const aiRelationCount = modelItems.length
+    if (!aiRelationCount) {
+      const heuristic = buildHeuristicRelations({ tasks: views, relations: state.relations, max: 3 })
+      if (heuristic.items.length) modelItems = heuristic.items
+    }
+    /* 同一对任务不要同时给「来源」和「时间」两条建议：以关系建议为准。 */
+    const relationPairs = new Set(modelItems.map((item) => `${asString(item.from)}|${asString(item.to)}`))
+    const withoutRelationPairs = (rows) => rows.filter((item) => !relationPairs.has(`${asString(item.from)}|${asString(item.to)}`))
+    let temporalItems = withoutRelationPairs(temporal.items)
+    if (!temporalItems.length && !aiRelationCount) {
       const started = buildTemporalSuggestions({
         tasks: views,
         relations: state.relations,
         max: MAX_TEMPORAL_ITEMS,
         format: (at) => formatEta(Number(at), tz),
       })
-      temporalItems = started.items
+      temporalItems = withoutRelationPairs(started.items)
     }
     if (!modelItems.length && !temporalItems.length && !eta.items.length) {
       /* 有任务、模型也确实回答过（哪怕 items 为空）：照样落一组空建议，
