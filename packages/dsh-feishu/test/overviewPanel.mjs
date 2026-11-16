@@ -482,6 +482,7 @@ check('styles：decoVar / stateVar 只产出宿主令牌引用', () => {
 check('玻璃面：详情栏 / 菜单仍带 backdrop-filter blur(12px) 与玻璃底色', () => {
   const root = ruleBody('.fo-root')
   assert.ok(root.includes('--fo-glass-blur: blur(12px)'), '模糊半径 12px 定义在根上')
+  assert.ok(root.includes('min-height: 100dvh'), '宿主 slot 高度 auto 时用视口高度兜底，避免下方多一块空白')
   /* rail 不再走玻璃：用户要求与 cove 完全一致（实底 + 品牌色径向光晕），只剩详情栏 / 菜单是玻璃面 */
   for (const selector of ['.fo-detail', '.fo-menu']) {
     const body = ruleBody(selector)
