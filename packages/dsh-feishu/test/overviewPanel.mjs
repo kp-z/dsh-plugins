@@ -746,7 +746,9 @@ check('画布网格：40px 双层 linear-gradient、线色 border-l1 12%、不�
 })
 check('节点状态：hover 提亮、选中品牌描边+柔光、聚焦降到 30%、ghost 虚线', () => {
   assert.ok(ruleBody('.fo-node:hover .fo-node-dom').includes('outline'), 'hover 给容器一圈描边')
-  assert.ok(ruleBody('.fo-node.is-selected').includes('drop-shadow'), '选中带柔光')
+  /* 选中柔光不能再用 SVG filter：foreignObject + drop-shadow 会留竖条纹残影 */
+  assert.ok(ruleBody('.fo-node.is-selected').includes('filter: none'), '选中节点不再用 drop-shadow')
+  assert.ok(ruleBody('.fo-node.is-selected .fo-node-dom').includes('box-shadow'), '柔光改成卡片 box-shadow')
   assert.ok(ruleBody('.fo-node.is-selected .fo-node-dom').includes('--dsw-alias-brand-primary'), '选中描边 = 品牌色')
   assert.ok(ruleBody('.fo-node.is-dimmed').includes('opacity: .3'), '聚焦时其余节点降到 30%')
   assert.ok(ruleBody('.fo-node.is-ghost .fo-node-dom').includes('dashed'), 'ghost 是虚线框')
