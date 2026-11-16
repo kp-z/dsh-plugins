@@ -73,7 +73,8 @@ export function createApi({ fetchImpl } = {}) {
       const s = scope || { kind: 'all', id: '' };
       const query = `?kind=${encodeURIComponent(s.kind || 'all')}&id=${encodeURIComponent(s.id || '')}`;
       const data = await request(`/api/overview/organize${query}`, { headers: { accept: 'application/json' } });
-      return data.batch || null;
+      /* { batch, batches }：batches 是同一范围的历史组（新→旧），抽屉按组懒加载。 */
+      return { batch: data.batch || null, batches: Array.isArray(data.batches) ? data.batches : [] };
     },
     /** 接受若干条建议（itemIds 省略/空 = 全部待处理）。writeBack=false 只写本地关系。 */
     organizeAccept(batchId, itemIds, options) {

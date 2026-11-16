@@ -109,3 +109,8 @@ runs-green*.jpg
 .status-speech-design.html
 
 .sidebar-design-options.html
+
+# 卡片离线预览 / 关系图布局对比产物（本地调试，不入库）
+.card-gallery.html
+.card-canvas.html
+.graph-layout-compare.json

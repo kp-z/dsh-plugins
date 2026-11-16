@@ -15,8 +15,10 @@ const script = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m
 /* 1. 样式与渲染点：原生 title 让位给 data-tip 气泡。 */
 assert.match(html, /\.avatar-tip\s*\{/, '气泡样式存在')
 assert.match(html, /\.avatar-tip\[data-show="1"\]/, '气泡显示态样式存在')
-assert.match(html, /'data-tip': who \|\| label/, '负责人/关注人头像带 data-tip')
-assert.match(html, /'data-tip': label \+ '：' \+ list\.slice\(shown\.length\)/, '+N 头像带完整名单')
+/* 阶段 5 起卡片由共享组件渲染：头像的 data-tip 在 src/card/taskCardView.js。 */
+const cardView = await readFile(new URL('../src/card/taskCardView.js', import.meta.url), 'utf8')
+assert.match(cardView, /'data-tip': person\.tip/, '负责人/关注人头像带 data-tip')
+assert.match(cardView, /'data-tip': group\.tip/, '+N 头像带完整名单')
 assert.match(html, /avatar\.setAttribute\('data-tip', role \? authorName \+ ' · ' \+ role : authorName\)/, '评论头像带作者名+角色')
 assert.match(script, /\n  wireAvatarTips\(\);/, '启动时接线气泡')
 assert.doesNotMatch(html, /title: label \+ '：' \+ who/, '头像不再用原生 title 造成双重提示')
@@ -24,10 +26,10 @@ assert.doesNotMatch(html, /title: label \+ '：' \+ who/, '头像不再用原生
 /* 1.2 头像兜底：没有真名/真照片时画人形，绝不把 open_id 首字母当成用户头像。 */
 assert.match(html, /\.avatar\.is-anon::before/, '成员头像的中性人形样式存在')
 assert.match(html, /\.card-comment-avatar\.is-anon::before/, '评论头像的中性人形样式存在')
-assert.match(html, /'class': 'avatar' \+ \(letter \|\| photo \? '' : ' is-anon'\)/, '成员头像按「照片/首字/人形」三档渲染')
+assert.match(cardView, /className: 'avatar' \+ \(person\.anon \? ' is-anon' : ''\)/, '成员头像按「照片/首字/人形」三档渲染')
 assert.match(html, /'class': 'card-comment-avatar' \+ \(letter \|\|/, '评论头像同样是三档渲染')
 assert.match(html, /comment\.authorAvatar/, '评论头像优先用后端解析出的本人真头像')
-assert.match(html, /img\.onerror/, '头像加载失败退回首字/人形，不留破图')
+assert.match(cardView, /addEventListener\('error'/, '头像加载失败退回首字/人形，不留破图')
 
 /* 2. 行为：抽出气泡相关声明，用假 DOM 跑一遍。 */
 const start = script.indexOf('  /* ---------------- 头像悬停姓名')

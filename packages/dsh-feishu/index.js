@@ -20,7 +20,7 @@
  * 不是「少了个功能」。所以初始化里的异步动作全部 fire-and-forget，失败只写进 state.lastError。
  */
 import { execFile, spawn } from 'node:child_process'
-import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rename, open, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -4480,6 +4480,51 @@ function createSyncEngine(ctx) {
    * 外加一个 `revision` 让页面「变了才刷」；workspaceKey 用 workspaceGroups.js 里唯一那处定义，
    * 保证目录成员、分组、统计三边说的是同一个 key。
    */
+  /**
+   * 卡片要用的字段投影（瘦快照不加「整份 state」，只补卡片真正画的那几项）。
+   * 与 snapshot() 里 taskViews 的口径保持一致；members/docs/customFields 截断到 8 条，
+   * 免得 100 条任务的快照因为文档/联系人膨胀。
+   */
+  function overviewCardFields(task, live) {
+    const suspension = state.suspensions?.[task.id] || { active: false }
+    const docs = Array.isArray(task.docs) ? task.docs.filter((doc) => doc && doc.url).slice(0, 8).map((doc) => ({ url: asString(doc.url), title: asString(doc.title) })) : []
+    const members = Array.isArray(task.members) ? task.members.slice(0, 8).map((member) => ({
+      id: asString(member && member.id),
+      name: asString(member && member.name),
+      role: asString(member && member.role),
+      avatar: /^https?:\/\//i.test(asString(member && member.avatar)) ? asString(member.avatar) : '',
+    })) : []
+    const customFields = Array.isArray(task.customFields) ? task.customFields.slice(0, 8).map((field) => ({
+      name: asString(field && field.name),
+      value: asString(field && field.value),
+      type: asString(field && field.type),
+    })) : []
+    const sid = asString(task.sessionId)
+    const alive = sid ? live.get(sid) : null
+    const seen = sid ? Number(state.sessionSeen?.[sid]) : 0
+    return {
+      start: asString(task.start),
+      end: asString(task.end),
+      due: asString(task.due),
+      listName: asString(task.listName),
+      trigger: asString(task.meta?.trigger),
+      customFields,
+      docs,
+      members,
+      schedule: scheduleViewOf(task),
+      commitment: commitmentOf(task),
+      delayAttribution: attributionView({ ...task, delayAttribution: state.delayAttributions?.[task.id] }),
+      suspensionActive: suspension.active === true,
+      suspensionReason: asString(suspension.reason),
+      reopenPending: task.reopenPending === true,
+      reopenError: asString(task.reopenError),
+      /* 会话态：与 snapshot() 同口径（第一次见到时水位对齐当前轮次 → 不算未读）。 */
+      sessionAlive: !!alive,
+      sessionPhase: alive ? alive.kind : 'idle',
+      sessionUnread: !!alive && alive.kind !== 'running' && alive.turn > (seen || alive.turn),
+    }
+  }
+
   function overviewView() {
     /* 顺手更新「观察到在跑」的起点：面板每 30s 拉一次快照，粒度足够，
        而且不写盘（这个标记与 running 一样是宿主内存态，重启后自然重算）。 */
@@ -4556,6 +4601,7 @@ function createSyncEngine(ctx) {
         earlierTasks: link.earlierTasks.map(summary),
         laterTasks: link.laterTasks.map(summary),
         blockedBy,
+        ...overviewCardFields(task, live),
       }
     })
     const relations = state.relations
@@ -4566,7 +4612,10 @@ function createSyncEngine(ctx) {
       /* 哈希要覆盖**用户看得见的一切**：任务标题/完成/工作区/阻塞，以及挂起与绑定会话——
          这两项曾经漏掉，导致挂起或换绑后 revision 不变，页面按「变了才刷」就不会重拉。 */
       .update(JSON.stringify([
-        tasks.map((task) => [task.id, task.title, task.done, task.workspaceKey, task.blocked, task.suspended, task.sessionId, task.running, task.runningSince, task.completedAt, task.startedAt, task.expectedAt, task.predecessors.length]),
+        tasks.map((task) => [task.id, task.title, task.done, task.workspaceKey, task.blocked, task.suspended, task.sessionId, task.running, task.runningSince, task.completedAt, task.startedAt, task.expectedAt, task.predecessors.length,
+          /* 卡片上看得见的项也进哈希：排期/预期/文档/会话态变了页面才会自己刷。 */
+          task.priority, task.start, task.end, task.schedule?.nextText || '', task.commitment?.expectedAt || 0, task.commitment?.syncState || '',
+          task.sessionAlive === true, task.sessionUnread === true, task.listName, task.docs.length, task.members.length]),
         relations,
         groups,
       ]))
@@ -6205,10 +6254,20 @@ function createSyncEngine(ctx) {
 
   /** 某个范围最近一批建议（面板打开整理抽屉时取它）。 */
   function viewOrganize(scope) {
-    const key = scopeKeyOf(scope)
-    const rows = Object.values(state.organizeSuggestions).filter((batch) => batch && scopeKeyOf(batch.scope) === key)
-    rows.sort((a, b) => Number(b.at) - Number(a.at))
+    const rows = organizeBatchesOf(scope)
     return rows.length ? projectOrganize(rows[0], state.tasks) : null
+  }
+
+  /** 同一个范围的历史批次（新 → 旧），懒加载用。 */
+  function listOrganize(scope) {
+    return organizeBatchesOf(scope).slice(0, 20).map((batch) => projectOrganize(batch, state.tasks))
+  }
+
+  function organizeBatchesOf(scope) {
+    const key = scopeKeyOf(scope)
+    return Object.values(state.organizeSuggestions)
+      .filter((batch) => batch && scopeKeyOf(batch.scope) === key)
+      .sort((a, b) => Number(b.at) - Number(a.at))
   }
 
   /**
@@ -6217,6 +6276,122 @@ function createSyncEngine(ctx) {
    * 时间先后（temporal）是**确定性**的，不依赖模型：模型不可用、返回空、返回坏 JSON 时，
    * 这一批仍然会带着时间建议出来。只有「时间建议和模型建议都没有」才是一条真错误。
    */
+  /* ==========================================================================
+   * 建议的 AI 底盘：在 DSH 里开一个 cove 项目，每次整理建一条会话跑。
+   *
+   * 用户口径（2026-11-16）：允许插件自动创建/复用 cove 项目；每次整理新开会话，
+   * 结构化输出再卡片化。宿主没给服务、会话超时或返回解析失败时**回退**到后台模型，
+   * 并把失败原因写进这一组的 model.error（不丢建议）。
+   * ======================================================================== */
+
+  /** cove 项目的目录：DSH_HOME/cove（不存在就建）。 */
+  function coveDirectory() {
+    const home = asString(process.env.DSH_HOME) || join(homedir(), '.dsh')
+    const dir = join(home, 'cove')
+    try { mkdirSync(dir, { recursive: true }) } catch { /* 已存在/无权限：交给 registry 报错 */ }
+    return dir
+  }
+
+  async function ensureCoveWorkspace() {
+    const dir = coveDirectory()
+    const registry = await awaitService(ctx, 'workspaceRegistry')
+    if (!registry) return { error: '宿主没有提供工作区服务' }
+    let workspace
+    try { workspace = await registry.resolveByPath(dir) } catch { workspace = undefined }
+    if (!workspace) {
+      if (typeof registry.create !== 'function') return { error: '宿主不支持创建工作区' }
+      try { workspace = await registry.create(dir, 'cove') } catch (error) {
+        return { error: '创建 cove 项目失败：' + (error instanceof Error ? error.message : String(error)) }
+      }
+    }
+    if (!workspace?.id) return { error: 'cove 项目没有登记成功' }
+    return { dir, workspace }
+  }
+
+  /** 从会话记录里找最后一条 assistant 文本（结构随宿主版本变化，做递归扫描）。 */
+  async function lastAssistantText(sessionId) {
+    let record
+    try { record = await readSessionRecord(sessionId, 5000) } catch { record = undefined }
+    if (!record) return ''
+    let found = ''
+    const textOf = (content) => {
+      if (typeof content === 'string') return content
+      if (!Array.isArray(content)) return ''
+      return content.map((part) => (typeof part === 'string' ? part : asString(part?.text))).join('')
+    }
+    const walk = (value) => {
+      if (!value || typeof value !== 'object') return
+      if (value.role === 'assistant') {
+        const text = textOf(value.content) || asString(value.text)
+        if (text.trim()) found = text
+      }
+      for (const key of Object.keys(value)) walk(value[key])
+    }
+    walk(record)
+    return found
+  }
+
+  /** 在 cove 项目里建会话 → 投喂证据包 → 轮询取结构化输出。 */
+  async function organizeViaSession(pack) {
+    const cove = await ensureCoveWorkspace()
+    if (cove.error) return { error: cove.error }
+    const agents = await awaitService(ctx, 'agents')
+    const sessions = await awaitService(ctx, 'sessionController')
+    if (!agents || typeof agents.create !== 'function') return { error: '宿主没有提供会话服务（agents）' }
+    if (!sessions || typeof sessions.prompt !== 'function') return { error: '宿主没有提供会话服务（sessionController）' }
+
+    let agentOptions
+    try {
+      const selection = service(ctx, 'agentDefaultModel')?.currentSelection?.()
+      if (selection && selection.provider && selection.model) {
+        agentOptions = {
+          provider: selection.provider,
+          model: selection.model,
+          ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
+        }
+      }
+    } catch { agentOptions = undefined }
+
+    const sessionId = `cove-organize-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    try {
+      await agents.create({ sessionId, meta: { cwd: cove.dir }, ...(agentOptions ? { agentOptions } : {}) })
+    } catch (error) {
+      return { error: '创建会话失败：' + (error instanceof Error ? error.message : String(error)) }
+    }
+    await attachSessionToWorkspace(sessionId, cove.dir).catch(() => undefined)
+    await renameSession(sessionId, 'cove · 整理建议').catch(() => undefined)
+
+    const promptText = [
+      ORGANIZE_SYSTEM,
+      '',
+      '以下是任务证据包（JSON）：',
+      pack.text,
+      '',
+      '只返回一个 JSON 对象（可以放在 \`\`\`json 围栏里）：',
+      '{"items":[{"kind":"depends_on|derived_from|temporal","from":"任务id","to":"任务id","confidence":0.8,"evidence":"原文证据"}],"notes":"一句话"}',
+    ].join('\n')
+    try {
+      await sessions.prompt({
+        requestId: `cove-organize:${sessionId}:1`,
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: promptText }],
+      }, new AbortController().signal)
+    } catch (error) {
+      return { error: '投递整理提示失败：' + (error instanceof Error ? error.message : String(error)), sessionId }
+    }
+
+    const deadline = Date.now() + 90_000
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const agent = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
+      const running = !!(agent && (agent.phase?.kind === 'running' || agent.isRunning === true))
+      const text = await lastAssistantText(sessionId)
+      if (text.trim() && !running) return { text, sessionId }
+    }
+    return { error: '会话 90 秒内没有给出结果', sessionId }
+  }
+
   async function organizeScope(scope) {
     const s = scope && typeof scope === 'object' ? { kind: asString(scope.kind) || 'all', id: asString(scope.id) } : { kind: 'all', id: '' }
     const tasks = organizeScopeTasks(s)
@@ -6244,14 +6419,31 @@ function createSyncEngine(ctx) {
     let modelItems = []
     let notes = ''
     let modelError = ''
+    /** 这一组是从哪跑的：session（cove 会话）| llm（回退后台模型） */
+    let modelSource = ''
+    let sessionId = ''
+    let sessionError = ''
     if (pack.items.length) {
-      const asked = await askModelForInsight(ORGANIZE_SYSTEM, pack.text, 2000)
-      if (!asked.text) modelError = asked.reason || '模型没有返回建议'
+      /* 先走 DSH 会话（cove 项目），失败再回退后台模型——两条路都不通才报错。 */
+      const viaSession = await organizeViaSession(pack)
+      sessionId = asString(viaSession.sessionId)
+      let askedText = asString(viaSession.text)
+      if (askedText) modelSource = 'session'
       else {
-        const parsed = parseOrganizeResponse(asked.text)
+        sessionError = asString(viaSession.error) || '会话没有返回内容'
+        const asked = await askModelForInsight(ORGANIZE_SYSTEM, pack.text, 2000)
+        askedText = asked.text
+        modelError = asked.reason || ''
+        if (askedText) modelSource = 'llm'
+      }
+      if (!askedText) modelError = modelError || sessionError || '模型没有返回建议'
+      else {
+        const parsed = parseOrganizeResponse(askedText)
         if (parsed.error) modelError = parsed.error
         else { modelItems = parsed.items; notes = parsed.notes }
       }
+      /* 回退成功时不要把会话失败塞进 model.error（UI 会误报「AI 没给建议」）；
+         单独记 sessionError，便于排查。 */
     }
     if (!modelItems.length && !temporal.items.length && !eta.items.length) {
       return { ok: false, error: modelError || '没有可用的任务内容' }
@@ -6268,6 +6460,9 @@ function createSyncEngine(ctx) {
         candidates: pack.items.length,
         truncated: pack.truncated > 0,
         error: modelError,
+        source: modelSource,
+        sessionId,
+        sessionError,
         temporal: temporal.items.length,
         eta: eta.items.length,
       },
@@ -6275,9 +6470,9 @@ function createSyncEngine(ctx) {
       items: checked.items,
     })
     state.organizeSuggestions[batch.batchId] = batch
-    /* 只留最近 5 个批次：建议单是回看用的，不需要无限增长。 */
+    /* 建议单要能按时间轴回看：留最近 20 批（懒加载用），更旧的淘汰。 */
     const all = Object.values(state.organizeSuggestions).sort((a, b) => Number(b.at) - Number(a.at))
-    for (const stale of all.slice(5)) delete state.organizeSuggestions[stale.batchId]
+    for (const stale of all.slice(20)) delete state.organizeSuggestions[stale.batchId]
     await persistState()
     return {
       ok: true,
@@ -9850,6 +10045,7 @@ bucket 只能从枚举里选：
     organizeScope: (...args) => runEngineOperation(organizeScope, args),
     writeRelationManually: (...args) => runEngineOperation(writeRelationManually, args),
     viewOrganize,
+    listOrganize,
     acceptOrganizeItems: (...args) => runEngineOperation(acceptOrganizeItems, args),
     rejectOrganizeItems: (...args) => runEngineOperation(rejectOrganizeItems, args),
     undoOrganizeItems: (...args) => runEngineOperation(undoOrganizeItems, args),
@@ -10106,9 +10302,15 @@ function mountRoutes(ctx, engine) {
              /tasks/overview/<文件>.js → src/overview/<文件>.js（组件会 ../overview 引纯模型）。
              组件之间是相对 import，按同样的相对路径直出，浏览器自己能解析。
              只放行单层 .js 文件名（不允许 ../、不允许子目录）。 */
-          const srcMatch = req.method === 'GET' && route.match(/^\/tasks\/(src|overview)\/([A-Za-z0-9_-]+\.js)$/)
+          const srcMatch = req.method === 'GET' && (
+            /* 独立海湾页的模块树：client / overview / card（GraphView 会 ../card/... 引共享卡片） */
+            route.match(/^\/tasks\/(src|overview|card|graph|vendor)\/([A-Za-z0-9_-]+\.js)$/)
+            /* 面板（阶段 4 起）也要直接加载共享卡片模块：/panel/src/card|overview/<file>.js */
+            || route.match(/^\/panel\/src\/(card|overview)\/([A-Za-z0-9_-]+\.js)$/)
+          )
           if (srcMatch) {
-            const file = join(HERE, 'src', srcMatch[1] === 'overview' ? 'overview' : 'client', srcMatch[2])
+            const dir = ['overview', 'card', 'graph', 'vendor'].includes(srcMatch[1]) ? srcMatch[1] : 'client'
+            const file = join(HERE, 'src', dir, srcMatch[2])
             try {
               const source = await readFile(file, 'utf8')
               res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' })
@@ -10146,7 +10348,7 @@ function mountRoutes(ctx, engine) {
               kind: asString(query.searchParams.get('kind')) || 'all',
               id: asString(query.searchParams.get('id')),
             }
-            sendJson(res, 200, { ok: true, batch: engine.viewOrganize(scope) })
+            sendJson(res, 200, { ok: true, batch: engine.viewOrganize(scope), batches: engine.listOrganize(scope) })
             return
           }
 

@@ -24,9 +24,13 @@
  */
 
 import { cardGeometry, describeNode, edgePath, snapToGrid } from '../overview/layout.js'
-import { createTaskNodeCard } from './TaskNodeCard.js'
+import { ensureTaskCardStyles } from '../card/taskCardStyles.js'
 import { sideCardParts } from './cardParts.js'
+import { buildGraphCardDom, graphCardHandlers, graphCardSignature } from '../card/graphCardDom.js'
 import { decoVar } from './styles.js'
+
+/* 关系画布把共享卡片直接挂进 foreignObject：卡片样式只注入一次（宿主页 / 独立页共用）。 */
+if (typeof document !== 'undefined') ensureTaskCardStyles(document)
 
 /* ============ 画布视口（缩放 / 平移）============
    纯函数放在模块顶层：组件只管把指针事件换算成「用户坐标」再丢进来，
@@ -168,11 +172,10 @@ const ACTION_ICONS = {
 export function createGraphView(deps) {
   const { h, React } = deps || {}
   const { useCallback, useEffect, useRef, useState } = React
-  const TaskNodeCard = createTaskNodeCard(deps)
 
   return function GraphView(props) {
     const {
-      graphs, selectedId = '', focusedId = '', nodePos, onOpenTask, onFocusTask,
+      graphs, selectedId = '', focusedId = '', nodePos, onOpenTask, onFocusTask, onOrganize,
       onNodeMove, onResetLayout, onBlur, hostReady, hostReason, onOpenSession,
       hideDone = false, hiddenDone = 0, onToggleHideDone,
       /* 每个项目单独控制「显示已完成」：面板给已完成任务的 id 集合与「哪些项目已展开」 */
@@ -181,6 +184,7 @@ export function createGraphView(deps) {
       /* 接受建议命中已完成任务时，面板会临时（3 秒）亮出这批 id —— 优先于本地筛选 */
       revealing = false,
       revealIds,
+      taskById,
     } = props || {}
     const [views, setViews] = useState({})
     const list = Array.isArray(graphs) ? graphs : []
@@ -450,6 +454,21 @@ export function createGraphView(deps) {
       setView(graph.key, zoomView(viewOf(viewsRef.current, graph.key), factor, anchor))
     }
     const resetGraphView = (graph) => setView(graph.key, { k: 1, x: 0, y: 0 })
+    /** 「适应画布」：按容器尺寸缩到能看全（不放大），并居中。100% 则是 1:1。 */
+    const fitGraphView = (graph) => {
+      const box = canvasRefs.current[graph.key]
+      const rect = box && typeof box.getBoundingClientRect === 'function' ? box.getBoundingClientRect() : null
+      const W = rect && rect.width ? rect.width : 0
+      const H = rect && rect.height ? rect.height : 0
+      if (!W || !H || !graph.width || !graph.height) { resetGraphView(graph); return }
+      const k = clampZoom(Math.min(1, W / graph.width, H / graph.height))
+      const top = Number(graph.top) || 0
+      setView(graph.key, {
+        k,
+        x: (W - graph.width * k) / 2,
+        y: (H - graph.height * k) / 2 + top * (1 - k),
+      })
+    }
     const resetLayoutGraph = (graph) => {
       if (typeof onResetLayout !== 'function') return
       onResetLayout(list.length > 1 ? '' : graph.key)
@@ -557,38 +576,40 @@ export function createGraphView(deps) {
         const card = cardGeometry({ ...node, x: pos.x, y: pos.y })
         const activate = () => { if (interactive && typeof onOpenTask === 'function') onOpenTask(node.id, node) }
         const state = String(node.state || 'ghost')
-        /* 卡片内容全部交给 TaskNodeCard：与面板里的飞书任务卡同一套设计，
-           画布上只留标题 / 会话 / 状态与关系计数（见该文件的 GRAPH_CARD_FIELDS）。 */
         const openReady = !!hostReady && !!String(node.sessionId || '')
-        const openTitle = !hostReady
-          ? (String(hostReason || '') || '当前宿主不支持打开会话')
-          : (!node.sessionId ? '这个任务没有绑定会话' : '打开会话')
-        const actions = interactive
-          ? [
-            {
-              key: 'open',
-              label: '打开会话',
-              title: openTitle,
-              disabled: !openReady,
-              run: () => { if (openReady && typeof onOpenSession === 'function') onOpenSession(String(node.sessionId), node.fullTitle || node.label || '') },
-            },
-            {
-              key: 'focus',
-              label: '聚焦到节点',
-              title: '聚焦到节点',
-              disabled: false,
-              run: () => { if (typeof onFocusTask === 'function') onFocusTask(node.id) },
-            },
-          ]
-          : []
+        const tip = `${node.fullTitle || node.id}${node.ghost ? (node.missing ? '（任务不存在，仅剩关系）' : '（属于其它分组）') : ''}`
+        /* 所有节点（含 ghost）都是同一张面板卡：内容变了才重建（签名不变就复用）。 */
+        const mountDomCard = (el) => {
+          if (!el) return
+          const fullTask = taskById && node.id ? taskById[node.id] : null
+          const signature = graphCardSignature(node, fullTask)
+          if (el.__foCardSignature === signature) return
+          const built = buildGraphCardDom(node, {
+            task: fullTask,
+            /* ghost 不是真任务：不给任何动作，避免「聚焦/打开会话」对它生效。 */
+            handlers: interactive ? graphCardHandlers(node, { hostReady, onOpenSession, onFocusTask }) : {},
+          })
+          /* 卡片撑满节点框：内联样式而不是 CSS 后代选择器（画布样式表要求选择器都以 .fo- 为根）。 */
+          built.element.style.height = '100%'
+          built.element.style.boxSizing = 'border-box'
+          built.element.style.overflow = 'hidden'
+          built.element.style.boxShadow = 'none'
+          while (el.firstChild) el.removeChild(el.firstChild)
+          el.appendChild(built.element)
+          el.__foCardSignature = signature
+        }
         const children = [
-          h('title', { key: 'tip' }, `${node.fullTitle || node.id}${node.ghost ? (node.missing ? '（任务不存在，仅剩关系）' : '（属于其它分组）') : ''}`),
-          h('rect', {
-            key: 'bg',
-            className: 'fo-node-bg',
-            x: card.x, y: card.y, width: card.w, height: card.h, rx: card.radius,
-          }),
-        ].concat(TaskNodeCard({ node, card, actions }))
+          h('title', { key: 'tip' }, tip),
+          h('foreignObject', {
+            key: 'fo',
+            className: 'fo-node-fo',
+            x: card.x, y: card.y, width: card.w, height: card.h,
+          }, h('div', {
+            xmlns: 'http://www.w3.org/1999/xhtml',
+            className: 'fo-node-dom tc-scope',
+            ref: mountDomCard,
+          }, null)),
+        ]
 
         return h('g', {
           key: node.key,
@@ -667,6 +688,15 @@ export function createGraphView(deps) {
           ),
           /* 动作就在卡片自己的 header 右侧：不悬浮、不占额外一行。折叠时整组隐藏。 */
           folded ? null : h('div', { className: 'fo-graph-actions', role: 'toolbar', 'aria-label': '画布工具' },
+            /* 整理：打开右侧建议栏，按这张图的范围跑一次「找关系」分析（宿主没有 organize 接口就不渲染） */
+            typeof onOrganize === 'function'
+              ? h('button', {
+                type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
+                'data-action': 'organize',
+                title: '让 AI 看这个项目里的任务，找出可连的关系',
+                onClick: () => onOrganize(graph),
+              }, '整理')
+              : null,
             /* 筛选：状态（进行中/阻塞/挂起/已完成）+ 已完成的时间窗（默认最近一周） */
             h('div', { className: 'fo-filter-wrap' },
               h('button', {
@@ -737,8 +767,8 @@ export function createGraphView(deps) {
               }, '+'),
               h('button', {
                 type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost',
-                'data-action': 'fit', 'data-icon': '1', 'aria-label': '适应画布', title: '把这张图恢复到适应画布（100%）',
-                onClick: () => resetGraphView(graph),
+                'data-action': 'fit', 'data-icon': '1', 'aria-label': '适应画布', title: '缩放到能看全这张图（不放大）',
+                onClick: () => fitGraphView(graph),
               }, fitIcon(h)),
             ),
             h('button', {
@@ -782,10 +812,11 @@ export function createGraphView(deps) {
                 ref: (el) => { svgRefs.current[graph.key] = el },
                 className: 'fo-svg',
                 viewBox,
-                /* 铺满画布：viewBox 仍是 layout 坐标系，交给浏览器按 meet 自适应缩放 */
-                width: '100%',
-                height: '100%',
-                preserveAspectRatio: 'xMidYMid meet',
+                /* 1:1 渲染：viewBox 与 CSS 尺寸同值，卡片就是 layout 里的 340×N，
+                   不再被浏览器按 meet 整体缩放（缩放交给工具条 / 双指，pan 走 viewport transform）。 */
+                width: Math.max(1, graph.width),
+                height: Math.max(1, graph.height),
+                preserveAspectRatio: 'xMinYMin meet',
                 /* role=group 而不是 img：图里的节点本身是可聚焦的 button，img 会把它们从无障碍树里挡掉。 */
                 role: 'group',
                 'aria-label': label,

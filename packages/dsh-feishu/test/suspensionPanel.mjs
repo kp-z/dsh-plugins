@@ -90,7 +90,9 @@ response = { ok: true, suspension: { active: false } }
 await sandbox.suspensionControlNode({ id: 'saved-resume', suspension: { active: true } }).children[0].click()
 await new Promise((resolve) => setImmediate(resolve))
 assert.match(toasts.at(-1), /任务状态已保存，但刷新失败：refresh offline/)
-assert.match(script, /text: '已挂起'/)
+/* 阶段 5：卡片的「已挂起」由共享组件渲染（src/card/taskCardView.js）。 */
+const cardViewSource = await readFile(new URL('../src/card/taskCardView.js', import.meta.url), 'utf8')
+assert.match(cardViewSource, /'已挂起'/)
 assert.match(script, /挂起原因（可选）/)
 assert.doesNotMatch(fn('suspensionControlNode'), /window\.prompt|window\.confirm/)
 console.log('SUSPENSION_PANEL_OK: filtering, storage, capability, running-session warning, suspend/resume API, partial failure, and full inline syntax')

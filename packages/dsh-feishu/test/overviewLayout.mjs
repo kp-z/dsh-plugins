@@ -223,8 +223,12 @@ test('几何：每张图里节点两两不重叠', () => {
 
 test('几何：节点与泳道都不越界（图内 + 全局画布）', () => {
   ALL.graphs.forEach((graph) => {
+    /* 高度是「每张图统一、按内容估算」：图内等高，且不低于基础行高、不超过上限。 */
+    const graphH = graph.nodes[0] && graph.nodes[0].h
     graph.nodes.forEach((node) => {
-      assert.ok(node.w === GEOMETRY.NODE_W && node.h === GEOMETRY.NODE_H, '节点尺寸用统一口径')
+      assert.ok(node.w === GEOMETRY.NODE_W, '节点宽度用统一口径')
+      assert.ok(node.h === graphH, '同一张图里节点等高')
+      assert.ok(node.h >= GEOMETRY.NODE_H && node.h <= 200, '高度在 84–200 之间')
       assert.ok(node.x >= 0 && node.x + node.w <= graph.width, `${node.id} 横向越界`)
       assert.ok(node.y >= graph.top && node.y + node.h <= graph.top + graph.height, `${node.id} 纵向越界`)
       assert.ok(node.y >= 0 && node.y + node.h <= ALL.height, `${node.id} 超出整块画布`)
@@ -254,7 +258,7 @@ test('几何：同一根物理列里行号互不相同（没有泳道后靠这�
       // x 由物理列唯一决定；y 由行号唯一决定
       assert.equal(node.x, GEOMETRY.PAD + node.column * (GEOMETRY.NODE_W + GEOMETRY.GAP_X))
       // y 是**全局**坐标：本图切片从 graph.top 起算
-      assert.equal(node.y, graph.top + GEOMETRY.PAD + node.row * (GEOMETRY.NODE_H + GEOMETRY.GAP_Y))
+      assert.equal(node.y, graph.top + GEOMETRY.PAD + node.row * (node.h + GEOMETRY.GAP_Y))
     })
     byColumn.forEach((column, index) => {
       assert.equal(new Set(column.map((node) => node.row)).size, column.length, `列 ${index} 里有重复行号`)
@@ -415,9 +419,10 @@ test('真实快照规模下也不越界（48+ 任务的回归底线）', () => {
 
 /* ---------------- task-15：workflow 式节点卡片的几何 ---------------- */
 
-test('卡片口径：与面板飞书任务卡同规格（300×84、圆角 9、1px 描边、三行）', () => {
-  /* 用户口径：直接用当期飞书卡片的设计，且「先不要简化」——标题 / 徽标 / 页脚三行都给。 */
-  assert.equal(GEOMETRY.NODE_W, 300)
+test('卡片口径：与面板飞书任务卡同规格（340×84、圆角 9、1px 描边、三行）', () => {
+  /* 用户口径：直接用当期飞书卡片的设计，且「先不要简化」——标题 / 徽标 / 页脚三行都给。
+     宽度 340：画布上比面板窄会显得挤，用户明确要求加宽。 */
+  assert.equal(GEOMETRY.NODE_W, 340)
   assert.equal(GEOMETRY.NODE_H, 84)
   assert.equal(GEOMETRY.GRID, 40)
   assert.equal(CARD.RADIUS, 12)

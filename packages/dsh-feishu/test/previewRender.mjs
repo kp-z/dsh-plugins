@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 let passed = 0
 const failures = []
@@ -27,7 +28,8 @@ function check(name, fn) {
 
 const root = new URL('..', import.meta.url)
 const out = new URL('../.runs-preview.html', import.meta.url)
-execFileSync('node', ['scripts/render-runs-preview.mjs'], { cwd: new URL('..', import.meta.url).pathname, stdio: 'pipe' })
+/* 路径要解码（仓库路径含中文）：URL.pathname 是百分号编码的，spawn 的 cwd 拿到会 ENOENT。 */
+execFileSync('node', ['scripts/render-runs-preview.mjs'], { cwd: fileURLToPath(root), stdio: 'pipe' })
 check('产物已生成', () => assert.equal(existsSync(out), true))
 
 const html = readFileSync(out, 'utf8')

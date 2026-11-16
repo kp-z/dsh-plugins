@@ -46,7 +46,7 @@ import {
 /** 几何口径：间距/圆角与宿主列表页同量级，节点尺寸按「放得下 T编号 + 标题 + 一行元信息」定。 */
 export const GEOMETRY = {
   /** 节点卡片宽：与飞书任务卡同一个语言（标题行 + 徽标行 + 页脚行），横向放得下 19 个汉字。 */
-  NODE_W: 300,
+  NODE_W: 340,
   NODE_H: 84,
   GAP_X: 56,
   GAP_Y: 14,
@@ -346,12 +346,47 @@ function emptyGraph(key, label) {
   }
 }
 
+/**
+ * 卡片高度估算（DOM 卡的节点框用）。
+ *
+ * 画布上的节点现在是真实 DOM 卡片（foreignObject），内容行数不固定：chips 多少、有没有文档行
+ * 都会改变高度。布局在浏览器里量不到 DOM，所以用一个保守估算，**同一张图取最大值**，
+ * 让整张画布的节点等高（等高比参差好看，也不会因为估算偏小压住下一行）。
+ */
+export function estimateCardHeight(task) {
+  const t = isObj(task) ? task : {}
+  const chips = []
+  if (str(t.listName)) chips.push('list')
+  if (isObj(t.meta) && str(t.meta.trigger)) chips.push('trigger')
+  if (str(t.start) && !(isObj(t.schedule) && str(t.schedule.nextText))) chips.push('start')
+  if (str(t.end)) chips.push('end')
+  chips.push('schedule', 'eta')
+  if (isObj(t.delayAttribution) && str(t.delayAttribution.reason)) chips.push('attribution')
+  const fields = arr(t.customFields).filter((field) => isObj(field) && str(field.value) && str(field.name) !== '优先级')
+  chips.push(...fields.slice(0, 4).map((field, i) => 'field' + i))
+  if (str(t.workspaceTitle) || str(t.workspaceName)) chips.push('workspace')
+  const badges = 1 /* 状态 */ + (t.done === true ? 1 : 0) + (t.started === true ? 1 : 0) + (t.isNew === true ? 1 : 0)
+  /* chips 实际比 64px 宽（中文 + padding），一行按 3 个估；行高 19。宁可高估也不能低估（低估会裁掉内容）。 */
+  const perRow = 3
+  const lines = Math.max(1, Math.ceil((chips.length + badges) / perRow))
+  let height = 16 /* 上下 padding */ + 24 /* 标题行 */ + lines * 19
+  if (arr(t.docs).length) height += 28
+  /* 画布卡片没有动作行（P1 之后去掉「打开会话 / 聚焦」），不再预留 34px。 */
+  /* 挂起状态额外挂一行「已挂起」提示 */
+  if (isObj(t.suspension) && t.suspension.active === true) height += 16
+  height += 12 /* 缓冲：字体/换行差异 */
+  return Math.max(GEOMETRY.NODE_H, Math.min(260, Math.round(height)))
+}
+
 /** 一张图（= 一个目录 / 一个项目）的全部几何。originY 让多图在同一画布里纵向累加。 */
 export function buildGraph(lane, edges, known, hints, index, originY, options) {
   const o = isObj(options) ? options : {}
   const g = GEOMETRY
   const tasks = arr(lane.tasks)
   const nodes = tasks.map((task) => nodeOf(task, o))
+  /* 节点等高：取这张图里最高的一张卡（DOM 卡内容行数不固定）。 */
+  const nodeH = Math.max(GEOMETRY.NODE_H, ...tasks.map((task) => estimateCardHeight(task)))
+  nodes.forEach((node) => { node.h = nodeH })
   const ids = new Set(nodes.map((node) => node.id))
   const graphKey = lane.key
 
@@ -385,6 +420,8 @@ export function buildGraph(lane, edges, known, hints, index, originY, options) {
   extSucc.forEach((id) => ghostFor(id, 'successor'))
 
   const all = nodes.concat(ghosts)
+  /* ghost 也跟同一张图等高：虚线框比实卡矮一截会显得错位。 */
+  all.forEach((node) => { node.h = nodeH })
   const depth = depthOf(all.map((node) => node.id), laneEdges)
   all.forEach((node) => {
     node.graphKey = graphKey
@@ -431,7 +468,7 @@ export function buildGraph(lane, edges, known, hints, index, originY, options) {
         node.subColumn = Math.floor(offset / rowsPerColumn)
         node.row = row
         node.x = g.PAD + physical * (g.NODE_W + g.GAP_X)
-        node.y = originY + g.PAD + row * (g.NODE_H + g.GAP_Y)
+        node.y = originY + g.PAD + row * (nodeH + g.GAP_Y)
       })
     }
   })
@@ -443,8 +480,8 @@ export function buildGraph(lane, edges, known, hints, index, originY, options) {
     physicalColumns ? g.PAD * 2 + physicalColumns * g.NODE_W + (physicalColumns - 1) * g.GAP_X : g.PAD * 2,
   )
   const height = maxRows
-    ? g.PAD * 2 + maxRows * g.NODE_H + (maxRows - 1) * g.GAP_Y
-    : g.PAD * 2 + g.NODE_H
+    ? g.PAD * 2 + maxRows * nodeH + (maxRows - 1) * g.GAP_Y
+    : g.PAD * 2 + nodeH
 
   /* 图头图例：没有泳道后，这是「哪个颜色 = 哪个项目」的唯一标识。 */
   const legend = arr(lane.projects)
