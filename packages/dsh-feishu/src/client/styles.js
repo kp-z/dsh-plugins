@@ -105,7 +105,10 @@ export const CSS = `
   /* rail（功能导航）| 正文（功能页 + 详情） */
   grid-template-columns: var(--fo-rail-w) minmax(0, 1fr);
   height: 100%;
-  min-height: 0;
+  /* 宿主 slot 有时候给的是 auto 高度：只写 height:100% 会退化成内容高度，
+     导致画布/面板外面多出一整块空白。用视口高度兜底（父容器有确定高度时 100% 仍然优先）。 */
+  min-height: 100vh;
+  min-height: 100dvh;
   background: ${T.bgBase};
   color: ${T.label1};
   font-size: 12px;
