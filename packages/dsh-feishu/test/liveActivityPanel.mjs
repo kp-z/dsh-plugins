@@ -110,7 +110,7 @@ fourth.handlers.activity({data:'bad-json'}); assert.ok(fourth.closed); assert.eq
 // visibility teardown/reconnect and pagehide teardown exist in production HTML.
 assert.doesNotMatch(fn('connectActivityStream'),/renderAll|renderTasks|markCurrentSessionSeen|sessions\/seen/)
 assert.match(script,/if \(currentActivityTask\(t\)\.sessionAlive !== true\)/)
-assert.match(script,/showSessionTip\(sessChip, sid, sessionTipState\(\)\)/)
+assert.match(script,/showSessionTip\(chip, sessionId, state\)/)
 assert.match(script,/connectActivityStream\(\);\s*load\(\)\.then/)
 assert.match(script,/document\.hidden\) \{ stopActivityStream\(\)/)
 assert.match(script,/else \{ connectActivityStream\(\); load\(\{ quiet: true \}\)/)

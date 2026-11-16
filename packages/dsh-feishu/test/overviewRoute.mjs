@@ -32,7 +32,15 @@ const ctx = {
 await mkdir(join(HOME, 'dsh-feishu'), { recursive: true })
 await writeFile(join(HOME, 'dsh-feishu', 'settings.json'), JSON.stringify({ autoSync: false, cliPath: '/nonexistent/feishu-sync-cli', managedTasklist: { enabled: false } }))
 await writeFile(join(HOME, 'dsh-feishu', 'state.json'), JSON.stringify({
-  tasks: [{ id: 'live-task', no: 1, title: '正在跑的会话', done: false, sessionId: LIVE_SESSION, started: true, meta: { workspace: 'w1' } }],
+  tasks: [{
+    id: 'live-task', no: 1, title: '正在跑的会话', done: false, sessionId: LIVE_SESSION, started: true,
+    meta: { workspace: 'w1', trigger: 'manual' },
+    /* 卡片字段：瘦快照要能画出与面板一致的卡，所以这些必须投影出来 */
+    priority: 'P2', listName: '日常', start: '2026-11-01 10:00', end: '2026-11-20',
+    members: [{ id: 'u1', name: '张三', role: 'assignee', avatar: 'https://example.com/a.png' }, { id: 'u2', name: '李四', role: 'follower' }],
+    docs: [{ url: 'https://feishu.cn/docx/abc', title: '设计稿' }],
+    customFields: [{ name: '模块', value: '插件', type: 'text' }],
+  }],
   relations: [], relationSync: {}, suspensions: {},
 }))
 apply(ctx, {})
@@ -80,6 +88,19 @@ if (sampleTask) {
 } else {
   check('任务项带 running/sessionTurn（无任务时跳过形状检查）', true)
 }
+/* 卡片数据面：要能画出和侧边栏一致的卡，字段必须在瘦快照里 */
+if (sampleTask) {
+  check('任务项带卡片字段（优先级/清单/起止/触发/人/文档/自定义字段）',
+    sampleTask.priority === 'P2' && sampleTask.listName === '日常' && sampleTask.start === '2026-11-01 10:00' && sampleTask.end === '2026-11-20'
+    && sampleTask.trigger === 'manual' && Array.isArray(sampleTask.members) && sampleTask.members.length === 2
+    && Array.isArray(sampleTask.docs) && sampleTask.docs[0]?.url === 'https://feishu.cn/docx/abc'
+    && Array.isArray(sampleTask.customFields) && sampleTask.customFields[0]?.name === '模块',
+    JSON.stringify({ priority: sampleTask.priority, listName: sampleTask.listName, start: sampleTask.start, end: sampleTask.end, trigger: sampleTask.trigger }))
+  check('头像只下发 http(s) 链接（脏数据不透传）', sampleTask.members[0].avatar === 'https://example.com/a.png')
+  check('任务项带会话态（sessionAlive / sessionPhase / sessionUnread）',
+    sampleTask.sessionAlive === true && sampleTask.sessionPhase === 'running' && sampleTask.sessionUnread === false,
+    JSON.stringify({ alive: sampleTask.sessionAlive, phase: sampleTask.sessionPhase, unread: sampleTask.sessionUnread }))
+}
 check('stats 口径齐全', ['tasks', 'groups', 'dependencyEdges', 'provenanceEdges', 'blocked', 'ready'].every((key) => typeof view.stats?.[key] === 'number'), JSON.stringify(view.stats))
 
 const revision = await json('/api/overview/revision')
@@ -97,6 +118,42 @@ check('revision 是非空短串', typeof view.revision === 'string' && view.revi
   check('再取一次快照：运行起点不变（幂等，不会每次刷新都重置）',
     Number(again.runningSince) === Number(task.runningSince), `${task.runningSince} → ${again && again.runningSince}`)
   check('运行起点进了 revision（会话起停要能让页面自己刷）', first.revision !== undefined && second.revision !== undefined)
+}
+
+/* ── 卡片字段进 revision：绑定文档 → docs 变了，页面要自己刷 ───────── */
+{
+  const before = (await json('/api/overview')).data
+  const changed = await json('/api/tasks/bind-doc', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ taskId: 'live-task', url: 'https://feishu.cn/docx/newdoc123' }),
+  })
+  check('绑定文档接口返回 ok（飞书写回可以失败）', changed.status === 200 && changed.data?.ok === true, JSON.stringify(changed.data).slice(0, 160))
+  const after = (await json('/api/overview')).data
+  const task = (after.tasks || []).find((row) => row.id === 'live-task')
+  check('新文档进瘦快照', Boolean(task) && task.docs.length === 2 && task.docs[0].url === 'https://feishu.cn/docx/newdoc123',
+    JSON.stringify(task && task.docs))
+  check('文档变了 revision 必须变', before.revision !== after.revision, `${before.revision} → ${after.revision}`)
+}
+
+/* ── 阶段 4：面板也能直接加载共享卡片模块 ─────────────────────────── */
+{
+  const model = await get('/panel/src/card/taskCardModel.js')
+  check('面板能取到共享卡片模块', model.status === 200 && model.contentType.includes('javascript') && model.body.includes('buildTaskCardModel'), model.status + ' ' + model.contentType)
+  const view = await get('/panel/src/card/taskCardView.js')
+  check('面板能取到卡片渲染模块', view.status === 200 && view.body.includes('renderTaskCard'))
+  const bad = await get('/panel/src/card/..%2F..%2Fpackage.json')
+  check('非模块路径被拒（不允许跳出 src/card）', bad.status === 404 || bad.status === 400, String(bad.status))
+  /* 独立海湾页（/tasks）也会 ../card/... 引共享卡片：这条路由不能缺。 */
+  const tasksCard = await get('/tasks/card/graphCardDom.js')
+  check('独立页能取到共享卡片模块（/tasks/card/graphCardDom.js）', tasksCard.status === 200 && tasksCard.body.includes('buildGraphCardDom'))
+  const tasksCardModel = await get('/tasks/card/taskCardModel.js')
+  check('独立页能取到卡片模型（/tasks/card/taskCardModel.js）', tasksCardModel.status === 200 && tasksCardModel.body.includes('buildTaskCardModel'))
+  /* 布局引擎在浏览器里没有裸模块名可解析：dagre 是 src/vendor/dagre.js 单文件。 */
+  const tasksVendor = await get('/tasks/vendor/dagre.js')
+  check('独立页能取到布局引擎（/tasks/vendor/dagre.js）', tasksVendor.status === 200 && tasksVendor.body.includes('export'))
+  const tasksGraph = await get('/tasks/graph/relayout.js')
+  check('独立页能取到布局适配层（/tasks/graph/relayout.js）', tasksGraph.status === 200 && tasksGraph.body.includes('relayoutScope'))
 }
 
 /* ── 旧整页路由已经拆掉 ─────────────────────────────────────────────── */

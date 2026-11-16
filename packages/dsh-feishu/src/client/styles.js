@@ -94,10 +94,6 @@ export const CSS = `
   --fo-selected-line: ${g(T.brand, 30)};
   /* 画布：40px 网格 + 品牌调渐变底（参考站 WorkflowEditor 同款） */
   /* 优先级：画布左侧 3px 色条，颜色与面板任务卡（data-priority）的 border-left 一一对应。 */
-  --fo-prio-p0: ${T.error};
-  --fo-prio-p1: ${T.warn};
-  --fo-prio-p2: ${T.brand};
-  --fo-prio-p3: ${T.idle};
   --fo-grid-size: 40px;
   --fo-grid-line: ${g(T.border1, 12)};
   --fo-canvas-bg: linear-gradient(135deg, ${g(T.bgBase, 55)}, ${g(T.bgLayer1, 35)});
@@ -229,8 +225,6 @@ export const CSS = `
 }
 /* 两级菜单：cove NavGroup = mt-1 + bg-white/[0.03] + rounded-xl + py-1.5 + gap-2 */
 .fo-featnav-group { display: flex; flex-direction: column; min-width: 0; }
-/* cove 的二级菜单没有 caret —— 这里也不画 */
-.fo-nav-caret { display: none; }
 
 /* 二级菜单（「关系」下面是范围树）：不再自带侧栏底色/描边与 blur —— 它就是 rail 的一部分。
    行更矮（30px）、字号 12px、左侧缩进 24px 起（一级项 padding 是 12px），长文案用省略号。 */
@@ -315,16 +309,6 @@ export const CSS = `
   color: ${T.bgBase}; background: ${T.warn};
 }
 
-/* caret：与一级项的图标同尺寸（20px 命中区里居中一个 10px chevron） */
-.fo-subnav .fo-caret {
-  flex: 0 0 10px; width: 10px; height: 10px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: ${T.label2}; cursor: pointer;
-  transition: transform .16s var(--fo-ease);
-}
-.fo-subnav .fo-caret[data-collapsed="1"] { transform: rotate(0deg); }
-.fo-subnav .fo-caret:not([data-collapsed="1"]) { transform: rotate(90deg); }
-
 /* 色点 / 项目图标：14px，和一级项图标位对齐 */
 /* 行首图标槽：**定宽 16px**，每一行都有图标（没配过 logo 的用默认图标）。
    定宽是关键 —— 宽度一样，标签才会全部落在同一条左对齐线上。 */
@@ -359,8 +343,6 @@ export const CSS = `
 
 .fo-subnav .fo-scope-note { padding: 2px 12px 6px; font-size: 11px; color: ${g(T.label2, 70)}; }
 .fo-subnav .fo-input { height: 30px; border-radius: 8px; }
-/* 缩进导轨不再使用（层级由容器表达） */
-.fo-guide { display: none; }
 /* rail 收成 56px 图标条时二级菜单整个藏起来（列不下，也没法操作） */
 .fo-root[data-rail="0"] .fo-subnav { display: none; }
 /* 说明：折叠在品牌 logo 上，刷新在正文头部；底部固定区只留「在浏览器打开」。 */
@@ -372,12 +354,9 @@ export const CSS = `
 .fo-root[data-rail="0"] .fo-brand { justify-content: center; padding: 8px 0; }
 /* 收起态 logo：必须显式改 flex-basis —— 基础规则里的 flex 是 0 0 40px，
    只改 width/height 的话 flex 仍按 40px 排版，于是 logo 比一级项宽 4px（用户看到的「大小不一致」）。 */
-.fo-root[data-rail="0"] .fo-brand-logo { padding: 0; border-radius: 10px; }
-/* 收起态：文字与 caret 都隐藏（只藏文字会让图标偏左）；角标一并藏——36×36 方块里放不下数字。 */
+.fo-root[data-rail="0"] .fo-brand-logo { padding: 0; border-radius: 10px; }/* 收起态：文字与 caret 都隐藏（只藏文字会让图标偏左）；角标一并藏——36×36 方块里放不下数字。 */
 .fo-root[data-rail="0"] .fo-brand-text,
-.fo-root[data-rail="0"] .fo-nav-label,
-.fo-root[data-rail="0"] .fo-nav-caret,
-.fo-root[data-rail="0"] .fo-rail-badge { display: none; }
+.fo-root[data-rail="0"] .fo-nav-label { display: none; }
 /* 收起态：一级项是 36×36 的正方形，与 logo 同尺寸 */
 /* cove 收起态：项仍是整行宽、图标居中（80 - 2*16 = 48px 宽 × 44 高） */
 .fo-root[data-rail="0"] .fo-featnav-item {
@@ -442,17 +421,6 @@ export const CSS = `
   background: transparent; border: 1px solid transparent;
 }
 .fo-logo-emoji-cell:hover { background: color-mix(in oklab, var(--dsw-alias-brand-primary) 16%, transparent); border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 40%, transparent); }
-.fo-logo-colors { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.fo-logo-color {
-  width: 22px; height: 22px; border-radius: 999px; cursor: pointer; font-size: 13px; line-height: 1;
-  color: var(--dsw-alias-label-secondary);
-  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 60%, transparent);
-  border: 1px solid var(--fo-glass-line);
-}
-.fo-logo-color[data-active="1"] {
-  outline: 2px solid color-mix(in oklab, var(--dsw-alias-brand-primary) 75%, transparent);
-  outline-offset: 1px;
-}
 .fo-logo-cell {
   display: flex; align-items: center; justify-content: center;
   height: 40px; border-radius: 10px; cursor: pointer;
@@ -488,11 +456,6 @@ export const CSS = `
   background: linear-gradient(to right, ${g(T.brand, 2)}, transparent 50%, ${g(T.brand, 2)});
 }
 .fo-main-head > * { position: relative; }
-.fo-main-head .fo-crumb { flex: 0 0 auto; max-width: 30%; }
-
-.fo-crumb { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-.fo-crumb-title { font-size: 14px; font-weight: 600; letter-spacing: .01em; }
-.fo-crumb-sub { font-size: 11px; color: ${T.label2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 搜索：cove 是「42px 圆形图标 → 点开变 320px 胶囊」
    （collapsed: hover:bg-white/5；open: w-80 bg-white/5 border-white/10 rounded-xl） */
@@ -541,7 +504,6 @@ export const CSS = `
 }
 .fo-capsule:hover { background: ${g(T.label1, 7)}; border-color: ${g(T.label1, 14)}; transform: scale(1.02); }
 .fo-capsule:active { transform: scale(.98); }
-.fo-capsule[data-icon="1"] { width: 32px; padding: 0; justify-content: center; }
 .fo-capsule:disabled { opacity: .5; cursor: default; transform: none; }
 /* 建议胶囊：cove 的 active 变体（border-blue-400/30 bg-blue-500/12，hover 18%） */
 .fo-suggest[data-active="1"] {
@@ -668,6 +630,7 @@ export const CSS = `
   grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
+  height: 100%;
   /* 建议栏在窄面板里是悬浮的，需要一个定位上下文 */
   position: relative;
 }
@@ -843,14 +806,6 @@ export const CSS = `
 }
 .fo-zoom-value:hover { color: ${T.label1}; background: ${g(T.label1, 6)}; }
 .fo-zoom-value:disabled { cursor: default; opacity: .45; }
-/* rail 底部「建议」按钮的未读角标：一个小号胶囊，只显示待处理条数。
-   颜色走品牌色变体（与主按钮同一套 color-mix 口径），不引入字面量。 */
-.fo-rail-badge {
-  flex: 0 0 auto; min-width: 16px; height: 16px; padding: 0 5px;
-  border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
-  color: ${T.label1}; background: ${g(T.brand, 24)}; border: 1px solid ${g(T.brand, 38)};
-}
 .fo-banner {
   display: flex; align-items: center; gap: 8px;
   margin: 10px 10px 0; padding: 12px 16px;
@@ -878,22 +833,10 @@ export const CSS = `
 /* 多图折叠：收起时只留一行 header（不占画布高度），展开时和原来一样 */
 .fo-graph.is-collapsed { flex: 0 0 auto; min-height: 0; }
 .fo-graph.is-collapsed .fo-graph-head { border-bottom: 0; padding: 8px 12px; }
-.fo-graph-toggle {
-  display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto;
-  padding: 0; border: 0; background: transparent; color: inherit;
-  font: inherit; text-align: left; cursor: pointer;
-}
-.fo-graph-caret { flex: 0 0 auto; font-size: 10px; color: ${T.label2}; transition: transform .12s var(--fo-ease); }
-.fo-graph-caret[data-collapsed="1"] { transform: rotate(-90deg); }
-.fo-graph-summary {
-  margin-left: auto; flex: 0 0 auto;
-  font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums;
-}
 .fo-graph-head {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 16px; border-bottom: 1px solid var(--fo-glass-line);
 }
-.fo-graph-name { font-size: 13px; font-weight: 600; }
 /* 边的图例（前置 / 来源 / 时间）：细线段 + 名称 + 数量，样式与画布上的线一一对应
    （实线 / 虚线 / 点线）。少了它，接受建议后「多了几条点线」很容易被当成没变化。 */
 .fo-edge-legend { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
@@ -959,8 +902,12 @@ export const CSS = `
     linear-gradient(to bottom, var(--fo-grid-line) 1px, transparent 1px);
   background-size: var(--fo-grid-size) var(--fo-grid-size);
 }
-.fo-graph-body { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; height: 100%; }
-.fo-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* 1:1 画布可能比容器大：允许滚动兜底，拖动空白处仍然可以平移。 */
+.fo-graph-body { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; height: 100%; overflow: auto; }
+/* 1:1 画布：SVG 用 layout 尺寸（不再 100% 拉伸），视口靠 viewport transform 平移/缩放。
+   overflow: visible 很关键：放大到 >100% 时内容会超出 layout 视口，不能让 SVG 自己的边界
+   把卡片从中间裁掉（用户实测「放大后右边一半没了」）。裁剪交给外层 .fo-graph-body。 */
+.fo-svg { position: absolute; left: 0; top: 0; width: auto; height: auto; display: block; overflow: visible; }
 .fo-edge {
   fill: none; stroke: ${T.brand};
   stroke-width: 2.5; stroke-opacity: .7; stroke-linecap: round; stroke-linejoin: round;
@@ -983,83 +930,55 @@ export const CSS = `
    18px 徽标（radius 5）、会话胶囊（16 高、全圆角、10px 字）。 */
 .fo-node { cursor: grab; transition: opacity var(--fo-dur) var(--fo-ease); }
 .fo-node:active { cursor: grabbing; }
-.fo-node-bg {
-  fill: var(--fo-glass-card);
-  stroke: var(--fo-glass-line);
-  stroke-width: 1;
+
+/* ============ 节点卡片：foreignObject 里的面板卡 ============
+   卡片本体（描边/圆角/间距）由 src/card/taskCardStyles.js 提供；这里只画「画布这一层」的
+   状态：悬停、选中、阻塞/挂起提示、ghost 虚线框、聚焦降透明度。 */
+.fo-node-fo { overflow: hidden; }
+.fo-node-dom {
+  width: 100%; height: 100%; border-radius: 12px; overflow: hidden; box-sizing: border-box;
+  /* 共享卡片（.tc-scope）在画布上的令牌映射：宿主主题一变，卡片跟着变，不另造调色板。 */
+  --tc-bg: var(--dsw-alias-bg-base);
+  --tc-card: var(--dsw-alias-bg-layer-1);
+  --tc-text: var(--dsw-alias-label-primary);
+  --tc-text-2: var(--dsw-alias-label-secondary);
+  --tc-text-3: var(--dsw-alias-label-secondary);
+  /* 注意：--tc-sub 在卡片里当“浅色底”用（chip 背景），不能直接映射成文字色，
+     否则就是浅灰字压浅灰底——整排 chip 看起来像占位条。 */
+  /* 与面板同一个语义：面板的 sub 就是宿主 bg-layer-2。 */
+  --tc-sub: var(--dsw-alias-bg-layer-2);
+  --tc-line: var(--dsw-alias-border-l1);
+  --tc-line-hover: var(--dsw-alias-border-l2);
+  --tc-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
+  --tc-select: color-mix(in oklab, var(--dsw-alias-brand-primary) 8%, transparent);
+  --tc-accent: var(--dsw-alias-brand-primary);
+  --tc-accent-text: var(--dsw-alias-brand-primary);
+  --tc-accent-weak: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
+  --tc-accent-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 32%, transparent);
+  --tc-ok: var(--dsw-alias-state-success-primary);
+  --tc-ok-weak: color-mix(in oklab, var(--dsw-alias-state-success-primary) 14%, transparent);
+  --tc-ok-line: color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, transparent);
+  --tc-warn: var(--dsw-alias-state-warn-primary);
+  --tc-warn-weak: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 14%, transparent);
+  --tc-warn-line: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 32%, transparent);
+  --tc-danger: var(--dsw-alias-state-error-primary);
+  --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
+  --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
 }
-.fo-node:hover .fo-node-bg { stroke: var(--fo-glass-line-hover); }
-/* 状态只给一个安静的提示：阻塞/挂起时描边带一点状态色，扫一眼画布就能找到卡住的那几张 */
-.fo-node[data-state="blocked"] .fo-node-bg { stroke: ${g(T.error, 34)}; }
-.fo-node[data-state="blocked"]:hover .fo-node-bg { stroke: ${g(T.error, 55)}; }
-.fo-node[data-state="suspended"] .fo-node-bg { stroke: ${g(T.warn, 32)}; }
-.fo-node[data-state="suspended"]:hover .fo-node-bg { stroke: ${g(T.warn, 52)}; }
-.fo-node.is-selected .fo-node-bg { stroke: ${T.brand}; stroke-width: 1; }
-/* 选中：1px 品牌描边 + 一圈柔光（面板 task-current 的等价物，但不做呼吸动画） */
+.fo-node-dom > * { height: 100%; box-sizing: border-box; }
+.fo-node:hover .fo-node-dom { outline: 1px solid ${g(T.label1, 18)}; outline-offset: -1px; }
 .fo-node.is-selected { filter: drop-shadow(0 0 10px ${g(T.brand, 35)}); }
-.fo-node.is-ghost .fo-node-bg {
-  fill: transparent;
-  stroke: ${g(T.idle, 55)};
-  stroke-dasharray: 4 3;
-}
+.fo-node.is-selected .fo-node-dom { outline: 1px solid ${T.brand}; outline-offset: -1px; }
+/* 状态只给一个安静的提示：阻塞/挂起时描边带一点状态色，扫一眼画布就能找到卡住的那几张 */
+.fo-node[data-state="blocked"] .fo-node-dom { outline: 1px solid ${g(T.error, 34)}; outline-offset: -1px; }
+.fo-node[data-state="suspended"] .fo-node-dom { outline: 1px solid ${g(T.warn, 32)}; outline-offset: -1px; }
+/* ghost（不在本分组的任务）：虚线框，不可点 */
+.fo-node.is-ghost .fo-node-dom { box-sizing: border-box; border: 1px dashed ${g(T.idle, 55)}; }
 /* 聚焦：选中的卡片是主角，其余降透明度（hover 回一点，仍可点） */
 .fo-node.is-dimmed { opacity: .3; }
 .fo-node.is-dimmed:hover { opacity: .75; }
 .fo-node:focus-visible { outline: none; }
-.fo-node:focus-visible .fo-node-bg { stroke: ${T.brand}; stroke-width: 2; }
-
-/* 优先级徽标（面板 prio 徽标的 SVG 版）：P0 红 / P1 琥珀 / P2 蓝 / P3 灰 */
-.fo-node-prio-bg { fill: var(--fo-prio-p3); }
-.fo-node-prio-chip[data-value="P0"] .fo-node-prio-bg { fill: var(--fo-prio-p0); }
-.fo-node-prio-chip[data-value="P1"] .fo-node-prio-bg { fill: var(--fo-prio-p1); }
-.fo-node-prio-chip[data-value="P2"] .fo-node-prio-bg { fill: var(--fo-prio-p2); }
-.fo-node-prio-chip[data-value="P3"] .fo-node-prio-bg { fill: var(--fo-prio-p3); }
-.fo-node-prio-text { fill: var(--fo-glass-card-solid, ${T.bgBase}); font-size: 10.5px; font-weight: 700; letter-spacing: .03em; }
-/* 页脚编号：列表卡里那个 T编号，mono 小字 */
-.fo-node-no { fill: ${T.label2}; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .02em; }
-
-/* 标题行 */
-.fo-node-title {
-  fill: ${T.label1};
-  font-size: 12.5px;
-  font-weight: 500;
-}
-.fo-node.is-ghost .fo-node-title { fill: ${T.label2}; }
-/* 会话胶囊：面板 sess-inline 胶囊的 SVG 版（16 高、全圆角、灯 + Session） */
-.fo-node-sess-bg {
-  fill: ${g(T.label1, 6)};
-  stroke: var(--fo-glass-line);
-  stroke-width: 1;
-}
-.fo-node-sess-lamp { fill: ${T.brand}; }
-.fo-node-sess-text { fill: ${T.label2}; font-size: 10px; }
-/* 徽标行：状态 / 前置 / 后置 / 时间，18 高、radius 5、11px */
-.fo-node-badge-bg { stroke-width: 1; }
-.fo-node-badge-text { font-size: 11px; font-weight: 500; }
-.fo-node-badge[data-tone="open"] .fo-node-badge-bg { fill: ${g(T.brand, 10)}; stroke: ${g(T.brand, 26)}; }
-.fo-node-badge[data-tone="open"] .fo-node-badge-text { fill: ${T.brand}; }
-.fo-node-badge[data-tone="blocked"] .fo-node-badge-bg { fill: ${g(T.error, 12)}; stroke: ${g(T.error, 30)}; }
-.fo-node-badge[data-tone="blocked"] .fo-node-badge-text { fill: ${T.error}; }
-.fo-node-badge[data-tone="suspended"] .fo-node-badge-bg { fill: ${g(T.warn, 12)}; stroke: ${g(T.warn, 30)}; }
-.fo-node-badge[data-tone="suspended"] .fo-node-badge-text { fill: ${T.warn}; }
-.fo-node-badge[data-tone="done"] .fo-node-badge-bg { fill: ${g(T.success, 12)}; stroke: ${g(T.success, 28)}; }
-.fo-node-badge[data-tone="done"] .fo-node-badge-text { fill: ${T.success}; }
-.fo-node-badge[data-tone="idle"] .fo-node-badge-bg { fill: ${g(T.idle, 12)}; stroke: ${g(T.idle, 30)}; }
-.fo-node-badge[data-tone="idle"] .fo-node-badge-text { fill: ${T.label2}; }
-.fo-node-badge[data-tone="muted"] .fo-node-badge-bg { fill: ${g(T.label1, 5)}; stroke: ${g(T.label1, 10)}; }
-.fo-node-badge[data-tone="muted"] .fo-node-badge-text { fill: ${T.label2}; }
-.fo-node-badge[data-tone="project"] .fo-node-badge-bg { fill: transparent; stroke: ${g(T.label1, 13)}; }
-.fo-node-badge[data-tone="project"] .fo-node-badge-text { fill: ${T.label2}; }
-/* 动作：常显但压暗（用户口径：先不要简化）；悬停 / 键盘聚焦 / 选中时提亮 */
-.fo-node-action { cursor: pointer; opacity: .55; transition: opacity var(--fo-dur) var(--fo-ease); }
-.fo-node:hover .fo-node-action,
-.fo-node:focus-within .fo-node-action,
-.fo-node.is-selected .fo-node-action { opacity: 1; }
-.fo-node-action-bg { fill: ${g(T.label1, 6)}; stroke: none; }
-.fo-node-action-icon { fill: none; stroke: ${T.label1}; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.fo-node-action:hover .fo-node-action-bg { fill: ${g(T.label1, 14)}; }
-.fo-node-action[data-disabled="1"] { cursor: default; opacity: .3; }
-.fo-node-action[data-disabled="1"]:hover .fo-node-action-bg { fill: ${g(T.label1, 6)}; }
+.fo-node:focus-visible .fo-node-dom { outline: 2px solid ${T.brand}; outline-offset: -2px; }
 
 /* ============ 右栏：详情（独立玻璃层） ============ */
 .fo-detail {
@@ -1129,8 +1048,9 @@ export const CSS = `
 .fo-organize {
   display: flex; flex-direction: column; gap: 10px;
   min-width: 0; min-height: 0; overflow: hidden;
-  /* 高度铺满：右侧一整条，不再为 Header 让位（用户口径） */
+  /* 高度铺满：右侧一整条；max-height 再兜一层，避免宿主容器高度是 auto 时抽屉跟着内容长高、列表没有可滚动区。 */
   height: 100%;
+  max-height: calc(100dvh - 56px);
   padding: 14px;
   border-left: 1px solid var(--fo-glass-line);
   background: var(--fo-glass-card);
@@ -1139,6 +1059,7 @@ export const CSS = `
 }
 /* 顶部：标题 + 计数一行，操作按钮一行（关闭/重新分析/固定-浮层都在上面，底部不再有"关闭"） */
 .fo-org-head {
+  flex: 0 0 auto;
   display: flex; flex-direction: column; gap: 8px;
   padding-bottom: 10px; border-bottom: 1px solid var(--fo-glass-line);
 }
@@ -1154,6 +1075,11 @@ export const CSS = `
 .fo-graph-head .fo-legend-item { min-width: 0; flex: 0 1 auto; overflow: hidden; }
 .fo-graph-head .fo-legend-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 项目卡 = 侧栏卡片那一套（同一个 .fo-row 内容组件 + 同一组 cardParts 输出），容器在画布上 */
+/* 折叠时这张卡就是全部信息：撑满 header（用户口径：宽度要 100%），并在 header 里留出呼吸。 */
+.fo-graph.is-collapsed { flex: 0 0 auto; min-height: 0; }
+.fo-graph.is-collapsed .fo-graph-head { padding-bottom: 4px; }
+.fo-graph.is-collapsed .fo-graph-head .fo-row-card { flex: 1 1 auto; max-width: none; }
+
 .fo-graph-head .fo-row-card {
   flex: 0 1 auto; min-width: 0; max-width: 360px;
   height: 44px; padding: 0 12px; gap: 10px;
@@ -1203,9 +1129,30 @@ export const CSS = `
 .fo-org-counts { margin-left: auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 /* 建议栏自己不滚动，只有列表滚（头和底固定） */
 .fo-organize { overflow: hidden; }
-.fo-org-list { overflow: auto; min-height: 0; }
+/* 时间轴：只有列表滚，头和底固定；底栏 sticky，永远点得到「接受以上」。 */
+.fo-org-list {
+  flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
+}
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
-.fo-org-list { display: flex; flex-direction: column; gap: 10px; }
+.fo-org-group { border: 1px solid var(--fo-glass-line); border-radius: 12px; overflow: hidden; }
+.fo-org-group.is-current { border-color: color-mix(in oklab, ${T.brand} 32%, transparent); }
+.fo-org-group.is-archived { opacity: .72; }
+.fo-org-group-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; background: transparent; cursor: pointer;
+  font: inherit; text-align: left; color: ${T.label1};
+}
+.fo-org-group.is-current .fo-org-group-head { background: color-mix(in oklab, ${T.brand} 8%, transparent); }
+.fo-org-group-time { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
+.fo-org-group-scope { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.fo-org-group-counts { flex: 0 0 auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
+.fo-org-group-body { display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px; }
+.fo-org-foot {
+  flex: 0 0 auto; position: sticky; bottom: 0; z-index: 2; margin-top: auto;
+  padding-top: 8px; border-top: 1px solid var(--fo-glass-line);
+  background: linear-gradient(180deg, transparent, var(--fo-glass-card) 38%);
+}
 .fo-org-item {
   display: flex; flex-direction: column; gap: 6px;
   padding: 10px 12px; border-radius: 12px;

@@ -59,10 +59,13 @@ export function createGraphFeature(deps) {
             onToggleHideDone: ctx.onToggleHideDone,
             /* 每张图自己的筛选（状态 + 已完成时间窗）要用完成时间 */
             completedById: ctx.completedById,
+            /* 画布卡片要完整任务字段（文档 / 人 / 预期这些行） */
+            taskById: ctx.taskById,
             /* 接受建议后临时展开已完成（3 秒） */
             revealing: ctx.revealing === true,
             revealIds: ctx.revealIds,
             onOpenTask: ctx.onOpenTask,
+            onOrganize: ctx.onOrganizeGraph,
             onFocusTask: ctx.onFocusTask,
             onNodeMove: ctx.onNodeMove,
             onResetLayout: ctx.onResetLayout,

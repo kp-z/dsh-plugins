@@ -85,6 +85,34 @@
     --p-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   }
 
+  /* 共享卡片（.tc-scope）：与关系画布同一套令牌语义，值取面板自己的调色板。
+     两边加载同一份 taskCardStyles，差异只剩各自主题的色值，不再是两套规则。 */
+  .tc-scope {
+    --tc-bg: var(--p-page);
+    --tc-card: var(--p-card);
+    --tc-sub: var(--p-sub);
+    --tc-text: var(--p-text);
+    --tc-text-2: var(--p-text-2);
+    --tc-text-3: var(--p-text-3);
+    --tc-line: var(--p-line);
+    --tc-line-hover: var(--p-line-hover);
+    --tc-shadow: var(--p-shadow);
+    --tc-select: var(--p-select, var(--p-accent-weak));
+    --tc-accent: var(--p-accent);
+    --tc-accent-text: var(--p-accent-text);
+    --tc-accent-weak: var(--p-accent-weak);
+    --tc-accent-line: var(--p-accent-line);
+    --tc-ok: var(--p-ok);
+    --tc-ok-weak: var(--p-ok-weak);
+    --tc-ok-line: var(--p-ok-line);
+    --tc-warn: var(--p-warn);
+    --tc-warn-weak: var(--p-warn-weak);
+    --tc-warn-line: var(--p-warn-line);
+    --tc-danger: var(--p-danger);
+    --tc-danger-weak: var(--p-danger-weak);
+    --tc-danger-line: var(--p-danger-line);
+  }
+
   /* ---------- 基础 ---------- */
   *, *::before, *::after { box-sizing: border-box; }
 
@@ -6107,18 +6135,7 @@
   }
 
   /* 任务 → 主题色。用黄金角把色相摊开：相邻编号的颜色差得远，且不会周期性撞色。 */
-  function toneForTask(t) {
-    var no = Number(t && t.no) || 0;
-    if (!no) {
-      /* 没编号（极少数临时卡片）用 id 的哈希兜底，别一片灰 */
-      var text = String((t && t.id) || '');
-      var hash = 0;
-      for (var i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) % 360;
-      return 'hsl(' + hash + ' 55% 55%)';
-    }
-    return 'hsl(' + Math.round((no * 137.508) % 360) + ' 60% 55%)';
-  }
-
+  /* 阶段 5 删旧卡片时把这两个常量一起带走了，但排序/优先级菜单还在用——补回来。 */
   var PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
   var PRIORITY_LABEL = { P0: 'P0 最紧急', P1: 'P1 高', P2: 'P2 中', P3: 'P3 低' };
 
@@ -6246,27 +6263,6 @@
     });
   }
 
-  function priorityChip(t, prio) {
-    var running = t.sessionAlive === true && t.sessionPhase === 'running';
-    var unread = t.sessionAlive === true && !running && t.sessionUnread === true;
-    var stateLabel = running ? '正在运行' : unread ? '运行结束，尚未查看' : '';
-    var priorityLabel = prio ? '优先级 ' + prio : '未设置优先级';
-    var chip = el('button', {
-      type: 'button',
-      'class': (prio ? 'prio' : 'prio prio-empty') + (running ? ' is-running' : unread ? ' is-unread' : ''),
-      'data-activity-task': String(t.id || ''),
-      title: priorityLabel + (stateLabel ? ' · ' + stateLabel : '') + '（点击修改优先级）',
-      'aria-label': priorityLabel + (stateLabel ? '，' + stateLabel : ''),
-    });
-    if (prio) chip.setAttribute('data-value', prio);
-    chip.textContent = prio || '--';
-    chip.addEventListener('click', function (event) {
-      event.stopPropagation();
-      openPriorityMenu(chip, prio, function (value) { setPriority(t.id, value); });
-    });
-    return chip;
-  }
-
   function setPriority(taskId, value) {
     api('tasks/priority', { taskId: taskId, value: value }).then(function () {
       return load({ quiet: true });
@@ -6298,76 +6294,6 @@
 
   /* 同年省掉年份的日期：'2026-11-05' → '11-05'，和 chip 上的短时间对齐；
      完整日期留在 title 里。 */
-  function shortDayText(text) {
-    var s = String(text || '').trim();
-    var thisYear = String(new Date(nowMs()).getFullYear()) + '-';
-    return s.indexOf(thisYear) === 0 ? s.slice(thisYear.length) : s;
-  }
-
-  function scheduleChip(t) {
-    var s = taskSchedule(t);
-    var paused = !!(s && s.state === 'paused');
-    /* 短文案由服务端算好（scheduleView.short）：'每天 09:00 · 明天' / '明天 15:00'。
-       重复型只在「下次」段写日期——几点已经在规则里，再写一遍就是把同一份时间说两遍。
-       服务端没给（老快照）时退回 summary，别让 chip 空着。 */
-    var short = s ? String(s.short || '').trim() : '';
-    var rule = s ? (short || String(s.summary || '').trim() || '已排期') : '';
-    /* 定时只能写进「这条会话的 DSH 自动化任务」：没绑定会话就没有落点，做成禁用态。 */
-    var locked = !s && !t.sessionId;
-    /* 状态用图标：⏸ 是「已暂停」里唯一没有歧义的，今天/明天这类没有对应 emoji，仍用文字。 */
-    var label = s ? ('⏰ ' + rule + (paused ? ' · ⏸️' : '')) : '⏰ 定时';
-    var next = scheduleNextText(s);
-    var titleParts = [];
-    if (s) {
-      /* 悬停里给完整日期（chip 上省掉了年份），信息一点不少 */
-      var fullNext = String(s.nextText || '').trim();
-      if (fullNext && fullNext !== '—' && fullNext !== '-') titleParts.push('下次 ' + fullNext);
-      /* 附加说明（免打扰 / 只在某时段 / 到哪天 / 最多几次）由服务端结构化给出，
-         一段段拼进悬停就行；老快照没有 extras 时退回 detail 原文。 */
-      var extras = Array.isArray(s.extras) ? s.extras : [];
-      if (extras.length) {
-        for (var xi = 0; xi < extras.length; xi += 1) {
-          var piece = String(extras[xi] || '').trim();
-          if (piece) titleParts.push(piece);
-        }
-      } else if (s.detail && s.detail !== rule) {
-        titleParts.push(String(s.detail));
-      }
-      if (paused) titleParts.push('已暂停');
-      /* lastReason 是调度器给的「为什么这次没按时跑」。未到点 / 到点 是正常心跳，
-         写进悬停只是噪音——只有真异常（跳过、宽限、出错）才值得露出来。 */
-      var benign = { '': 1, '未到点': 1, '到点': 1, '已暂停': 1 };
-      if (s.lastReason && !benign[String(s.lastReason).trim()]) titleParts.push('上次：' + s.lastReason);
-      titleParts.push('点击修改排期');
-    } else {
-      titleParts.push('点开设定时：写进这条会话的 DSH 自动化任务，到点由它往会话里发一句话；支持「下周一早上九点半」「每隔一小时」这种人话');
-    }
-    var chip = el('button', {
-      type: 'button',
-      'class': 'chip chip-sched' + (s ? '' : ' chip-sched-empty') + (paused ? ' is-paused' : '') + (locked ? ' is-locked' : ''),
-      title: locked
-        ? '这条任务还没绑定会话：定时只能写进会话的 DSH 自动化任务，先开工（或绑定已有会话）'
-        : titleParts.join(' · '),
-      'aria-label': s ? '定时：' + rule + (next ? '，下次 ' + next : '') + (paused ? '，已暂停' : '')
-        : (locked ? '定时不可用：先绑定会话' : '设置定时提醒'),
-      'aria-disabled': locked ? 'true' : 'false',
-      'aria-haspopup': locked ? undefined : 'dialog'
-    });
-    chip.textContent = label;
-    chip.addEventListener('click', function (event) {
-      /* 卡片本身有「开工」入口，别让这枚 chip 的点击冒泡去开工 */
-      event.stopPropagation();
-      if (locked) {
-        toast('先绑定会话才能设定时：定时写进的是会话的 DSH 自动化任务');
-        return;
-      }
-      openSchedulePopover(chip, t);
-    });
-    return chip;
-  }
-
-  /* 浮层贴在被点的 chip 下方，放不下就翻到上面；滚出视口就关掉。
-     fixed 定位 + 每次重新量锚点，所以在滚动容器里也跟着跑。 */
   function placeChipPopover(pop, anchorEl) {
     var rect = anchorEl.getBoundingClientRect();
     var pw = pop.offsetWidth || 300;
@@ -6661,59 +6587,6 @@
     return s.indexOf(year + '-') === 0 ? s.slice(year.length + 1) : s;
   }
 
-  function commitmentChip(t) {
-    var c = taskCommitment(t);
-    var chip = el('button', {
-      type: 'button',
-      'class': 'chip chip-eta',
-      'aria-haspopup': 'dialog'
-    });
-
-    if (!c) {
-      chip.className += ' chip-eta-empty';
-      chip.textContent = '📅 预期';
-      chip.title = '预期完成时间（承诺什么时候交，用于算履约）：支持「10-30 18:00」「这周五」「下班前」';
-      chip.setAttribute('aria-label', '设置预期完成时间');
-      chip.addEventListener('click', function (event) {
-        /* 卡片上有「开工」，别让这枚 chip 的点击冒泡去开工 */
-        event.stopPropagation();
-        openEtaPopover(chip, t);
-      });
-      return chip;
-    }
-
-    var text = etaShortText(c.expectedText);
-    if (!text && Number(c.expectedAt)) text = fmtDate(Number(c.expectedAt)).slice(5);
-    var label = String(c.label || '').trim();
-    if (ETA_TONE[c.state]) chip.className += ' ' + ETA_TONE[c.state];
-    chip.appendChild(el('span', { text: '📅 预期 · ' + text + (label ? ' · ' + label : '') }));
-
-    /* 写回飞书失败 / 还没写完：尾巴上挂个小标记，细节放 title */
-    var unsynced = c.syncState === 'failed' || c.syncState === 'pending';
-    if (unsynced) chip.appendChild(el('span', { 'class': 'chip-eta-sync', text: '未同步' }));
-
-    var titleParts = ['预期 ' + (String(c.expectedText || '').trim() || text)];
-    if (label) titleParts.push(label);
-    if (c.firstPromiseText) titleParts.push('首次承诺 ' + c.firstPromiseText);
-    if (Number(c.delayCount) > 0) titleParts.push('重承诺 ' + Number(c.delayCount) + ' 次');
-    /* 逾期的时候最想知道「为什么晚」：AI 归因直接挂在预期芯片的悬停里 */
-    if (t && t.delayAttribution && t.delayAttribution.reason) {
-      titleParts.push('AI 归因：' + (t.delayAttribution.label || '') + ' · ' + t.delayAttribution.reason);
-    }
-    if (c.syncState === 'failed') titleParts.push('写回飞书失败');
-    else if (c.syncState === 'pending') titleParts.push('写回飞书未完成');
-    titleParts.push('点击修改预期');
-    chip.title = titleParts.join(' · ');
-    chip.setAttribute('aria-label', '预期 ' + (String(c.expectedText || '').trim() || text) + (label ? '，' + label : ''));
-    chip.addEventListener('click', function (event) {
-      event.stopPropagation();
-      openEtaPopover(chip, t);
-    });
-    return chip;
-  }
-
-  /* 服务端可能只给 task 快照，也可能只给 preview：两条路都兜住，
-     别让「保存成功后 chip 还是旧样子」。 */
   function commitmentFromResponse(data) {
     if (data && data.task && data.task.commitment !== undefined) return data.task.commitment || null;
     var pv = (data && data.preview) || {};
@@ -6767,32 +6640,6 @@
     });
   }
 
-
-  function relationPreviewNode(t) {
-    var rel = t.relations || {};
-    if (!['predecessors', 'successors', 'sourceTasks', 'derivedTasks'].some(function (key) { return (rel[key] || []).length; })) return null;
-    var root = el('div', { 'class': 'relation-preview' });
-    function line(before, after, provenance) {
-      if (!before.length && !after.length) return;
-      var row = el('div', { 'class': 'relation-line' + (provenance ? ' relation-provenance' : '') });
-      function side(items, leading) {
-        if (!items.length) return;
-        if (!leading) row.appendChild(el('span', { 'class': 'relation-arrow', text: '→' }));
-        var node = makeButton(String(items[0].title || items[0].id).slice(0, 12), 'relation-node', null, false, function () { openRelationGraph(node, t); });
-        node.title = items[0].title || items[0].id;
-        row.appendChild(node);
-        if (items.length > 1) { var extra = makeButton('+' + (items.length - 1), 'relation-node', null, false, function () { openRelationGraph(extra, t); }); row.appendChild(extra); }
-        if (leading) row.appendChild(el('span', { 'class': 'relation-arrow', text: '→' }));
-      }
-      side(before, true);
-      var current = makeButton('本任务', 'relation-node relation-current', null, false, function () { openRelationGraph(current, t); }); row.appendChild(current);
-      side(after, false);
-      root.appendChild(row);
-    }
-    line(rel.predecessors || [], rel.successors || [], false);
-    line(rel.sourceTasks || [], rel.derivedTasks || [], true);
-    return root;
-  }
 
   function enterRelatedTask(id) {
     var task = ((app.snap && app.snap.tasks) || []).find(function (item) { return item.id === id; });
@@ -6989,351 +6836,118 @@
     return menu;
   }
 
-  function taskNode(t) {
-    /* 当前对话绑定的那张卡单独标出来：描边 + 呼吸动画 + 「当前对话」徽标。 */
-    var isCurrent = !!(t.sessionId && app.currentSessionId && t.sessionId === app.currentSessionId);
-    var item = el('div', { 'class': isCurrent ? 'task task-current' : 'task' });
-    /* 主题色：按编号算色相，黄金角散开；编号稳定，所以颜色也不会变。 */
-    item.setAttribute('data-tone', '1');
-    item.style.setProperty('--tone', toneForTask(t));
-    if (isCurrent) {
-      item.setAttribute('aria-current', 'true');
-      item.setAttribute('data-session', String(t.sessionId));
+  /* ---------- 共享卡片组件 ----------
+     侧边栏与关系画布用同一份 src/card/ 实现（taskCardModel + taskCardView）；旧的
+     taskNodeLegacy 已在阶段 5 删除。面板自己的行为（评论、挂起、各种菜单）通过
+     handlers / extraActions / extraBody 注入。模块还没加载完时先画一个只有标题的占位，
+     模块到了再静默重渲染。 */
+  var sharedCard = null
+  function loadSharedCard() {
+    Promise.all([
+      import('/dsh-feishu/panel/src/card/taskCardModel.js'),
+      import('/dsh-feishu/panel/src/card/taskCardView.js'),
+      /* 面板也注入共享卡片样式：和画布加载同一份 taskCardStyles，规则完全一致。 */
+      import('/dsh-feishu/panel/src/card/taskCardStyles.js'),
+    ]).then(function (mods) {
+      var model = mods[0]
+      var view = mods[1]
+      var styles = mods[2]
+      if (styles && typeof styles.ensureTaskCardStyles === 'function') styles.ensureTaskCardStyles(document)
+      sharedCard = { buildTaskCardModel: model.buildTaskCardModel, renderTaskCard: view.renderTaskCard }
+      /* 首屏可能已经用旧卡画过了：模块到了再刷一次列表换成共享卡。 */
+      try { if (typeof load === 'function') load({ quiet: true }) } catch (error) { /* 启动阶段还没有列表 */ }
+    }).catch(function () { sharedCard = null })
+  }
+  loadSharedCard()
+
+  function panelCardSessionClick(t, sessionId) {
+    if (String(sessionId) === String(app.currentSessionId)) {
+      toast('这就是当前对话')
+      return
     }
-    /* 优先级：卡片最左边一条色条 + 标题前一个实心徽标，点徽标就地改。 */
-    var prio = normPriority(t.priority);
-    if (prio) item.setAttribute('data-priority', prio);
-    var main = el('div', { 'class': 'task-main' });
-    /* 会话 id 要同时用于标题行的小角标和下面的动作行，先取一次。 */
-    var sid = t.sessionId || app.sessions[t.id];
-
-    var title = el('div', {
-      'class': 'task-title',
-      title: t.title ? String(t.title) : null
-    });
-    title.textContent = t.title ? String(t.title) : '(无标题任务)';
-
-    /* 标题行：标题 + 一个很浅的会话 id；绑定成功且会话活着时前面亮一个绿灯。 */
-    var headRow = el('div', { 'class': 'task-head' });
-    headRow.appendChild(priorityChip(t, prio));
-    headRow.appendChild(title);
-    /* 双击标题 → 就地改名，旁边带一个 AI 起名。 */
-    title.addEventListener('dblclick', function (event) {
-      event.preventDefault();
-      startTitleEdit(t, title, headRow);
-    });
-    if (sid) {
-      var alive = t.sessionAlive === true;
-      var sessChip = el('button', {
-        type: 'button',
-        'class': 'sess-inline',
-        'data-activity-task': String(t.id || '')
-      });
-      /* 会话活着 → 绿灯；只是已结束 → 灰点（不是错误，不该报警）。 */
-      var running = alive && t.sessionPhase === 'running';
-      var unread = alive && t.sessionUnread === true;
-      /* 一个状态灯，四种含义：运行中（蓝·呼吸）/ 跑完未读（绿·实心）/
-         空闲已读（绿·淡）/ 会话已结束（灰） */
-      var lampState = running ? 'running' : unread ? 'unread' : alive ? 'idle' : 'dead';
-      sessChip.className += running ? ' is-running' : '';
-      sessChip.appendChild(el('span', { 'class': 'lamp lamp-' + lampState }));
-      /* 卡片上只留「Session」保持安静；完整 id 放悬停（title）与读屏（aria-label）。 */
-      sessChip.appendChild(el('span', { text: 'Session' }));
-      updateSessionActivityChip(sessChip, t, sid);
-      function sessionTipState() { return String(sid) === String(app.currentSessionId) ? '当前对话' : sessionActivityLabel(currentActivityTask(t)); }
-      sessChip.setAttribute('data-session', String(sid));
-      /* 悬停给完整 id + 复制按钮；点 chip 仍然是「打开 / 复制」的旧行为 */
-      sessChip.addEventListener('mouseenter', function () {
-        cancelSessionTipHide();
-        showSessionTip(sessChip, sid, sessionTipState());
-      });
-      sessChip.addEventListener('mouseleave', scheduleSessionTipHide);
-      sessChip.addEventListener('focus', function () {
-        cancelSessionTipHide();
-        showSessionTip(sessChip, sid, sessionTipState());
-      });
-      sessChip.addEventListener('blur', scheduleSessionTipHide);
-      sessChip.addEventListener('click', function () {
-        /* 当前对话这张卡再「跳到」它会话没意义，反而容易跳到别处——直接提示一下。 */
-        if (String(sid) === String(app.currentSessionId)) {
-          toast('这就是当前对话');
-          return;
-        }
-        if (currentActivityTask(t).sessionAlive !== true) {
-          onCopySession(sid, '对话已结束（宿主重启过就不在了），已复制 ID');
-          return;
-        }
-        onOpenSession(sid, t.title);
-      });
-      headRow.appendChild(sessChip);
+    if (currentActivityTask(t).sessionAlive !== true) {
+      onCopySession(sessionId, '对话已结束（宿主重启过就不在了），已复制 ID')
+      return
     }
-    main.appendChild(headRow);
-
-
-
-    var meta = el('div', { 'class': 'task-meta' });
-    if (t.due) meta.appendChild(el('span', { 'class': 'due', text: '截止 ' + t.due }));
-    if (t.isNew) meta.appendChild(el('span', { 'class': 'badge badge-new', text: '新' }));
-    if (t.boundOnly && !t.started) meta.appendChild(el('span', { 'class': 'badge', text: '已绑定' }));
-    if (t.started) meta.appendChild(el('span', { 'class': 'badge badge-ok', text: '已开工' }));
-    if (t.done) meta.appendChild(el('span', { 'class': 'badge badge-done', text: '已完成' }));
-    if (t.reopenPending) meta.appendChild(el('span', { 'class': 'hint', text: '已重开 · 飞书待同步', title: t.reopenError || '正在将原任务重开状态写回飞书' }));
-    if (t.suspension && t.suspension.active) headRow.appendChild(el('span', { 'class': 'hint', text: '已挂起', title: t.suspension.reason || '任务已挂起' }));
-    if (isCurrent) meta.appendChild(el('span', { 'class': 'badge badge-current', text: '当前对话' }));
-    /* 触发条件与工作区统一用下面的 chip 表达（不论来自清单字段还是旧描述），这里不再出徽标。 */
-    main.appendChild(meta);
-
-    if (t.suspension && Array.isArray(t.suspension.errors) && t.suspension.errors.length) {
-      main.appendChild(el('div', { 'class': 'hint suspension-warning', text: '挂起状态已保存，部分同步待处理：' + t.suspension.errors.map(suspensionWarningText).join('；') }));
-    }
-
-    var relationPreview = relationPreviewNode(t);
-    if (relationPreview) main.appendChild(relationPreview);
-
-    /* 人员与便签都并进同一行信息区：横向排布、自动折行，卡片高度只跟内容行数走。 */
-    var members = Array.isArray(t.members) ? t.members : [];
-    var assignees = members.filter(function (m) { return m.role === 'assignee'; });
-    var assigneeIds = {};
-    for (var ai = 0; ai < assignees.length; ai++) assigneeIds[assignees[ai].id] = true;
-    var followers = members.filter(function (m) { return m.role !== 'assignee' && !assigneeIds[m.id]; });
-
-    function personGroup(label, list) {
-      if (!list.length) return null;
-      var group = el('span', { 'class': 'people-group', role: 'group', 'aria-label': label });
-      var icon = el('span', {
-        'class': 'people-role-icon',
-        tabindex: '0',
-        'data-tip': label + '：' + list.map(function (m) { return (m && m.name) || '未知成员'; }).join('、'),
-        'aria-label': label + '，' + list.length + ' 人'
-      });
-      var svgNs = 'http://www.w3.org/2000/svg';
-      var svg = document.createElementNS(svgNs, 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('width', '14');
-      svg.setAttribute('height', '14');
-      svg.setAttribute('fill', 'none');
-      svg.setAttribute('stroke', 'currentColor');
-      svg.setAttribute('stroke-width', '1.7');
-      svg.setAttribute('stroke-linecap', 'round');
-      svg.setAttribute('stroke-linejoin', 'round');
-      svg.setAttribute('aria-hidden', 'true');
-      var path = document.createElementNS(svgNs, 'path');
-      path.setAttribute('d', label === '负责人'
-        ? 'M20 21v-2a7 7 0 0 0-14 0v2 M17 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0'
-        : 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12 M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0');
-      svg.appendChild(path);
-      icon.appendChild(svg);
-      group.appendChild(icon);
-      var shown = list.slice(0, 4);
-      for (var i = 0; i < shown.length; i++) {
-        (function (m) {
-          /* 头像只认「真名」和「真照片」：
-             联系人接口没权限时成员只有 open_id，拿 ou_ 首字母当头像就是错的（显示成一片 O）。
-             有名字用首字，没名字留一个中性人形，等下次同步拿到真名/真头像再换。 */
-          var who = m && m.name ? String(m.name).trim() : '';
-          var photo = m && typeof m.avatar === 'string' && /^https?:\/\//i.test(m.avatar) ? m.avatar : '';
-          var letter = who ? who.slice(0, 1).toUpperCase() : '';
-          var av = el('span', { 'class': 'avatar' + (letter || photo ? '' : ' is-anon'), tabindex: '0', 'data-tip': who || label, 'aria-label': label + '：' + (who || '未知成员') });
-          if (photo) {
-            var img = el('img', { src: photo, alt: '', loading: 'lazy' });
-            /* 头像 URL 过期或被拦时退回首字/人形，别在卡片上留一张破图。 */
-            img.onerror = function () {
-              if (img.parentNode === av) av.removeChild(img);
-              av.className = letter ? 'avatar' : 'avatar is-anon';
-              av.textContent = letter;
-            };
-            av.appendChild(img);
-          } else {
-            av.textContent = letter;
-          }
-          group.appendChild(av);
-        })(shown[i]);
-      }
-      if (list.length > shown.length) {
-        group.appendChild(el('span', {
-          'class': 'avatar more',
-          text: '+' + (list.length - shown.length),
-          tabindex: '0',
-          'aria-label': label + '，另有 ' + (list.length - shown.length) + ' 人',
-          'data-tip': label + '：' + list.slice(shown.length).map(function (m) { return (m && m.name) || '未知成员'; }).join('、')
-        }));
-      }
-      return group;
-    }
-
-    var assigneeGroup = personGroup('负责人', assignees);
-    var followerGroup = personGroup('关注人', followers);
-    if (assigneeGroup) meta.appendChild(assigneeGroup);
-    if (followerGroup) meta.appendChild(followerGroup);
-
-    /* 便签：清单名 + 触发条件 + 时间 + 清单自定义字段，全部横向排在信息行里。 */
-    var trigger = (t.meta || {}).trigger;
-    var TRIGGER_TEXT = { manual: '人工触发', auto: '自动执行', scheduled: '按时执行' };
-    if (t.listName && t.listName !== app.sharedList) {
-      meta.appendChild(el('span', { 'class': 'chip chip-list', text: String(t.listName) }));
-    }
-    if (trigger && TRIGGER_TEXT[trigger]) {
-      meta.appendChild(el('span', { 'class': 'chip chip-trigger chip-' + trigger, text: TRIGGER_TEXT[trigger] }));
-    }
-    /* 「什么时候」只留一份：⏰ 定时 / 📅 预期 是这两件事的唯一出口（可点开改）。
-       飞书原生开始时间就是排期写回的投影——排期真给了下次时间时再排一枚「开始 …」
-       就是同一份时间说两遍；一次性排期跑完（下次＝—）时没有别处能看这个时间，照旧显示。
-       截止日期（飞书原生结束时间）和预期不是一回事，单独一枚，同年省年份。 */
-    var sched = taskSchedule(t);
-    if (t.start && !scheduleNextText(sched)) meta.appendChild(el('span', { 'class': 'chip chip-time', text: '开始 ' + shortDayText(t.start) }));
-    if (t.end) {
-      meta.appendChild(el('span', {
-        'class': 'chip chip-time',
-        text: '截止 ' + shortDayText(t.end),
-        title: '任务截止时间：' + String(t.end)
-      }));
-    }
-    /* 排期：有就显示摘要（暂停时淡显），没有就是一枚淡色入口；点开是用一句话排期。 */
-    meta.appendChild(scheduleChip(t));
-    /* 预期完成紧跟在排期后面：两枚都是「时间」，并排看得到「什么时候做 / 什么时候交」。 */
-    meta.appendChild(commitmentChip(t));
-    /* 逾期归因：AI 给的「为什么晚」，跟预期芯片挨着放，扫一眼就知道差在哪 */
-    var attrib = t && t.delayAttribution;
-    if (attrib && attrib.reason) {
-      meta.appendChild(el('span', {
-        'class': 'chip chip-attrib',
-        text: '🤖 ' + (attrib.label || '归因'),
-        title: 'AI 归因：' + attrib.reason
-          + (attrib.evidence ? '\n依据：' + attrib.evidence : '')
-          + '\n（改期后会自动重新归因）'
-      }));
-    }
-
-    var fields = Array.isArray(t.customFields) ? t.customFields : [];
-    var fieldCfg = (app.settings && app.settings.taskFields) || {};
-    /* 优先级不进信息行：卡片左上角已经有实心徽标，再挂一枚「优先级 P0」是重复信息。 */
-    var cfg = [fieldCfg.workspace, fieldCfg.trigger, fieldCfg.legacyAuto, fieldCfg.doc, fieldCfg.priority, '优先级'].filter(Boolean);
-    /* 写回列（预期完成 / 开始时间 / 结束时间）同上：它们只是上面两枚 chip 的投影，
-       再画一枚「预期完成 2026-10-30 18:00」就是第二份时间。名字跟着设置走，改过列名也不漏。 */
-    var ECHO_DEFAULTS = { eta: '预期完成', startCol: '开始时间', endCol: '结束时间' };
-    var echoFields = ['eta', 'startCol', 'endCol'].map(function (key) {
-      return String(fieldCfg[key] || ECHO_DEFAULTS[key]).trim();
-    }).filter(Boolean);
-    for (var fi = 0; fi < fields.length && fi < 4; fi++) {
-      var f = fields[fi] || {};
-      if (!f.value) continue;
-      var name = String(f.name || '');
-      if (cfg.indexOf(name) !== -1) continue;
-      if (echoFields.indexOf(name) !== -1) continue;
-      if (f.type === 'datetime' && /开始|结束/.test(name)) continue;
-      meta.appendChild(el('span', { 'class': 'chip chip-field', text: (name ? name + ' ' : '') + f.value, title: f.type || '' }));
-    }
-    var docs = [];
-    var seenDoc = {};
-    (Array.isArray(t.docs) ? t.docs : []).forEach(function (d) {
-      if (!d || !d.url || seenDoc[d.url]) return;
-      seenDoc[d.url] = true;
-      docs.push(d);
-    });
-    /* 文档单独一行：chip 可点开，✎ 改标题，✕ 从任务解绑，「＋ 文档」手动贴链接。
-       解绑 / 绑定 / 改名都会立刻写回飞书，不只是改本地。 */
-    /* 已绑定文档是内容，常驻展示；只有添加/AI生成操作收进菜单。 */
-    if (docs.length) {
-      var docRow = el('div', { 'class': 'task-docs' });
-      docs.forEach(function (doc) { docRow.appendChild(docChipNode(t, doc)); });
-      main.appendChild(docRow);
-    }
-
-    if (t.workspaceName || t.workspaceTitle) {
-      var resolved = String(t.workspaceTitle || t.workspaceName);
-      var wsChip = el('button', {
-        type: 'button',
-        'class': 'chip chip-field chip-workspace',
-        title: (t.workspacePath ? t.workspacePath + ' · ' : '') + '点击切换工作区' + (t.workspaceWrite && t.workspaceWrite.pending ? ' · 飞书同步中' : t.workspaceWrite && t.workspaceWrite.error ? ' · 飞书待同步：' + t.workspaceWrite.error : ''),
-        'aria-haspopup': 'menu',
-        'aria-label': '工作区：' + resolved + '（点击切换）'
-      });
-      wsChip.textContent = resolved + (t.workspaceWrite && (t.workspaceWrite.pending || t.workspaceWrite.error) ? ' ·' : '');
-      wsChip.addEventListener('click', function (event) {
-        event.stopPropagation();
-        if (app.hostStale) {
-          toast('宿主插件是旧代码：重启一次 DSH 后才能在工作区之间切换');
-          return;
-        }
-        openWorkspaceMenu(wsChip, t);
-      });
-      meta.appendChild(wsChip);
-    }
-
-    if (t.workspaceError) {
-      var wsErr = el('div', { 'class': 'task-err' });
-      wsErr.appendChild(el('span', { text: String(t.workspaceError) }));
-      /* 绝对路径但还没登记：给一个明确动作，而不是让人去设置里翻 */
-      if (t.workspaceCanRegister) {
-        wsErr.appendChild(makeButton('登记为工作区', 'btn btn-ghost btn-xs', '登记中…', false, function () {
-          api('workspaces/register', { taskId: t.id, path: t.workspaceName }).then(function (data) {
-            toast('已登记并绑定：' + ((data && data.workspace && data.workspace.title) || ''));
-            load({ quiet: true });
-          }, function (err) {
-            toast((err && err.message) || '登记失败');
-          });
-        })).title = '把这个目录登记成 DSH 工作区，并按 id 绑定到这条任务';
-      }
-      main.appendChild(wsErr);
-    }
-
-    if (t.error) {
-      main.appendChild(el('div', { 'class': 'task-err', text: String(t.error) }));
-    }
-
-    var sid = t.sessionId || app.sessions[t.id];
-    /* 次要会话操作收进更多菜单，不丢原handler语义。 */
-
-    var actions = el('div', { 'class': 'task-actions' });
-    var busy = !!app.busyTask[t.id];
-    /* 绑了会话就是已经开工了，不再给「开工」——那按钮的语义是「开一条会话干活」。
-       只有还没绑会话的卡才出现「开工」和「绑定」。 */
-    if (!sid && !(t.suspension && t.suspension.active)) {
-      var startBtn = makeButton('开工',
-        'btn btn-primary btn-sm', '开工中…', busy, function () { onStart(t); });
-      startBtn.title = app.currentSessionId
-        ? '在当前会话开工（任务绑定到这条对话）'
-        : '新建一条会话开工';
-      actions.appendChild(startBtn);
-
-      /* 「绑定」：只建立任务↔当前会话的关系并同步名字，不投递、不开工。 */
-      /* busyLabel 传 null：禁用时不能显示成「绑定中…」（那是真在发请求）。 */
-      var bindBtn = makeButton('绑定', 'btn btn-ghost btn-sm', null, busy || !app.currentSessionId,
-        function () { onBind(t); });
-      bindBtn.title = app.currentSessionId
-        ? '把当前会话绑定到这条任务并同步名称，但不开始工作'
-        : '需要从右侧栏的会话里打开面板才能绑定';
-      actions.appendChild(bindBtn);
-    }
-
-    actions.appendChild(makeButton('完成', 'task-text-action', null, busy || t.done, function () { onComplete(t); }));
-    var documentButton = makeButton('文档', 'task-text-action', null, busy, function () { openTaskDocumentMenu(documentButton, t); });
-    actions.appendChild(documentButton);
-    actions.appendChild(makeButton('同步', 'task-text-action', null, busy, function () { onSyncTask(t); }));
-    var commentControls = cardCommentsControl(t);
-    if (commentControls.button && commentControls.section) {
-      actions.appendChild(commentControls.button);
-      item._cardComments = commentControls; // 动态区域公开节点，不影响整卡缓存签名
-    }
-    actions.appendChild(el('span', { 'class': 'task-action-spacer' }));
-    var suspensionControl = suspensionControlNode(t);
-    if (suspensionControl) actions.appendChild(suspensionControl);
-    var more = makeButton('···', 'task-text-action', null, busy, function () { openTaskMoreMenu(more, t); });
-    more.setAttribute('aria-label', '更多任务操作');
-    actions.appendChild(more);
-
-    var body = el('div', { 'class': 'task-body' });
-    body.appendChild(main);
-    body.appendChild(actions);
-    if (commentControls.section) body.appendChild(commentControls.section);
-    item.appendChild(body);
-
-    return item;
+    onOpenSession(sessionId, t.title)
   }
 
+  function panelCardFieldHiddenNames() {
+    var cfg = (app.settings && app.settings.taskFields) || {}
+    return [cfg.workspace, cfg.trigger, cfg.legacyAuto, cfg.doc, cfg.priority, '优先级', '预期完成', '开始时间', '结束时间'].filter(Boolean)
+  }
 
+  /* 面板里也把卡片套进 .tc-scope：与画布共用同一份 taskCardStyles（同一套规则/令牌语义）。 */
+  function panelScopedCard(node) {
+    var scope = el('div', { 'class': 'tc-scope' })
+    scope.appendChild(node)
+    return scope
+  }
 
-  /* ---------------- 任务卡评论：GET 查看，显式处理才投递原会话 ---------------- */
+  /* 模块未就绪时的占位：只有标题，不假装有其它信息。 */
+  function panelCardPlaceholder(t) {
+    var box = el('div', { 'class': 'task' })
+    var main = el('div', { 'class': 'task-main' })
+    main.appendChild(el('div', { 'class': 'task-title', text: (t && t.title) || '' }))
+    box.appendChild(main)
+    return panelScopedCard(box)
+  }
+
+  function taskNode(t) {
+    if (!sharedCard) return panelCardPlaceholder(t)
+    var commentControls = cardCommentsControl(t)
+    var suspendControl = suspensionControlNode(t)
+    var card = sharedCard.renderTaskCard(
+      sharedCard.buildTaskCardModel(t, {
+        now: nowMs(),
+        currentSessionId: app.currentSessionId,
+        busy: !!app.busyTask[t.id],
+        sharedListName: app.sharedList,
+        hiddenFieldNames: panelCardFieldHiddenNames(),
+      }),
+      {
+        task: t,
+        handlers: {
+          priority: function (task, value, anchor) {
+            openPriorityMenu(anchor, normPriority(value), function (next) { setPriority(task.id, next) })
+          },
+          renameTitle: function (task, titleNode, headRow) { startTitleEdit(task, titleNode, headRow) },
+          session: function (task, sessionId) { panelCardSessionClick(task, sessionId) },
+          sessionTip: function (task, sessionId, chip) {
+            var state = String(sessionId) === String(app.currentSessionId) ? '当前对话' : sessionActivityLabel(currentActivityTask(task))
+            showSessionTip(chip, sessionId, state)
+          },
+          sessionTipHide: function () { scheduleSessionTipHide() },
+          /* 开始/截止在面板里本来就是纯展示（没有编辑入口），所以不提供 handler，卡片会画成 span。 */
+          chip: {
+            schedule: function (task, key, anchor) { openSchedulePopover(anchor, task) },
+            eta: function (task, key, anchor) { openEtaPopover(anchor, task) },
+            workspace: function (task, key, anchor) { openWorkspaceMenu(anchor, task) },
+          },
+          action: {
+            start: function (task) { onStart(task) },
+            bind: function (task) { onBind(task) },
+            complete: function (task) { onComplete(task) },
+            docs: function (task, anchor) { openTaskDocumentMenu(anchor, task) },
+            sync: function (task) { onSyncTask(task) },
+            more: function (task, anchor) { openTaskMoreMenu(anchor, task) },
+          },
+          doc: function (task, doc) { openDoc(String(doc.url)) },
+          docEdit: function (task, doc, anchor) { startDocLinkEdit(task, doc, anchor.parentNode) },
+          docUnbind: function (task, doc) { onUnbindDoc(task, doc) },
+        },
+        /* 评论和挂起仍是面板自己的控件（它们有就地更新/菜单逻辑），卡片只留位置。 */
+        extraActions: [
+          commentControls.button ? { node: commentControls.button, slot: 'before-spacer' } : null,
+          suspendControl ? { node: suspendControl, slot: 'after-spacer' } : null,
+        ].filter(Boolean),
+        extraBody: commentControls.section ? [commentControls.section] : [],
+      },
+    )
+    var scoped = panelScopedCard(card)
+    scoped._cardComments = commentControls
+    return scoped
+  }
 
   function cardCommentsState(id) {
     var cache = app.cardComments || (app.cardComments = Object.create(null));
@@ -7587,52 +7201,6 @@
   /* ---------------- 渲染：任务卡上的文档行 ---------------- */
 
   /* 一颗文档 chip：[📄 标题] 打开，✎ 改标题，✕ 从任务解绑。 */
-  function docChipNode(t, doc) {
-    var group = el('span', { 'class': 'doc-chip-group' });
-    /* 没标题的（清单字段里只有链接）也别只写「文档」：带上链接尾号，至少能区分是哪篇。 */
-    var label = doc.title
-      ? String(doc.title)
-      : '文档 · ' + String(doc.url || '').split('/').pop().slice(-6);
-    var open = el('button', {
-      type: 'button',
-      'class': 'chip chip-doc doc-open',
-      text: '📄 ' + label,
-      title: String(doc.url)
-    });
-    open.addEventListener('click', function () { openDoc(String(doc.url)); });
-    group.appendChild(open);
-
-    var pen = el('button', {
-      type: 'button', 'class': 'doc-tool', text: '✎', title: '改文档链接（改完立刻同步到飞书「文档」字段）'
-    });
-    pen.disabled = !!app.busyTask[t.id];
-    pen.addEventListener('click', function () { startDocLinkEdit(t, doc, group); });
-    group.appendChild(pen);
-
-    var del = el('button', {
-      type: 'button', 'class': 'doc-tool doc-tool-del', text: '✕', title: '从这条任务解绑（不删除飞书里的文档）'
-    });
-    del.disabled = !!app.busyTask[t.id];
-    del.addEventListener('click', function () { onUnbindDoc(t, doc); });
-    group.appendChild(del);
-    return group;
-  }
-
-  /* 「＋ 文档」：点了就地展开一个链接输入框，回车即绑。 */
-  function docAddNode(t) {
-    var wrap = el('span', { 'class': 'doc-bind' });
-    var add = el('button', {
-      type: 'button',
-      'class': 'chip chip-doc-add',
-      text: '＋ 文档',
-      title: '手动把一篇飞书文档绑到这条任务；绑完立刻写回飞书「文档」字段'
-    });
-    add.disabled = !!app.busyTask[t.id];
-    add.addEventListener('click', function () { startDocBind(t, wrap); });
-    wrap.appendChild(add);
-    return wrap;
-  }
-
   function startDocBind(t, wrap) {
     if (app.docBinding) return;
     app.docBinding = true;

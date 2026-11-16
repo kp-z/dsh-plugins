@@ -20,6 +20,7 @@
 
 import * as modelModule from '../overview/model.js'
 import * as layoutModule from '../overview/layout.js'
+import * as relayoutModule from '../graph/relayout.js'
 import { coveMark } from './coveLogo.js'
 import { createDetailPanel } from './DetailPanel.js'
 import { createFeatures, featureById } from './features.js'
@@ -268,6 +269,8 @@ export function createOverviewPanel(deps) {
   const { React, h } = deps || {}
   const model = (deps && deps.model) || modelModule
   const layout = (deps && deps.layout) || layoutModule
+  /* 坐标引擎（dagre）：测试可注入；默认走真实实现。 */
+  const graphRelayout = (deps && deps.relayout) || relayoutModule
   const api = adaptApi(deps && deps.api)
   const store = (deps && deps.store) || null
   /* 宿主能力位（openSession / canOpenSession）：由 lead 在 client.js 注入，本组件只依赖接口本身。 */
@@ -360,6 +363,8 @@ export function createOverviewPanel(deps) {
         open: model.isObj(saved) ? saved.open === true : false,
         batchId: model.isObj(saved) ? model.str(saved.batchId) : '',
         batch: null,
+        groups: [],
+        visible: 1,
         status: 'idle',
         error: '',
         failed: {},
@@ -554,7 +559,8 @@ export function createOverviewPanel(deps) {
        等于「隐藏了卡片但把线头留在原地」，比不隐藏更乱。 */
     /* 边也全给：GraphView 会按「两端节点是否画出来」再过滤一遍（每个项目各管各的） */
     const graphRelations = relations
-    const drawing = useMemo(() => layout.layoutScope({ tasks: graphTasks, relations: graphRelations, groups, workspaces: scopeWorkspaces, scope }), [graphTasks, graphRelations, groups, scopeWorkspaces, scope])
+    /* 结构仍由 layoutScope 准备（范围/过滤/节点/边/ghost/卡片高度），坐标交给 dagre 重排（P1）。 */
+    const drawing = useMemo(() => graphRelayout.relayoutScope(layout.layoutScope({ tasks: graphTasks, relations: graphRelations, groups, workspaces: scopeWorkspaces, scope })), [graphTasks, graphRelations, groups, scopeWorkspaces, scope, graphRelayout])
     /* 搜索时只留有节点的图：空目录不必在筛选态下占一屏 */
     const graphs = useMemo(() => {
       const list = asArray(drawing && drawing.graphs)
@@ -817,12 +823,18 @@ export function createOverviewPanel(deps) {
       let stale = false
       Promise.resolve()
         .then(() => fn({ kind: 'all', id: '' }))
-        .then((batch) => {
-          if (stale || !alive.current || !batch) return
+        .then((res) => {
+          /* 兼容旧宿主/测试桩：直接返回 batch 对象时当成 { batch }。 */
+          const batch = res && res.batch ? res.batch : (res && (res.batchId || Array.isArray(res.items)) ? res : null)
+          const batches = asArray(res && res.batches)
+          if (stale || !alive.current || (!batch && !batches.length)) return
+          const groups = batches.length ? batches : (batch ? [batch] : [])
           setOrg((prev) => ({
             ...prev,
             batch,
-            batchId: model.str(batch.batchId) || prev.batchId,
+            groups,
+            visible: 1,
+            batchId: model.str(batch && batch.batchId) || prev.batchId,
             status: 'ready',
           }))
         })
@@ -868,6 +880,23 @@ export function createOverviewPanel(deps) {
       setOrg((prev) => ({ ...prev, open: false }))
     }, [])
 
+    /** 组标题里的范围文案：全部 / 项目名 / 目录名。 */
+    const scopeLabelOf = useCallback((batch) => {
+      const s = (batch && batch.scope) || {}
+      if (!s.kind || s.kind === 'all') return '全部任务'
+      const id = model.str(s.id)
+      if (s.kind === 'project') {
+        const hit = asArray(data && data.workspaces).find((row) => model.str(row && row.key) === id)
+        return '项目 · ' + (model.str(hit && (hit.title || hit.label)) || id)
+      }
+      const group = asArray(groups).find((row) => model.str(row && row.id) === id)
+      return '目录 · ' + (model.str(group && (group.name || group.title)) || (id === model.UNGROUPED_KEY ? '未分类' : id))
+    }, [data, groups])
+
+    const loadMoreGroups = useCallback(() => {
+      setOrg((prev) => ({ ...prev, visible: Math.max(1, Number(prev.visible) || 1) + 3 }))
+    }, [])
+
     const toggleDropped = useCallback(() => {
       setOrg((prev) => ({ ...prev, droppedOpen: prev.droppedOpen !== true }))
     }, [])
@@ -881,17 +910,26 @@ export function createOverviewPanel(deps) {
       return Promise.resolve(org.batch || null)
     }, [org.batch])
 
+    /** 一张图 → 整理范围：project 用项目 key；分组/未分类用 group id。 */
+    const scopeOfGraph = useCallback((graph) => {
+      const g = graph && typeof graph === 'object' ? graph : {}
+      const id = model.str(g.scopeId || g.key)
+      if (!id) return { kind: 'all', id: '' }
+      if (g.kind === 'project') return { kind: 'project', id }
+      return { kind: 'group', id: g.kind === 'ungrouped' ? model.UNGROUPED_KEY : id }
+    }, [])
+
     /** 跑一次分析：零副作用，只出建议；失败给 role=alert 的错误条（重试按钮再跑一次）。 */
-    const runOrganize = useCallback(() => {
+    const runOrganize = useCallback((scopeArg) => {
       const fn = apiRef.current.organize
       if (!fn) return Promise.resolve(null)
       /* 点「建议」就**立刻**把右侧建议栏打开（分析可能要几十秒 —— 先给用户一个在跑的侧栏，
          而不是让按钮干转、什么也没发生）。 */
       setOrg((prev) => ({ ...prev, open: true, status: 'running', error: '', failed: {} }))
-      /* 建议**永远跑全量任务**（和当前侧栏选中的目录无关）：用户口径是「跑所有任务的分析」，
-         范围只影响画布，不该让建议随点击的目录变来变去。 */
+      /* 默认全量；从画布卡片的「整理」进来时按那张图的范围跑（项目 / 目录）。 */
+      const scopeToRun = scopeArg && typeof scopeArg === 'object' ? scopeArg : { kind: 'all', id: '' }
       return Promise.resolve()
-        .then(() => fn({ kind: 'all', id: '' }))
+        .then(() => fn(scopeToRun))
         .then((res) => {
           if (!alive.current) return null
           const batch = res && res.batch ? res.batch : null
@@ -899,6 +937,8 @@ export function createOverviewPanel(deps) {
             ...prev,
             open: true,
             batch,
+            groups: batch ? [batch, ...(prev.groups || []).filter((group) => group && group.batchId !== batch.batchId)] : prev.groups,
+            visible: 1,
             batchId: model.str(batch && batch.batchId) || prev.batchId,
             status: 'ready',
             error: '',
@@ -912,6 +952,13 @@ export function createOverviewPanel(deps) {
           return null
         })
     }, [scope])
+
+    /** 画布卡片上的「整理」：打开右侧建议栏，按这张图的范围跑。 */
+    const organizeGraph = useCallback((graph) => {
+      const scopeToRun = scopeOfGraph(graph)
+      setOrg((prev) => ({ ...prev, open: true }))
+      return runOrganize(scopeToRun)
+    }, [runOrganize, scopeOfGraph])
 
     /**
      * 手动连边 / 断开：走宿主的 /api/overview/relations（与建议接受同一条落库路径）。
@@ -938,13 +985,37 @@ export function createOverviewPanel(deps) {
         })
     }, [load])
 
+    /** 已接受但只落在本机的关系：再点一次「同步」走同一条写回路径（writeTaskRelations）。 */
+    const retrySyncItem = useCallback((item) => {
+      const target = item && typeof item === 'object' ? item : {}
+      if (!model.str(target.to) || !model.str(target.from)) return Promise.resolve(null)
+      return writeRelation({
+        action: 'add',
+        taskId: model.str(target.to),
+        otherId: model.str(target.from),
+        kind: model.str(target.kind) || 'depends_on',
+      })
+    }, [writeRelation])
+
     const addRelation = useCallback((input) => writeRelation({ ...input, action: 'add', taskId: detailId }), [writeRelation, detailId])
     const removeRelation = useCallback((input) => writeRelation({ ...input, action: 'remove', taskId: detailId }), [writeRelation, detailId])
 
-    /** 接受若干条（空数组 = 全部待处理）：用返回的 batch 就地更新抽屉，并重拉快照让新边立刻上画布。 */
-    const acceptOrganize = useCallback((itemIds) => {
+    /** 用服务端返回的 batch 替换时间轴里同一组（并同步 batch 别名）。 */
+    const replaceOrgGroup = useCallback((prev, batch) => {
+      const id = model.str(batch && batch.batchId)
+      if (!id) return prev
+      const groups = (prev.groups || []).map((group) => (model.str(group && group.batchId) === id ? batch : group))
+      return {
+        ...prev,
+        groups,
+        batch: model.str(prev.batch && prev.batch.batchId) === id ? batch : prev.batch,
+      }
+    }, [])
+
+    /** 接受若干条（空数组 = 全部待处理）：只作用于传入的组，并重拉快照让新边立刻上画布。 */
+    const acceptOrganize = useCallback((batchIdArg, itemIds) => {
       const fn = apiRef.current.organizeAccept
-      const batchId = org.batchId
+      const batchId = model.str(batchIdArg) || org.batchId
       if (!fn || !batchId) return Promise.resolve(null)
       setOrg((prev) => ({ ...prev, status: 'running' }))
       return Promise.resolve()
@@ -957,13 +1028,15 @@ export function createOverviewPanel(deps) {
             failed[model.str(row.id)] = model.str(row.error) || '写入失败'
           })
           if (alive.current) {
-            setOrg((prev) => ({
-              ...prev,
-              batch: batch || prev.batch,
-              batchId: model.str(batch && batch.batchId) || prev.batchId,
-              status: 'ready',
-              failed,
-            }))
+            setOrg((prev) => {
+              const next = replaceOrgGroup(prev, batch || prev.batch)
+              return {
+                ...next,
+                batchId: model.str(batch && batch.batchId) || prev.batchId,
+                status: 'ready',
+                failed,
+              }
+            })
             /* 已完成的任务默认不画，落在它们身上的关系在画布上看不见 —— 明确说一句，
                否则用户会以为「接受了但没生效」。
                注意：临时展开必须等**新快照落地之后**再开计时，否则 3 秒在 refetch 期间就走完了，
@@ -1003,9 +1076,9 @@ export function createOverviewPanel(deps) {
         })
     }, [load, org.batchId, tasks, revealDoneTemporarily, REVEAL_MS])
 
-    const rejectOrganize = useCallback((itemIds) => {
+    const rejectOrganize = useCallback((batchIdArg, itemIds) => {
       const fn = apiRef.current.organizeReject
-      const batchId = org.batchId
+      const batchId = model.str(batchIdArg) || org.batchId
       if (!fn || !batchId) return Promise.resolve(null)
       setOrg((prev) => ({ ...prev, status: 'running' }))
       return Promise.resolve()
@@ -1013,12 +1086,14 @@ export function createOverviewPanel(deps) {
         .then((res) => {
           const batch = res && res.batch ? res.batch : null
           if (alive.current) {
-            setOrg((prev) => ({
-              ...prev,
-              batch: batch || prev.batch,
-              batchId: model.str(batch && batch.batchId) || prev.batchId,
-              status: 'ready',
-            }))
+            setOrg((prev) => {
+              const next = replaceOrgGroup(prev, batch || prev.batch)
+              return {
+                ...next,
+                batchId: model.str(batch && batch.batchId) || prev.batchId,
+                status: 'ready',
+              }
+            })
           }
           return res
         })
@@ -1033,9 +1108,9 @@ export function createOverviewPanel(deps) {
      * 撤销已接受的建议：接受必须可回退（写错一条 depends_on，那条后继就永远开不了工）。
      * 与接受同一条路径：撤销成功后也拉一次权威快照，让边立刻从画布上消失。
      */
-    const undoOrganize = useCallback((itemIds) => {
+    const undoOrganize = useCallback((batchIdArg, itemIds) => {
       const fn = apiRef.current.organizeUndo
-      const batchId = org.batchId
+      const batchId = model.str(batchIdArg) || org.batchId
       if (!fn || !batchId) return Promise.resolve(null)
       setOrg((prev) => ({ ...prev, status: 'running' }))
       return Promise.resolve()
@@ -1048,13 +1123,15 @@ export function createOverviewPanel(deps) {
             failed[model.str(row.id)] = model.str(row.error) || '撤销失败'
           })
           if (alive.current) {
-            setOrg((prev) => ({
-              ...prev,
-              batch: batch || prev.batch,
-              batchId: model.str(batch && batch.batchId) || prev.batchId,
-              status: 'ready',
-              failed,
-            }))
+            setOrg((prev) => {
+              const next = replaceOrgGroup(prev, batch || prev.batch)
+              return {
+                ...next,
+                batchId: model.str(batch && batch.batchId) || prev.batchId,
+                status: 'ready',
+                failed,
+              }
+            })
             load(true)
           }
           return res
@@ -1131,6 +1208,9 @@ export function createOverviewPanel(deps) {
       hostReason: hostCan.reason,
       onOpenTask: (id) => openTask(id),
       onFocusTask: focusTask,
+      /* 画布卡片上的「整理」：按这张图的项目/目录范围跑 AI 关系建议，并打开右侧建议栏。
+         宿主没有 organize 接口就置空，卡片不渲染这个按钮。 */
+      onOrganizeGraph: apiRef.current.organize ? organizeGraph : null,
       onNodeMove: moveNode,
       onResetLayout: resetLayout,
       onBlur: blurCanvas,
@@ -1144,6 +1224,11 @@ export function createOverviewPanel(deps) {
       /* 筛选「最近一周完成的」要用完成时间 */
       completedById: tasks.reduce((acc, task) => {
         if (task && task.done === true) acc[model.str(task.id)] = Number(task.completedAt) || 0
+        return acc
+      }, {}),
+      /* 画布卡片要用完整任务字段：按 id 给一份索引。 */
+      taskById: tasks.reduce((acc, task) => {
+        if (task && task.id) acc[model.str(task.id)] = task
         return acc
       }, {}),
       /* 只表示「因为你刚接受建议、我临时帮你展开了」，用于提示条文案；不是持久状态。 */
@@ -1411,22 +1496,8 @@ export function createOverviewPanel(deps) {
                     : null,
                 )
                 : null,
-              h('button', {
-                type: 'button',
-                className: 'fo-capsule',
-                'data-icon': '1',
-                'data-action': 'refresh',
-                title: state.status === 'loading' ? '正在刷新…' : '刷新',
-                'aria-label': '刷新',
-                disabled: state.status === 'loading' || busy,
-                onClick: () => load(false),
-              }, h('svg', {
-                width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
-                strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
-              },
-                h('path', { d: 'M21 12a9 9 0 1 1-3-6.7' }),
-                h('path', { d: 'M21 3v6h-6' }),
-              )),
+              /* 页头刷新按钮已删（用户口径：自动轮询 + 回前台补刷已经覆盖，
+                 手动重读本地快照只会多一次没用网络往返）。 */
             ),
           ),
           /* 宿主动作失败的提示（role=status）：打开会话没成功时给一句人话，别静默。 */
@@ -1478,18 +1549,24 @@ export function createOverviewPanel(deps) {
           ? h(OrganizeDrawer, {
             open: true,
             batch: org.batch,
+            groups: org.groups && org.groups.length ? org.groups : (org.batch ? [org.batch] : []),
+            visible: org.visible,
             status: org.status,
             failed: org.failed,
             droppedOpen: org.droppedOpen,
-            onAccept: acceptOrganize,
-            onReject: rejectOrganize,
-            onUndo: undoOrganize,
+            scopeLabel: scopeLabelOf,
+            onLoadMore: loadMoreGroups,
+            onAcceptGroup: acceptOrganize,
+            onRejectGroup: rejectOrganize,
+            onUndoGroup: undoOrganize,
+            /* 本机已接受但飞书没同步上的关系：抽屉里逐条「同步」。 */
+            onRetrySync: retrySyncItem,
             onClose: closeOrganize,
             onToggleDropped: toggleDropped,
             /* 顶部的「固定 / 浮层」切换与「重新分析」 */
             docked: organizeEffective === 'dock',
             onToggleDock: toggleOrganizeDock,
-            onRerun: runOrganize,
+            onRerun: () => runOrganize((org.batch && org.batch.scope) || undefined),
           })
           : null,
       ),
