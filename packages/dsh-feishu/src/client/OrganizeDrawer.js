@@ -246,6 +246,31 @@ export function createOrganizeDrawer(deps) {
       )
     }
 
+    /* 拖左边缘改宽度：往左拖变宽。挂 window 监听，指针移出面板也不断。 */
+    const resizeCleanup = useRef(null)
+    useEffect(() => () => { if (resizeCleanup.current) resizeCleanup.current() }, [])
+    const beginResize = (event) => {
+      if (event.button != null && Number(event.button) !== 0) return
+      if (typeof event.preventDefault === 'function') event.preventDefault()
+      const startX = Number(event.clientX) || 0
+      const startWidth = Number(p.width) || 340
+      const move = (moveEvent) => {
+        const next = startWidth - ((Number(moveEvent.clientX) || 0) - startX)
+        if (typeof p.onResize === 'function') p.onResize(next)
+      }
+      const stop = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', stop)
+        if (typeof document !== 'undefined') document.body.style.cursor = ''
+        resizeCleanup.current = null
+      }
+      if (resizeCleanup.current) resizeCleanup.current()
+      resizeCleanup.current = stop
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', stop)
+      if (typeof document !== 'undefined') document.body.style.cursor = 'col-resize'
+    }
+
     const shown = groups.slice(0, visible).reverse()
     const more = groups.length - visible
     const latestBatch = latest || {}
@@ -256,6 +281,12 @@ export function createOrganizeDrawer(deps) {
     const latestScope = typeof p.scopeLabel === 'function' && activeBatch ? p.scopeLabel(activeBatch) : ''
 
     return h('aside', { className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
+      h('div', {
+        className: 'fo-org-resize', 'data-action': 'resize-organize',
+        role: 'separator', 'aria-orientation': 'vertical',
+        'aria-label': '拖动调整建议栏宽度', title: '拖动调整建议栏宽度',
+        onPointerDown: beginResize,
+      }),
       h('div', { className: 'fo-org-head' },
         h('div', { className: 'fo-org-head-main' },
           h('span', { className: 'fo-org-title' }, '建议'),
