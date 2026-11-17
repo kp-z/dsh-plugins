@@ -15,7 +15,9 @@
  *   'feature' / 'scope' / 'rail' / 'nodePos'（最后一个是画布上拖动过的节点位置）
  *   宿主能力位 deps.host：canOpenSession() → {ok,reason}、openSession(id, title) → Promise<{ok,reason}>
  *
- * props（都可选）：api、store、host、pollMs、title、subtitle、api 覆写
+ * props（都可选）：api、store、host、pollMs、title、subtitle、api 覆写。
+ * deps.standalone：本面板是否就是独立海湾页（已经在浏览器里）。为 true 时左下角
+ * 不再渲染「在浏览器打开」——那个按钮的用途就是把面板送到浏览器，独立页里点它只会再开一个自己。
  */
 
 import * as modelModule from '../overview/model.js'
@@ -53,11 +55,17 @@ function adaptApi(raw) {
     organizeAccept: fn('organizeAccept'),
     organizeReject: fn('organizeReject'),
     organizeUndo: fn('organizeUndo'),
+    /* 关系写回（手动连边 / 断开、建议「同步到飞书」重试）：旧宿主没有就退化成 null。 */
+    relationWrite: fn('relationWrite'),
     /* 历史指标（task-21）：洞察页要「更全面」时用它取 /api/insight/stats；
        旧宿主没有这个方法就是 null —— 洞察页自己降级成「只有快照口径」，不报错。 */
     insightStats: fn('insightStats'),
     /* 项目图标（纯本地展示）：旧宿主没有就退化成 null，气泡回退到任务编号 */
     setWorkspaceLogo: fn('setWorkspaceLogo'),
+    /* 系统健康（运行页的「系统健康」卡）：featureCtx.api 传的是**这个白名单对象**，
+       漏一项就等于功能页看不到宿主方法。v0.22.0 就漏了 health —— 卡片永远停在「读取中…」。
+       加方法时务必同时加到这里（功能页自己不做兜底探测）。 */
+    health: fn('health'),
   }
 }
 
@@ -272,6 +280,8 @@ export function createOverviewPanel(deps) {
   const store = (deps && deps.store) || null
   /* 宿主能力位（openSession / canOpenSession）：由 lead 在 client.js 注入，本组件只依赖接口本身。 */
   const host = (deps && deps.host) || null
+  /* 独立海湾页（tasksBoot.js）已经在浏览器里：左下角「打开页面」没有意义，直接不渲染。 */
+  const standalone = deps && deps.standalone === true
   const pollMs = Math.max(MIN_POLL_MS, Number(deps && deps.pollMs) || DEFAULT_POLL_MS)
 
   const DetailPanel = createDetailPanel({ React, h, model })
@@ -302,7 +312,8 @@ export function createOverviewPanel(deps) {
       const hit = featureById(features, model.str(readStore(store, 'feature')))
       return hit ? hit.id : ''
     })
-    /* rail 两级菜单：一级项（功能）的展开态，落 store 键 nav（如 { graph: true }），默认展开。 */
+    /* rail 两级菜单：有二级菜单的一级项只是分组，展开态落 store 键 nav（如 { graph: true }）；
+       当前页打开时默认展开，否则默认收起（点一级项只展开，不切页面）。 */
     const [navOpen, setNavOpen] = useState(() => {
       const saved = readStore(store, 'nav')
       return model.isObj(saved) ? saved : {}
@@ -348,7 +359,7 @@ export function createOverviewPanel(deps) {
     /* 宿主动作（打开会话）失败时的可读提示：role=status，绝不静默。 */
     const [hostNote, setHostNote] = useState('')
     /* 侧栏「打开任务页」的瞬时回执：只改按钮文字（用户口径：不要正文头提示）。
-       opened / openFailed，1.8 秒后自动回到默认。 */
+       opened / openFailed，1.8 秒后自动回到默认。独立页不渲染这个按钮，状态自然也不用。 */
     const [railAction, setRailAction] = useState('')
     const railTimer = useRef(null)
     /* 项目图标选择器：{ key, title } | null（纯本地展示配置，不写飞书） */
@@ -361,14 +372,18 @@ export function createOverviewPanel(deps) {
        因为「跑」是异步的，分开的 setState 会出现抽屉和 batch 短暂对不上的中间态。 */
     const [org, setOrg] = useState(() => {
       const saved = readStore(store, 'organize')
+      /* 范围跟着抽屉走：打开时记住当前页面的范围，刷新/回前台也按同一个范围取，
+         否则「按项目生成的建议」会被下一次 all 范围轮询整组替换掉。 */
+      const savedScope = model.isObj(saved) && model.isObj(saved.scope)
+        ? model.normScope(saved.scope)
+        : model.normScope(scope)
       return {
         open: model.isObj(saved) ? saved.open === true : false,
         batchId: model.isObj(saved) ? model.str(saved.batchId) : '',
         batch: null,
         groups: [],
         visible: 1,
-        /* 点图头「建议」时记住要生成的范围；抽屉里的「提供新的建议」用它。 */
-        scope: { kind: 'all', id: '' },
+        scope: savedScope,
         status: 'idle',
         /* running 的细分：organize=正在生成建议；accept=正在接受/拒绝/撤销。 */
         phase: '',
@@ -489,7 +504,13 @@ export function createOverviewPanel(deps) {
     useEffect(() => { writeStore(store, 'nav', navOpen) }, [navOpen])
     useEffect(() => { writeStore(store, 'rail', railOpen) }, [railOpen])
     useEffect(() => { writeStore(store, 'nodePos', nodePos) }, [nodePos])
-    useEffect(() => { writeStore(store, 'organize', { open: org.open, batchId: org.batchId }) }, [org.open, org.batchId])
+    useEffect(() => {
+      writeStore(store, 'organize', {
+        open: org.open,
+        batchId: org.batchId,
+        scope: { kind: org.scope.kind, id: org.scope.id },
+      })
+    }, [org.open, org.batchId, org.scope])
 
     /* ⌘K / Ctrl+K：聚焦全局搜索（Search 是 Header 的固定入口，快捷键只是加速） */
     useEffect(() => {
@@ -669,25 +690,19 @@ export function createOverviewPanel(deps) {
         .catch((error) => { setHostNote(String((error && error.message) || error) || '设置项目图标失败'); return false })
     }, [load, logoPicker, logoColor])
 
-    /* 点行 = 选中该范围；**再点一次已选中的目录/根行 = 折叠或展开它**。
-       去掉 caret 之后这是鼠标唯一的折叠入口（键盘左右键不变）。 */
+    /* 点二级页（目录 / 项目）= 打开看板页并切到该范围。
+       一级「看板」只负责展开/收起这棵二级树，不再自己开页面。 */
     const onSelectRow = useCallback((row) => {
       if (!row) return
+      setActiveFeatureId('graph')
+      setNavOpen((prev) => ({ ...prev, graph: true }))
       if (row.kind === 'project') {
         setScope({ kind: 'project', id: row.id })
         return
       }
-      if (row.kind === 'all') {
-        if (scope.kind === 'all') {
-          setCollapsed((prev) => ({ ...prev, all: prev.all !== true }))
-          return
-        }
-        setScope({ kind: 'all', id: '' })
-        return
-      }
       /* 点目录行 = 只切换范围（不展开）。展开/收起是行首图标的事，见 TreeNav 的 onToggle。 */
       setScope({ kind: 'group', id: row.id })
-    }, [scope])
+    }, [])
 
     /* 折叠键是三态的（true 收 / false 开 / 没记录 = 用模型默认）。
        目录默认是「收起」，所以第一次点图标必须是**展开** —— 直接取反会算成 true（还是收着）。 */
@@ -809,6 +824,24 @@ export function createOverviewPanel(deps) {
 
     /* ---------------- 一键整理（task-16）：只出建议、人点了才落库 ---------------- */
 
+    /* 轮询不能只看 batchId/组数：同一组里 accepted/rejected/warning 变了也要落地，
+       否则别的面板或 agent 处理过的结果永远刷不进来。 */
+    const organizeGroupsFingerprint = (groups) => asArray(groups).map((group) => {
+      const items = asArray(group && group.items)
+      return [
+        model.str(group && group.batchId),
+        model.str(group && group.pending),
+        model.str(group && group.accepted),
+        model.str(group && group.rejected),
+        model.str(group && group.undone),
+        items.map((item) => [
+          model.str(item && item.id),
+          model.str(item && item.status),
+          model.str(item && item.warning) ? 'w' : '',
+        ].join(':')).join(','),
+      ].join('|')
+    }).join('||')
+
     /* 把最近一批/历史组写回抽屉状态（挂载、轮询、回前台共用）。 */
     const applyOrganizeView = useCallback((res) => {
       /* 兼容旧宿主/测试桩：直接返回 batch 对象时当成 { batch }。 */
@@ -817,34 +850,38 @@ export function createOverviewPanel(deps) {
       if (!batch && !batches.length) return
       const groups = batches.length ? batches : (batch ? [batch] : [])
       const newestId = model.str((groups[0] && groups[0].batchId) || (batch && batch.batchId))
+      const fingerprint = organizeGroupsFingerprint(groups)
       setOrg((prev) => {
         /* 本地正在跑时不要被上一次查询的旧结果覆盖。 */
         if (prev.status === 'running') return prev
         const prevNewest = model.str((prev.groups && prev.groups[0] && prev.groups[0].batchId) || prev.batchId)
-        if (newestId && newestId === prevNewest && prev.groups.length === groups.length) return prev
+        const sameNewest = newestId === prevNewest
+        if (sameNewest && organizeGroupsFingerprint(prev.groups) === fingerprint) return prev
         return {
           ...prev,
           batch,
           groups,
-          visible: 1,
+          /* 同组内容更新（例如另一个面板接受了条目）不要把「加载更多」的历史折叠回去。 */
+          visible: sameNewest ? prev.visible : 1,
           batchId: newestId || prev.batchId,
           status: 'ready', phase: '',
         }
       })
     }, [])
 
-    const refreshOrganizeView = useCallback(() => {
+    const refreshOrganizeView = useCallback((scopeArg) => {
       const fn = apiRef.current.organizeView
       if (!fn) return Promise.resolve(null)
+      const scopeToRead = model.normScope(scopeArg || org.scope)
       return Promise.resolve()
-        .then(() => fn({ kind: 'all', id: '' }))
+        .then(() => fn({ kind: scopeToRead.kind, id: scopeToRead.id }))
         .then((res) => { if (alive.current) applyOrganizeView(res); return res })
         .catch(() => null)
-    }, [applyOrganizeView])
+    }, [applyOrganizeView, org.scope])
 
-    /* 首次挂载：把最近一批建议取回来（没有就是 null），抽屉一打开就有内容。
-       建议永远按**全量任务**算，所以这里不跟 scope 走。 */
-    useEffect(() => { refreshOrganizeView() }, [refreshOrganizeView])
+    /* 首次挂载 / 切换范围：把该范围最近一批建议取回来（没有就是 null）。
+       范围跟着抽屉走；项目/目录的建议不会再被 all 范围的轮询覆盖。 */
+    useEffect(() => { refreshOrganizeView(org.scope) }, [refreshOrganizeView, org.scope])
 
     /* 面板打开时轮询 + 回前台补拉：在别的页面等生成结果，切回来也能看到新组。 */
     useEffect(() => {
@@ -952,27 +989,35 @@ export function createOverviewPanel(deps) {
     const runOrganize = useCallback((scopeArg) => {
       const fn = apiRef.current.organize
       if (!fn) return Promise.resolve(null)
+      /* 生成和读取必须是同一个范围：否则项目批次的 batchId 不在 all 的 batches 里，
+         下一次轮询会把刚生成的那一组整组替换掉。 */
+      const scopeToRun = model.normScope((scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope)
       /* 点「建议」就**立刻**把右侧建议栏打开（分析可能要几十秒 —— 先给用户一个在跑的侧栏，
          而不是让按钮干转、什么也没发生）。 */
-      setOrg((prev) => ({ ...prev, open: true, status: 'running', phase: 'organize', error: '', failed: {} }))
-      /* 默认全量；从画布卡片的「整理」进来时按那张图的范围跑（项目 / 目录）。 */
-      const scopeToRun = (scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope || { kind: 'all', id: '' }
+      setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun, status: 'running', phase: 'organize', error: '', failed: {} }))
       return Promise.resolve()
         .then(() => fn(scopeToRun))
         .then((res) => {
           if (!alive.current) return null
           const batch = res && res.batch ? res.batch : null
-          setOrg((prev) => ({
-            ...prev,
-            open: true,
-            batch,
-            groups: batch ? [batch, ...(prev.groups || []).filter((group) => group && group.batchId !== batch.batchId)] : prev.groups,
-            visible: 1,
-            batchId: model.str(batch && batch.batchId) || prev.batchId,
-            status: 'ready', phase: '',
-            error: '',
-            failed: {},
-          }))
+          const batchScope = model.normScope((batch && batch.scope) || scopeToRun)
+          const scopeKey = model.scopeKey(batchScope)
+          setOrg((prev) => {
+            const sameScope = (group) => model.scopeKey(group && group.scope) === scopeKey
+            const previous = asArray(prev.groups).filter((group) => group && group.batchId !== (batch && batch.batchId) && sameScope(group))
+            return {
+              ...prev,
+              open: true,
+              scope: batchScope,
+              batch,
+              groups: batch ? [batch, ...previous] : previous,
+              visible: 1,
+              batchId: model.str(batch && batch.batchId) || prev.batchId,
+              status: 'ready', phase: '',
+              error: '',
+              failed: {},
+            }
+          })
           return batch
         })
         .catch((error) => {
@@ -996,36 +1041,67 @@ export function createOverviewPanel(deps) {
      */
     const writeRelation = useCallback((payload) => {
       const fn = typeof apiRef.current.relationWrite === 'function' ? apiRef.current.relationWrite : null
-      if (!fn) { setOrgNote('当前宿主版本不支持手动改关系，请升级插件。'); return Promise.resolve(null) }
+      if (!fn) { setHostNote('当前宿主版本不支持手动改关系，请升级插件。'); return Promise.resolve(null) }
       const verb = payload && payload.action === 'remove' ? '断开' : '添加'
-      setOrgNote('')
+      setHostNote('')
       return Promise.resolve()
         .then(() => fn(payload || {}))
         .then((res) => {
           if (!alive.current) return null
           const warning = model.str(res && res.warning)
-          setOrgNote(warning ? `关系已存到本机；${warning}` : `已${verb}一条关系，画布已更新。`)
+          setHostNote(warning ? `关系已存到本机；${warning}` : `已${verb}一条关系，画布已更新。`)
           load(true)
           return res
         })
         .catch((error) => {
           const message = model.str((error && error.message) || error) || `${verb}关系失败`
-          if (alive.current) setOrgNote(`${verb}关系失败：${message}`)
+          if (alive.current) setHostNote(`${verb}关系失败：${message}`)
           return null
         })
     }, [load])
 
-    /** 已接受但只落在本机的关系：再点一次「同步」走同一条写回路径（writeTaskRelations）。 */
-    const retrySyncItem = useCallback((item) => {
+    /** 重试成功后清掉这一条的「未同步」标记（服务端 batch 已经落库，重试本身不会再改 warning）。 */
+    const clearOrganizeWarning = useCallback((batchId, itemId) => {
+      const key = model.str(batchId)
+      if (!key || !itemId) return
+      const clearItems = (items) => asArray(items).map((item) => (
+        model.str(item && item.id) === itemId
+          ? { ...item, warning: '', retryAction: '' }
+          : item
+      ))
+      setOrg((prev) => ({
+        ...prev,
+        groups: asArray(prev.groups).map((group) => (
+          model.str(group && group.batchId) === key
+            ? { ...group, items: clearItems(group.items) }
+            : group
+        )),
+        batch: prev.batch && model.str(prev.batch.batchId) === key
+          ? { ...prev.batch, items: clearItems(prev.batch.items) }
+          : prev.batch,
+      }))
+    }, [])
+
+    /** 落库成功但飞书没同步上的关系：再点一次「同步」补写（接受）或补删（撤销）。 */
+    const retrySyncItem = useCallback((item, batch) => {
       const target = item && typeof item === 'object' ? item : {}
       if (!model.str(target.to) || !model.str(target.from)) return Promise.resolve(null)
+      const action = model.str(target.retryAction) === 'remove' ? 'remove' : 'add'
       return writeRelation({
-        action: 'add',
+        action,
         taskId: model.str(target.to),
         otherId: model.str(target.from),
         kind: model.str(target.kind) || 'depends_on',
+        /* 让宿主知道这条重试对应哪个建议条目，成功后清掉持久化的 warning。 */
+        batchId: model.str(batch && batch.batchId),
+        itemId: model.str(target.id),
+      }).then((res) => {
+        if (res && res.ok === true && !model.str(res.warning)) {
+          clearOrganizeWarning(model.str(batch && batch.batchId), model.str(target.id))
+        }
+        return res
       })
-    }, [writeRelation])
+    }, [writeRelation, clearOrganizeWarning])
 
     const addRelation = useCallback((input) => writeRelation({ ...input, action: 'add', taskId: detailId }), [writeRelation, detailId])
     const removeRelation = useCallback((input) => writeRelation({ ...input, action: 'remove', taskId: detailId }), [writeRelation, detailId])
@@ -1269,7 +1345,6 @@ export function createOverviewPanel(deps) {
       now: Number(data && data.now) || Date.now(),
       treeProps: {
         tree,
-        hideDone,
         renamingId,
         creating,
         creatingFor,
@@ -1334,12 +1409,21 @@ export function createOverviewPanel(deps) {
           ),
         ),
         /* 功能导航 = 两级菜单：一级项是功能（数量 = 注册表长度），可展开的项下面是它的二级菜单
-           （「关系」下面是范围树）。展开态落 store 键 nav，默认展开；点当前已展开的一级项 = 收起。 */
+           （「看板」下面是范围树）。一级项只是展开/收起器，不打开页面；
+           有子菜单的一级项当前页打开时默认展开，否则点一下才展开。 */
         h('nav', { className: 'fo-featnav', 'aria-label': '功能' },
           features.map((feature) => {
             const active = feature.id === activeFeatureId
             const expandable = typeof feature.SubNav === 'function'
-            const open = expandable && active && navOpen[feature.id] !== false
+            const explicit = navOpen[feature.id]
+            /* 有二级菜单的一级项只是**分组**：点一下只展开二级，不切页面。
+               二级里没有「全部」页：scope=all 时没有可高亮的行，所以默认收起；
+               当前页是某个目录/项目时才默认展开并显示选中行。 */
+            const groupPageActive = active && scope.kind !== 'all'
+            /* 一级分组只负责展开/收起二级菜单：展开态显示「图标 + 文字」，
+               收起态 rail 只有 80px，同一棵菜单就只留图标（文字由 CSS 隐藏）。
+               当前页属于这个分组时默认展开。 */
+            const open = expandable && (explicit === true || (explicit !== false && groupPageActive))
             return h('div', { key: feature.id, className: 'fo-featnav-group' },
               h('button', {
                 type: 'button',
@@ -1347,32 +1431,38 @@ export function createOverviewPanel(deps) {
                 'data-active': active ? '1' : '0',
                 'data-expandable': expandable ? '1' : '0',
                 'data-expanded': open ? '1' : '0',
-                'aria-current': active ? 'page' : undefined,
+                /* 一级分组不是页面：aria-current 只给没有二级菜单的功能项。 */
+                'aria-current': active && !expandable ? 'page' : undefined,
                 'aria-expanded': expandable ? (open ? 'true' : 'false') : undefined,
-                title: model.str(feature.hint) || model.str(feature.label),
+                title: expandable
+                  ? (model.str(feature.hint) || model.str(feature.label)) + ' · 点击展开/收起二级菜单'
+                  : model.str(feature.hint) || model.str(feature.label),
                 onClick: () => {
-                  /* 收起态点功能：先把侧栏展开，二级菜单才有地方显示。 */
-                  const wasCollapsed = !railOpen
-                  if (wasCollapsed) setRailOpen(true)
-                  if (!wasCollapsed && active && expandable) {
-                    /* 展开态再点当前功能 = 回到「全部」范围并收起/展开它的二级菜单。
-                       侧栏里没有「全部任务」这一行，这就是回到全量的入口。 */
-                    setScope({ kind: 'all', id: '' })
-                    setNavOpen((prev) => ({ ...prev, [feature.id]: prev[feature.id] === false }))
+                  if (expandable) {
+                    const currentlyOpen = explicit === true || (explicit !== false && groupPageActive)
+                    setNavOpen((prev) => {
+                      const next = { ...prev, [feature.id]: !currentlyOpen }
+                      /* 同时只展开一组二级菜单，避免 inactive 分组把树拉得很长。 */
+                      if (next[feature.id]) {
+                        features.forEach((row) => { if (row.id !== feature.id) next[row.id] = false })
+                      }
+                      return next
+                    })
                     return
                   }
                   setActiveFeatureId(feature.id)
-                  if (expandable) {
-                    setNavOpen((prev) => ({ ...prev, [feature.id]: true }))
-                    /* 从收起态展开时只到二级（目录行）；目录下的项目（三级）保持收起。 */
-                    if (wasCollapsed) setCollapsed(() => ({}))
-                  }
+                  /* 切到没有二级菜单的页面 = 当前分组不再展开（避免别的功能的树留在 rail 里）。 */
+                  setNavOpen((prev) => {
+                    const next = { ...prev }
+                    features.forEach((row) => { if (typeof row.SubNav === 'function') next[row.id] = false })
+                    return next
+                  })
                 },
               },
                 typeof feature.icon === 'function' ? feature.icon(h) : null,
                 h('span', { className: 'fo-nav-label' }, model.str(feature.label) || feature.id),
                 /* cove 的 NavGroup 没有展开箭头：一级项就是图标 + 文字，
-                   展开由「点当前项」控制，展开与否看二级容器在不在。 */
+                   展开由「点一级项」控制，展开与否看二级容器在不在。 */
               ),
               open ? h(feature.SubNav, { key: 'sub', ...featureCtx }) : null,
             )
@@ -1390,39 +1480,43 @@ export function createOverviewPanel(deps) {
             onDoubleClick: () => setRailWidth(0),
           })
           : null,
-        h('div', { className: 'fo-rail-foot' },
-          h('button', {
-            type: 'button',
-            className: 'fo-rail-action fo-rail-open',
-            title: '在浏览器打开海湾页',
-            'aria-label': '在浏览器打开海湾页',
-            onClick: () => {
-              void (async () => {
-                let opened = null
-                try {
-                  opened = await openPanelInBrowser()
-                } catch (error) {
-                  opened = null
-                }
-                flashRailAction(opened && opened.ok ? 'opened' : 'openFailed')
-              })()
+        /* 左下角「打开页面」只属于嵌入式面板：独立海湾页已经在浏览器里，不再渲染
+           （点它只会再开一个自己）。 */
+        standalone
+          ? null
+          : h('div', { className: 'fo-rail-foot' },
+            h('button', {
+              type: 'button',
+              className: 'fo-rail-action fo-rail-open',
+              title: '在浏览器打开海湾页',
+              'aria-label': '在浏览器打开海湾页',
+              onClick: () => {
+                void (async () => {
+                  let opened = null
+                  try {
+                    opened = await openPanelInBrowser()
+                  } catch (error) {
+                    opened = null
+                  }
+                  flashRailAction(opened && opened.ok ? 'opened' : 'openFailed')
+                })()
+              },
             },
-          },
-            h('svg', {
-              className: 'fo-nav-icon',
-              width: 18, height: 18, viewBox: '0 0 24 24',
-              fill: 'none', stroke: 'currentColor', strokeWidth: 1.7,
-              strokeLinecap: 'round', strokeLinejoin: 'round',
-              'aria-hidden': 'true',
-            },
-              h('path', { d: 'M15 3h6v6' }),
-              h('path', { d: 'M10 14 21 3' }),
-              h('path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }),
+              h('svg', {
+                className: 'fo-nav-icon',
+                width: 18, height: 18, viewBox: '0 0 24 24',
+                fill: 'none', stroke: 'currentColor', strokeWidth: 1.7,
+                strokeLinecap: 'round', strokeLinejoin: 'round',
+                'aria-hidden': 'true',
+              },
+                h('path', { d: 'M15 3h6v6' }),
+                h('path', { d: 'M10 14 21 3' }),
+                h('path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }),
+              ),
+              h('span', { className: 'fo-nav-label' },
+                railAction === 'opened' ? '已打开' : railAction === 'openFailed' ? '打开失败' : '打开页面'),
             ),
-            h('span', { className: 'fo-nav-label' },
-              railAction === 'opened' ? '已打开' : railAction === 'openFailed' ? '打开失败' : '打开页面'),
           ),
-        ),
       ),
       h('div', { className: 'fo-body' },
         h('div', { className: 'fo-main' },
@@ -1498,7 +1592,24 @@ export function createOverviewPanel(deps) {
                   title: org.open ? '收起建议面板' : '打开建议面板（在这里生成/查看建议）',
                   onClick: () => {
                     if (org.open) return toggleOrganize()
-                    setOrg((prev) => ({ ...prev, open: true, scope }))
+                    const nextScope = model.normScope(scope)
+                    const same = model.scopeKey(org.scope) === model.scopeKey(nextScope)
+                    setOrg((prev) => (same
+                      ? { ...prev, open: true }
+                      : {
+                        ...prev,
+                        open: true,
+                        scope: nextScope,
+                        groups: [],
+                        batch: null,
+                        batchId: '',
+                        visible: 1,
+                        status: 'idle',
+                        phase: '',
+                        error: '',
+                        failed: {},
+                      }))
+                    if (!same) refreshOrganizeView(nextScope)
                     return null
                   },
                 },
@@ -1587,7 +1698,7 @@ export function createOverviewPanel(deps) {
             width: organizeWidth,
             onResize: resizeOrganize,
             onToggleDock: toggleOrganizeDock,
-            onRerun: () => runOrganize(org.scope || (org.batch && org.batch.scope) || undefined),
+            onRerun: () => runOrganize(org.scope),
           })
           : null,
       ),

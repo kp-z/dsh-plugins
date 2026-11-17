@@ -51,7 +51,8 @@ export function graphCardSignature(node, baseTask) {
   const t = baseTask && typeof baseTask === 'object' ? baseTask : {}
   const refs = n.refs && typeof n.refs === 'object' ? n.refs : {}
   return JSON.stringify([
-    n.id, n.fullTitle || n.label || '', n.no, n.priority, n.state, n.ghost === true,
+    /* 几何变了要重建：同一张卡的 foreignObject 高度会随图布局变化，旧 DOM 不能沿用。 */
+    n.id, n.w, n.h, n.fullTitle || n.label || '', n.no, n.priority, n.state, n.ghost === true,
     n.sessionId, n.workspaceLabel || '',
     (refs.predecessors || []).length, (refs.successors || []).length,
     (refs.earlierTasks || []).length, (refs.laterTasks || []).length,

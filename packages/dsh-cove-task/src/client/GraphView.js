@@ -30,7 +30,7 @@ import { cardGeometry, describeNode, edgePath, snapToGrid } from '../overview/la
 /* 过滤后**再**布局：隐藏的已完成任务不能在画布上留下空位（否则网格里全是洞）。 */
 import { relayoutGraph } from '../graph/relayout.js'
 import { ensureTaskCardStyles } from '../card/taskCardStyles.js'
-import { sideCardParts } from './cardParts.js'
+import { sideCardIcon, sideCardLabel, sideCardCount } from './cardParts.js'
 import { buildGraphCardDom, graphCardHandlers, graphCardSignature } from '../card/graphCardDom.js'
 import { decoVar } from './styles.js'
 
@@ -261,21 +261,10 @@ export function createGraphView(deps) {
     const [stageWidth, setStageWidth] = useState(0)
     const layoutWidth = stageWidth > 0 ? Math.max(400, stageWidth - 96) : 1360
     const [drag, setDrag] = useState(null)
-    /* 多图折叠：**默认全部展开**（每张图现在是自适应高度的完整画布，不再是一叠被裁到
-       220px 的迷你窗口；用户要按需收起其中某一张）。展开/收起是逐图记住的纯视图状态。 */
-    const [collapsed, setCollapsed] = useState({})
     /* 每张图各自的筛选条件 + 筛选面板开合（键都是 graph.key） */
     const [filters, setFilters] = useState({})
     const [filterOpen, setFilterOpen] = useState({})
     const patchFilter = (key, patch) => setFilters((prev) => ({ ...prev, [key]: { ...DEFAULT_FILTER, ...(prev[key] || {}), ...patch } }))
-    /* 只有一张图时不提供「收起」：收起来只会留下一整块空白，没有第二个可看的对象。 */
-    const isCollapsed = (graph) => list.length > 1 && collapsed[graph.key] === true
-    const toggleCollapse = (graph) => {
-      setCollapsed((prev) => {
-        const bag = prev && typeof prev === 'object' ? prev : {}
-        return { ...bag, [graph.key]: !(bag[graph.key] === true) }
-      })
-    }
 
     /* 先筛可见节点，再布局：隐藏的已完成任务不能在画布上留下空洞。
        每张图的筛选是本地状态，所以这一步必须在 GraphView 内完成（relayoutGraph 只重算坐标与路由）。 */
@@ -438,23 +427,9 @@ export function createGraphView(deps) {
       return () => cleanups.forEach((fn) => fn())
     })
 
-    /* 聚焦：把聚焦节点送到视口中心（「聚焦」不只是调暗别人，还要看得见主角）。 */
-    const lastFocused = useRef('')
-    useEffect(() => {
-      const id = String(focusedId || '')
-      if (!id || id === lastFocused.current) return
-      lastFocused.current = id
-      const graph = list.find((item) => (item.nodes || []).some((node) => node.id === id && node.ghost !== true))
-      if (!graph) return
-      const node = graph.nodes.find((item) => item.id === id) || null
-      if (!node) return
-      const pos = posOf(graph.key, node)
-      const box = { width: graph.width, height: graph.height, top: graph.top }
-      setView(graph.key, centerOn(viewOf(viewsRef.current, graph.key), {
-        x: pos.x + num(node.w, 0) / 2,
-        y: pos.y + num(node.h, 0) / 2,
-      }, box))
-    }, [focusedId, list, posOf, setView])
+    /* 不因聚焦自动平移画布：GraphView 收到的 graphs 是响应式重排前的坐标，
+       直接拿它 centerOn 会把画布推到错误位置（用户点节点后整块卡片被推出可视区）。
+       聚焦只负责高亮/压暗，画布位置保持不变。 */
 
     const beginPan = (event, graph) => {
       if (event.button != null && Number(event.button) !== 0) return
@@ -582,7 +557,7 @@ export function createGraphView(deps) {
     if (!list.length) {
       return h('div', { className: 'fo-placeholder' },
         h('div', { className: 'fo-placeholder-title' }, '这个范围里没有可画的图'),
-        h('div', { className: 'fo-placeholder-body' }, '把项目拖进自定义目录，或者切回「全部任务」。'),
+        h('div', { className: 'fo-placeholder-body' }, '把项目拖进自定义目录，或者换一个目录页。'),
       )
     }
 
@@ -620,11 +595,16 @@ export function createGraphView(deps) {
       const ghosts = nodes.filter((node) => node.ghost === true)
       const taskCount = nodes.length - ghosts.length
       const legend = Array.isArray(graph.legend) ? graph.legend : []
+      const titleLabel = graph.kind === 'ungrouped' ? '未分类' : graph.label
       const viewBox = `0 ${graph.top || 0} ${Math.max(1, graph.width)} ${Math.max(1, graph.height)}`
       /* 窄面板里把整张图缩到容器宽度（只缩呈现，不改布局坐标）；宽面板保持 1:1，不放大。 */
-      const svgWidth = stageWidth > 0
-        ? Math.max(1, Math.min(Math.max(1, graph.width), Math.max(1, stageWidth - 48)))
-        : Math.max(1, graph.width)
+      /* 画布只做一次 CSS 缩放：stage 内的 SVG 与 HTML 卡片都按 layout 1:1 排版，
+         再由 stage 整体缩放。卡片不再进 foreignObject，所以缩放不会改变它的排版尺寸。 */
+      const fitScale = stageWidth > 0
+        ? Math.min(1, Math.max(1, stageWidth - 48) / Math.max(1, graph.width))
+        : 1
+      const bodyW = Math.max(1, Math.round(graph.width * fitScale * 100) / 100)
+      const bodyH = Math.max(1, Math.round(graph.height * fitScale * 100) / 100)
       const label = graph.kind === 'ungrouped'
         ? `未分组：${taskCount} 个任务`
         : `${graph.label}：${(graph.projects || []).length} 个项目、${taskCount} 个任务${graph.kind === 'group' ? '画在同一张图里' : ''}`
@@ -719,7 +699,16 @@ export function createGraphView(deps) {
         }, h('title', { key: 'tip' }, tip))
       }))
 
-      const nodeLayer = h('g', null, placed.map(({ node, pos }) => {
+      /* 卡片不再进 SVG foreignObject：HTML 卡片按 layout 1:1 排版，和边共用同一个 viewport 平移/缩放，
+         最后由 stage 做一次 CSS 缩放。缩放不会改变卡片内部的排版尺寸，任何宽度/zoom 都不会再被裁成一条。 */
+      const nodeLayer = h('div', {
+        className: 'fo-cards-layer',
+        style: {
+          width: `${graph.width}px`,
+          height: `${graph.height}px`,
+          transform: viewportTransform(view),
+        },
+      }, placed.map(({ node, pos }) => {
         const interactive = node.ghost !== true
         const selected = !!selectedId && interactive && node.id === selectedId
         const focused = !!focusedId && interactive && node.id === focusedId
@@ -728,11 +717,21 @@ export function createGraphView(deps) {
         /* 点击卡片 = 聚焦（高亮节点 + 相关边 + 其余降透明度），不再弹详情侧栏，避免与建议侧栏打架。 */
         const activate = () => { if (interactive && typeof onFocusTask === 'function') onFocusTask(node.id) }
         const state = String(node.state || 'ghost')
-        const openReady = !!hostReady && !!String(node.sessionId || '')
         const tip = `${node.fullTitle || node.id}${node.ghost ? (node.missing ? '（任务不存在，仅剩关系）' : '（属于其它分组）') : ''}`
         /* 所有节点（含 ghost）都是同一张面板卡：内容变了才重建（签名不变就复用）。 */
         const mountDomCard = (el) => {
           if (!el) return
+          /* 卡片容器仍是 overflow:hidden；聚焦有时会把隐藏滚动区推出一截，监听并归零。 */
+          const resetScroll = () => {
+            if (el.scrollTop) el.scrollTop = 0
+            if (el.scrollLeft) el.scrollLeft = 0
+          }
+          resetScroll()
+          if (!el.__foScrollGuard) {
+            el.__foScrollGuard = true
+            el.addEventListener('scroll', resetScroll, { passive: true })
+            el.addEventListener('focusin', resetScroll)
+          }
           const fullTask = taskById && node.id ? taskById[node.id] : null
           const signature = graphCardSignature(node, fullTask)
           if (el.__foCardSignature === signature) return
@@ -741,7 +740,6 @@ export function createGraphView(deps) {
             /* ghost 不是真任务：不给任何动作，避免「聚焦/打开会话」对它生效。 */
             handlers: interactive ? graphCardHandlers(node, { hostReady, onOpenSession, onFocusTask }) : {},
           })
-          /* 卡片撑满节点框：内联样式而不是 CSS 后代选择器（画布样式表要求选择器都以 .fo- 为根）。 */
           built.element.style.height = '100%'
           built.element.style.boxSizing = 'border-box'
           built.element.style.overflow = 'hidden'
@@ -750,27 +748,14 @@ export function createGraphView(deps) {
           el.appendChild(built.element)
           el.__foCardSignature = signature
         }
-        const children = [
-          h('title', { key: 'tip' }, tip),
-          h('foreignObject', {
-            key: 'fo',
-            className: 'fo-node-fo',
-            x: 0, y: 0, width: card.w, height: card.h,
-          }, h('div', {
-            xmlns: 'http://www.w3.org/1999/xhtml',
-            className: 'fo-node-dom tc-scope',
-            ref: mountDomCard,
-          }, null)),
-        ]
 
-        return h('g', {
+        return h('div', {
           key: node.key,
           ref: (el) => { nodeRefs.current[node.key] = el },
           className: `fo-node${node.ghost ? ' is-ghost' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${drag && drag.key === node.key ? ' is-dragging' : ''}`,
-          /* 位置走 <g> 的 transform（可提升为 GPU 合成层）；foreignObject 固定在 (0,0)。
-             拖动时只改 transform，不再每帧改 foreignObject 的 x/y —— 那会触发 Chromium 对整棵 HTML 卡片重栅格化，正是「拖动残影」的根因。 */
-          transform: `translate(${pos.x} ${pos.y})`,
           'data-id': node.id,
+          'data-x': String(pos.x),
+          'data-y': String(pos.y),
           'data-state': state,
           'data-focused': focused ? '1' : '0',
           'data-dimmed': dimmed ? '1' : '0',
@@ -778,7 +763,13 @@ export function createGraphView(deps) {
           tabIndex: interactive ? 0 : -1,
           role: interactive ? 'button' : 'img',
           'aria-label': describeNode(node),
-          style: decoStyle(node.colorRef),
+          title: tip,
+          style: Object.assign({
+            left: `${pos.x}px`,
+            top: `${pos.y - (Number(graph.top) || 0)}px`,
+            width: `${card.w}px`,
+            height: `${card.h}px`,
+          }, decoStyle(node.colorRef)),
           onPointerDown: interactive ? (event) => beginDrag(event, graph, node) : undefined,
           onPointerMove: interactive ? (event) => moveDrag(event, graph, node) : undefined,
           onPointerUp: interactive ? (event) => endDrag(event, graph, node) : undefined,
@@ -787,44 +778,36 @@ export function createGraphView(deps) {
             activate()
           } : undefined,
           onKeyDown: interactive ? (event) => onNodeKeyDown(event, graph, node, at) : undefined,
-        }, children)
+        }, h('div', { className: 'fo-node-dom tc-scope', ref: mountDomCard }))
       }))
 
-      const folded = isCollapsed(graph)
-      /* 折叠时这行摘要就是这张图的全部可见信息：项目数 + 任务数（与图例同源）。 */
-      const summary = `${(graph.projects || []).length} 个项目 · ${taskCount} 个任务`
       return h('section', {
         key: graph.key || index,
-        className: `fo-graph${list.length === 1 ? ' is-solo' : ''}${folded ? ' is-collapsed' : ''}`,
+        className: `fo-graph${list.length === 1 ? ' is-solo' : ''}`,
         'aria-label': label,
         style: { '--fo-i': Math.min(index, 7) },
       },
-        /* 项目卡：**和侧栏卡片同一套内容与类名**（图标 / 名字 / 计数），
-           外面只是不同的容器。两处都走 cardParts 的同一个函数，不会再各自长一套样式。 */
+        /* 页面一次只展示一张图：标题卡就是这一页的 header，始终展开、不做折叠。
+           单项目时把项目名收进标题卡，避免再单起一份重复的项目图例。 */
         h('div', { className: 'fo-graph-head' },
-          h('div', { className: 'fo-row fo-row-card', 'data-kind': 'project' },
-            ...sideCardParts(h, {
+          h('div', { className: 'fo-row fo-row-card fo-graph-title', 'data-kind': 'project' },
+            sideCardIcon(h, {
               icon: graph.kind === 'ungrouped' ? 'lucide:inbox' : 'lucide:folder',
-              label: graph.kind === 'ungrouped' ? '未分类' : graph.label,
-              title: label,
-              count: taskCount,
-              kind: 'group',
+              color: undefined,
             }),
-            /* 折叠时这张卡就是全部信息：把「几个项目 / 几个任务」补在名字后面 */
-            folded ? h('span', { className: 'fo-row-summary' }, summary) : null,
-            list.length > 1
-              ? h('button', {
-                type: 'button', className: 'fo-row-action',
-                'data-action': 'toggle-graph', 'data-collapsed': folded ? '1' : '0',
-                'aria-expanded': folded ? 'false' : 'true',
-                title: folded ? '展开这张图' : '收起这张图',
-                onClick: () => toggleCollapse(graph),
-              }, folded ? '展开' : '收起')
+            sideCardLabel(h, {
+              label: titleLabel,
+              title: label,
+            }),
+            /* 单项目且标题不是项目名（目录 scope）时才补项目名；项目 scope 不重复。 */
+            legend.length === 1 && legend[0].label !== titleLabel
+              ? h('span', { className: 'fo-graph-project', title: legend[0].label }, legend[0].label)
               : null,
+            sideCardCount(h, { count: taskCount, kind: 'group', title: label }),
           ),
           /* 边的图例：接受建议后画布变了，这里要能立刻看出「多了几条什么线」
-             （时间先后是点线、颜色更淡，只靠眼睛扫画布很容易以为没变化）。折叠时不占位。 */
-          folded ? null : h('div', { className: 'fo-edge-legend', 'aria-label': '关系图例' },
+             （时间先后是点线、颜色更淡，只靠眼睛扫画布很容易以为没变化）。 */
+          h('div', { className: 'fo-edge-legend', 'aria-label': '关系图例' },
             [['depends_on', '前置'], ['derived_from', '来源'], ['temporal', '时间']].map(([kind, label]) => {
               const total = edges.filter((edge) => edge.kind === kind).length
               if (!total) return null
@@ -838,15 +821,15 @@ export function createGraphView(deps) {
               ? h('span', { className: 'fo-edge-empty' }, '暂无关系')
               : null,
           ),
-          folded ? null : h('div', { className: 'fo-graph-legend', 'aria-label': '项目图例' },
+          /* 多个项目才需要颜色图例；单项目已经在标题卡里写了名字，不再重复。 */
+          legend.length > 1 ? h('div', { className: 'fo-graph-legend', 'aria-label': '项目图例' },
             legend.map((item) => h('span', { key: item.key, className: 'fo-legend-item', title: item.label },
               h('i', { className: 'fo-legend-dot', style: { '--fo-c': decoVar(item.colorRef) }, 'aria-hidden': 'true' }),
               h('span', { className: 'fo-legend-label' }, item.label),
-              h('span', { className: 'fo-legend-count' }, String(item.count)),
             )),
-          ),
-          /* 动作就在卡片自己的 header 右侧：不悬浮、不占额外一行。折叠时整组隐藏。 */
-          folded ? null : h('div', { className: 'fo-graph-actions', role: 'toolbar', 'aria-label': '画布工具' },
+          ) : null,
+          /* 动作就在卡片自己的 header 右侧：不悬浮、不占额外一行。 */
+          h('div', { className: 'fo-graph-actions', role: 'toolbar', 'aria-label': '画布工具' },
             /* 建议入口不在这里：统一由页面右缘的「建议」标签负责（唯一入口）。 */
             /* 筛选：状态（进行中/阻塞/挂起/已完成）+ 已完成的时间窗（默认最近一周） */
             h('div', { className: 'fo-filter-wrap' },
@@ -940,8 +923,8 @@ export function createGraphView(deps) {
         ),
         /* 画布：网格层在最底、不拦点击；SVG 在上层。空图也显示网格（参考站画布一直在）。
            点空白（画布底/网格/SVG 空白处，不在任何节点里）= 取消聚焦；
-           拖动空白 = 平移；滚轮 = 以光标为锚点缩放（见上面 useEffect）。折叠时整块不渲染。 */
-        folded ? null : h('div', {
+           拖动空白 = 平移；滚轮 = 以光标为锚点缩放（见上面 useEffect）。 */
+        h('div', {
           ref: (el) => { canvasRefs.current[graph.key] = el },
           className: `fo-canvas${pan && pan.graphKey === graph.key ? ' is-panning' : ''}`,
           'data-zoom': String(round(view.k, 3)),
@@ -958,25 +941,35 @@ export function createGraphView(deps) {
         },
           h('div', { className: 'fo-grid', 'aria-hidden': 'true' }),
           nodes.length
-            ? h('div', { className: 'fo-graph-body' },
-              h('svg', {
-                ref: (el) => { svgRefs.current[graph.key] = el },
-                className: 'fo-svg',
-                viewBox,
-                /* width/height 给出 viewBox 的固有宽高比；CSS width 由容器决定：
-                   窄面板按宽度整体缩小（卡片仍按 1:1 坐标绘制），宽面板保持 1:1，不放大。 */
-                width: Math.max(1, graph.width),
-                height: Math.max(1, graph.height),
-                style: { width: `${round(svgWidth)}px`, height: 'auto' },
-                preserveAspectRatio: 'xMinYMin meet',
-                /* role=group 而不是 img：图里的节点本身是可聚焦的 button，img 会把它们从无障碍树里挡掉。 */
-                role: 'group',
-                'aria-label': label,
-                'data-graph': graph.key,
-                'data-zoom': String(round(view.k, 3)),
-              }, defs,
-                /* 视口层：缩放/平移只作用在内容上，defs（箭头 marker）留在外面。 */
-                h('g', { className: 'fo-viewport', transform: viewportTransform(view) }, edgeLayer, nodeLayer)))
+            ? h('div', {
+              className: 'fo-graph-body',
+              style: { width: `${bodyW}px`, height: `${bodyH}px` },
+            },
+              h('div', {
+                className: 'fo-stage',
+                style: {
+                  width: `${Math.max(1, graph.width)}px`,
+                  height: `${Math.max(1, graph.height)}px`,
+                  transform: `scale(${fitScale})`,
+                },
+              },
+                h('svg', {
+                  ref: (el) => { svgRefs.current[graph.key] = el },
+                  className: 'fo-svg',
+                  viewBox,
+                  width: Math.max(1, graph.width),
+                  height: Math.max(1, graph.height),
+                  style: { width: `${Math.max(1, graph.width)}px`, height: `${Math.max(1, graph.height)}px` },
+                  preserveAspectRatio: 'xMinYMin meet',
+                  /* role=group 而不是 img：图里的节点本身是可聚焦的 button，img 会把它们从无障碍树里挡掉。 */
+                  role: 'group',
+                  'aria-label': label,
+                  'data-graph': graph.key,
+                  'data-zoom': String(round(view.k, 3)),
+                }, defs,
+                  /* 视口层：缩放/平移只作用在边；HTML 卡片层用同一个 transform 跟手。 */
+                  h('g', { className: 'fo-viewport', transform: viewportTransform(view) }, edgeLayer)),
+                nodeLayer))
             : (() => {
               const hasTasks = allNodes.length > 0
               const onlyDone = hasTasks && allNodes.every((node) => node.ghost === true || node.done === true)

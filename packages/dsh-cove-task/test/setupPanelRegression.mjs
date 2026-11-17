@@ -146,6 +146,10 @@ const sameAuthChildren = [...n('authBody').children]; ctx.renderAuth()
 assert.deepEqual(n('authBody').children, sameAuthChildren, 'unchanged auth avoids subtree rebuild')
 
 // Execute the production lifecycle listener block, not hand-built event behavior.
+// 可见性入口现在收敛到 boot 内的 setPageVisible()：先把它装进 ctx，监听块才解析得到。
+const visibleFn = script.match(/\n {4}function setPageVisible\([^]*?\n {4}\}/)
+assert.ok(visibleFn, 'missing production function setPageVisible')
+vm.runInContext(visibleFn[0], ctx)
 const lifecycleStart = script.indexOf("    document.addEventListener('visibilitychange'")
 const lifecycleEnd = script.indexOf('\n  }', lifecycleStart)
 vm.runInContext(script.slice(lifecycleStart, lifecycleEnd), ctx)

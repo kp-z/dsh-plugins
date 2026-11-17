@@ -74,6 +74,8 @@ check('签名：看得见的内容变了才变', () => {
   assert.notEqual(graphCardSignature(Object.assign({}, node, { priority: 'P0' })), base)
   assert.notEqual(graphCardSignature(Object.assign({}, node, { sessionId: 'sess-2' })), base)
   assert.notEqual(graphCardSignature(Object.assign({}, node, { refs: { predecessors: [{}], successors: [] } })), base)
+  /* 同一张卡的 foreignObject 高度会变；几何变了必须重建 DOM，不能沿用旧布局。 */
+  assert.notEqual(graphCardSignature(Object.assign({}, node, { w: 420, h: 120 })), graphCardSignature(Object.assign({}, node, { w: 420, h: 156 })), '高度变化要进签名')
 })
 check('渲染：就是面板那张卡（.task + 标题 + 工作区）', () => {
   const { element } = buildGraphCardDom(node, { el })
@@ -97,9 +99,10 @@ check('ghost 节点：只读，没有动作行', () => {
   assert.equal(built.element.findAll((n) => n.className.includes('task-actions')).length, 0)
 })
 
-check('GraphView 确实接了 foreignObject 分支（不是只写了模块）', () => {
+check('GraphView 确实接了 HTML 卡片层（不再用 foreignObject）', () => {
   const source = readFileSync(new URL('../src/client/GraphView.js', import.meta.url), 'utf8')
-  assert.ok(source.includes("h('foreignObject'"))
+  assert.equal(source.includes("h('foreignObject'"), false, '不应再有 foreignObject')
+  assert.ok(source.includes("className: 'fo-cards-layer'"))
   assert.ok(source.includes('fo-node-dom'))
   assert.ok(source.includes('buildGraphCardDom'))
   assert.ok(source.includes('mountDomCard'))
@@ -123,7 +126,7 @@ check('给了完整任务：卡片用完整字段（文档/人/预期），签�
   assert.notEqual(withTask.signature, buildGraphCardDom(node, { el }).signature)
 })
 
-check('节点高度估算：内容多就更高，且夹在 84–200（卡片不被裁）', () => {
+check('节点高度估算：内容多就更高，且不少于 120（卡片 header 不被压没）', () => {
   const bare = estimateCardHeight({ id: 'x', title: 't' })
   const rich = estimateCardHeight({
     id: 'y', title: 't', listName: '日常', end: '2026-11-20',
@@ -133,9 +136,9 @@ check('节点高度估算：内容多就更高，且夹在 84–200（卡片不�
     docs: [{ url: 'https://feishu.cn/docx/a', title: 'A' }],
     workspaceTitle: 'w',
   })
-  assert.ok(bare >= 84, `最简卡不低于基础高度：${bare}`)
+  assert.ok(bare >= 120, `最简卡也不低于 120：${bare}`)
   assert.ok(rich > bare, `内容多的卡应更高：${rich} vs ${bare}`)
-  assert.ok(rich <= 200)
+  assert.ok(rich <= 260)
 })
 
 console.log('\ngraphCardDom.mjs: ' + passed + ' passed, ' + failures.length + ' failed')

@@ -112,8 +112,10 @@ assert.doesNotMatch(fn('connectActivityStream'),/renderAll|renderTasks|markCurre
 assert.match(script,/if \(currentActivityTask\(t\)\.sessionAlive !== true\)/)
 assert.match(script,/showSessionTip\(chip, sessionId, state\)/)
 assert.match(script,/connectActivityStream\(\);\s*load\(\)\.then/)
-assert.match(script,/document\.hidden\) \{ stopActivityStream\(\)/)
-assert.match(script,/else \{ connectActivityStream\(\); load\(\{ quiet: true \}\)/)
+// 可见性入口已收敛到 setPageVisible()：收起时停 SSE，展开时重连并静默补拉。
+assert.match(script,/function setPageVisible\(visible\) \{[^]*?if \(!on\) \{\s*stopActivityStream\(\)/)
+assert.match(script,/connectActivityStream\(\);\s*load\(\{ quiet: true \}\)/)
+assert.match(script,/visibilitychange', function \(\) \{\s*setPageVisible\(!document\.hidden\)/)
 assert.match(script,/window\.addEventListener\('pagehide', disposeActivityPanel\)/)
 assert.match(script,/if \(sessionChanged\) \{\s*if \(app\.loaded\) markCurrentSessionSeen\(\)/)
 assert.doesNotMatch(fn('load'),/renderAll\(\);\s*markCurrentSessionSeen/)

@@ -342,21 +342,48 @@ export const CSS = `
 }
 .frx-due-unset-chip:hover { color: var(--frx-text-strong); border-color: var(--frx-border-hover); }
 
-/* ---------- 最近动态：24 根柱子 + 3 条事件 ---------- */
-.frx-cols { display: flex; align-items: flex-end; gap: 2px; height: 62px; padding: 0 1px; }
-.frx-col { flex: 1 1 0; min-width: 2px; border-radius: 2px 2px 0 0; background: linear-gradient(to top, rgba(59, 130, 246, 0.9), rgba(59, 130, 246, 0.45)); }
-.frx-col[data-empty="1"] { background: var(--frx-inner); }
-.frx-cols-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 9px; color: var(--frx-text-faint); }
-.frx-events { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
-.frx-event {
-  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
-  font: inherit; color: inherit; width: 100%; text-align: left;
-  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+/* ---------- 最近动态：8 根 3 小时柱（按类型堆叠）+ 5 条事件行 ---------- */
+.frx-cols { position: relative; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); align-items: end; gap: 6px; height: 54px; padding: 0 2px; }
+/* 一条基线代替「空桶也画一根浅柱」：8 桶里没事件的时段只留这一条线，不再连成虚线块 */
+.frx-cols::after { content: ''; position: absolute; left: 2px; right: 2px; bottom: 0; height: 1px; background: var(--frx-inner); }
+.frx-col {
+  position: relative; z-index: 1; justify-self: center; width: 100%; max-width: 34px;
+  display: flex; flex-direction: column-reverse;
+  min-width: 0; border-radius: 4px 4px 0 0; overflow: hidden;
 }
-.frx-event-text { font-size: 11px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-event-kind { font-size: 10px; color: var(--frx-text-dim); }
+/* 空桶不画柱子（基线由 .frx-cols::after 统一画），避免整排浅块看起来像数据断了 */
+.frx-col[data-empty="1"] { background: none; }
+.frx-col-seg { display: block; width: 100%; flex: 1 1 0; min-height: 0; }
+.frx-col-seg.is-created { background: rgba(148, 163, 184, 0.5); }
+.frx-col-seg.is-start { background: rgba(59, 130, 246, 0.9); }
+.frx-col-seg.is-done { background: rgba(34, 197, 94, 0.85); }
+.frx-col-seg.is-suspended { background: rgba(245, 158, 11, 0.85); }
+.frx-cols-axis { display: flex; justify-content: space-between; margin-top: 5px; font-size: 9px; color: var(--frx-text-faint); }
+/* 列表吃满卡片剩余高度：这张卡和「系统健康」同排，高度被对方拉到 344px ——
+   只放 3 行时下半截全空，看起来像没加载完。行用 flex:1 均分，最少 26px。 */
+.frx-events { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.frx-event {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  font: inherit; color: inherit; width: 100%; text-align: left;
+  background: none; border: 0; border-radius: 8px; padding: 1px 6px; margin: 0; cursor: pointer;
+  /* min-height 只需容下「标题 + 次行」（内容 29px）；给 flex 一点余量，5 行正好铺满 344 的卡 */
+  flex: 1 1 0; min-height: 28px; max-height: 40px;
+}
+.frx-event:hover { background: var(--frx-surface-hover); }
+/* 状态胶囊：创建/开工/完成/挂起 四档视觉权重（原来只有同色的 10px 文字，扫不出重点） */
+.frx-event-kind {
+  font-size: 10px; line-height: 17px; height: 17px; text-align: center; border-radius: 6px;
+  overflow: hidden; white-space: nowrap;
+}
+.frx-event-kind.is-created { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; }
+.frx-event-kind.is-start { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+.frx-event-kind.is-done { background: rgba(34, 197, 94, 0.16); color: #86efac; }
+.frx-event-kind.is-suspended { background: rgba(245, 158, 11, 0.16); color: #fcd34d; }
+.frx-event-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.frx-event-title { font-size: 12px; line-height: 1.3; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-event-meta { font-size: 10px; line-height: 1.25; color: var(--frx-text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frx-event-ago { font-size: 10px; color: var(--frx-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.frx-event:hover .frx-event-text { color: var(--frx-text-strong); }
+.frx-event:hover .frx-event-title { color: var(--frx-text-strong); }
 
 /* ---------- 系统健康：环形图 + 状态行 + 计时覆盖 ---------- */
 .frx-health { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
@@ -421,6 +448,8 @@ export const CSS = `
 @container frxpage (max-width: 980px) {
   .frx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
   .frx-card.is-span4 { grid-column: span 2; }
+  /* 窄面板卡片只有 324px 高：5 条两行式事件放不下，第 5 条会被裁掉半行 —— 只显示 4 条 */
+  .frx-events .frx-event:nth-child(n + 5) { display: none; }
 }
 /* 更窄：单列 */
 @container frxpage (max-width: 640px) {

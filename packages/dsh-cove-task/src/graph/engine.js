@@ -276,7 +276,8 @@ function layoutComponent(members, edges, byId, options) {
 
   const primaryDir = String(opts.rankdir || 'LR').toUpperCase() === 'TB' ? 'TB' : 'LR'
   let laid = runDagre(ordered, layoutEdges, byId, primaryDir, opts)
-  /* 窄面板：横向依赖链放不下时改竖排（更窄、可纵向滚动），只有竖排确实放得下才换。 */
+  /* 窄面板兜底：横向依赖链放不下时改竖排。宽面板不再切换——卡片已经移出 foreignObject，
+     由 stage 整体缩放也不会改变卡片排版，横向排不下可以安全缩到容器宽度。 */
   if (primaryDir === 'LR' && asInt(opts.maxWidth, 1400) < 760 && laid.width > asInt(opts.maxWidth, 1400)) {
     const vertical = runDagre(ordered, layoutEdges, byId, 'TB', opts)
     if (vertical.width <= asInt(opts.maxWidth, 1400) && vertical.width < laid.width) laid = vertical

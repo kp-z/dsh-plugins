@@ -469,6 +469,8 @@ export function projectOrganize(batch, tasks) {
       reason: str(item.reason),
       /* 落库成功但远端没同步上时的那句话（「已存本机，飞书未同步」）。 */
       warning: str(item.warning),
+      /* 重试时该补写还是该补删：add（接受后没同步）/ remove（撤销后没同步）。 */
+      retryAction: str(item.retryAction),
       impact: describeImpact(item, arr(tasks)),
     })),
     pending: arr(batch.items).filter((item) => str(item.status) === 'pending').length,

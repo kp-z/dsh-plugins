@@ -13,7 +13,7 @@
  * 纯计算仍在 `runsView.js`（含「已完成任务不上页」的入口过滤）。
  */
 
-import { buildRuns } from './runsView.js'
+import { buildRuns, formatAgo } from './runsView.js'
 import { injectExactStyles } from './runsExactStyles.js'
 import { iconDrawNodes, normalizeIcon, colorHex, autoIconFor, renderIcon } from './projectIcons.js'
 import { derivePulses, prunePulses, toneColor, subscribeActivity, PULSE_TTL } from './sessionPulse.js'
@@ -337,7 +337,12 @@ export function createRunsFeature(deps) {
         let alive = true
         const read = () => {
           const api = ctx.api
-          if (!api || typeof api.health !== 'function') return
+          /* 注入面里没有这个方法（宿主旧 / 白名单漏项）就标「没有接口」：
+             「读取中…」是「还在等」的意思，永远等下去比报错更骗人。 */
+          if (!api || typeof api.health !== 'function') {
+            setHealth((prev) => (prev && prev.unavailable ? prev : { ok: false, unavailable: true }))
+            return
+          }
           Promise.resolve(api.health()).then((res) => {
             if (!alive) return
             if (res && res.ok) setHealth(res)
@@ -742,38 +747,77 @@ export function createRunsFeature(deps) {
       ],
     })
 
-    /* ---------- 卡片 4：最近动态（24 小时柱状图 + 3 条事件） ----------
-       只回答「刚才发生了什么」：生命周期事件的时间线，不是任务列表。 ---------- */
-    const timeline = view.timeline || { events: [], hourly: [], last24h: 0 }
-    const maxHour = timeline.hourly.reduce((max, row) => Math.max(max, row.count), 1)
+    /* ---------- 卡片 4：最近动态（8 根 3 小时柱 + 5 条事件） ----------
+       只回答「刚才发生了什么」：生命周期事件的时间线，不是任务列表。
+       一版优化（2026-11-17）：
+         - 事件行 = 状态胶囊 + 标题 + 「项目 · 上下文」次行 + 时间（原来的 8px 圆点+单行标题
+           在实机里被 absolute 定位的点挤成 8px，标题整行看不见）；
+         - 列表 3 → 5 行并吃满卡片剩余高度（同排的健康卡把这一行拉到 344px，原来卡片下半截全空）；
+         - 柱状图 24 根 → 8 根（3h 一桶）并按事件类型堆叠（创建/开工/完成/挂起），
+           实机 24 根里 18 根是空的，看着像数据断了；
+         - 副标题从时间窗换成分布（完成 19 · 创建 11），时间窗已经在右上角的事件数里。 ---------- */
+    const timeline = view.timeline || { events: [], buckets: [], counts: {}, last24h: 0 }
+    const maxBucket = (timeline.buckets || []).reduce((max, row) => Math.max(max, row.count), 1)
+    /* 行的读法顺序 = 事件的分量顺序：完成 > 开工 > 挂起 > 创建。
+       创建是同步产物（实机 24h 里 11/30 条），排在最后，只在没有更重的事件时出现。 */
     const KIND_TEXT = { created: '创建', start: '开工', done: '完成', suspended: '挂起' }
-    const KIND_DOT = { created: 'is-idle', start: 'is-running', done: 'is-done', suspended: 'is-idle' }
+    const KIND_ORDER = ['done', 'start', 'suspended', 'created']
+    const SEG_ORDER = ['created', 'start', 'done', 'suspended']
+    const counts = timeline.counts || {}
+    const distText = KIND_ORDER
+      .filter((kind) => Number(counts[kind]) > 0)
+      .map((kind) => KIND_TEXT[kind] + ' ' + counts[kind])
+      .join(' · ')
+    const hasWindow = timeline.last24h > 0
+    const bucketTitle = (row) => {
+      const parts = KIND_ORDER.filter((kind) => row.byKind && row.byKind[kind] > 0)
+        .map((kind) => KIND_TEXT[kind] + ' ' + row.byKind[kind])
+      return row.count ? row.count + ' 件（' + parts.join(' · ') + '）' : '无事件'
+    }
     const timelineCard = card('timeline', {
       span: 2,
       label: '最近动态',
       children: [
-        cardHead('head', '最近动态', '过去 24 小时', 'is-brand', icon('activity', 20), [timeline.last24h, '事件']),
-        h('div', { key: 'cols', className: 'frx-cols', role: 'img', 'aria-label': '过去 24 小时事件分布' },
-          timeline.hourly.map((row, index) => h('i', {
-            key: String(index),
-            className: 'frx-col',
-            'data-empty': row.count ? '0' : '1',
-            style: { height: Math.max(3, Math.round((row.count / maxHour) * 100)) + '%' },
-            title: row.count ? row.count + ' 件' : '无事件',
-          }))),
-        h('div', { key: 'axis', className: 'frx-cols-axis', 'aria-hidden': 'true' },
-          h('span', null, '24 小时前'), h('span', null, '12 小时前'), h('span', null, '现在')),
+        cardHead('head', '最近动态',
+          distText || '最近 24 小时没有事件',
+          /* 副标题是「这 26 条都是什么事」的中性分布，不用绿色（绿=健康，会读成结论） */
+          hasWindow ? 'is-brand' : 'is-idle', icon('activity', 20), [timeline.last24h, '事件']),
+        /* 没有事件时不要画 8 根空柱（像数据断了）；给一句「最近一次在什么时候」。 */
+        hasWindow
+          ? h('div', { key: 'cols', className: 'frx-cols', role: 'img', 'aria-label': '过去 24 小时事件分布（按类型堆叠）' },
+            timeline.buckets.map((row, index) => h('i', {
+              key: String(index),
+              className: 'frx-col',
+              'data-empty': row.count ? '0' : '1',
+              style: { height: row.count ? Math.max(8, Math.round((row.count / maxBucket) * 100)) + '%' : '0px' },
+              title: bucketTitle(row),
+            }, SEG_ORDER.filter((kind) => row.byKind && row.byKind[kind] > 0).map((kind) => h('b', {
+              key: kind,
+              className: 'frx-col-seg is-' + kind,
+              style: { flexGrow: row.byKind[kind] },
+            })))))
+          : null,
+        hasWindow
+          ? h('div', { key: 'axis', className: 'frx-cols-axis', 'aria-hidden': 'true' },
+            h('span', null, '24 小时前'), h('span', null, '12 小时前'), h('span', null, '现在'))
+          : null,
         timeline.events.length
-          ? h('div', { key: 'events', className: 'frx-events' }, timeline.events.slice(0, 3).map((event) => h('button', {
-            key: event.id,
-            type: 'button',
-            className: 'frx-event',
-            onClick: () => select(event.taskId),
-          },
-            h('span', { className: 'frx-avatar-dot ' + (KIND_DOT[event.kind] || 'is-idle'), 'aria-hidden': 'true' }),
-            h('span', { className: 'frx-event-text' }, event.title),
-            h('span', { className: 'frx-event-kind' }, KIND_TEXT[event.kind] || event.kind),
-            h('span', { className: 'frx-event-ago' }, event.agoText))))
+          ? h('div', { key: 'events', className: 'frx-events' }, timeline.events.slice(0, 5).map((event) => {
+            const meta = [event.workspace, event.detail].filter(Boolean).join(' · ')
+            return h('button', {
+              key: event.id,
+              type: 'button',
+              className: 'frx-event',
+              'data-kind': event.kind,
+              title: event.title + (meta ? '（' + meta + '）' : '') + ' · ' + event.agoText,
+              onClick: () => select(event.taskId),
+            },
+              h('span', { className: 'frx-event-kind is-' + event.kind }, KIND_TEXT[event.kind] || event.kind),
+              h('span', { className: 'frx-event-main' },
+                h('span', { className: 'frx-event-title' }, event.title),
+                meta ? h('span', { className: 'frx-event-meta' }, meta) : null),
+              h('span', { className: 'frx-event-ago' }, event.agoText))
+          }))
           : h('p', { key: 'empty', className: 'frx-subtitle' }, '最近没有事件'),
       ],
     })

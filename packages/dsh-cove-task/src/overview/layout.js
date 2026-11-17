@@ -377,7 +377,9 @@ export function estimateCardHeight(task) {
   /* 挂起状态额外挂一行「已挂起」提示 */
   if (isObj(t.suspension) && t.suspension.active === true) height += 16
   height += 12 /* 缓冲：字体/换行差异 */
-  return Math.max(GEOMETRY.NODE_H, Math.min(260, Math.round(height)))
+  /* 84 是 SVG 几何的最小值；DOM 卡片还有标题/徽标/页脚三行，至少给到 120，
+     否则内容会被压到看不见（用户反馈过卡片 header 消失）。 */
+  return Math.max(120, Math.min(260, Math.round(height)))
 }
 
 /** 一张图（= 一个目录 / 一个项目）的全部几何。originY 让多图在同一画布里纵向累加。 */

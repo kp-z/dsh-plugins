@@ -11,7 +11,7 @@
  * 「任务 → 项目 → 自定义目录」的三层规整，不碰 IO、不碰视图状态。
  *
  * 三层树：
- *   0 全部任务（root）
+ *   0 全部任务（仅内部 root；二级菜单不显示它）
  *   1 自定义目录（用户自己拖出来的分组，未进任何目录的落「未分组」桶）
  *   2 项目（= workspace，key 为 workspaceKey || workspaceId || workspacePath || 'name:'+标题）
  */
@@ -533,7 +533,7 @@ export function scopeLabel(scope, groups) {
 }
 
 /**
- * 左栏那棵树的纯构造：三层 —— 全部任务 / 自定义目录 / 项目。
+ * 左栏那棵树的纯构造：全部任务（内部 root，不显示）/ 自定义目录 / 项目。
  *
  * 返回 `{rows, byKey, lanes, scope, selected, collapsed}`：
  * - `rows` 是**可见**的扁平行（折叠掉的子行不进 rows）；
@@ -545,8 +545,8 @@ export function buildTree(groups, tasks, options) {
   const o = isObj(options) ? options : {}
   const collapsed = isObj(o.collapsed) ? o.collapsed : {}
   /* 三态：true = 收着、false = 展开、没记录过 = 用默认值。
-     默认值：根行（全部任务）展开，其余目录行（含「未分类」）全部收起 ——
-     一进来就能看到有哪些目录，但不会被几十个项目撑爆侧栏。 */
+     默认值：目录行（含「未分类」）全部收起 —— 一进来就能看到有哪些目录，
+     但不会被几十个项目撑爆侧栏。 */
   const isCollapsed = (key, fallback) => {
     const value = collapsed[key]
     return typeof value === 'boolean' ? value : fallback
@@ -579,9 +579,8 @@ export function buildTree(groups, tasks, options) {
     blocked: 0,
     ready: 0,
     suspended: 0,
-    collapsed: isCollapsed('all', false),
-  /* 「全部任务」不再是侧栏里的一行：点一级菜单「关系」本身就是全量视图，再放一行根节点只是重复。
-     它仍然进 byKey（选中态、计数、范围判断都要用它），但不进可见行。 */
+  /* 用户口径：二级菜单里不要「全部任务」视图，只放目录/未分类（项目挂在目录下面）。
+     「全部任务」行仍进 byKey（scope=all 的选中态与计数要用），但不进可见行。 */
   }, false)
   list.forEach((task) => {
     const state = stateOf(task)
@@ -592,7 +591,7 @@ export function buildTree(groups, tasks, options) {
     else allRow.ready += 1
   })
 
-  /* 没有根行，目录永远是最外层可见行 */
+  /* 二级可见行只有目录；项目挂在目录下面 */
   const rootVisible = true
   lanes.forEach((lane) => {
     const bucket = lane.ungrouped === true

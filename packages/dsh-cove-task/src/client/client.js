@@ -19,6 +19,7 @@ import { createSidebarHalf, TAB_ID as COVE_TAB_ID } from './sidebar-tab.js';
 import { createApi } from './api.js';
 import { createOverviewPanel } from './OverviewPanel.js';
 import { createTaskCreateDock } from './taskCreateDock.js';
+import { installSessionBridge } from './sessionBridge.js';
 import { CSS as TASK_CREATE_CSS, STYLE_ID as TASK_CREATE_STYLE_ID, injectStyles as injectTaskCreateStyles } from './taskCreateDockStyles.js';
 import { CSS as OVERVIEW_CSS, STYLE_ID as OVERVIEW_STYLE_ID, injectStyles } from './styles.js';
 /* 仪表盘页（洞察/运行）的样式：带自己的 style id 与前缀（fd-/fr-），同一套宿主令牌口径。 */
@@ -196,6 +197,11 @@ window.__ModuleLoader__.load({
       host.__ctx = ctx;
       const slots = serviceOf(ctx, 'slots');
       if (!slots || typeof slots.inject !== 'function' || typeof slots.register !== 'function') return false;
+      /* 独立页 → DSH 的切会话通道：连接本身不依赖 uiWorkspace 是否已挂载（客户端插件加载顺序不定），
+         事件到达时 host.openSession 会现查服务；SSE 断开由 EventSource 自己重连。 */
+      const disposeSessionBridge = installSessionBridge({
+        openSession: (sessionId, title) => host.openSession(sessionId, title),
+      });
       /* 样式算 effect：卸载/禁用插件时把两个 style 标签带走（官方实践：资源在 apply 里用 ctx.effect 注册并清理）。 */
       const cleanupStyles = ctx.effect ? ctx.effect(() => {
         installStyle('dsh-cove-task-style', SCROLL_HOST_CSS);
@@ -236,6 +242,7 @@ window.__ModuleLoader__.load({
       if (ctx.effect) {
         ctx.effect(() => () => {
           for (const dispose of disposers) if (typeof dispose === 'function') dispose();
+          if (typeof disposeSessionBridge === 'function') disposeSessionBridge();
           if (typeof cleanupStyles === 'function') cleanupStyles();
         });
       }

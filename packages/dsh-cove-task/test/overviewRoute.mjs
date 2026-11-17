@@ -192,6 +192,12 @@ const tasksBoot = await get('/tasks/boot.js')
 check('GET /tasks/boot.js 挂载的是面板自己的组件（import OverviewPanel）',
   tasksBoot.status === 200 && tasksBoot.contentType?.includes('javascript') && tasksBoot.body.includes("from './src/OverviewPanel.js'"),
   tasksBoot.contentType)
+check('GET /tasks/boot.js 以 standalone 模式挂载（独立页不渲染左下「打开页面」）',
+  tasksBoot.status === 200 && tasksBoot.body.includes('standalone: true'),
+  tasksBoot.body.includes('standalone: true') ? '' : 'boot.js 没把 standalone: true 传给面板')
+check('GET /tasks/boot.js 把「打开会话」接到宿主桥（独立页也能跳 DSH 会话）',
+  tasksBoot.status === 200 && tasksBoot.body.includes('openSessionInDsh') && tasksBoot.body.includes('canOpenSession: () => ({ ok: true'),
+  tasksBoot.body.includes('openSessionInDsh') ? '' : 'boot.js 没接 openSessionInDsh')
 
 /* 面板组件跑在**官方 React** 上（vendor 在 lib/vendor），不是自研运行时 */
 const vendorReact = await get('/tasks/vendor/react.js')
@@ -208,6 +214,7 @@ for (const [path, marker] of [
   ['/tasks/src/RunsFeature.js', 'createRunsFeature'],
   ['/tasks/src/InsightFeature.js', 'createInsightFeature'],
   ['/tasks/src/GraphFeature.js', 'createGraphFeature'],
+  ['/tasks/src/openSession.js', 'OPEN_SESSION_ENDPOINT'],
   ['/tasks/src/runsView.js', 'buildRuns'],
   ['/tasks/overview/layout.js', 'layoutScope'],
   ['/tasks/overview/model.js', 'export'],

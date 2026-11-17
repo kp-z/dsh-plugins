@@ -1,7 +1,7 @@
 /**
- * 范围树：三层（全部任务 / 自定义目录 / 项目）—— 工厂组件，模块顶层不 import react。
+ * 范围树：两层可见（自定义目录 / 项目；内部 root「全部任务」不在二级菜单显示）—— 工厂组件，模块顶层不 import react。
  *
- * task-17 起它是 **rail 里「关系」这个一级菜单的二级菜单**（`.fo-subnav`），页面里不再有第二列；
+ * task-17 起它是 **rail 里「看板」这个一级菜单的二级菜单**（`.fo-subnav`），页面里不再有第二列；
  * `compact` = 二级菜单形态（挂在 rail 里）：层级由嵌套容器表达，不再重复一个分组标题。
  *
  * 能力（照 task-8 规格）：
@@ -10,7 +10,7 @@
  *   Shift+F10 / 菜单键在行上开右键菜单。
  * - 目录的新建 / 就地重命名 / 删除：输入框与按钮都在**组件内**，写操作通过 props 回调交给
  *   OverviewPanel（组件自己不 fetch、不碰 localStorage、不碰 document.body）。
- * - 拖拽：项目行可拖，目录行 / 未分组行 / 全部任务行是放置目标；拖到「未分组」= 移出目录。
+ * - 拖拽：项目行可拖，目录行 / 未分组行是放置目标；拖到「未分组」= 移出目录。
  *
  * props（由 OverviewPanel 传）：
  *   tree                     model.buildTree(...) 的结果 {rows, byKey, lanes, scope, selected}
@@ -26,7 +26,7 @@
  */
 
 import { renderIcon, normalizeIcon, autoIconFor } from './projectIcons.js'
-import { sideCardIcon, sideCardLabel, sideCardCount } from './cardParts.js'
+import { sideCardIcon, sideCardLabel } from './cardParts.js'
 import { brandVar, decoVar } from './styles.js'
 
 const KIND_LABEL = { all: '全部任务', group: '目录', project: '项目' }
@@ -59,7 +59,6 @@ export function createTreeNav(deps) {
       onCreateCommit,
       onCreateCancel,
       compact = false,
-      hideDone = false,
     } = props || {}
     /* 二级菜单在 192px 的 rail 里：首层 12px、每层 12px。
        之前是 16 + 10，三级行的可用宽度只有 ~90px，项目名一律被截成「[Demo] 后端工作区 A⋯」。 */
@@ -109,12 +108,6 @@ export function createTreeNav(deps) {
       /* 计数要和画布说同一件事：隐藏已完成时，行上的数就是画布上会出现的任务数
          （否则侧栏写 12、画布只画 2，用户会以为图丢了东西）。目录行仍是「几个项目」。 */
       /* 计数只放数字：窄栏里「6 项目」四个字会把项目名挤没；单位在 title 里说明。 */
-      const count = isGroup
-        ? String(row.count)
-        : String(hideDone ? row.open : row.count)
-      const countTip = isGroup
-        ? `${row.count} 个项目 · ${row.open} 条待办`
-        : `${row.open} 条待办 · 共 ${row.count} 条${hideDone && row.done ? `（${row.done} 条已完成已隐藏）` : ''}`
 
       const children = []
       if (!isProject) {
@@ -139,11 +132,6 @@ export function createTreeNav(deps) {
         onIconClick: isGroup ? (event) => { event.stopPropagation(); toggleOf(row) } : undefined,
       }))
       children.push(sideCardLabel(h, { label, title: row.path || label }))
-      /* 只在目录行给计数：项目行右边就是画布，球数一眼能看出；
-         192px 的栏里「名字 + 数字」放不下，实测名字只剩 53px（约 4 个字）。 */
-      if (isGroup || row.kind === 'all') {
-        children.push(sideCardCount(h, { count, kind: isGroup ? 'group' : 'project', title: countTip }))
-      }
       if ((isGroup && !row.ungrouped) || isProject) {
         children.push(h('button', {
           key: 'menu',
@@ -188,13 +176,15 @@ export function createTreeNav(deps) {
         tabIndex: (active === row.key || (!visible.some((item) => item.key === active) && visible[0] && visible[0].key === row.key)) ? 0 : -1,
         'aria-level': row.depth + 1,
         'aria-selected': row.selected === true,
-        'aria-expanded': (isGroup && !row.ungrouped) || row.kind === 'all' ? (row.collapsed !== true) : undefined,
+        'aria-expanded': (isGroup && !row.ungrouped) ? (row.collapsed !== true) : undefined,
         'data-kind': row.kind,
         /* 「未分组」是系统桶，不是用户建的目录：单独标记，样式上降一档权重。 */
         'data-bucket': row.ungrouped === true ? '1' : undefined,
         'data-depth': row.depth,
         'data-key': row.key,
         'data-id': row.id,
+        /* 数量只作为数据属性保留（自动化/断言用），不在二级 tab 里显示。 */
+        'data-count': row.count,
         style: { '--fo-i': stagger },
         draggable: isProject,
         title: `${KIND_LABEL[row.kind] || ''}：${label}`,
@@ -338,7 +328,7 @@ export function createTreeNav(deps) {
         h('div', {
           className: 'fo-scope-list',
           role: 'tree',
-          'aria-label': '任务分组（全部任务 / 自定义目录 / 项目）',
+          'aria-label': '任务分组（自定义目录 / 项目）',
           'aria-multiselectable': false,
           onKeyDown,
         }, items),

@@ -284,7 +284,8 @@ export function createInsightFeature(deps) {
         : h('div', { className: 'fd-empty-line' }, '暂无'),
     )
     const recent = panel(5, 'recent', '最近动态', `按${view.recent.orderBy}`, '',
-      h('div', { className: 'fd-recent' },
+      /* fd-scroll：组一多就滚动，而不是把行压扁（压扁会让两行文字叠在一起） */
+      h('div', { className: 'fd-recent fd-scroll' },
         recentCol('done', '最近完成', view.recent.done),
         recentCol('started', '最近开始', view.recent.started),
         recentCol('suspended', '最近挂起', view.recent.suspended),
@@ -385,7 +386,9 @@ export function createInsightFeature(deps) {
     /* 10) 质量 / 周期：提前 / 准时 / 延迟 + 中位数 / P85 */
     const qualityPanel = history ? panel(9, 'quality', '质量 / 周期', '完成质量与周期分位', history.quality.samplesText,
       history.quality.hasData
-        ? h('div', { className: 'fd-panel-body', style: { gap: '10px' } },
+        /* 这张卡是全宽的：横向排（左：三档图例；右：两个周期分位），
+           否则 3 行字撑在 320px 高的卡顶上、下面一大片空。 */
+        ? h('div', { className: 'fd-panel-body fd-quality' },
           h('div', { className: 'fd-legend' }, history.quality.segments.map((seg) => h('div', { key: seg.key, className: `fd-legend-row fd-tone-${seg.tone}` },
             h('span', { className: 'fd-legend-dot' }),
             h('span', { className: 'fd-legend-label' }, seg.label),
@@ -440,7 +443,11 @@ export function createInsightFeature(deps) {
       'data-history': history ? '1' : '0',
       'data-cols': String(cols || ''),
       ref: hostRef || undefined,
-    }, historyNote, kpis, donut, workspaces, relations, blockers, recent, trendPanel, fulfillmentPanel, delayPanel, qualityPanel)
+    }, historyNote, kpis,
+      /* KPI 带之后的面板进子网格：这一段才需要「平分剩余高度」（见 dashboardStyles 里 .fd-grid 的说明）。
+         KPI 卡自己按内容定高，不再被拉到和图表卡一样高。 */
+      h('div', { key: 'grid', className: 'fd-grid' },
+        donut, workspaces, relations, blockers, recent, trendPanel, fulfillmentPanel, delayPanel, qualityPanel))
   }
 }
 
