@@ -56,7 +56,7 @@ packages/dsh-spellbook/.build.lock/
 .tmp-feishu-docs/
 
 # Internal workspace screenshots must not be committed.
-packages/dsh-feishu/docs/shots/
+packages/dsh-cove-task/docs/shots/
 docs/assets/ios-skin/
 docs/assets/design-v3/
 packages/dsh-contract-butler/butler-verify/

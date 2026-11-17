@@ -79,6 +79,15 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  packages/dsh-cove-task:
+    devDependencies:
+      dagre-d3-es:
+        specifier: ^7.0.14
+        version: 7.0.14
+      rolldown:
+        specifier: 1.2.5
+        version: 1.2.5
+
   packages/dsh-daily:
     dependencies:
       dsh-better-sidebar:
@@ -120,15 +129,6 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
-  packages/dsh-feishu:
-    devDependencies:
-      dagre-d3-es:
-        specifier: ^7.0.14
-        version: 7.0.14
-      rolldown:
-        specifier: 1.2.5
-        version: 1.2.5
-
   packages/dsh-ios-skin:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -144,8 +144,8 @@ importers:
   packages/dsh-mermaid-comm:
     dependencies:
       dsh-mermaid:
-        specifier: ^0.4.0
-        version: 0.4.2
+        specifier: ^0.4.5
+        version: 0.4.5
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: ^4.0.1
@@ -1569,8 +1569,8 @@ packages:
       '@huanlin/dsh-plugin-better-locale':
         optional: true
 
-  dsh-mermaid@0.4.2:
-    resolution: {integrity: sha512-HVLonXZQzdCtqp0KrmEUDa5sReHV+y5cljZb0aAX4yJ8SR2YtOPSNR8cJtj3PTfKzXiYd6uor/0ilrUmvL2NVw==}
+  dsh-mermaid@0.4.5:
+    resolution: {integrity: sha512-2+TJ7q6x1nwfSwBz/pGQuudE5duBA6GCt+B8lhh3qWIfOvI0B9smXj6D1GJHQIZRx+NFXfb4TvOhnlL9seQTzg==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
@@ -3569,7 +3569,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  dsh-mermaid@0.4.2: {}
+  dsh-mermaid@0.4.5: {}
 
   dts-resolver@3.0.0: {}
 
