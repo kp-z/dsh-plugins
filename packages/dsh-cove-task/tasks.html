@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>海湾 · Cove Task</title>
+<link rel="icon" type="image/png" href="/dsh-cove-task/tasks/logo.png">
+<!-- 独立海湾页：跑的是面板自己的组件（OverviewPanel + 三个 feature），不是另写一份页面。
+     这里只给宿主令牌的兜底值与整页尺寸，其余样式由面板自己注入。 -->
+<style>
+  :root {
+    --dsw-alias-label-primary: #1f2430;
+    --dsw-alias-label-secondary: #5b6472;
+    --dsw-alias-bg-base: #f7f8fa;
+    --dsw-alias-bg-layer-1: #ffffff;
+    --dsw-alias-bg-layer-2: #f1f3f6;
+    --dsw-alias-bg-layer-3: #e9ecf1;
+    --dsw-alias-bg-overlay: #ffffff;
+    --dsw-alias-border-l1: #e3e6eb;
+    --dsw-alias-border-l2: #cfd4dc;
+    --dsw-alias-brand-primary: #3b5bdb;
+    --dsw-alias-state-warn-primary: #b45309;
+    --dsw-alias-state-error-primary: #c0392b;
+    --dsw-alias-state-success-primary: #1f9d55;
+    --dsw-alias-bg-sunken: #eef1f5;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --dsw-alias-label-primary: #e9eaee;
+      --dsw-alias-label-secondary: #a7abb4;
+      --dsw-alias-bg-base: #131418;
+      --dsw-alias-bg-layer-1: #1b1d22;
+      --dsw-alias-bg-layer-2: #222429;
+      --dsw-alias-bg-layer-3: #2a2d34;
+      --dsw-alias-bg-overlay: #1e2126;
+      --dsw-alias-border-l1: #2a2d34;
+      --dsw-alias-border-l2: #3a3e47;
+      --dsw-alias-brand-primary: #4a63e0;
+      --dsw-alias-state-warn-primary: #e0a458;
+      --dsw-alias-state-error-primary: #ef4444;
+      --dsw-alias-state-success-primary: #22c55e;
+      --dsw-alias-bg-sunken: #101116;
+      color-scheme: dark;
+    }
+  }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--dsw-alias-bg-base);
+    color: var(--dsw-alias-label-primary);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+  #ts-app { height: 100%; min-height: 0; display: flex; }
+  #ts-app > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
+</style>
+</head>
+<body>
+<div id="ts-app"></div>
+<!-- 官方 React（vendor 在 lib/vendor）：面板组件就是跑在它上面 -->
+<script src="/dsh-cove-task/tasks/vendor/react.js"></script>
+<script src="/dsh-cove-task/tasks/vendor/react-dom.js"></script>
+<script type="module" src="/dsh-cove-task/tasks/boot.js"></script>
+</body>
+</html>

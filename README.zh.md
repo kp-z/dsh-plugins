@@ -16,7 +16,7 @@
 | `dsh-contract-butler`<br>`0.1.0` | 协议管家：从代码里反向抽出边界契约（输入输出的形状），盯着它随版本演化，再拿运行时的真实载荷去对照声明——让「AI 写实现、人管约定」有一个可被人审阅的单一出处。 | `file:packages/dsh-contract-butler` | 未发布 | [README](packages/dsh-contract-butler/README.md) |
 | `@kpeace/dsh-daily`<br>`0.10.4` | **日报**插件：每日主动推荐多类型新闻，可用自然语言调教推荐偏好，索引网页与 YouTube / 哔哩哔哩视频，在右侧栏以常驻网页呈现——点一条就到了。 | `@kpeace/dsh-daily` | 0.10.4 | [README](packages/dsh-daily/README.md) |
 | `dsh-dev-git-graph`<br>`0.1.4` | 会话页里的 **Git Graph 面板**：源码级移植 [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 1.30.0，自动绑定当前会话工作区，渲染提交图（分支彩线、提交信息、日期、作者、refs），右键可执行原扩展的全部 git 操作。 | `dsh-dev-git-graph` | 0.1.3（本仓 0.1.4 未发） | [README](packages/dsh-dev-git-graph/README.md) |
-| `dsh-feishu`<br>`0.20.1` | 飞书同步：配置个人授权后，定时把飞书任务与文档同步到本地；任务可直接开成 DSH 会话，进展、预期与协作结果再写回飞书。 | `file:packages/dsh-feishu` | 未发布（`private`；npm 上同名包是别的东西） | [README](packages/dsh-feishu/README.md) |
+| `dsh-cove-task`<br>`0.22.0` | Cove Task：配置飞书个人授权后，定时把飞书任务与文档同步到本地；任务可直接开成 DSH 会话，进展、预期与协作结果再写回飞书。 | `file:packages/dsh-cove-task` | 未发布（`private`；npm 上同名包是别的东西） | [README](packages/dsh-cove-task/README.md) |
 | `dsh-ios-skin`<br>`0.3.0` | DSH Web GUI 的 **iOS 26 液态玻璃（Liquid Glass）** 主题：官方设计 token 全面重调 + 真正的一层磨砂玻璃材质，支持浅色/深色、降低透明度与高对比度。当前版本叫「Deep Fusion」。 | `dsh-ios-skin` | 0.1.0（本仓 0.3.0 未发） | [README](packages/dsh-ios-skin/README.md) |
 | `dsh-mermaid-comm`<br>`0.3.1` | 让 AI 在开发交流中**优先用 Mermaid 图**表达：对话输入框的勾选按钮控制 prompt 引导，`mermaid_validate` 校验语法，输出闸门自动修复或摘掉画坏的图，Mermaid 图库把图按版本存进工作区。渲染由 [`dsh-mermaid`](https://github.com/MrmoLabs/dsh-mermaid) 承担。 | `dsh-mermaid-comm`（连同 `dsh-mermaid`） | 0.3.1 | [README](packages/dsh-mermaid-comm/README.md) |
 | `dsh-spellbook`<br>`0.2.5` | **咒语书**·前端效果库：右侧栏一个「咒语书」tab。一条咒语 = 一段说清机制的描述 + 一段真实跑得起来的示例代码（图版里跑的是真代码，不是录屏）；点一下就把那条咒语送进对话输入框，模型也能用 `spellbook_lookup` 查回来。 | `dsh-spellbook` | 0.2.5 | [README](packages/dsh-spellbook/README.md) |
@@ -43,7 +43,7 @@ dsh plugin --profile web remove <包名>
 - **联调用一个独立 profile**，别污染真实 profile：
   `dsh plugin --profile devtest add <pkg>`，再 `dsh --profile devtest`。
 - 有几个包的安装有额外前提，装之前先看它自己的 README：`dsh-daily`（必须装成真实目录，
-  不能用符号链接）、`dsh-feishu`（启用它的 bundle 并授权飞书 CLI）、`dsh-dev-git-graph`
+  不能用符号链接）、`dsh-cove-task`（启用它的 bundle 并授权飞书 CLI）、`dsh-dev-git-graph`
   （依赖 `dsh-better-sidebar`）、`dsh-mermaid-comm`（与 `dsh-mermaid` 配套）。
 
 ## 仓库结构
