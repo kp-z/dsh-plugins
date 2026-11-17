@@ -4011,6 +4011,7 @@
     busyTask: {},
     settingsDirty: false,
     pollTimer: null,
+    pageParked: false,   // 宿主把页签收起了（不是 document.hidden）：停轮询与 SSE
     authTimer: null,
     savedTimer: null,
     toastTimer: null,
@@ -9335,7 +9336,7 @@
 
   function connectActivityStream() {
     var activity = activityState();
-    if (activity.disposed || document.hidden || activity.source || typeof window.EventSource !== 'function') return;
+    if (activity.disposed || document.hidden || app.pageParked || activity.source || typeof window.EventSource !== 'function') return;
     var url;
     try {
       url = new URL(API_BASE + 'sessions/activity', location.href);
@@ -9481,7 +9482,7 @@
   function schedulePoll() {
     if (app.pollTimer) clearTimeout(app.pollTimer);
     app.pollTimer = null;
-    if (document.hidden || (app.activity && app.activity.disposed)) return;
+    if (document.hidden || app.pageParked || (app.activity && app.activity.disposed)) return;
     var delay = (app.snap && app.snap.syncing) ? 3000 : 20000;
     app.pollTimer = setTimeout(function () {
       app.pollTimer = null;
@@ -10148,6 +10149,24 @@
       }
     });
 
+    /* 页签被收起时宿主只给 visible=false，document.hidden 仍是 false；
+       所有可见性入口都走这里，避免轮询/SSE 停一半。 */
+    function setPageVisible(visible) {
+      var on = visible !== false;
+      app.pageParked = !on;
+      if (!on) {
+        stopActivityStream();
+        stopAuthWatch();
+        if (app.pollTimer) { clearTimeout(app.pollTimer); app.pollTimer = null; }
+        return;
+      }
+      if (document.hidden) return;
+      connectActivityStream();
+      load({ quiet: true }).then(schedulePoll);
+      scheduleAuthWatch();
+      deferAuxiliaryLoads();
+    }
+
     window.addEventListener('message', function (e) {
       if (!e || e.source !== window.parent || e.origin !== window.location.origin) return;
       var d = e && e.data;
@@ -10156,6 +10175,10 @@
         if (d.dark) document.body.classList.add('dark');
         else document.body.classList.remove('dark');
         renderInsightCharts();
+        return;
+      }
+      if (d.type === 'dsh-cove-task:visibility') {
+        setPageVisible(d.visible !== false);
         return;
       }
       if (d.type === 'dsh-cove-task:open-session-result') {
@@ -10195,8 +10218,7 @@
     wireDocPrompt();
 
     document.addEventListener('visibilitychange', function () {
-      if (document.hidden) { stopActivityStream(); stopAuthWatch(); if (app.pollTimer) clearTimeout(app.pollTimer); app.pollTimer = null; }
-      else { connectActivityStream(); load({ quiet: true }).then(schedulePoll); scheduleAuthWatch(); deferAuxiliaryLoads(); }
+      setPageVisible(!document.hidden);
     });
     window.addEventListener('pagehide', disposeActivityPanel);
     window.addEventListener('pageshow', function (event) {

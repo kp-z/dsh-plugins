@@ -328,7 +328,7 @@ test('buildTree：三层结构（全部任务 / 目录 / 项目）', () => {
   assert.equal(tree.byKey['project:wB'].groupId, UNGROUPED_KEY)
   assert.equal(tree.byKey['project:wF'].count, 0)
 
-  /* 侧栏里**没有「全部任务」这一行**（点一级菜单「关系」就是全量视图，再放根节点是重复）；
+  /* 用户口径：二级里没有「全部任务」视图；「全部任务」行只在 byKey（scope=all 的选中态/计数）。
      目录默认全部收起，所以进来只看到目录行。 */
   assert.deepEqual(tree.rows.map((row) => row.key), [
     `${GROUP_PREFIX}g1`,
@@ -381,7 +381,7 @@ test('buildTree：scope 选中态落在对应行上', () => {
 
 test('buildTree：空输入 / 坏输入不抛', () => {
   const empty = buildTree(null, null, undefined)
-  assert.deepEqual(empty.rows.map((row) => row.key), [], '没有目录就没有可见行')
+  assert.deepEqual(empty.rows.map((row) => row.key), [], '没有目录就没有可见行（「全部任务」不在二级里）')
   assert.equal(empty.byKey.all.count, 0)
   assert.equal(empty.selected.key, 'all')
   const broken = buildTree([{ id: '' }, { id: 1 }, null], [null, 42, { id: 'x' }, { id: 'y', workspaceKey: 7 }], { collapsed: null, selection: 'nope', workspaces: 'nope' })

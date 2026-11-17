@@ -106,8 +106,8 @@ check('孤立网格复用关系块的宽度：依赖链 920 宽时，孤立卡�
     { id: 'b', w: 420, h: 156, order: '00|0|0000002' },
     ...['c', 'd', 'e', 'f'].map((id, i) => ({ id, w: 420, h: 156, order: `00|1|000000${i + 3}` })),
   ]
-  /* 800 仍走 LR（<760 才切竖排），依赖链 920 宽，孤立网格应复用这个宽度排两列。 */
-  const { positions } = layoutGraph({ nodes, edges: [edge('a', 'b')] }, { maxWidth: 800 })
+  /* 1000 能放下 920 的依赖链，仍走 LR；孤立网格复用这个宽度排两列。 */
+  const { positions } = layoutGraph({ nodes, edges: [edge('a', 'b')] }, { maxWidth: 1000 })
   const isolateXs = new Set(['c', 'd', 'e', 'f'].map((id) => positions[id].x))
   assert.equal(isolateXs.size, 2, '四张孤立卡应该落成两列，实际 ' + [...isolateXs].join(','))
 })

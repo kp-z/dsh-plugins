@@ -84,6 +84,33 @@ export function browserOpenCommand(platform, url) {
   return { command: 'xdg-open', args: [url] }
 }
 
+/** 各平台「把 DSH 桌面端叫到前台」的命令：dsh://open 是桌面端注册的聚焦协议。 */
+export function dshFocusCommand(platform) {
+  if (platform === 'win32') return { command: 'cmd.exe', args: ['/d', '/c', 'start', '', 'dsh://open'] }
+  if (platform === 'darwin') return { command: 'open', args: ['dsh://open'] }
+  return { command: 'xdg-open', args: ['dsh://open'] }
+}
+
+/**
+ * 把 DSH 桌面端叫到前台。独立页的「切到会话」必须让用户看见 DSH；
+ * 协议只负责聚焦，真正的会话切换由客户端 SSE 桥完成。
+ * 命令不存在/平台不支持时静默失败（不能因为叫不动窗口就让跳转 500）。
+ */
+export function focusDshWindow(options = {}) {
+  const platform = options.platform || process.platform
+  const spawnImpl = options.spawn || spawn
+  const { command, args } = dshFocusCommand(platform)
+  try {
+    const child = spawnImpl(command, args, { stdio: 'ignore', detached: platform !== 'win32' })
+    /* spawn 的 ENOENT 是异步 error 事件：不挂监听会变成未处理异常，拖垮宿主进程。 */
+    child?.once?.('error', () => {})
+    child?.unref?.()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: messageOf(error) }
+  }
+}
+
 const messageOf = (error) => (error && typeof error.message === 'string' ? error.message : String(error))
 
 /**

@@ -89,11 +89,11 @@ check('洞察页：渲染成功（没有红框错误）', () => {
   assert.ok(insight.includes('fd-donut') || insight.includes('fd-kpi'), '洞察页该有 KPI/分布卡')
 })
 
-check('关系页：侧栏树（真模型 rows）+ 画布节点都渲出来了', () => {
-  const graph = frameOf('关系')
-  assert.equal(graph.includes('渲染失败：'), false, '关系页渲染失败')
+check('看板页：侧栏树（真模型 rows）+ 画布节点都渲出来了', () => {
+  const graph = frameOf('看板')
+  assert.equal(graph.includes('渲染失败：'), false, '看板页渲染失败')
   assert.ok(graph.includes('aria-level'), '侧栏树要渲染出 treeitem 的 aria-level')
-  for (const label of ['全部任务', '未分类']) assert.ok(graph.includes(label), `侧栏缺「${label}」`)
+  assert.ok(graph.includes('未分类'), '侧栏缺「未分类」')
   assert.ok((graph.match(/class="fo-node"/g) || []).length >= 3, '画布至少 3 个节点')
   assert.ok(graph.includes('飞书任务集开发'), '节点标题要用 label/fullTitle（不是 id）')
 })

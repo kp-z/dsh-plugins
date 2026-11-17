@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import {
   originFromRequest, originFromEnvironment, panelOrigin, openTaskPageFor,
-  browserOpenCommand, launchUrl, probeUrl,
+  browserOpenCommand, launchUrl, probeUrl, dshFocusCommand, focusDshWindow,
 } from '../openBrowser.js'
 
 let passed = 0
@@ -152,6 +152,26 @@ await check('probeUrl：2xx/3xx = ok，401/403 = unauthorized，其它 = unreach
 
 await check('probeUrl：fetch 抛错 = unreachable（不会把异常漏出去）', async () => {
   assert.equal(await probeUrl('http://a.test/x', { fetch: async () => { throw new Error('ECONNREFUSED') } }), 'unreachable')
+})
+
+/* ---------------- 聚焦 DSH 桌面端 ---------------- */
+await check('dshFocusCommand：三大平台都用 dsh://open（只聚焦，不打开新页面）', () => {
+  assert.deepEqual(dshFocusCommand('darwin'), { command: 'open', args: ['dsh://open'] })
+  assert.deepEqual(dshFocusCommand('win32'), { command: 'cmd.exe', args: ['/d', '/c', 'start', '', 'dsh://open'] })
+  assert.deepEqual(dshFocusCommand('linux'), { command: 'xdg-open', args: ['dsh://open'] })
+})
+
+await check('focusDshWindow：命令抛错不冒泡（跳转不能因为叫不动窗口变 500）', () => {
+  const ok = focusDshWindow({ platform: 'darwin', spawn: () => { throw new Error('EACCES') } })
+  assert.equal(ok.ok, false)
+  assert.match(ok.error, /EACCES/)
+  const calls = []
+  const fine = focusDshWindow({
+    platform: 'linux',
+    spawn: (command, args) => { calls.push({ command, args }); return fakeChild() },
+  })
+  assert.equal(fine.ok, true)
+  assert.deepEqual(calls, [{ command: 'xdg-open', args: ['dsh://open'] }])
 })
 
 await check('probeUrl：探测用 redirect:manual（302 也是「能打开」）', async () => {

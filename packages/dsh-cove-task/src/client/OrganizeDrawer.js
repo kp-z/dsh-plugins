@@ -101,13 +101,13 @@ export function createOrganizeDrawer(deps) {
     const listRef = useRef ? useRef(null) : null
     useEffect(() => { if (latestId) setActiveId(latestId) }, [latestId])
 
-    /* 打开 / 出新组时滚到最底（最新一组在底部）；「加载更多」不动滚动位置，
-       否则用户点完加载却被拽回底部，看不到刚展开的旧归档组。 */
+    /* 只在打开 / 出新组时滚到最底（最新一组在底部）。接受、拒绝、撤销也会让 status
+       从 running 变回 ready，但那时不应该把正在看旧组的用户拽回底部。 */
     useEffect(() => {
       const node = listRef && listRef.current
       if (!node) return
       node.scrollTop = node.scrollHeight
-    }, [p.open, latestId, status])
+    }, [p.open, latestId])
 
     const toggleGroup = (batchId) => {
       const opening = !isOpen({ batchId })
@@ -125,13 +125,16 @@ export function createOrganizeDrawer(deps) {
       return batch === latest
     }
 
-    const itemNode = (item, batch, current) => {
+    const itemNode = (item, batch) => {
       const kindLabel = KIND_LABEL[item.kind] || model.str(item.kind)
       const conf = confidenceText(item.confidence)
       const impact = model.isObj(item.impact) ? item.impact : {}
       const blocked = Array.isArray(impact.blocked) ? impact.blocked.filter((row) => model.str(row)) : []
-      const failure = failed && typeof failed === 'object' ? failed[item.id] : ''
-      const isPending = current && item.status === 'pending'
+      /* 失败原因优先用本次操作的内存回包；刷新后内存没了，就回退到批次里持久化的 reason。
+         撤销失败也走这里：条目会停在 accepted，reason 记的是「撤销失败」。 */
+      const failure = model.str(failed && typeof failed === 'object' ? failed[item.id] : '')
+        || model.str(item.reason)
+      const isPending = item.status === 'pending'
       const children = [
         h('div', { key: 'top', className: 'fo-org-top' },
           h('span', { className: 'fo-org-kind', 'data-kind': item.kind }, kindLabel),
@@ -164,7 +167,7 @@ export function createOrganizeDrawer(deps) {
         children.push(h('p', { key: 'warn', className: 'fo-org-impact', 'data-tone': 'idle' }, model.str(item.warning)))
         if (typeof p.onRetrySync === 'function' && item.kind !== 'eta') {
           children.push(h('div', { key: 'sync', className: 'fo-org-item-actions' },
-            iconBtn('retry-sync', 'sync', '同步到飞书', () => p.onRetrySync(item), { disabled: running }),
+            iconBtn('retry-sync', 'sync', model.str(item.retryAction) === 'remove' ? '重试撤销同步' : '同步到飞书', () => p.onRetrySync(item, batch), { disabled: running, text: model.str(item.retryAction) === 'remove' ? '重试撤销' : '同步' }),
           ))
         }
       }
@@ -196,12 +199,26 @@ export function createOrganizeDrawer(deps) {
       const pending = items.filter((item) => item.status === 'pending')
       const accepted = items.filter((item) => item.status === 'accepted')
       const rejected = items.filter((item) => item.status === 'rejected')
+      const undone = items.filter((item) => item.status === 'undone')
+      const unsynced = accepted.filter((item) => model.str(item.warning))
+      const failedItems = items.filter((item) => model.str(item.reason))
       const current = batch === latest
       const open = isOpen(batch)
       const batchId = model.str(batch && batch.batchId)
       const isActive = !!batchId && batchId === (activeId || latestId)
-      /* 不再要求「不是最新」：最新一组处理完也自动归档（否则永远停在当前态、没法收起来）。 */
-      const archived = pending.length === 0 && (accepted.length + rejected.length) > 0
+      /* 处理完就归档；但「已接受未同步」要留在展开态，否则警告和重试入口会被一起收起。 */
+      const archived = pending.length === 0
+        && (accepted.length + rejected.length + undone.length) > 0
+        && unsynced.length === 0
+        && failedItems.length === 0
+      const counts = []
+      if (pending.length) counts.push(`待处理 ${pending.length}`)
+      if (accepted.length) counts.push(`已接受 ${accepted.length}`)
+      if (rejected.length) counts.push(`已拒绝 ${rejected.length}`)
+      if (undone.length) counts.push(`已撤销 ${undone.length}`)
+      if (unsynced.length) counts.push(`未同步 ${unsynced.length}`)
+      if (failedItems.length) counts.push(`失败 ${failedItems.length}`)
+      if (archived) counts.push('已归档')
       return h('section', {
         key: batchId,
         className: 'fo-org-group' + (current ? ' is-current' : '') + (archived ? ' is-archived' : '') + (isActive ? ' is-active' : ''),
@@ -216,11 +233,7 @@ export function createOrganizeDrawer(deps) {
             onClick: () => toggleGroup(batchId),
           },
             h('span', { className: 'fo-org-group-time' }, etaText(batch.at)),
-            h('span', { className: 'fo-org-group-counts' },
-              (pending.length ? `待处理 ${pending.length}` : '')
-              + (accepted.length ? `${pending.length ? ' · ' : ''}已接受 ${accepted.length}` : '')
-              + (rejected.length ? `${(pending.length || accepted.length) ? ' · ' : ''}已拒绝 ${rejected.length}` : '')
-              + (archived ? ' · 已归档' : '')),
+            h('span', { className: 'fo-org-group-counts' }, counts.join(' · ')),
           ),
           /* 归档后收起时，撤销仍留在组头，避免必须先展开才能回退。 */
           !open && accepted.length && typeof p.onUndoGroup === 'function'
@@ -231,7 +244,7 @@ export function createOrganizeDrawer(deps) {
         open
           ? h('div', { className: 'fo-org-group-body' },
             items.length
-              ? items.map((item) => itemNode(item, batch, isActive))
+              ? items.map((item) => itemNode(item, batch))
               : h('p', { className: 'fo-org-empty' }, generating ? '正在生成…' : '没有找到关系'),
             /* 只有存在可操作/可撤销的条目时才显示组操作行；空组不再放两个灰按钮。 */
             (pending.length || accepted.length)
@@ -291,7 +304,7 @@ export function createOrganizeDrawer(deps) {
     const activeBatch = groups.find((batch) => model.str(batch && batch.batchId) === (activeId || latestId)) || latest
     const latestScope = typeof p.scopeLabel === 'function' && activeBatch ? p.scopeLabel(activeBatch) : ''
 
-    return h('aside', { className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
+    return h('aside', { id: 'fo-suggest-panel', className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
       h('div', {
         className: 'fo-org-resize', 'data-action': 'resize-organize',
         role: 'separator', 'aria-orientation': 'vertical',

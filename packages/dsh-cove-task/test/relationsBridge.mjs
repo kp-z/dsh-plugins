@@ -70,7 +70,35 @@ const tasks = [
   { id: 'd', title: 'Publish', done: false, tasklistGuid: 'list' },
   { id: 'outside', title: 'Other project', done: false, tasklistGuid: 'other' },
 ].map((task) => ({ ...task, members: [], customFields: [], meta: {} }))
-await writeFile(join(DATA, 'state.json'), JSON.stringify({ tasks, schedules: {}, relations: [] }))
+await writeFile(join(DATA, 'state.json'), JSON.stringify({
+  tasks,
+  schedules: {},
+  relations: [],
+  organizeSuggestions: {
+    'b-warn': {
+      batchId: 'b-warn',
+      at: 1,
+      scope: { kind: 'all', id: '' },
+      model: {},
+      notes: '',
+      items: [{
+        id: 'it-warn',
+        type: 'relation',
+        kind: 'derived_from',
+        from: 'a',
+        to: 'b',
+        status: 'accepted',
+        warning: '已存到本机；飞书同步未完成（old）',
+        retryAction: 'add',
+      }],
+      pending: 0,
+      accepted: 1,
+      rejected: 0,
+      dropped: 0,
+      undone: 0,
+    },
+  },
+}))
 await writeFile(join(DATA, 'settings.json'), JSON.stringify({ cliBackend: 'feishu-sync', autoSync: false, cliPath: CLI, managedTasklist: { enabled: true, guid: 'list', name: 'DSH 任务清单' } }))
 const { apply } = await import('../index.js')
 let modelText = ''
@@ -129,6 +157,10 @@ async function boot() {
     async state() { return (await (await fetch(`${base}/api/state`, { signal: AbortSignal.timeout(5000) })).json()).state },
     async post(body) {
       const res = await fetch(`${base}/api/tasks/relations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) })
+      return { status: res.status, body: await res.json() }
+    },
+    async postOverviewRelation(body) {
+      const res = await fetch(`${base}/api/overview/relations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) })
       return { status: res.status, body: await res.json() }
     },
     async close() { for (const dispose of effects.reverse()) await dispose(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)) },
@@ -283,6 +315,9 @@ try {
     assert.equal(result.body.ok, true)
     assert.equal(result.body.remote.ok, false)
     assert.match(result.body.remote.error, /mock write denied/)
+    /* 远端失败必须显式回 warning：UI/建议栏靠它显示「同步到飞书」。 */
+    assert.match(result.body.warning, /飞书同步未完成/)
+    assert.match(result.body.warning, /mock write denied/)
     const state = await app.state()
     assert.equal(state.relationSync.b.pending, true)
     const got = await app.post({ action: 'get', taskId: 'b', refresh: true })
@@ -292,6 +327,18 @@ try {
     assert.equal(disk.relationSync.b.pending, true)
     remote.failWrites = false
     await writeFile(REMOTE, JSON.stringify(remote))
+  })
+  await test('successful suggestion retry clears persisted warning/retryAction', async () => {
+    const result = await app.postOverviewRelation({
+      action: 'add', taskId: 'b', otherId: 'a', kind: 'derived_from', batchId: 'b-warn', itemId: 'it-warn',
+    })
+    assert.equal(result.status, 200)
+    assert.equal(result.body.ok, true)
+    assert.equal(result.body.warning, '')
+    const state = await app.state()
+    const item = state.organizeSuggestions['b-warn'].items.find((row) => row.id === 'it-warn')
+    assert.equal(item.warning, '')
+    assert.equal(item.retryAction, '')
   })
   await test('successful followUp uses real mock CLI/bridge, creates GUID/source and preserves original binding', async () => {
     app.services.workspaceRegistry = { list: () => [{ id: 'workspace-new', title: 'New project', path: '/new-project', sessionIds: ['bound-session'] }] }

@@ -35,7 +35,8 @@ import { listLarkPages } from './larkPages.js'
 import { createLarkComment, listLarkComments } from './larkComments.js'
 import { createLarkTasklistActions } from './larkTasklist.js'
 import { createActivityFeed } from './activity.js'
-import { launchUrl, openTaskPageFor, probeUrl } from './openBrowser.js'
+import { createNavChannel } from './navChannel.js'
+import { focusDshWindow, launchUrl, openTaskPageFor, probeUrl } from './openBrowser.js'
 import { DEFAULT_TASKLIST_NAME, selectTaskList } from './tasklistSchema.js'
 import { beginSyncHistory, finishSyncHistory, recordSyncStage, recoverSyncHistory, safeSyncDetail } from './syncHistory.js'
 import { createCommentCoordinator } from './comments.js'
@@ -3392,6 +3393,8 @@ function createSyncEngine(ctx) {
    */
   const activityOverrides = new Map()
   const activityFeed = createActivityFeed(activitySessions)
+  /* 独立页 → DSH 客户端的「切会话」SSE 通道（见 navChannel.js）。 */
+  const navChannel = createNavChannel()
 
   function updateSessionActivity(id, patch) {
     if (!id || lifecycleDisposed) return
@@ -6044,7 +6047,12 @@ function createSyncEngine(ctx) {
     state.relationSync[taskId] = { pending: true, localOnly: input.writeBack === false, fields: input.fields === true }
     await persistState()
     const remote = input.writeBack === false ? { ok: true, localOnly: true } : await writeTaskRelations(taskId, input)
-    return { ok: true, taskId, relations: relationView(taskId), remote }
+    /* 本地已经更新成功，但远端可能失败。**必须显式告诉调用方**，否则接受/撤销会把
+       「只落本机」当成完整成功，用户看不到「同步到飞书」入口。 */
+    const warning = remote && remote.ok === false
+      ? `已存到本机；飞书同步未完成（${asString(remote.error) || '远端写入失败'}）`
+      : ''
+    return { ok: true, taskId, relations: relationView(taskId), remote, warning }
   }
 
   /**
@@ -6059,6 +6067,9 @@ function createSyncEngine(ctx) {
     const otherId = asString(input.otherId)
     const kind = asString(input.kind) || 'depends_on'
     const action = asString(input.action) || 'add'
+    /* 建议栏重试「同步」时带上来源批次/条目，成功后清掉持久化的 warning。 */
+    const suggestionBatchId = asString(input.batchId)
+    const suggestionItemId = asString(input.itemId)
     if (!taskId || !otherId) return { ok: false, error: '缺少任务 id' }
     if (taskId === otherId) return { ok: false, error: '任务不能关联自身' }
     if (!['depends_on', 'derived_from', 'temporal'].includes(kind)) return { ok: false, error: '关系类型不支持' }
@@ -6084,6 +6095,7 @@ function createSyncEngine(ctx) {
       result = updated.ok ? { ok: true } : updated
     } else {
       result = await setTaskRelations(taskId, { [field]: wanted, mode: 'replace', source: 'manual', reason })
+      if (result.ok && result.warning) warning = result.warning
       if (!result.ok) {
         warning = asString(result.error) || '飞书同步失败'
         result = await setTaskRelations(taskId, { [field]: wanted, mode: 'replace', source: 'manual', reason: `${reason}（仅本地：${warning}）`, writeBack: false })
@@ -6091,6 +6103,19 @@ function createSyncEngine(ctx) {
       }
     }
     if (!result.ok) return result
+    /* 建议栏点「同步」重试成功时，把持久化在建议单里的「未同步」标记也清掉；
+       否则刷新后 warning 会回来，用户会以为又没同步上。 */
+    if (!warning && suggestionBatchId && suggestionItemId) {
+      const batch = state.organizeSuggestions[suggestionBatchId]
+      const item = batch && Array.isArray(batch.items)
+        ? batch.items.find((row) => asString(row && row.id) === suggestionItemId)
+        : null
+      if (item && (item.warning || item.retryAction)) {
+        item.warning = ''
+        item.retryAction = ''
+        await persistState()
+      }
+    }
     return { ok: true, taskId, warning, relations: relationView(taskId) }
   }
 
@@ -6563,6 +6588,7 @@ function createSyncEngine(ctx) {
     for (const item of found.items) {
       let written
       let warning = ''
+      let retryAction = ''
       try {
         /* 预期完成：走 setTaskEta（会记一条承诺变更，并按设置写回飞书「预期完成」列）。 */
         if (item.kind === 'eta') {
@@ -6583,8 +6609,11 @@ function createSyncEngine(ctx) {
             item.acceptedAt = nowMs()
             item.reason = ''
             item.warning = warning
+            item.retryAction = ''
           } else {
             item.reason = asString(written.error) || '写入失败'
+            item.warning = ''
+            item.retryAction = ''
           }
           continue
         }
@@ -6597,6 +6626,11 @@ function createSyncEngine(ctx) {
             reason: `整理建议（batchId=${found.batch.batchId}）：${asString(item.evidence).slice(0, 80)}`,
             writeBack,
           })
+        /* setTaskRelations 现在会把「本地成功、远端失败」放进 warning。 */
+        if (written.ok && written.warning && item.kind !== 'temporal') {
+          warning = written.warning
+          retryAction = 'add'
+        }
         /* 远端不可用（没装 CLI / 离线 / 飞书报错）时不能让建议白丢掉：
            先落本地，并把「只在本机」这件事逐条说清楚，之后正常同步会补上去。 */
         if (!written.ok && writeBack && item.kind !== 'temporal') {
@@ -6608,7 +6642,10 @@ function createSyncEngine(ctx) {
             reason: `整理建议（batchId=${found.batch.batchId}）：${asString(item.evidence).slice(0, 80)}（仅本地：${warning}）`,
             writeBack: false,
           })
-          if (written.ok) warning = `已存到本机；飞书同步未完成（${warning}）`
+          if (written.ok) {
+            warning = `已存到本机；飞书同步未完成（${warning}）`
+            retryAction = 'add'
+          }
         }
       } catch (error) {
         written = { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -6618,10 +6655,13 @@ function createSyncEngine(ctx) {
         item.acceptedAt = nowMs()
         item.reason = ''
         item.warning = warning
+        item.retryAction = retryAction
       } else {
         item.reason = asString(written.error) || '写入失败'
+        item.warning = ''
+        item.retryAction = ''
       }
-      results.push({ id: item.id, kind: item.kind, from: item.from, to: item.to, ok: written.ok === true, error: item.reason, warning })
+      results.push({ id: item.id, kind: item.kind, from: item.from, to: item.to, ok: written.ok === true, error: item.reason, warning, retryAction })
     }
     await persistState()
     return { ok: true, results, batch: projectOrganize(found.batch, state.tasks) }
@@ -6648,11 +6688,16 @@ function createSyncEngine(ctx) {
       const taskId = asString(item.to)
       const fromId = asString(item.from)
       let written
+      let warning = ''
+      let retryAction = ''
       try {
         /* 预期完成：撤销 = 把预期清空（走同一条 promiseUpdate，会记一次承诺变更） */
         if (item.kind === 'eta') {
           const result = await setTaskEta(item.from, { when: '', reason: `撤销建议（batchId=${batch.batchId}）` })
           written = result.ok ? { ok: true } : { ok: false, error: asString(result.error) || '预期清空失败' }
+          if (result.ok && result.sync && result.sync.ok === false && !result.sync.skipped) {
+            warning = `已从本机撤销；飞书同步未完成（${asString(result.sync.error)}）`
+          }
         } else if (item.kind === 'temporal') {
           written = applyTemporalRelation(item, 'replace')
         } else {
@@ -6668,6 +6713,10 @@ function createSyncEngine(ctx) {
             source: 'ai',
             reason: `撤销整理建议（batchId=${batch.batchId}）`,
           })
+          if (written.ok && written.warning) {
+            warning = written.warning
+            retryAction = 'remove'
+          }
         }
       } catch (error) {
         written = { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -6676,10 +6725,14 @@ function createSyncEngine(ctx) {
         item.status = 'undone'
         item.undoneAt = nowMs()
         item.reason = ''
+        item.warning = warning
+        item.retryAction = retryAction
       } else {
         item.reason = asString(written.error) || '撤销失败'
+        item.warning = ''
+        item.retryAction = ''
       }
-      results.push({ id: item.id, kind: item.kind, from: fromId, to: taskId, ok: written.ok === true, error: item.reason })
+      results.push({ id: item.id, kind: item.kind, from: fromId, to: taskId, ok: written.ok === true, error: item.reason, warning, retryAction })
     }
     await persistState()
     return { ok: true, results, batch: projectOrganize(batch, state.tasks) }
@@ -6720,6 +6773,10 @@ function createSyncEngine(ctx) {
     for (const item of found.items) {
       item.status = 'rejected'
       item.rejectedAt = nowMs()
+      /* 拒绝是终态：把之前失败/未同步的提示清掉，别让旧 reason 挂在已拒绝条目上。 */
+      item.reason = ''
+      item.warning = ''
+      item.retryAction = ''
     }
     await persistState()
     return { ok: true, rejected: found.items.length, batch: projectOrganize(found.batch, state.tasks) }
@@ -10290,6 +10347,7 @@ bucket 只能从枚举里选：
     insightJobState,
     markSessionSeen,
     activityFeed,
+    navChannel,
     updateSessionActivity,
     recordDailyMetrics,
     cachedInsight: () => (state.insight
@@ -10571,6 +10629,27 @@ function mountRoutes(ctx, engine) {
 
           if (route === '/api/sessions/activity' && req.method === 'GET') {
             engine.activityFeed.open(req, res)
+            return
+          }
+
+          /* 独立页 → DSH 的「切到这条会话」：SSE 长连接给 DSH 客户端，POST 给独立页。
+             没有客户端连着时先挂起，独立页紧接着把 DSH 桌面端叫到前台。 */
+          if (route === '/api/nav/events' && req.method === 'GET') {
+            engine.navChannel.open(req, res)
+            return
+          }
+
+          if (route === '/api/open-session' && req.method === 'POST') {
+            const body = await readBody(req)
+            const sessionId = asString(body?.sessionId)
+            if (!sessionId) {
+              sendJson(res, 400, { ok: false, error: '缺少 sessionId' })
+              return
+            }
+            const result = engine.navChannel.request(sessionId, asString(body?.title))
+            /* 独立页在系统浏览器里；把 DSH 桌面端叫到前台，用户才看得见切过去的会话。 */
+            focusDshWindow()
+            sendJson(res, result.ok ? 200 : 400, result)
             return
           }
 
@@ -12111,6 +12190,7 @@ export function apply(ctx, config = {}) {
        以前这里丢掉了它们，于是旧实例的 HTTP 路由一直挂在已失效的 fiber 上对外服务。 */
     const owned = []
     owned.push(() => engine.activityFeed.dispose())
+    owned.push(() => engine.navChannel.dispose())
     for (const [name, handler] of [
       ['api-session/status', (id, running) => engine.updateSessionActivity(id, { alive: true, kind: running ? 'running' : 'idle' })],
       ['api-session/added', (summary) => engine.updateSessionActivity(summary?.sessionId, { alive: summary?.agentAvailable === true, kind: summary?.running ? 'running' : 'idle' })],
@@ -12276,6 +12356,7 @@ export function apply(ctx, config = {}) {
       return async () => {
         schedule.dispose()
         engine.activityFeed.dispose()
+        engine.navChannel.dispose()
         engine.disposeLifecycle()
         await (globalThis[Symbol.for('dsh-cove-task:task-lifecycle')] || Promise.resolve()).catch(() => {})
         await engine.disposeComments()

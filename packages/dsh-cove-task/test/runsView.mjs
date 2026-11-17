@@ -447,10 +447,42 @@ check('已完成的任务：入口过滤，KPI 分母 / 气泡 / 历史 / 时长
     assert.ok(view.timeline.events.some((event) => event.kind === 'created'))
   })
 
-  check('最近动态：24 小时柱状图正好 24 根，计数守恒', () => {
-    assert.equal(view.timeline.hourly.length, 24)
-    const sum = view.timeline.hourly.reduce((acc, row) => acc + row.count, 0)
+  check('最近动态：24 小时柱状图正好 8 根（3h 一桶），计数守恒', () => {
+    assert.equal(view.timeline.buckets.length, 8)
+    const sum = view.timeline.buckets.reduce((acc, row) => acc + row.count, 0)
     assert.equal(sum, view.timeline.last24h, '柱状图总和 = 24h 事件数')
+    /* 柱内按类型堆叠：段计数之和必须等于柱高，否则图上「看起来有 3 件、实际只有 1 件」 */
+    for (const bucket of view.timeline.buckets) {
+      const parts = Object.values(bucket.byKind).reduce((acc, n) => acc + n, 0)
+      assert.equal(parts, bucket.count)
+    }
+  })
+
+  check('最近动态：同一任务的「创建 + 完成」合成一行，并给出建单到完成的时长', () => {
+    const merged = buildRuns({
+      now: NOW,
+      tasks: [
+        task('m1', { createdAt: NOW - 5 * HOUR, done: true, completedAt: NOW - 5 * HOUR + 50 * 60_000 }),
+        task('m2', { createdAt: NOW - 3 * HOUR }),
+      ],
+    })
+    const rows = merged.timeline.events.filter((event) => event.taskId === 'm1')
+    assert.equal(rows.length, 1, '一条任务只占一行（否则 5 行的卡里一条任务吃掉两格）')
+    assert.equal(rows[0].kind, 'done')
+    assert.match(rows[0].detail, /建单到完成 50 分/)
+    assert.equal(merged.timeline.counts.done, 1)
+    assert.equal(merged.timeline.counts.created, 2, '计数仍按原始事件算：被折叠的「创建」也是发生过的')
+  })
+
+  check('最近动态：开工事件认 runningSince（startedAt 全为 0 也能有开工）', () => {
+    const withRun = buildRuns({
+      now: NOW,
+      tasks: [task('run1', { running: true, runningSince: NOW - 30 * 60_000 })],
+    })
+    const row = withRun.timeline.events.find((event) => event.taskId === 'run1')
+    assert.ok(row, '在跑的任务要有事件')
+    assert.equal(row.kind, 'start', 'runningSince 要变成「开工」事件')
+    assert.match(row.detail, /已跑 30 分/)
   })
 }
 

@@ -226,54 +226,102 @@ function formatDueText(deltaMs, bucket) {
 /**
  * 「最近动态」：任务的生命周期事件（创建/开工/完成/挂起），按时间倒序。
  * 只回答「刚才发生了什么」——不是任务列表，也不按状态分组。
- * 同时给出覆盖最近 24 小时的每小时计数（柱状图用）。
+ *
+ * 两条实机口径（2026-11-17 用真实数据量出来的）：
+ *   1. **同一任务只出一行**：24 小时里 22 个有事件的任务中 8 个会「创建 + 完成」各占一行，
+ *      卡片只有 5 行时一条任务吃掉两格；把更早的「创建」折叠成「建单到完成 49 分钟」。
+ *   2. **开工时间认 runningSince**：宿主快照里 37 条任务的 startedAt 全是 0，
+ *      只认 startedAt 的话「开工」这一类永远不会出现；runningSince 是「观察到在跑」的起点。
+ *
+ * 柱状图给 8 根（3 小时一桶）：原来 24 根一小时的柱子里实机 18 根是空的，整张图像数据断了。
  */
 export function activityTimeline(tasks, now, limit = 12) {
   const at = num(now, Date.now())
-  const events = []
-  const push = (task, kind, when, text) => {
+  const raw = []
+  const push = (task, kind, when) => {
     const value = Number(when) || 0
     if (value <= 0 || value > at + 60_000) return
-    events.push({
-      id: `${str(task.id)}:${kind}`,
-      taskId: str(task.id),
-      no: num(task.no, 0),
-      title: str(task.title) || str(task.id),
-      kind,
-      at: value,
-      agoText: formatAgo(at - value),
-      text,
-    })
+    raw.push({ task, kind, at: value })
   }
   arr(tasks).forEach((task) => {
     if (!isObj(task)) return
-    push(task, 'done', task.completedAt, '完成')
-    push(task, 'start', task.startedAt, '开工')
-    push(task, 'suspended', task.suspendedAt, '挂起')
-    push(task, 'created', task.createdAt, '创建')
+    push(task, 'done', task.completedAt)
+    /* runningSince 优先：它是宿主**观察到会话在跑**的时刻；startedAt 是任务自己的开工时间，
+       真实数据里大量为 0（历史任务没填），只认它就会永远缺「开工」事件。 */
+    push(task, 'start', num(task.runningSince, 0) || task.startedAt)
+    push(task, 'suspended', task.suspendedAt)
+    push(task, 'created', task.createdAt)
+  })
+
+  /* 按任务归并：取最新的一条当行，更早的「创建」只作为上下文（不单独占一行）。 */
+  const byTask = new Map()
+  raw.forEach((row) => {
+    const id = str(row.task.id)
+    const list = byTask.get(id) || []
+    list.push(row)
+    byTask.set(id, list)
+  })
+  const events = []
+  byTask.forEach((rows, id) => {
+    rows.sort((a, b) => b.at - a.at)
+    const head = rows[0]
+    const task = head.task
+    const created = rows.find((row) => row.kind === 'created' && row.at < head.at) || null
+    const turn = num(task.sessionTurn, 0)
+    let detail = ''
+    if (head.kind === 'done') {
+      /* 「建单到完成」比「完成」多回答一个问题：这件事花了多久。
+         没有创建时间就退到开工时间；都没有就不编（不显示时长比显示假时长诚实）。 */
+      const from = created ? created.at : (num(task.startedAt, 0) || 0)
+      if (from > 0 && head.at > from) detail = `${created ? '建单到完成' : '跑了'} ${formatDuration(head.at - from)}`
+    } else if (head.kind === 'start') {
+      detail = `已跑 ${formatDuration(Math.max(0, at - head.at))}`
+    } else if (head.kind === 'suspended') {
+      detail = str(task.suspensionReason)
+    }
+    /* 「第 N 轮」只对开工/完成有意义；挂在「创建」上会读成「创建了 2 轮」（实机见过）。 */
+    if (!detail && turn > 0 && head.kind !== 'created') detail = `第 ${turn} 轮`
+    events.push({
+      id: `${id}:${head.kind}`,
+      taskId: id,
+      no: num(task.no, 0),
+      title: str(task.title) || id,
+      workspace: str(task.workspaceTitle),
+      kind: head.kind,
+      at: head.at,
+      agoText: formatAgo(at - head.at),
+      detail,
+      spanMs: created ? head.at - created.at : 0,
+    })
   })
   events.sort((a, b) => b.at - a.at)
-  /* 24 根柱子的边界必须与 last24h 完全一致（age ∈ [0, 24h)），否则「柱子和 ≠ 总数」，
-     测试当场抓到过一次（边界那条事件在两处口径里一进一出）。 */
+
+  /* 24 小时窗口 → 8 桶 × 3 小时。桶边界与 last24h 必须完全一致（age ∈ [0, 24h)），
+     否则「柱子和 ≠ 总数」，测试当场抓到过一次。 */
   const WINDOW = 24 * 3_600_000
+  const BUCKET = 3 * 3_600_000
   const ageOf = (event) => at - event.at
   const inWindow = (event) => ageOf(event) >= 0 && ageOf(event) < WINDOW
-  const hourly = []
-  for (let i = 23; i >= 0; i -= 1) {
-    hourly.push({ start: at - (i + 1) * 3_600_000, count: 0 })
+  const buckets = []
+  for (let i = 7; i >= 0; i -= 1) {
+    buckets.push({ start: at - (i + 1) * BUCKET, count: 0, byKind: { done: 0, created: 0, start: 0, suspended: 0 } })
   }
-  events.forEach((event) => {
+  const counts = { done: 0, created: 0, start: 0, suspended: 0 }
+  raw.forEach((event) => {
     if (!inWindow(event)) return
-    const index = 23 - Math.floor(ageOf(event) / 3_600_000)
-    if (hourly[index]) hourly[index].count += 1
+    counts[event.kind] = (counts[event.kind] || 0) + 1
+    const bucket = buckets[7 - Math.floor(ageOf(event) / BUCKET)]
+    if (!bucket) return
+    bucket.count += 1
+    bucket.byKind[event.kind] = (bucket.byKind[event.kind] || 0) + 1
   })
   return {
     events: events.slice(0, Math.max(1, limit)),
-    hourly,
-    last24h: events.filter(inWindow).length,
+    buckets,
+    counts,
+    last24h: buckets.reduce((sum, bucket) => sum + bucket.count, 0),
   }
 }
-
 /**
  * 主入口。返回：
  *   empty      没有任何任务
@@ -558,7 +606,7 @@ export function buildRuns(snapshot) {
     ready: readyQueue(tasks, now),
     /** 「快到期」：按预期完成分桶（含图表窗口） */
     due: dueBuckets(tasks, now),
-    /** 「最近动态」：生命周期事件时间线 + 24h 每小时计数（含已完成/挂起，它们也是事件） */
+    /** 「最近动态」：生命周期事件时间线 + 24h · 8 桶（3h）计数（含已完成/挂起，它们也是事件） */
     timeline: activityTimeline(allTasks, now),
   }
 }

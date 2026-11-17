@@ -122,6 +122,18 @@ check('历史行的状态色口径：运行=蓝 / 阻塞=黄 / 完成=绿（样�
   assert.ok(src.includes("state === 'blocked' ? '阻塞'"), '气泡状态文案要能表达阻塞')
 })
 
+check('事件行别再复用 absolute 的 .frx-avatar-dot（真机上它把标题挤成 8px、圆点飘到卡片角落）', () => {
+  const row = src.slice(src.indexOf("className: 'frx-event'"), src.indexOf("className: 'frx-event'") + 1200)
+  assert.equal(row.includes('frx-avatar-dot'), false, '气泡墙的 .frx-avatar-dot 是 absolute，事件行不能再用它')
+  assert.ok(row.includes("'frx-event-kind is-'"), '状态改用胶囊表达')
+  const css = readFileSync(new URL('../src/client/runsExactStyles.js', import.meta.url), 'utf8')
+  for (const kind of ['created', 'start', 'done', 'suspended']) {
+    assert.ok(css.includes('.frx-event-kind.is-' + kind), kind + ' 要有自己的胶囊配色')
+  }
+  const rowStart = css.indexOf('.frx-event {')
+  assert.ok(rowStart > 0 && css.slice(rowStart, rowStart + 240).includes('grid-template-columns: 40px'), '事件行是「胶囊 / 标题+次行 / 时间」三列')
+})
+
 check('运行页自己是滚动容器（宿主 .fo-feature-host 不滚，页面比一屏高）', () => {
   const css = readFileSync(new URL('../src/client/runsExactStyles.js', import.meta.url), 'utf8')
   const start = css.indexOf('.frx-page {')
@@ -211,9 +223,13 @@ check('一卡一问：运行页只有 6 张卡，旧卡一张都不剩', () => {
     assert.equal(src.includes(gone), false, `旧卡没删干净：${gone}`)
   }
   /* 每张卡只回答一个问题：副标题里就能读出来（口径：越短越好，别重复卡名和下面的行名） */
-  for (const sub of ["'依赖就绪'", "'按预期完成排序'", "'过去 24 小时'", "'按最近活动排序'"]) {
+  for (const sub of ["'依赖就绪'", "'按预期完成排序'", "'按最近活动排序'"]) {
     assert.ok(src.includes(sub), `缺卡片职责说明：${sub}`)
   }
+  /* 最近动态的副标题从「过去 24 小时」换成**分布**（完成 19 · 创建 11）：
+     时间窗已经由右上角的事件数胶囊表达，副标题留给「这 30 条都是些什么事」。 */
+  assert.ok(src.includes("'最近 24 小时没有事件'"), '没有事件时要有空态副标题')
+  assert.ok(src.includes("KIND_TEXT[kind] + ' ' + counts[kind]"), '有事件时副标题给分布')
   /* 用户口径「文字描述有的比较啰嗦」：这几句长文案不许再回来（只看代码，注释里提一下没问题） */
   const code = stripComments(src)
   for (const verbose of ['会话正在跑 · 实时同步', '空闲 · 等待任务开工', "'同步 / 授权 / CLI'", '每条任务跑了多久 · 按最近活动排序', '越靠上越紧迫']) {

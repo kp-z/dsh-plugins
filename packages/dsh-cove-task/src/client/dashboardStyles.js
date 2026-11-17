@@ -29,15 +29,27 @@ export const CSS = `
   --fd-ok: var(--dsw-alias-state-success-primary);
   --fd-warn: var(--dsw-alias-state-warn-primary);
   --fd-danger: var(--dsw-alias-state-error-primary);
-  --fd-idle: var(--dsw-alias-state-idle-primary);
+  /* 同 styles.js：令牌缺失时退成次级文字色，而不是让描边/底色整块失效 */
+  --fd-idle: var(--dsw-alias-state-idle-primary, var(--dsw-alias-label-secondary));
   flex: 1 1 auto; min-height: 0; min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  grid-auto-rows: 1fr;
+  /* 页面 = 「KPI 带 + 网格」两段式：KPI 那一条按内容定高（auto），
+     其余面板在下面的网格里平分剩余高度。
+     原来整页是一个 4 行等高的 grid，KPI 卡被拉到和图表卡一样高（约 250px），
+     里面只有一排 70px 的小卡，下半截全是空 —— 用户口径「最上面这个卡片太高了」。 */
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   padding: 12px;
   overflow: auto;
   color: var(--fd-text);
+}
+.fd-grid {
+  /* grow 但不 shrink：内容比一屏高时让整页滚动，而不是把面板压扁（压扁会裁内容） */
+  flex: 1 0 auto; min-height: 0; min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 12px;
 }
 
 /* ============ 面板：玻璃卡 + 头/体 ============ */
@@ -54,6 +66,8 @@ export const CSS = `
   transition: border-color 180ms cubic-bezier(.22, .61, .36, 1);
 }
 .fd-panel:hover { border-color: var(--fd-line-strong); }
+/* KPI 带按内容定高：窄面板下 6 个小卡会折成两行，绝不能被父级 flex 压扁裁掉 */
+.fd-page > .fd-panel { flex: 0 0 auto; }
 .fd-panel[data-span="all"] { grid-column: 1 / -1; }
 .fd-panel-head {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
@@ -185,14 +199,21 @@ export const CSS = `
 }
 
 /* ============ 最近动态：三列小清单 ============ */
-.fd-recent { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; min-height: 0; }
+/* 行高必须由内容决定（max-content）：原来 auto 行 + 列上的 min-height:0 会让行塌到 0，
+   三行「最近完成」被压进 110px，标题和下一组的组名直接叠字（实机截图可见）。 */
+/* 质量 / 周期：全宽卡要横向排（左图例、右分位），别把内容全挤在顶部 */
+.fd-quality { flex-direction: row; align-items: center; gap: 32px; }
+.fd-quality .fd-legend { flex: 1 1 auto; max-width: 420px; }
+.fd-quality .fd-kv { flex: 1 1 auto; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+
+.fd-recent { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; grid-auto-rows: max-content; align-content: start; min-height: 0; }
 .fd-recent-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
 .fd-recent-title { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--fd-dim); }
 .fd-empty-line { font-size: 11px; color: var(--fd-dim); padding: 4px 0; }
 
 /* ============ 空态 ============ */
 .fd-empty {
-  grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1 1 auto; grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; padding: 40px 20px; text-align: center; color: var(--fd-dim);
 }
 .fd-empty-title { font-size: 14px; font-weight: 600; color: var(--fd-text); }

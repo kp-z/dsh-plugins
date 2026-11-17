@@ -83,6 +83,11 @@ export function createSidebarHalf({ React, h }) {
     var tick = state[0], setTick = state[1];
     var frameRef = React.useRef(null);
     var currentSessionId = sessionIdOf(props);
+    /* 宿主收起页签时只给 visible=false（document 仍是 visible）；
+       必须推给面板，否则收起的页签还在每 20s 拉 state、占着 SSE。 */
+    var visible = !(props && props.visible === false);
+    var visibleRef = React.useRef(visible);
+    visibleRef.current = visible;
 
     React.useEffect(function () {
       var observer = new MutationObserver(function () { setTick(function (n) { return n + 1; }); });
@@ -106,6 +111,16 @@ export function createSidebarHalf({ React, h }) {
     var pushContext = React.useCallback(function () {
       sendContext(currentSessionId);
     }, [currentSessionId]);
+
+    var pushVisibility = React.useCallback(function () {
+      var frame = frameRef.current;
+      if (!frame || !frame.contentWindow) return;
+      try {
+        frame.contentWindow.postMessage({ type: "dsh-cove-task:visibility", visible: visibleRef.current !== false }, "*");
+      } catch (e) {}
+    }, []);
+
+    React.useEffect(function () { pushVisibility(); }, [visible, pushVisibility]);
 
     /* 兜底：切换会话时右侧栏不一定换 props（不同实现有缓存/复用），
        这里每秒对一次「props 里的会话 id」，变了就补推；窗口重新获得焦点时也补一次。
@@ -143,7 +158,7 @@ export function createSidebarHalf({ React, h }) {
       className: "dfe-frame",
       src: isDark() ? PANEL_URL + "?theme=dark" : PANEL_URL,
       title: "Cove Task",
-      onLoad: pushContext
+      onLoad: function () { pushContext(); pushVisibility(); }
     });
   }
 

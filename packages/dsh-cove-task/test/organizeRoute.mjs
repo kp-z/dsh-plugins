@@ -135,6 +135,8 @@ const accepted = await post('/api/overview/organize/accept', { batchId: batch.ba
 check('远端不可用时接受仍成功（先落本地，不丢建议）', accepted.status === 200 && accepted.data?.ok === true
   && accepted.data.results?.length === 1 && accepted.data.results[0].ok === true, JSON.stringify(accepted.data).slice(0, 240))
 check('逐条汇报里写明「只在本机」', /本机/.test(accepted.data.results[0].warning || ''), JSON.stringify(accepted.data.results[0]))
+const acceptedItem = (accepted.data.batch?.items || []).find((item) => item.id === pending[0].id) || {}
+check('接受的批次条目带 warning + retryAction=add（UI 才显示「同步」）', /本机/.test(acceptedItem.warning || '') && acceptedItem.retryAction === 'add', JSON.stringify(acceptedItem).slice(0, 240))
 const afterAccept = await json('/api/overview')
 const edges = afterAccept.data.relations || []
 check('接受后关系真的写进去了（t1 → t2 的 depends_on）', edges.some((edge) => edge.from === 't1' && edge.to === 't2' && edge.kind === 'depends_on'), JSON.stringify(edges).slice(0, 200))
@@ -157,6 +159,8 @@ check('撤销返回 200 且逐条汇报', undone.status === 200 && undone.data?.
 const afterUndo = await json('/api/overview')
 check('撤销后那条边真的从关系里没了', !(afterUndo.data.relations || []).some((edge) => edge.from === 't1' && edge.to === 't2'), JSON.stringify(afterUndo.data.relations).slice(0, 160))
 check('撤销后建议单状态变成 undone', undone.data.batch?.undone >= 1 && undone.data.batch?.accepted === 0, JSON.stringify(undone.data.batch).slice(0, 160))
+const undoneItem = (undone.data.batch?.items || []).find((item) => item.id === pending[0].id) || {}
+check('撤销但远端没同步：批次条目带 warning + retryAction=remove（重试要补删）', /本机/.test(undoneItem.warning || '') && undoneItem.retryAction === 'remove', JSON.stringify(undoneItem).slice(0, 240))
 const undoAgain = await post('/api/overview/organize/undo', { batchId: batch.batchId })
 check('重复撤销 → 400（没有可撤销的条目）', undoAgain.status === 400 && undoAgain.data?.ok === false, JSON.stringify(undoAgain.data).slice(0, 120))
 const undoUnknown = await post('/api/overview/organize/undo', { batchId: 'sg:all:0' })

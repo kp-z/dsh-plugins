@@ -275,7 +275,7 @@ const frames = panels.map((panel) => {
 }).join('')
 
 writeFileSync(new URL('../.runs-preview.html', import.meta.url), `<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<title>离线预览：运行 / 洞察 / 关系</title>
+<title>离线预览：运行 / 洞察 / 看板</title>
 <style>${hostTokens}</style>
 <style>${PANEL_CSS}</style>
 <style>${RUNS_CSS}</style>

@@ -4,12 +4,14 @@
  * 它**不重写页面**：直接 import 面板自己的组件（src/client/OverviewPanel.js），
  * 注入同一份样式（styles.js 的 CSS）、同一个接口层（api.js 的 createApi）、
  * 一个 localStorage 版 store 和一个「不能开会话」的 host 能力位。
+ * standalone: true 告诉面板「你已经独立成页了」——左下角不再渲染「在浏览器打开」。
  *
  * React 用的是官方 UMD（lib/vendor 里 vendor 的 react / react-dom 18，和面板里跑的是同一个库），
  * 本文档页面用两个 <script> 先加载它们，所以这里直接取 window.React。
  */
 
 import { createOverviewPanel } from './src/OverviewPanel.js';
+import { openSessionInDsh } from './src/openSession.js';
 import { createApi } from './src/api.js';
 import { CSS as PANEL_CSS, STYLE_ID } from './src/styles.js';
 
@@ -35,9 +37,11 @@ const store = {
   },
 };
 
-/* host：独立页不能拉起 DSH 会话，如实说不行（面板会退化成「看详情」） */
+/* host：独立页不能直接调 DSH 的 uiWorkspace，但可以请宿主转一手：
+   POST /api/open-session → 宿主 SSE → DSH 客户端切会话，并把桌面端叫到前台。 */
 const host = {
-  canOpenSession: () => ({ ok: false, reason: '独立页不能打开 DSH 会话' }),
+  canOpenSession: () => ({ ok: true, reason: '' }),
+  openSession: (sessionId, title) => openSessionInDsh(sessionId, title),
 };
 
 const OverviewPanel = createOverviewPanel({
@@ -46,6 +50,8 @@ const OverviewPanel = createOverviewPanel({
   api: createApi(),
   store,
   host,
+  /* 已经在浏览器里：rail 左下角的「打开页面」没有意义，面板不再渲染它。 */
+  standalone: true,
   pollMs: 30000,
 });
 
