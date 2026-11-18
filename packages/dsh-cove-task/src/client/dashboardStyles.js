@@ -42,15 +42,94 @@ export const CSS = `
   padding: 12px;
   overflow: auto;
   color: var(--fd-text);
+  /* 列数/行高都按「页面自己的宽度」判断（面板会被拖窄），所以这里当容器 */
+  container-type: inline-size;
+  container-name: fdpage;
 }
 .fd-grid {
   /* grow 但不 shrink：内容比一屏高时让整页滚动，而不是把面板压扁（压扁会裁内容） */
   flex: 1 0 auto; min-height: 0; min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  grid-auto-rows: 1fr;
+  /* 固定 4 列（不是 auto-fit）：宽屏下 auto-fit 会排出 5~6 列，卡片被挤到 240px，
+     图例和项目名开始省略（实机截图里「已…」「阻…」）。窄了按容器查询降列。 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 行高按内容（min-content）+ 卡片各自贴合内容（align-items: start）：
+     原来 grid-auto-rows: 1fr 让每行平分视口高度，内容 100px 的卡片被撑到 600px，
+     整页一半是空白 —— 用户口径「好多区域空白太多了」。 */
+  grid-auto-rows: min-content;
+  align-content: start;
   gap: 12px;
 }
+@container fdpage (max-width: 1099px) {
+  .fd-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container fdpage (max-width: 819px) {
+  .fd-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container fdpage (max-width: 539px) {
+  .fd-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.fd-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+.fd-top > .fd-panel { min-width: 0; }
+
+/* ============ 活跃日历（GitHub 贡献图：周列 × 7 行 + 月标 + 图例） ============ */
+.fd-cal { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
+/* 日历固定一栏（27 周 × 10px ≈ 340）：热力图不需要占满整卡，右边留给 AI 提示 */
+.fd-cal-main { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; min-height: 0; }
+.fd-cal-calendar { flex: 0 0 auto; width: 342px; max-width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.fd-cal-hints {
+  flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+  padding-left: 16px; border-left: 1px solid var(--fd-line); justify-content: center;
+}
+.fd-cal-hints-head { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--fd-dim); }
+.fd-cal-ai {
+  font-size: 9px; font-weight: 700; letter-spacing: .04em; padding: 1px 5px; border-radius: 5px;
+  color: var(--fd-brand); background: color-mix(in oklab, var(--fd-brand) 16%, transparent);
+}
+.fd-cal-hints-list { margin: 0; padding-left: 14px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; line-height: 1.45; color: var(--fd-text); }
+.fd-cal-hints-list li::marker { color: var(--fd-dim); }
+.fd-cal-scroll { overflow-x: auto; overflow-y: hidden; min-height: 0; scrollbar-width: thin; }
+/* 两列：左边星期标签，右边月标 + 周网格；列数由 --fd-cal-weeks 决定，格子 1fr 撑满卡片宽度 */
+.fd-cal-inner {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 6px; row-gap: 5px;
+  align-items: start;
+  width: 100%;
+}
+.fd-cal-months {
+  grid-column: 2; grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--fd-cal-weeks, 27), minmax(0, 1fr));
+  column-gap: 2px;
+  height: 13px; font-size: 9px; color: var(--fd-dim);
+}
+.fd-cal-month { grid-row: 1; white-space: nowrap; }
+.fd-cal-dows { grid-column: 1; grid-row: 2; display: grid; grid-template-rows: repeat(7, minmax(0, 1fr)); gap: 3px; font-size: 9px; color: var(--fd-dim); }
+.fd-cal-dows > span { display: flex; align-items: center; justify-content: flex-end; line-height: 1; }
+.fd-cal-grid {
+  grid-column: 2; grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(var(--fd-cal-weeks, 27), minmax(0, 1fr));
+  column-gap: 2px;
+  min-width: 0;
+}
+/* 一列 = 一周：7 个方格竖排，格子宽度由列宽决定、高度跟着宽度（aspect-ratio: 1） */
+.fd-cal-week { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fd-cal-grid .fd-cal-cell { width: 100%; height: auto; aspect-ratio: 1; }
+.fd-cal-cell {
+  display: block; width: 12px; height: 12px; border-radius: 3px;
+  background: color-mix(in oklab, var(--fd-text) 7%, transparent);
+  outline: 1px solid transparent;
+}
+.fd-cal-cell[data-level="1"] { background: color-mix(in oklab, var(--fd-ok) 28%, transparent); }
+.fd-cal-cell[data-level="2"] { background: color-mix(in oklab, var(--fd-ok) 48%, transparent); }
+.fd-cal-cell[data-level="3"] { background: color-mix(in oklab, var(--fd-ok) 70%, transparent); }
+.fd-cal-cell[data-level="4"] { background: var(--fd-ok); }
+.fd-cal-cell.is-empty { background: transparent; }
+.fd-cal-legend { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--fd-dim); }
 
 /* ============ 面板：玻璃卡 + 头/体 ============ */
 .fd-panel {
@@ -67,7 +146,7 @@ export const CSS = `
 }
 .fd-panel:hover { border-color: var(--fd-line-strong); }
 /* KPI 带按内容定高：窄面板下 6 个小卡会折成两行，绝不能被父级 flex 压扁裁掉 */
-.fd-page > .fd-panel { flex: 0 0 auto; }
+.fd-page > .fd-panel, .fd-page > .fd-top { flex: 0 0 auto; }
 .fd-panel[data-span="all"] { grid-column: 1 / -1; }
 .fd-panel-head {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
@@ -210,6 +289,8 @@ export const CSS = `
 .fd-recent-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
 .fd-recent-title { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--fd-dim); }
 .fd-empty-line { font-size: 11px; color: var(--fd-dim); padding: 4px 0; }
+/* 空态在卡片里垂直居中：卡片按行等高时，空态贴顶会让下半截看起来像没加载完 */
+.fd-panel-body > .fd-empty-line:only-child { margin: auto; text-align: center; max-width: 320px; line-height: 1.6; }
 
 /* ============ 空态 ============ */
 .fd-empty {

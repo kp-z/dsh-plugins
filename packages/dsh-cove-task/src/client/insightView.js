@@ -347,6 +347,167 @@ export function buildInsight(snapshot) {
   }
 }
 
+/**
+ * 「活跃日历」（GitHub 贡献图）：把宿主给的扁平日期序列排成「周列 × 7 行」。
+ *
+ * 布局规则（和 GitHub 一致）：
+ *   - 一列 = 一周，周一在上、周日在下；
+ *   - 第一天不是周一时，首列前面留空格（不让整个日历错位）；
+ *   - 月份标签放在「该月第一次出现」的那一列上方（不重复标）；
+ *   - 颜色档位 0~4 按当天事件数相对**最大值**分档；0 是空格子。
+ *
+ * 纯函数：不读 DOM、不联网，能离线单测。
+ */
+export function buildCalendar(payload, now) {
+  const rows = arr(payload && payload.days).filter((row) => isObj(row) && str(row.day))
+  if (!rows.length) return { weeks: [], months: [], max: 0, total: 0, empty: true }
+  const max = Math.max(1, num(payload && payload.max, 0) || rows.reduce((top, row) => Math.max(top, num(row.total, 0)), 0))
+  const cells = rows.map((row) => {
+    const day = str(row.day)
+    /* 只用来算星期几：加 T00:00:00 走本地时区，和宿主 dayKey 的口径一致 */
+    const at = new Date(day + 'T00:00:00')
+    const dow = Number.isNaN(at.getTime()) ? 0 : (at.getDay() + 6) % 7
+    const total = num(row.total, 0)
+    return {
+      day,
+      dow,
+      total,
+      done: num(row.done, 0),
+      created: num(row.created, 0),
+      started: num(row.started, 0),
+      level: total <= 0 ? 0 : Math.min(4, Math.max(1, Math.ceil((total / max) * 4))),
+    }
+  })
+  const weeks = []
+  let current = null
+  cells.forEach((cell) => {
+    if (!current || cell.dow === 0) {
+      current = { key: 'w' + cell.day, cells: new Array(7).fill(null) }
+      weeks.push(current)
+    }
+    current.cells[cell.dow] = cell
+  })
+  /* 月份标签：某列里第一个真实日期换月了就打一个（最多 12 个，够半年） */
+  const months = []
+  let lastMonth = ''
+  weeks.forEach((week, column) => {
+    const first = week.cells.find((cell) => cell)
+    if (!first) return
+    const month = first.day.slice(0, 7)
+    if (month === lastMonth) return
+    lastMonth = month
+    months.push({ key: month, column, label: month.slice(5).replace(/^0/, '') + ' 月' })
+  })
+  return {
+    weeks,
+    months,
+    max,
+    total: cells.reduce((sum, cell) => sum + cell.total, 0),
+    activeDays: cells.filter((cell) => cell.total > 0).length,
+    empty: false,
+  }
+}
+
+/**
+ * 从快照任务列表直接算「活跃日历」（不需要宿主新开路由）。
+ *
+ * 口径：某天的 total = 当天 新建 + 开工 + 完成 的事件数（同一条任务可能进两格）。
+ * 时间戳用任务自己的 createdAt / startedAt / completedAt —— 和洞察页其它面板同源，
+ * 所以老宿主也能立刻有数据，不用等新接口。
+ */
+export function calendarFromTasks(tasks, now, days = 182) {
+  const span = Math.max(7, Math.min(371, Number(days) || 182))
+  const at = num(now, Date.now())
+  const today = startOfDay(at)
+  const DAY = 86_400_000
+  const rows = []
+  let max = 0
+  for (let i = span - 1; i >= 0; i -= 1) {
+    const from = today - i * DAY
+    const to = from + DAY
+    const inRange = (value) => {
+      const time = num(value, 0)
+      return time >= from && time < to
+    }
+    const created = arr(tasks).filter((task) => isObj(task) && inRange(task.createdAt)).length
+    const started = arr(tasks).filter((task) => isObj(task) && inRange(task.startedAt)).length
+    const done = arr(tasks).filter((task) => isObj(task) && inRange(task.completedAt)).length
+    const total = created + started + done
+    if (total > max) max = total
+    const date = new Date(from)
+    const day = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
+    rows.push({ day, created, started, done, total })
+  }
+  return buildCalendar({ days: rows, max }, at)
+}
+
+/**
+ * 「AI 提示」：从日历和任务里算出来的几句结论。
+ *
+ * 为什么不让模型现编：面板里的数字必须可核对（仓库红线：数字不让模型编）。
+ * 这里只有 3 条硬规则 —— 周对比 / 最忙的一天 / 连续活跃（或最近一次动静）/ 完成最多的项目，
+ * 全部从 snapshot 的时间戳直接算，没有网络、没有概率。
+ */
+export function calendarHints(tasks, now, calendar) {
+  const at = num(now, Date.now())
+  const DAY = 86_400_000
+  const today = startOfDay(at)
+  const rows = arr(tasks).filter((task) => isObj(task))
+  const doneAt = (task) => num(task.completedAt, 0)
+  const hints = []
+
+  /* 1) 本周 vs 上周（按完成时间；本周含今天） */
+  const thisWeek = rows.filter((task) => {
+    const done = doneAt(task)
+    return done >= today - 6 * DAY && done < today + DAY
+  }).length
+  const lastWeek = rows.filter((task) => {
+    const done = doneAt(task)
+    return done >= today - 13 * DAY && done < today - 6 * DAY
+  }).length
+  if (thisWeek || lastWeek) {
+    if (lastWeek > 0) {
+      const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100)
+      hints.push({ key: 'week', text: '本周完成 ' + thisWeek + ' 件，上周 ' + lastWeek + ' 件（' + (pct >= 0 ? '+' : '') + pct + '%）' })
+    } else {
+      hints.push({ key: 'week', text: '本周完成 ' + thisWeek + ' 件，上周没有完成记录' })
+    }
+  }
+
+  /* 2) 最忙的一天（用日历已经分好桶的格子，口径和热力图一致） */
+  const cells = calendar && arr(calendar.weeks).length
+    ? calendar.weeks.flatMap((week) => arr(week.cells)).filter(Boolean)
+    : []
+  const busiest = cells.reduce((top, cell) => (cell.total > (top ? top.total : 0) ? cell : top), null)
+  if (busiest && busiest.total > 0) hints.push({ key: 'busiest', text: '最忙 ' + busiest.day.slice(5) + '：' + busiest.total + ' 个事件' })
+
+  /* 3) 连续活跃天数；今天还没动静就退成「最近一次」 */
+  let streak = 0
+  for (let i = cells.length - 1; i >= 0; i -= 1) {
+    if (cells[i].total > 0) streak += 1
+    else break
+  }
+  if (streak >= 2) hints.push({ key: 'streak', text: '连续 ' + streak + ' 天有动静' })
+  else {
+    const last = [...cells].reverse().find((cell) => cell.total > 0)
+    if (last) hints.push({ key: 'last', text: '最近一次动静：' + last.day.slice(5) })
+  }
+
+  /* 4) 近 28 天完成最多的工作区（项目） */
+  const since = today - 27 * DAY
+  const byWorkspace = new Map()
+  rows.forEach((task) => {
+    const done = doneAt(task)
+    if (done < since || done >= today + DAY) return
+    const key = str(task.workspaceTitle) || str(task.workspaceKey) || '未分组'
+    byWorkspace.set(key, (byWorkspace.get(key) || 0) + 1)
+  })
+  const top = [...byWorkspace.entries()].sort((a, b) => b[1] - a[1])[0]
+  if (top && top[1] > 0) hints.push({ key: 'workspace', text: '完成最多：' + top[0] + '（' + top[1] + ' 件）' })
+
+  return hints.slice(0, 3)
+}
+
 export default buildInsight
 
 /* ==========================================================================================

@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs'
 
 const src = readFileSync(new URL('../src/client/RunsFeature.js', import.meta.url), 'utf8')
 const panel = readFileSync(new URL('../src/client/OverviewPanel.js', import.meta.url), 'utf8')
+const styles = readFileSync(new URL('../src/client/runsExactStyles.js', import.meta.url), 'utf8')
 
 let passed = 0
 const failed = []
@@ -47,6 +48,17 @@ const orbBody = (() => {
   const end = src.indexOf('/** 圆内完成率水面', start)
   return stripComments(src.slice(start, end > 0 ? end : src.length))
 })()
+
+check('运行结束未查看的小绿点：右上角 + 绿色 + 不拦点击', () => {
+  const at = styles.indexOf('.frx-orb-unread {')
+  assert.ok(at > 0, '找不到 .frx-orb-unread 样式')
+  const body = styles.slice(at, styles.indexOf('}', at) + 1)
+  assert.match(body, /position:\s*absolute/)
+  assert.match(body, /top:\s*-2px/)
+  assert.match(body, /right:\s*-2px/)
+  assert.match(body, /background:\s*#22c55e/)
+  assert.match(body, /pointer-events:\s*none/)
+})
 
 check('气泡 SVG 里不出现 color-mix()（表现属性不认，会整块不可见）', () => {
   assert.equal(orbBody.includes('color-mix('), false, 'orbSvg 里出现了 color-mix(')

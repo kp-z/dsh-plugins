@@ -197,6 +197,16 @@ export const CSS = `
 /* 徽标里的线性图标（Lucide 图标集，11px） */
 .frx-badge svg { display: block; }
 
+/* ---------- 运行结束、会话尚未查看：右上角小绿点 ----------
+   运行中的泡有自己的状态徽标（同一落点），两者互斥：这里只在非 running 的泡上出现。 */
+.frx-orb-unread {
+  position: absolute; top: -2px; right: -2px;
+  width: 9px; height: 9px; border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px var(--frx-tip-bg), 0 0 10px rgba(34, 197, 94, .65);
+  z-index: 35; pointer-events: none;
+}
+
 /* ---------- 「运行中」的三点动画 ---------- */
 .frx-dots { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
 .frx-dots-dot {

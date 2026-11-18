@@ -11,7 +11,7 @@
  * 样式在 `dashboardStyles.js`（`fd-` 前缀），组件首次渲染时幂等注入一次。
  */
 
-import { buildInsight, buildHistory } from './insightView.js'
+import { buildInsight, buildHistory, calendarFromTasks, calendarHints } from './insightView.js'
 import { injectStyles } from './dashboardStyles.js'
 
 const R = 52
@@ -105,8 +105,9 @@ export function createInsightFeature(deps) {
     if (useEffect) {
       useEffect(() => { ensureStyles() }, [])
     }
-    /* 实测列数：auto-fit 用 minmax(240px,1fr)+gap 12，宽 w 时列数 = floor((w+12)/252)。
-       ctx.columns 可显式给（静态自测页/测试用），否则用 ResizeObserver 量。 */
+    /* 实测列数：和 CSS 的断点一一对应（1100/820/540 → 4/3/2/1 列，见 dashboardStyles 的 @container fdpage）。
+       ctx.columns 可显式给（静态自测页/测试用），否则用 ResizeObserver 量。
+       注意：这里只影响 spansForTail 算出来的跨列数，必须和 CSS 的列数一致，否则卡片会跨出错位。 */
     const hostRef = useRef ? useRef(null) : null
     const [cols, setColsState] = useState ? useState(toNum(ctx.columns) || 0) : [toNum(ctx.columns) || 0, () => {}]
     const setCols = typeof setColsState === 'function' ? setColsState : (setColsState && setColsState[1]) || (() => {})
@@ -116,8 +117,8 @@ export function createInsightFeature(deps) {
         const el = hostRef && hostRef.current
         if (!el || typeof ResizeObserver !== 'function') return undefined
         const compute = (width) => {
-          const next = Math.max(1, Math.min(6, Math.floor((width + 12) / 252)))
-          if (next > 0) setCols((prev) => (prev === next ? prev : next))
+          const next = width >= 1100 ? 4 : (width >= 820 ? 3 : (width >= 540 ? 2 : 1))
+          setCols((prev) => (prev === next ? prev : next))
         }
         compute(el.getBoundingClientRect().width)
         const ro = new ResizeObserver((entries) => {
@@ -174,6 +175,9 @@ export function createInsightFeature(deps) {
       }, [retryCount])
     }
 
+    /* ---- 活跃日历：直接从快照任务的时间戳算，不依赖新接口（老宿主也能立刻有数据） ---- */
+    const calView = view.empty ? null : calendarFromTasks((ctx.snapshot || ctx).tasks, toNum(ctx.now) || Date.now(), 182)
+
     const history = histState.phase === 'ok' ? histState.view : null
 
     if (view.empty) {
@@ -212,7 +216,54 @@ export function createInsightFeature(deps) {
           h('span', { className: 'fd-bar', role: 'presentation' }, h('i', { style: { width: `${Math.round(kpi.ratio * 100)}%` } })),
           h('span', { className: 'fd-kpi-note' }, kpi.note || ''),
         ),
-      ))), 'all')
+      ))), 1)
+
+    /* 1b) 活跃日历（GitHub 贡献图）：左上角这张卡回答「这半年哪天在动」+ 三句 AI 结论。
+       右半边放提示语：热力图不需要占满整卡宽度，空出来的地方比再拉宽格子有用。 */
+    const CAL_DOWS = ['一', '', '三', '', '五', '', '日']
+    const calHints = calView ? calendarHints((ctx.snapshot || ctx).tasks, toNum(ctx.now) || Date.now(), calView) : []
+    const calPanel = calView ? panel(1, 'calendar', '活跃日历', '每天的任务动静（新建 + 开工 + 完成）', `${calView.total} 个事件 · ${calView.activeDays} 天有动静`,
+      h('div', { className: 'fd-cal' },
+        h('div', { className: 'fd-cal-main' },
+          h('div', { className: 'fd-cal-calendar' },
+            h('div', { className: 'fd-cal-scroll' },
+              /* 列数交给 CSS：--fd-cal-weeks 决定周列数，格子 1fr + aspect-ratio 跟着这一栏的宽度走 */
+              h('div', { className: 'fd-cal-inner', style: { '--fd-cal-weeks': String(calView.weeks.length) } },
+                h('div', { className: 'fd-cal-months', 'aria-hidden': 'true' },
+                  calView.months.map((month) => h('span', {
+                    key: month.key,
+                    className: 'fd-cal-month',
+                    style: { gridColumn: String(month.column + 1) },
+                  }, month.label))),
+                h('div', { className: 'fd-cal-dows', 'aria-hidden': 'true' },
+                  CAL_DOWS.map((label, index) => h('span', { key: index }, label))),
+                h('div', {
+                  className: 'fd-cal-grid',
+                  role: 'img',
+                  'aria-label': `活跃日历：近 ${calView.weeks.length} 周，共 ${calView.total} 个事件`,
+                },
+                  calView.weeks.map((week) => h('div', { key: week.key, className: 'fd-cal-week' },
+                    week.cells.map((cell, index) => (cell
+                      ? h('i', {
+                        key: cell.day,
+                        className: 'fd-cal-cell',
+                        'data-level': String(cell.level),
+                        title: `${cell.day} · ${cell.total} 件（新建 ${cell.created} · 开工 ${cell.started} · 完成 ${cell.done}）`,
+                      })
+                      : h('i', { key: 'empty-' + index, className: 'fd-cal-cell is-empty', 'aria-hidden': 'true' })))))))),
+            h('div', { className: 'fd-cal-legend' },
+              h('span', null, '少'),
+              [0, 1, 2, 3, 4].map((level) => h('i', { key: level, className: 'fd-cal-cell', 'data-level': String(level), 'aria-hidden': 'true' })),
+              h('span', null, '多'))),
+          calHints.length
+            ? h('div', { className: 'fd-cal-hints' },
+              h('div', { className: 'fd-cal-hints-head' },
+                h('span', { className: 'fd-cal-ai' }, 'AI'),
+                h('span', null, '提示')),
+              h('ul', { className: 'fd-cal-hints-list' },
+                calHints.map((hint) => h('li', { key: hint.key }, hint.text))))
+            : null)),
+      1) : null
 
     /* 2) 状态分布 donut */
     const donut = panel(1, 'status', '状态分布', '互斥四桶，和恰好 100%', '', Donut(view), tailSpans[0])
@@ -340,7 +391,8 @@ export function createInsightFeature(deps) {
           h('span', { className: 'fd-legend-row fd-tone-brand' }, h('span', { className: 'fd-legend-dot' }), h('span', { className: 'fd-legend-label' }, '新增')),
           h('span', { className: 'fd-legend-row fd-tone-idle' }, h('span', { className: 'fd-legend-dot' }), h('span', { className: 'fd-legend-label' }, '活跃（折线）')),
         ),
-        h('div', { style: { flex: '1 1 auto', minHeight: '56px', display: 'flex' } }, trendSvg),
+        /* 卡片现在按内容定高：图表给一个实打实的最小高度，否则 height:100% 会塌成 0 */
+        h('div', { style: { flex: '1 1 auto', minHeight: '120px', display: 'flex' } }, trendSvg),
         h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '6px' } },
           history.trend.ticks.map((tick) => h('span', { key: tick.key, className: 'fd-panel-hint' }, tick.label)),
         ),
@@ -437,13 +489,18 @@ export function createInsightFeature(deps) {
         ),
     )
 
+    /* 顶部一行：有日历时「日历 + KPI」并排（日历在左上角）；旧宿主没有日历时 KPI 仍占满整行 */
+    const topRow = calPanel
+      ? h('div', { key: 'top', className: 'fd-top' }, calPanel, kpis)
+      : kpis
+
     return h('div', {
       className: 'fd-page',
       'data-empty': '0',
       'data-history': history ? '1' : '0',
       'data-cols': String(cols || ''),
       ref: hostRef || undefined,
-    }, historyNote, kpis,
+    }, historyNote, topRow,
       /* KPI 带之后的面板进子网格：这一段才需要「平分剩余高度」（见 dashboardStyles 里 .fd-grid 的说明）。
          KPI 卡自己按内容定高，不再被拉到和图表卡一样高。 */
       h('div', { key: 'grid', className: 'fd-grid' },

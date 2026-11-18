@@ -308,6 +308,10 @@ function makeApi(snapshot, options) {
         return opts.health
       },
     } : {}),
+    markSessionSeen: async (sessionId, turn) => {
+      calls.push({ method: 'markSessionSeen', sessionId, turn })
+      return { ok: true }
+    },
     groupAction: async (body) => {
       calls.push({ method: 'groupAction', body })
       if (opts.groupFails) throw new Error(opts.groupFails)
@@ -805,7 +809,8 @@ check('卡片可视范围：HTML 卡片层 + stage 缩放，不再有 foreignObj
   assert.ok(layer.includes('pointer-events: none'), '卡片层空白处不拦画布')
   const node = ruleBody('.fo-cards-layer .fo-node')
   assert.ok(node.includes('position: absolute') && node.includes('pointer-events: auto'), '节点绝对定位且可交互')
-  assert.ok(ruleBody('.fo-node-dom').includes('overflow: hidden'), '卡片内容仍在自己的格子里裁切')
+  const dom = ruleBody('.fo-node-dom')
+  assert.ok(dom.includes('overflow: hidden') && dom.includes('overflow: clip'), 'HTML 卡片用 clip，聚焦也不可能把内容滚成一条')
 })
 check('卡片内部样式归共享组件（画布不再自带字号/徽标/动作样式）', () => {
   assert.equal(CSS_BARE.includes('.fo-node-title'), false)
@@ -2784,6 +2789,60 @@ delete globalThis.document
     assert.equal(hostCalls.length, 1, '没有会话时不该调用宿主')
     assert.ok(noSession.props.title.includes('未开始') || noSession.props.title.includes('挂起'), String(noSession.props.title))
     return before === '1'
+  })
+}
+
+/* ---- 10c-2. 运行结束但会话未查看：气泡右上角小绿点 ---- */
+{
+  const hostCalls = []
+  const fakeHost = {
+    canOpenSession: () => ({ ok: true }),
+    openSession: (sessionId, expectedTitle) => {
+      hostCalls.push({ sessionId, expectedTitle })
+      return Promise.resolve({ ok: true })
+    },
+  }
+  const snapshot = Object.assign({}, SNAPSHOT, {
+    tasks: [
+      makeTask('u1', 31, 'wA', '项目A', {
+        running: false, started: true, sessionId: 'sess-unread', sessionAlive: true, sessionUnread: true, sessionTurn: 7,
+      }),
+      makeTask('r9', 32, 'wA', '项目A', {
+        running: true, started: true, sessionId: 'sess-running', sessionAlive: true, sessionTurn: 3,
+      }),
+    ],
+    relations: [],
+    stats: { tasks: 2, groups: 0, dependencyEdges: 0, provenanceEdges: 0, blocked: 0, ready: 2 },
+  })
+  const run = await mountPanel({ snapshot, host: fakeHost })
+  let rtree = run.tree
+  const runNav = () => featnavItems(rtree).find((item) => textOf(item).includes('运行'))
+  runNav().props.onClick()
+  rtree = await run.mini.act()
+  const slotOf = (id) => byClass(rtree, 'frx-orb-slot').find((slot) => slot.props['data-id'] === id)
+  check('运行结束未查看：只有该气泡右上角出现小绿点', () => {
+    const unreadSlot = slotOf('u1')
+    assert.ok(unreadSlot, '未读气泡在')
+    assert.equal(unreadSlot.props['data-unread'], '1')
+    const dots = byClass(unreadSlot, 'frx-orb-unread')
+    assert.equal(dots.length, 1, '右上角应有一个小绿点')
+    assert.equal(dots[0].props.title, '运行结束，尚未查看')
+    assert.equal(byClass(unreadSlot, 'frx-badge').length, 0, '未读点不是运行中徽标，两者互斥')
+    const runningSlot = slotOf('r9')
+    assert.equal(runningSlot.props['data-unread'], '0')
+    assert.equal(byClass(runningSlot, 'frx-orb-unread').length, 0, '运行中的泡不挂未读点')
+  })
+  /* 点开这个气泡 = 已经看过：宿主会话跳转 + 把未读水位抬到这一轮。 */
+  const unreadBubble = byClass(slotOf('u1'), 'frx-orb-hit')[0]
+  unreadBubble.props.onClick()
+  rtree = await run.mini.act()
+  check('点未读气泡：打开会话后把 sessionTurn 标记为已查看', () => {
+    assert.equal(hostCalls.length, 1)
+    assert.equal(hostCalls[0].sessionId, 'sess-unread')
+    const marks = run.api.calls.filter((call) => call.method === 'markSessionSeen')
+    assert.equal(marks.length, 1, '打开会话后要标记已查看')
+    assert.equal(marks[0].sessionId, 'sess-unread')
+    assert.equal(marks[0].turn, 7)
   })
 }
 

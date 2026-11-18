@@ -395,6 +395,8 @@ export function buildRuns(snapshot) {
       sessionId,
       canOpenSession: Boolean(sessionId),
       sessionTurn: num(task.sessionTurn, 0),
+      /* 运行结束但还没看过：只用来画右上角小绿点；运行中的泡不显示（用户要看的是结束后）。 */
+      unread: state !== 'running' && task.sessionUnread === true,
       startedAt,
       runningSince,
       startFrom,
