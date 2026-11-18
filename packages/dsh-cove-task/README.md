@@ -209,6 +209,12 @@ DSH 官方插件实践要求「插件页面渲染成槽位里的 React 组件；
 **开发**：改动 `src/` 后跑 `pnpm run build:client`（tsdown → `lib/client.iife.js`）；`npm test` / `npm run test:offline`
 会自动先构建，再跑客户端契约与数据面测试。
 
+`build:client` 还会跑 `scripts/build-vendor-react.mjs`，把 react / react-dom 18.3.1 的官方 UMD
+拷进 `lib/vendor/`（独立页的 `/tasks/vendor/*.js` 直出这两个文件，缺了就是整页黑屏）。
+`lib/` 不入库，所以换台机器 clone 后**必须先构建**才能打开独立页；这两个包因此固定在
+`devDependencies` 里（版本必须和宿主注入的 React、reactflow 的 peer 一致）。
+回归测试：`node test/vendorReact.mjs`（已挂进 `npm test`）。
+
 ## 1. 侧边栏总览：先确认当前上下文
 
 **入口**：DSH 右侧栏 →「Cove Task」。上方是状态和配置入口，中间是洞察，下方是任务列表。
