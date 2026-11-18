@@ -55,6 +55,8 @@ function adaptApi(raw) {
     organizeAccept: fn('organizeAccept'),
     organizeReject: fn('organizeReject'),
     organizeUndo: fn('organizeUndo'),
+    /* 会话已查看：开完会话把未读水位抬到这一轮（旧宿主没有就跳过，不影响跳转）。 */
+    markSessionSeen: fn('markSessionSeen'),
     /* 关系写回（手动连边 / 断开、建议「同步到飞书」重试）：旧宿主没有就退化成 null。 */
     relationWrite: fn('relationWrite'),
     /* 历史指标（task-21）：洞察页要「更全面」时用它取 /api/insight/stats；
@@ -290,7 +292,7 @@ export function createOverviewPanel(deps) {
      `features` 允许注入（测试用它加一个假功能验证「注册表驱动」与切换）。 */
   const features = Array.isArray(deps && deps.features) && deps.features.length
     ? deps.features
-    : createFeatures({ React, h, model, layout, api, store })
+    : createFeatures({ React, h, model, layout, api, store, ReactFlow: deps && deps.ReactFlow })
 
   const { useCallback, useEffect, useMemo, useRef, useState } = React
   /* 「接受建议后临时展开已完成」的时长；测试注入小值，线上 3 秒。 */
@@ -810,7 +812,18 @@ export function createOverviewPanel(deps) {
       return Promise.resolve()
         .then(() => host.openSession(key, model.str(expectedTitle)))
         .then((res) => {
-          if (res && res.ok === true) { setHostNote(''); return true }
+          if (res && res.ok === true) {
+            setHostNote('')
+            /* 打开会话 = 看过了：把未读水位抬到这一轮，气泡右上角的小绿点在下一拍快照里消失。 */
+            const bound = tasks.find((task) => model.str(task && task.sessionId) === key)
+            const turn = Number(bound && bound.sessionTurn) || 0
+            if (turn > 0 && apiRef.current && typeof apiRef.current.markSessionSeen === 'function') {
+              void Promise.resolve(apiRef.current.markSessionSeen(key, turn))
+                .then(() => load(true))
+                .catch(() => { /* 标记失败不阻塞打开会话；下一轮轮询还会再试 */ })
+            }
+            return true
+          }
           const reason = (res && model.str(res.reason)) || '宿主没能打开这条会话'
           if (alive.current) setHostNote(reason)
           return false
@@ -820,7 +833,7 @@ export function createOverviewPanel(deps) {
           if (alive.current) setHostNote(reason)
           return false
         })
-    }, [host])
+    }, [host, tasks, load])
 
     /* ---------------- 一键整理（task-16）：只出建议、人点了才落库 ---------------- */
 

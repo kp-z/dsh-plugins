@@ -128,9 +128,13 @@ check('水位条：宽度只由 --fr-water-pct 决定，keyframes 里不许出�
   assert.ok(/@keyframes fr-water-shine/.test(CSS_CODE))
 })
 
-check('填满：网格是 auto-fit + 1fr 行高（不是固定列数）', () => {
-  assert.ok(/grid-template-columns: repeat\(auto-fit, minmax\(240px, 1fr\)\)/.test(CSS_CODE))
-  assert.ok(/grid-auto-rows: 1fr/.test(CSS_CODE))
+check('网格：固定 4 列 + 按内容定行高（不再用 1fr 平分视口）', () => {
+  assert.ok(/\.fd-grid \{[^}]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/.test(CSS_CODE), '宽屏固定 4 列，避免 auto-fit 排出 5~6 列把卡片挤窄')
+  assert.ok(/grid-auto-rows: min-content/.test(CSS_CODE), '行高按内容，不再平分视口')
+  assert.ok(/align-content: start/.test(CSS_CODE), '行整体贴顶，不被拉伸')
+  for (const bp of ['1099', '819', '539']) {
+    assert.ok(CSS_CODE.includes('@container fdpage (max-width: ' + bp + 'px)'), '缺 ' + bp + ' 断点')
+  }
 })
 
 console.log(`\ndashboardStyles.js: ${passed} passed, ${failures.length} failed`)

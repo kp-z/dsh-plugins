@@ -529,6 +529,7 @@ export function createRunsFeature(deps) {
                 const isRunning = row.state === 'running'
                 const isSuspended = row.state === 'suspended'
                 const isDone = row.state === 'done'
+                const isUnread = row.unread === true
                 const canOpen = Boolean(row.sessionId)
                 /* 只有一套颜色语义：绿=在跑、琥珀边=挂起、灰=未开始。
                    参考项目里「蓝=当前模型」是模型的「选中」概念，任务里没有对应物，
@@ -537,13 +538,17 @@ export function createRunsFeature(deps) {
                 /* 完成率 = 该项目已完成任务占比（0~100）。
                    ≥8% 的下限只是让波浪线可见（0 时水面贴在圆底、裁剪后看不出来）。 */
                 const pct = Math.max(8, Math.min(100, progressOf(row.workspaceKey)))
-                const meta = [row.title || '', isRunning ? '运行中' : (isSuspended ? '挂起' : '未开始'),
+                const stateText = isRunning
+                  ? '运行中'
+                  : (isUnread ? '运行结束，尚未查看' : (isDone ? '已完成' : (isSuspended ? '挂起' : '未开始')))
+                const meta = [row.title || '', stateText,
                   row.elapsedText && row.elapsedText !== '—' ? row.elapsedText : ''].filter(Boolean).join(' · ')
                 return h('div', {
                   key: row.id,
                   className: 'frx-orb-slot',
                   role: 'listitem',
                   'data-state': row.state,
+                  'data-unread': isUnread ? '1' : '0',
                   'data-id': String(row.id),
                   /* 靠右的泡把状态泡翻到左上角（尾巴方向也在 CSS 里跟着翻），避免贴边被裁 */
                   'data-flip': Number.parseFloat(pos.left) >= 55 ? '1' : '0',
@@ -580,6 +585,16 @@ export function createRunsFeature(deps) {
                       style: { '--frx-badge-c': toneColor(pulse.tone) },
                     }, body)
                   })(),
+                  /* 运行结束但还没看过：右上角一个小绿点（不抢运行中的状态徽标）。 */
+                  isUnread
+                    ? h('span', {
+                      key: 'unread',
+                      className: 'frx-orb-unread',
+                      role: 'status',
+                      title: '运行结束，尚未查看',
+                      'aria-label': '运行结束，尚未查看',
+                    })
+                    : null,
                   /* 视觉：一层内联 SVG（正圆是几何，不是 CSS 圆角）；交互：覆在上面的透明 button。 */
                   orbSvg({
                     size: pos.size,
@@ -636,7 +651,7 @@ export function createRunsFeature(deps) {
                           : (isDone
                             ? '已完成'
                             : `${isSuspended ? '挂起' : '未开始'}${pct > 0 ? ` · 完成率 ${pct}%` : ''}`)),
-                      h('span', { className: 'frx-orb-tip-hint' }, canOpen ? '单击打开会话' : '没有绑定会话 · 单击看详情'))
+                      h('span', { className: 'frx-orb-tip-hint' }, canOpen ? (isUnread ? '有新内容 · 单击打开会话' : '单击打开会话') : '没有绑定会话 · 单击看详情'))
                     : null)
               }))
             : h('p', { className: 'frx-subtitle' }, '没有未完成的任务')),

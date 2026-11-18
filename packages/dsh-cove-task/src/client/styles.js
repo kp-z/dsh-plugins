@@ -911,7 +911,7 @@ export const CSS = `
    卡片本体（描边/圆角/间距）由 src/card/taskCardStyles.js 提供；这里只画「画布这一层」的
    状态：悬停、选中、阻塞/挂起提示、ghost 虚线框、聚焦降透明度。 */
 .fo-node-dom {
-  width: 100%; height: 100%; border-radius: 12px; overflow: hidden; box-sizing: border-box;
+  width: 100%; height: 100%; border-radius: 12px; overflow: hidden; overflow: clip; box-sizing: border-box;
   /* 共享卡片（.tc-scope）在画布上的令牌映射：宿主主题一变，卡片跟着变，不另造调色板。 */
   --tc-bg: var(--dsw-alias-bg-base);
   --tc-card: var(--dsw-alias-bg-layer-1);
@@ -1249,6 +1249,18 @@ export const CSS = `
   }
   .fo-ref:hover:not(:disabled), .fo-btn:hover:not(:disabled), .fo-row:hover { transform: none !important; }
   .fo-ref:hover:not(:disabled)::after { opacity: 0 !important; }
+}
+
+/* React Flow：只用它的连接点算边端点，不把连接点画出来 */
+.fo-flow-graphs { height: 100%; }
+.fo-flow-graph { flex: 0 0 auto; min-height: 0; }
+.fo-flow-graph.is-solo { flex: 1 1 auto; }
+.fo-flow-canvas { flex: 0 0 auto; height: 360px; }
+.fo-flow-graph.is-solo .fo-flow-canvas { flex: 1 1 auto; height: auto; min-height: 0; }
+.fo-flow-canvas .fo-flow-handle {
+  opacity: 0 !important; width: 1px !important; height: 1px !important;
+  min-width: 0 !important; min-height: 0 !important; border: 0 !important;
+  background: transparent !important; pointer-events: none !important;
 }
 `
 

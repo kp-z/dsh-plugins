@@ -15,6 +15,7 @@
  * 本文件只搬「注册与装配」，视图全在 src/client/*.js，纯逻辑在 src/overview/*.js。
  */
 
+import { REACTFLOW_UMD } from './reactflowVendor.js';
 import { createSidebarHalf, TAB_ID as COVE_TAB_ID } from './sidebar-tab.js';
 import { createApi } from './api.js';
 import { createOverviewPanel } from './OverviewPanel.js';
@@ -185,11 +186,24 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     const React = require('react');
     const h = React.createElement;
+    /* React Flow 的 UMD 在 factory 内执行，把宿主的 react/react-dom 传进去。
+       不能静态 import：那会让整个 bundle 生成顶层 UMD 包装，依赖 window.react/window.react_dom，
+       而 DSH 的 ModuleLoader 提供的是 factory(require)。 */
+    let ReactFlow = null
+    try {
+      const ReactDOM = require('react-dom');
+      const umd = { exports: {} };
+      const umdRequire = (name) => (name === 'react' ? React : name === 'react-dom' ? ReactDOM : require(name));
+      new Function('exports', 'require', 'module', REACTFLOW_UMD)(umd.exports, umdRequire, umd);
+      ReactFlow = umd.exports;
+    } catch (error) {
+      warn(error);
+    }
 
     const sidebar = createSidebarHalf({ React, h });
     const api = createApi();
     const host = makeHostHolder();
-    const OverviewPanel = createOverviewPanel({ React, h, api, model, layout, store: createStore(), host });
+    const OverviewPanel = createOverviewPanel({ React, h, api, model, layout, ReactFlow, store: createStore(), host });
     /* 新会话里「把这条对话存为飞书任务」的操作条；和总览共用同一个 api。 */
     const TaskCreateDock = createTaskCreateDock({ React, h, api, host });
 

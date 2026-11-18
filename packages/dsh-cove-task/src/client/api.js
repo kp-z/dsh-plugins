@@ -45,6 +45,10 @@ export function createApi({ fetchImpl } = {}) {
     overview() {
       return request('/api/overview', { headers: { accept: 'application/json' } });
     },
+    /** 标记会话已查看：把未读水位抬到这一轮（打开会话后调用，右上角小绿点随之消失）。 */
+    markSessionSeen(sessionId, turn) {
+      return post('/api/sessions/seen', { sessionId: String(sessionId || ''), turn: Number(turn) || 0 });
+    },
     /** 这条会话当前绑定的任务（没有就 task:null）；新会话的任务创建条用它决定是否占位。 */
     sessionTask(sessionId) {
       const id = encodeURIComponent(String(sessionId || ''));

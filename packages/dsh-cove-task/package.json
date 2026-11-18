@@ -1,7 +1,6 @@
 {
   "name": "dsh-cove-task",
-  "version": "0.23.0",
-  "private": true,
+  "version": "0.24.0",
   "type": "module",
   "description": "Cove Task：配置飞书个人授权，定时把飞书任务与文档同步到本地，任务可直接开成 DSH 会话。",
   "main": "./index.js",
@@ -69,6 +68,10 @@
     "sync"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kp-z/dsh-plugins.git",
@@ -122,7 +125,10 @@
     "test:dashboard": "node test/dashboardStyles.mjs && node test/insightView.mjs && node test/runsView.mjs"
   },
   "devDependencies": {
-    "rolldown": "1.2.5",
-    "dagre-d3-es": "^7.0.14"
+    "dagre-d3-es": "^7.0.14",
+    "rolldown": "1.2.5"
+  },
+  "dependencies": {
+    "reactflow": "11.11.4"
   }
 }

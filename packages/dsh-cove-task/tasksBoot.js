@@ -11,12 +11,24 @@
  */
 
 import { createOverviewPanel } from './src/OverviewPanel.js';
+import { REACTFLOW_UMD } from './src/reactflowVendor.js';
 import { openSessionInDsh } from './src/openSession.js';
 import { createApi } from './src/api.js';
 import { CSS as PANEL_CSS, STYLE_ID } from './src/styles.js';
 
 const React = window.React;
 const { createRoot } = window.ReactDOM;
+/* React Flow UMD 在页面模块里执行，注入官方 React/ReactDOM；
+   不依赖 /tasks/vendor 路由，刷新即可生效。 */
+let ReactFlow = null;
+try {
+  const umd = { exports: {} };
+  const umdRequire = (name) => (name === 'react' ? React : name === 'react-dom' ? window.ReactDOM : undefined);
+  new Function('exports', 'require', 'module', REACTFLOW_UMD)(umd.exports, umdRequire, umd);
+  ReactFlow = umd.exports;
+} catch (error) {
+  console.warn('[dsh-cove-task] React Flow 初始化失败，退回旧画布：', error);
+}
 const h = React.createElement;
 
 /* 面板的样式表（面板里由 client.js 注入，这里自己注入同一份） */
@@ -46,6 +58,7 @@ const host = {
 
 const OverviewPanel = createOverviewPanel({
   React,
+  ReactFlow,
   h,
   api: createApi(),
   store,

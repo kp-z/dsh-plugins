@@ -19,6 +19,9 @@ import {
   buildDelayReasons,
   buildQuality,
   buildHistory,
+  buildCalendar,
+  calendarFromTasks,
+  calendarHints,
   formatDays,
   formatSlack,
   TREND_BOX,
@@ -587,6 +590,94 @@ check('buildHistory：裸 stats（没包一层）也认，超大 days 不炸', (
   const big = buildTrend({ series: Array.from({ length: 400 }, (_, i) => ({ day: `d${i}`, done: i % 7, created: i % 5, active: i % 3 })) })
   assert.equal(big.days, 400)
   assert.ok(big.bars.done.every((bar) => bar.w >= 2), '柱宽有下限')
+})
+
+/* ---------------- 活跃日历（GitHub 贡献图） ---------------- */
+
+check('buildCalendar：按周分列（周一在上），首列按星期几补空', () => {
+  // 2026-11-02 是周一：14 天正好两整周
+  const days = Array.from({ length: 14 }, (_, i) => ({ day: new Date(Date.UTC(2026, 10, 2 + i)).toISOString().slice(0, 10), created: 1, started: 0, done: 0, total: i === 13 ? 13 : 1 }))
+  const cal = buildCalendar({ days, max: 13 }, NOW)
+  assert.equal(cal.weeks.length, 2)
+  assert.equal(cal.weeks[0].cells.length, 7)
+  assert.equal(cal.weeks[0].cells[0].day, '2026-11-02')
+  assert.equal(cal.weeks[1].cells[6].day, '2026-11-15')
+  assert.equal(cal.months[0].label, '11 月')
+  assert.equal(cal.months.length, 1, '同一个月只标一次')
+  assert.equal(cal.total, 14 + 12, '总事件 = 各天相加')
+  assert.equal(cal.weeks[1].cells[6].level, 4, '最大那天是最高档')
+  assert.equal(cal.activeDays, 14)
+})
+
+check('buildCalendar：首日不是周一时，前面留空而不是整体错位', () => {
+  // 2026-11-04 是周三
+  const days = [{ day: '2026-11-04', total: 2, done: 2 }, { day: '2026-11-05', total: 0 }]
+  const cal = buildCalendar({ days, max: 2 }, NOW)
+  assert.equal(cal.weeks.length, 1)
+  assert.equal(cal.weeks[0].cells[0], null, '周一空着')
+  assert.equal(cal.weeks[0].cells[2].day, '2026-11-04', '周三落在第 3 行')
+  assert.equal(cal.weeks[0].cells[2].level, 4)
+  assert.equal(cal.weeks[0].cells[3].level, 0, '0 件是空格子')
+})
+
+check('buildCalendar：没有数据 / 坏数据不崩', () => {
+  assert.equal(buildCalendar(null, NOW).empty, true)
+  assert.equal(buildCalendar({ days: [] }, NOW).empty, true)
+  const bad = buildCalendar({ days: [{ day: '2026-11-04', total: 'x' }, null, { day: '' }] }, NOW)
+  assert.equal(bad.weeks.length, 1)
+})
+
+check('calendarFromTasks：直接按任务时间戳归日，窗口天数正确', () => {
+  const day = 86_400_000
+  const base = startOfDay(NOW)
+  const tasks = [
+    { id: 'a', createdAt: base - 2 * day + 3600_000, completedAt: base - 2 * day + 7200_000 },
+    { id: 'b', createdAt: base - 2 * day + 9000_000 },
+    { id: 'c', completedAt: base - 5 * day + 1000, startedAt: base - 5 * day + 2000 },
+    { id: 'd', createdAt: 0, completedAt: 0 },
+  ]
+  const cal = calendarFromTasks(tasks, NOW, 7)
+  const all = cal.weeks.flatMap((week) => week.cells).filter(Boolean)
+  assert.equal(all.length, 7, '7 天就是 7 个格子（跨几列由星期几决定）')
+  assert.equal(cal.max, 3, '同一天 3 个事件是最大档')
+  const cells = all
+  const today = cells[cells.length - 1]
+  const twoDaysAgo = cells[cells.length - 3]
+  const fiveDaysAgo = cells[cells.length - 6]
+  assert.equal(twoDaysAgo.total, 3, '新建 2 + 完成 1')
+  assert.equal(fiveDaysAgo.total, 2, '完成 1 + 开工 1')
+  assert.equal(today.total, 0)
+  assert.equal(cal.total, 5)
+})
+
+check('calendarFromTasks：坏任务 / 空列表不崩', () => {
+  assert.equal(calendarFromTasks([], NOW, 30).weeks.length > 0, true, '空列表也要有网格')
+  assert.equal(calendarFromTasks([null, {}, { createdAt: 'x' }], NOW, 7).total, 0)
+})
+check('calendarHints：周对比 / 最忙一天 / 最近动静（最多 3 条）', () => {
+  const day = 86_400_000
+  const base = startOfDay(NOW)
+  const tasks = [
+    { id: 'a', completedAt: base - 1 * day + 1000, workspaceTitle: '项目A' },
+    { id: 'b', completedAt: base - 2 * day + 1000, workspaceTitle: '项目A' },
+    { id: 'c', completedAt: base - 8 * day + 1000, workspaceTitle: '项目B' },
+  ]
+  const cal = calendarFromTasks(tasks, NOW, 30)
+  const hints = calendarHints(tasks, NOW, cal)
+  const texts = hints.map((hint) => hint.text).join(' | ')
+  assert.ok(texts.includes('本周完成 2 件'), texts)
+  assert.ok(texts.includes('上周 1 件'), texts)
+  assert.ok(texts.includes('最忙'), texts)
+  assert.ok(/最近一次动静|连续 \d+ 天/.test(texts), texts)
+  assert.ok(hints.length <= 3, '最多 3 条，别把卡片撑爆')
+})
+
+check('calendarHints：没有日历数据时也能给出周对比 + 完成最多的项目', () => {
+  const base = startOfDay(NOW)
+  const hints = calendarHints([{ id: 'x', completedAt: base - 1000, workspaceTitle: '项目C' }], NOW, null)
+  const texts = hints.map((hint) => hint.text).join(' | ')
+  assert.ok(texts.includes('本周完成 1 件'), texts)
+  assert.ok(texts.includes('完成最多：项目C'), texts)
 })
 
 /* ---------------- 收尾 ---------------- */
