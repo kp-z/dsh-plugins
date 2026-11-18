@@ -218,10 +218,13 @@ try {
   check('工作区写回「工作区」列', await argsHas(/fld-ws/))
 
   /* 4. 优先级 / 预期完成 / 关系 / 挂起：都走官方接口。 */
+  /* 优先级 / 预期完成改成「本地先落、飞书后台补写」：接口立刻返回，写回要等后台那一跳。 */
   const prio = await post('/api/tasks/priority', { taskId: 'task-1', value: 'P1' })
-  check('优先级写回', prio.data?.ok === true && (await argsHas(/fld-prio/)))
+  const prioWritten = await waitFor(() => argsHas(/fld-prio/))
+  check('优先级写回', prio.data?.ok === true && Boolean(prioWritten))
   const eta = await post('/api/tasks/eta', { taskId: 'task-1', when: '明天 18:00' })
-  check('预期完成写回', eta.data?.ok === true && eta.data?.sync?.ok === true && (await argsHas(/fld-eta/)))
+  const etaWritten = await waitFor(() => argsHas(/fld-eta/))
+  check('预期完成写回', eta.data?.ok === true && eta.data?.sync?.ok === true && Boolean(etaWritten))
   const rel = await post('/api/tasks/relations', { taskId: 'task-1', action: 'set', predecessorIds: ['task-2'] })
   check('关系写回原生依赖', rel.status === 200 && rel.data?.ok === true && (await argsHas(/add_dependencies/)))
   const suspend = await post('/api/tasks/suspension', { taskId: 'task-1', action: 'suspend', reason: '自测' })

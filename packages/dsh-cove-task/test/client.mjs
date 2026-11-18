@@ -80,10 +80,23 @@ const ReactStub = {
   useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
   useRef: (initial) => ({ current: initial }),
   useEffect: () => {},
+  useLayoutEffect: () => {},
   useCallback: (fn) => fn,
   useMemo: (fn) => fn(),
   memo: (fn) => fn,
+  forwardRef: (fn) => fn,
+  /* React Flow 的 UMD 在模块初始化时就要 createContext；缺了它整个客户端半体会静默降级。 */
+  createContext: (value) => ({
+    Provider: ({ children }) => children ?? null,
+    Consumer: ({ children }) => (typeof children === 'function' ? children(value) : null),
+    _currentValue: value,
+  }),
+  Fragment: 'Fragment',
+  Children: { toArray: (children) => (Array.isArray(children) ? children : [children]) },
+  isValidElement: (node) => Boolean(node && typeof node === 'object' && 'type' in node),
+  cloneElement: (node, props) => ({ ...node, props: { ...(node.props || {}), ...(props || {}) } }),
 }
+const ReactDOMStub = { createPortal: (node) => node, flushSync: (fn) => fn(), createRoot: () => ({ render() {}, unmount() {} }) }
 
 const styleElement = { id: '', textContent: '' }
 const appendedStyles = []
@@ -118,7 +131,7 @@ const fakeWindow = {
   },
   __ModuleLoader__: {
     load: ({ id, factory }) => {
-      loaded = { id, exports: factory((name) => (name === 'react' ? ReactStub : (() => ({})))) }
+      loaded = { id, exports: factory((name) => (name === 'react' ? ReactStub : name === 'react-dom' ? ReactDOMStub : (() => ({})))) }
     },
   },
 }

@@ -56,7 +56,8 @@ export const TASK_CARD_STYLES = `
     flex-direction: column;
     align-items: stretch;
     gap: 6px;
-    padding: 7px 10px 8px;
+    /* 左右从 10px 收到 6px：卡片本来就窄，10px 两侧留白吃掉了一截可用宽度（用户口径）。 */
+    padding: 7px 6px 8px;
     border: 1px solid var(--tc-line, var(--p-line));
     border-radius: 9px;
     background: var(--tc-card, var(--p-card));
@@ -534,7 +535,24 @@ export const TASK_MENU_STYLES = `
 .tc-menu .prio-item[data-value="P2"] .dot { background: #3b82f6; }
 .tc-menu .prio-item[data-value="P3"] .dot { background: #94a3b8; }
 
-.tc-menu .task-text-action { display: block; width: 100%; text-align: left; padding: 6px 10px; border-radius: 5px; }
+.tc-menu .task-text-action { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--tc-text, var(--p-text, #333)); font: inherit; font-size: 12px; cursor: pointer; }
+.tc-menu .task-text-action:hover { background: var(--tc-sub, var(--p-sub, rgba(127, 127, 127, .08))); }
+.tc-menu .chip-pop-row { justify-content: flex-end; }
+.tc-menu .chip-pop-row .task-text-action { width: auto; flex: 0 0 auto; }
+.tc-menu .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: 1px solid var(--tc-line, var(--p-line, rgba(127, 127, 127, .24)));
+  border-radius: 6px; background: transparent; color: var(--tc-text, var(--p-text, #333));
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.tc-menu .btn:hover { background: var(--tc-sub, var(--p-sub, rgba(127, 127, 127, .08))); }
+.tc-menu .btn-primary {
+  border-color: var(--tc-accent, var(--p-accent));
+  background: var(--tc-accent, var(--p-accent));
+  color: var(--dsw-alias-label-primary-foreground, var(--tc-text, var(--p-text, #fff)));
+}
+.tc-menu .btn-primary:hover { filter: brightness(1.06); }
+.tc-menu .btn-xs { height: 24px; padding: 0 8px; font-size: 11px; }
 .tc-menu .task-text-action.is-danger:hover { color: var(--tc-danger, var(--p-danger, #d33)); }
 .tc-menu .task-text-action.is-current { background: var(--tc-accent-weak, var(--p-accent-weak, rgba(59, 91, 219, .1))); }
 .tc-menu .tc-menu-sep { height: 1px; margin: 3px 4px; background: var(--tc-line, var(--p-line, rgba(127, 127, 127, .2))); }
@@ -545,9 +563,10 @@ export const TASK_MENU_STYLES = `
 .tc-menu.chip-pop { width: min(300px, calc(100vw - 16px)); padding: 10px; font-size: 11.5px; line-height: 1.5; }
 .tc-menu .chip-pop-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
 .tc-menu .chip-pop-sub { margin-bottom: 6px; color: var(--tc-text-3, var(--p-text-3, #888)); }
-.tc-menu input[type="text"], .tc-menu input[type="url"] {
+.tc-menu input[type="text"], .tc-menu input[type="url"], .tc-menu input[type="date"], .tc-menu input[type="datetime-local"] {
   box-sizing: border-box; width: 100%; padding: 6px; border: 1px solid var(--tc-line, var(--p-line, rgba(127, 127, 127, .3)));
   border-radius: 5px; background: var(--tc-bg, var(--p-bg, transparent)); color: var(--tc-text, var(--p-text, inherit)); font: inherit;
+  color-scheme: light dark;
 }
 .tc-menu .chip-pop-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .tc-menu .chip-pop-msg { margin-top: 6px; color: var(--tc-text-2, var(--p-text-2, #666)); word-break: break-word; }

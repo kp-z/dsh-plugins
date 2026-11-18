@@ -70,6 +70,38 @@ export function createApi({ fetchImpl } = {}) {
     relationWrite(body) {
       return post('/api/overview/relations', body);
     },
+    /** 显式确认后补 O/KR（不要从建议流程自动调用）：只补空字段，不覆盖手工值。 */
+    okrAuto(taskIds) {
+      return post('/api/overview/okr/auto', { taskIds: Array.isArray(taskIds) ? taskIds : [] });
+    },
+    /** Plan 拖拽改状态：done / suspended / todo / in-progress（后两者仅挂起恢复）。 */
+    taskStatus(taskId, status) {
+      return post('/api/tasks/status', { taskId: String(taskId || ''), status: String(status || '') });
+    },
+    taskPriority(taskId, value) {
+      return post('/api/tasks/priority', { taskId: String(taskId || ''), value: String(value || '') });
+    },
+    taskStartTime(taskId, at) {
+      return post('/api/tasks/start-time', { taskId: String(taskId || ''), at: Number(at) || 0 });
+    },
+    taskEta(taskId, when, action) {
+      return post('/api/tasks/eta', { taskId: String(taskId || ''), when: String(when || ''), action: String(action || 'set') });
+    },
+    taskSchedule(taskId, when, action) {
+      return post('/api/tasks/schedule', { taskId: String(taskId || ''), when: String(when || ''), action: String(action || 'set'), writeBack: true });
+    },
+    workspaceBind(taskId, workspaceId) {
+      return post('/api/workspaces/bind', { taskId: String(taskId || ''), workspaceId: String(workspaceId || '') });
+    },
+    okrApply(items) {
+      return post('/api/overview/okr/apply', { items: Array.isArray(items) ? items : [] });
+    },
+    okrCreate(body) {
+      return post('/api/overview/okr/create', body || {});
+    },
+    okrUpdate(body) {
+      return post('/api/overview/okr/update', body || {});
+    },
     /** 自定义目录：写操作。body 即 { action, ... }。 */
     groupAction(body) {
       return post('/api/workspace-groups', body);

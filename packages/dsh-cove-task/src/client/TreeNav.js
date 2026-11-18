@@ -59,6 +59,8 @@ export function createTreeNav(deps) {
       onCreateCommit,
       onCreateCancel,
       compact = false,
+      /* rail 收起态：只列二级（目录），不展开三级（项目）—— 收起态点目录只是切换范围。 */
+      railCollapsed = false,
     } = props || {}
     /* 二级菜单在 192px 的 rail 里：首层 12px、每层 12px。
        之前是 16 + 10，三级行的可用宽度只有 ~90px，项目名一律被截成「[Demo] 后端工作区 A⋯」。 */
@@ -69,7 +71,7 @@ export function createTreeNav(deps) {
     const rows = tree && Array.isArray(tree.rows) ? tree.rows : []
     const [active, setActive] = useState(() => (tree && tree.selected ? tree.selected.key : 'all'))
 
-    const visible = rows
+    const visible = railCollapsed ? rows.filter((row) => row.kind !== 'project') : rows
     const focusKey = (key) => { pendingFocus.current = true; setActive(key) }
 
     useEffect(() => {
@@ -117,19 +119,22 @@ export function createTreeNav(deps) {
       /* 每一行都有图标（logo），没有配过的用默认图标 —— 这样行首图标槽宽度一致，
          文字自然全部落在同一条左对齐线上（之前只有项目行有图标、其余是 7px 色点，
          标签的起始位置就差开了）。 */
-      const manualLogo = isProject ? normalizeIcon(row.logo) : ''
+      /* 目录/项目都吃手动图标（宿主把 group:<id> 的配置投影到 groups[]），其余行回退自动/默认 */
+      const manualLogo = normalizeIcon(row.logo)
       const auto = autoIconFor(row.label)
       const fallback = row.kind === 'all' ? 'lucide:layers' : (row.ungrouped === true ? 'lucide:inbox' : 'lucide:folder')
       const logoIcon = manualLogo || (auto && auto.icon) || fallback
       /* 目录行：**只有图标是展开/收起的开关**，点名字只是切换范围（用户口径）。
          图标本身是独立命中区（20×20），点它 stopPropagation，不会顺带改范围。 */
       /* 图标 / 名字 / 计数都由 cardParts 提供 —— 与关系图的「项目卡」是同一份组件 */
+      /* 收起态：目录图标不做展开/收起（那会露出三级项目），点它就是选中这个目录 */
+      const canToggle = isGroup && !railCollapsed
       children.push(sideCardIcon(h, {
         icon: logoIcon,
         color: row.ungrouped === true ? undefined : color,
-        toggle: isGroup,
-        iconTitle: isGroup ? (row.collapsed === true ? '展开' : '收起') : undefined,
-        onIconClick: isGroup ? (event) => { event.stopPropagation(); toggleOf(row) } : undefined,
+        toggle: canToggle,
+        iconTitle: canToggle ? (row.collapsed === true ? '展开' : '收起') : undefined,
+        onIconClick: canToggle ? (event) => { event.stopPropagation(); toggleOf(row) } : undefined,
       }))
       children.push(sideCardLabel(h, { label, title: row.path || label }))
       if ((isGroup && !row.ungrouped) || isProject) {

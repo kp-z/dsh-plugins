@@ -339,6 +339,10 @@ export function normalizeGroups(raw) {
       name,
       members,
       labels: isObj(row.labels) ? { ...row.labels } : {},
+      /* 目录图标：宿主把 group:<id> 的配置投影到 groups[]，这里必须原样带过去 ——
+         归一化漏掉它，右键改完图标也永远显示不出来（真机踩过）。 */
+      logo: str(row.logo),
+      logoColor: str(row.logoColor),
       createdAt: num(row.createdAt, 0),
       updatedAt: num(row.updatedAt, 0),
     })
@@ -396,6 +400,9 @@ export function groupByCustom(groups, tasks, workspaces) {
       missingMembers: [],
       projects: [],
       tasks: [],
+      /* 目录图标：宿主把 group:<id> 的配置一起投影到 groups[]（纯本地展示） */
+      logo: def.logo || '',
+      logoColor: def.logoColor || '',
     }
     for (const key of def.members) {
       const project = byKey.get(key)
@@ -616,6 +623,8 @@ export function buildTree(groups, tasks, options) {
       labels: { ...lane.labels },
       missing: lane.missingMembers.length,
       colorOf: { ...lane.colorOf },
+      logo: lane.logo || '',
+      logoColor: lane.logoColor || '',
       collapsed: isCollapsed(key, true),
     }, rootVisible)
     const groupVisible = rootVisible && groupRow.collapsed !== true
@@ -665,8 +674,11 @@ export function rowMenu(row, groups, scope) {
   if (kind === 'all') return [{ id: 'refresh', label: '刷新', kind: 'item' }]
 
   if (kind === 'group') {
-    if (r.ungrouped === true) return [{ id: 'new-group', label: '新建目录', kind: 'item' }]
+    /* 目录也能换图标（用户口径）：key 用 group:<id>，和项目共用同一张本地配置表 */
+    const logoItem = { id: 'logo', label: '设置图标…', kind: 'item', groupId: key }
+    if (r.ungrouped === true) return [logoItem, { id: 'new-group', label: '新建目录', kind: 'item' }]
     return [
+      logoItem,
       { id: 'rename', label: '重命名', kind: 'item', groupId: key },
       { id: 'delete', label: '删除', kind: 'item', groupId: key, danger: true },
       { kind: 'separator' },

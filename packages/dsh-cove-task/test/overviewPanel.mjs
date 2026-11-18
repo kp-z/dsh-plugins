@@ -308,8 +308,14 @@ function makeApi(snapshot, options) {
         return opts.health
       },
     } : {}),
+    ...(typeof opts.okrAuto === 'function' ? { okrAuto: opts.okrAuto } : {}),
     markSessionSeen: async (sessionId, turn) => {
       calls.push({ method: 'markSessionSeen', sessionId, turn })
+      return { ok: true }
+    },
+    /* 项目/目录图标：纯本地展示配置（写操作） */
+    setWorkspaceLogo: async (key, icon, color) => {
+      calls.push({ method: 'setWorkspaceLogo', key, icon, color })
       return { ok: true }
     },
     groupAction: async (body) => {
@@ -700,18 +706,6 @@ check('打开页面在左下：与一级项同一条起始线（左对齐）', (
   const foot = ruleBody('.fo-rail-foot')
   assert.ok(foot.includes('border-top: 1px solid color-mix'), '底部区有分隔线（贴着 rail 底）')
 })
-check('收起态二级菜单留在 rail 里：只显示图标（文字 / 行尾按钮隐藏）', () => {
-  const subnav = ruleBody('.fo-root[data-rail="0"] .fo-subnav')
-  assert.ok(subnav.includes('display: flex'), '不再整块 display:none')
-  const hiddenSelector = '.fo-root[data-rail="0"] .fo-subnav :is(.fo-scope-head, .fo-scope-note, .fo-row-label, .fo-row-menu, .fo-row-count)'
-  assert.ok(ruleBody(hiddenSelector).includes('display: none'), '文字 / 行尾按钮 / 计数在收起态隐藏')
-  for (const name of ['fo-row-label', 'fo-row-menu', 'fo-row-count']) {
-    assert.ok(hiddenSelector.includes(name), name + ' 在隐藏名单里')
-  }
-  const row = ruleBody('.fo-root[data-rail="0"] .fo-subnav .fo-row')
-  assert.ok(row.includes('width: 44px') && row.includes('height: 44px'), '每行是 44×44 的图标钮')
-  assert.ok(row.includes('justify-content: center'), '图标居中')
-})
 check('功能项：高 44 / 圆角 12 / gap 12 / 图标 20 / 文字 14 / 选中 = 品牌 30% 底 + 50% 描边（cove）', () => {
   const item = ruleBody('.fo-featnav-item')
   assert.ok(item.includes('height: 44px'))
@@ -790,7 +784,7 @@ check('画布网格：40px 双层 linear-gradient、线色 border-l1 12%、不�
   assert.ok(root.includes('--fo-grid-line: color-mix(in oklab, var(--dsw-alias-border-l1, var(--dsw-alias-border-l2)) 12%, transparent)'))
 })
 check('节点状态：hover 提亮、选中品牌描边+柔光、聚焦降到 30%、ghost 虚线', () => {
-  assert.ok(ruleBody('.fo-node:hover .fo-node-dom').includes('outline'), 'hover 给容器一圈描边')
+  assert.ok(ruleBody('.fo-node:hover .fo-node-dom').includes('box-shadow'), 'hover 用 inset box-shadow 描边，跟随圆角')
   /* 选中柔光不能再用 SVG filter：foreignObject + drop-shadow 会留竖条纹残影 */
   assert.ok(ruleBody('.fo-node.is-selected').includes('filter: none'), '选中节点不再用 drop-shadow')
   assert.ok(ruleBody('.fo-node.is-selected .fo-node-dom').includes('box-shadow'), '柔光改成卡片 box-shadow')
@@ -1022,12 +1016,17 @@ check('再点一级项展开：二级菜单回来、展开态归位', () => {
   assert.equal(navItem().props['aria-expanded'], 'true')
 })
 
-/* 收起态点一级项：rail 不展开；二级菜单就在它下面以图标列展开。 */
+/* 收起态点一级项：二级（目录列）就地展开在 rail 里；三级（项目）不展开。 */
 {
   const collapsedFx = await mountPanel({ startFeature: 'runs', store: { rail: false } })
   const collapsedRoot = () => rootOf(collapsedFx.tree)
-  const collapsedRail = () => railEl(collapsedFx.tree)
+  const collapsedRailEl = () => railEl(collapsedFx.tree)
   const collapsedNav = (label) => featnavItems(collapsedFx.tree).find((item) => textOf(item).includes(label))
+  const subRows = () => {
+    const sub = byClass(collapsedRailEl(), 'fo-subnav')[0]
+    if (!sub) return []
+    return findAll(sub, (node) => node.kind === 'host' && node.props.role === 'treeitem')
+  }
   check('收起态：rail 是 data-rail=0，二级菜单先不渲染', () => {
     assert.equal(collapsedRoot().props['data-rail'], '0')
     assert.equal(byClass(collapsedFx.tree, 'fo-subnav').length, 0, '收起态没有二级菜单')
@@ -1035,32 +1034,32 @@ check('再点一级项展开：二级菜单回来、展开态归位', () => {
   })
   collapsedNav('看板').props.onClick()
   collapsedFx.tree = await collapsedFx.mini.act()
-  check('收起态点「看板」：rail 保持收起，二级菜单在下面以图标列出现', () => {
-    assert.equal(collapsedRoot().props['data-rail'], '0', '侧栏没有被点开')
+  check('收起态点「看板」：目录列就地长在 rail 里，rail 宽度不变、页面也不切', () => {
+    assert.equal(collapsedRoot().props['data-rail'], '0', '侧栏没有被展开（还是 80px 图标条）')
     assert.equal(collapsedFx.store.data.get('rail'), false, 'store 里的收起态不变')
-    const subs = byClass(collapsedRail(), 'fo-subnav')
-    assert.equal(subs.length, 1, '二级菜单就挂在 rail 里（不是浮层）')
-    assert.ok(byClass(subs[0], 'fo-dot').length >= 5, '图标列（每个范围一个图标）')
-    assert.ok(treeItems(collapsedFx.tree).length >= 5, '同一棵树，行还能点/右键')
+    assert.equal(byClass(collapsedRailEl(), 'fo-subnav').length, 1, '二级菜单挂在 rail 里')
+    assert.ok(subRows().length >= 2, '目录行都在（收起态只列目录）')
+    assert.equal(collapsedRoot().props['data-feature'], 'runs', '只展开菜单，不擅自切页')
     assert.equal(collapsedNav('看板').props['aria-expanded'], 'true')
-    assert.equal(collapsedNav('看板').props['data-expanded'], '1')
-    assert.equal(collapsedRoot().props['data-feature'], 'runs', '只打开菜单，不擅自切页')
   })
-  collapsedNav('看板').props.onClick()
-  collapsedFx.tree = await collapsedFx.mini.act()
-  check('再点「看板」：图标列收起，rail 仍收起', () => {
-    assert.equal(byClass(collapsedFx.tree, 'fo-subnav').length, 0)
-    assert.equal(collapsedRoot().props['data-rail'], '0')
-    assert.equal(collapsedNav('看板').props['aria-expanded'], 'false')
+  check('收起态没有三级：目录列里只有目录行，没有项目行', () => {
+    const kinds = new Set(subRows().map((row) => row.props['data-kind']))
+    assert.deepEqual([...kinds], ['group'], '只渲染 group（项目在收起态不展开）')
+    assert.equal(findAll(collapsedRailEl(), (node) => node.kind === 'host' && node.props['data-kind'] === 'project').length, 0)
   })
-  collapsedNav('看板').props.onClick()
-  collapsedFx.tree = await collapsedFx.mini.act()
   rowByDataId(collapsedFx.tree, 'g1').props.onClick()
   collapsedFx.tree = await collapsedFx.mini.act()
-  check('图标列里点中一页：切到看板页，rail 仍收起', () => {
-    assert.equal(collapsedRoot().props['data-rail'], '0', '侧栏仍然收起')
-    assert.equal(collapsedRoot().props['data-feature'], 'graph', '正文切到看板页')
-    assert.ok(graphSections(collapsedFx.tree).length > 0)
+  check('收起态点目录行：切到该目录的看板页，rail 仍收起、三级仍然不展开', () => {
+    assert.equal(collapsedRoot().props['data-rail'], '0')
+    assert.equal(collapsedRoot().props['data-feature'], 'graph')
+    const kinds = new Set(subRows().map((row) => row.props['data-kind']))
+    assert.deepEqual([...kinds], ['group'], '还是没有项目行')
+  })
+  collapsedNav('看板').props.onClick()
+  collapsedFx.tree = await collapsedFx.mini.act()
+  check('再点「看板」：目录列收起', () => {
+    assert.equal(byClass(collapsedFx.tree, 'fo-subnav').length, 0)
+    assert.equal(collapsedRoot().props['data-rail'], '0')
   })
 }
 
@@ -1226,11 +1225,12 @@ check('详情面板默认不出现（rail 也是 aside，所以只数 .fo-detail
 })
 taskNodes(tree)[0].props.onClick()
 tree = await main.mini.act()
-check('点节点只聚焦、不弹详情（不与建议侧栏打架）', () => {
-  assert.equal(detailEls(tree).length, 0, '点击不该弹详情')
+check('点节点 = 聚焦 + 打开右侧详情（与 Plan/Workflow 统一）', () => {
+  assert.equal(detailEls(tree).length, 1, '点击应打开详情')
   assert.equal(taskNodes(tree)[0].props['data-focused'], '1', '点击后节点聚焦')
+  assert.equal(rootOf(tree).props['data-detail'], '1', '打开详情后右侧 dock 出现')
 })
-/* 键盘 Enter 才是看单任务详情的入口（点击已改成只聚焦） */
+/* 键盘 Enter 仍是打开详情的快捷入口 */
 const secondNode = taskNodes(tree)[1] || taskNodes(tree)[0]
 secondNode.props.onKeyDown({ key: 'Enter', preventDefault() {} })
 tree = await main.mini.act()
@@ -1400,9 +1400,9 @@ const PANEL_CARD = layout.CARD
   const viewBeforeFocus = viewportOf(ft) && viewportOf(ft).props.transform
   nodeById('a1').props.onClick()
   ft = await fx.mini.act()
-  check('点节点 = 聚焦：不弹详情、焦点节点 aria-current=focused 且高亮', () => {
+  check('点节点 = 聚焦 + 打开详情：焦点节点 aria-current=focused 且高亮', () => {
     assert.equal(viewportOf(ft) && viewportOf(ft).props.transform, viewBeforeFocus, '聚焦不能平移画布（否则卡片会被推出可视区）')
-    assert.equal(detailEls(ft).length, 0)
+    assert.equal(detailEls(ft).length, 1)
     const focused = nodeById('a1')
     assert.equal(focused.props['data-focused'], '1')
     assert.equal(focused.props['data-dimmed'], '0')
@@ -2017,6 +2017,26 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   })
 }
 
+/* ---- 建议只出建议：打开建议栏绝不自动写 O/KR ---- */
+{
+  const okrCalls = []
+  const fx = await mountPanel({
+    okrAuto: (ids) => {
+      okrCalls.push(ids)
+      return Promise.resolve({ ok: true, assigned: 99 })
+    },
+  })
+  let ft = fx.tree
+  ORGANIZE_TRIGGER(ft).props.onClick()
+  ft = await fx.mini.act()
+  check('打开建议栏不调用 O/KR 自动配置接口，也不出现自动配置提示', () => {
+    assert.equal(okrCalls.length, 0, '建议流程不能自动写 O/KR；必须等人确认')
+    assert.equal(byClass(ft, 'fo-org-okr').length, 0, '建议面板里不再有自动配置状态')
+    const pageNotes = findAll(ft, (node) => node.kind === 'host' && classNameOf(node).split(/\s+/).includes('fo-note'))
+    assert.equal(pageNotes.some((node) => textOf(node).includes('O/KR')), false, '正文页头也不该出现 O/KR 提示')
+  })
+}
+
 {
   /* 旧宿主：没有 organize 接口 → 按钮不渲染（而不是点了报错） */
   const fx = await mountPanel({ noOrganize: true })
@@ -2277,27 +2297,48 @@ check('目录行右键：重命名 / 删除 / 分隔线 / 新建目录', () => {
   const menu = menus(tree)[0]
   assert.ok(menu)
   const items = menuItemsOf(menu)
-  assert.deepEqual(items.map((item) => item.props['data-id']), ['rename', 'delete', 'new-group'])
-  assert.equal(items[1].props['data-danger'], '1')
+  assert.deepEqual(items.map((item) => item.props['data-id']), ['logo', 'rename', 'delete', 'new-group'])
+  assert.equal(items[2].props['data-danger'], '1')
   assert.ok(textOf(menu).includes('重命名') && textOf(menu).includes('删除') && textOf(menu).includes('新建目录'))
 })
-check('未分组行右键：只有「新建目录」', () => {
+check('未分组行右键：设置图标 + 新建目录', () => {
   rowByDataId(tree, '__ungrouped__').props.onContextMenu({ preventDefault() {}, clientX: 20, clientY: 20 })
 })
 tree = await main.mini.act()
 check('未分组菜单项 = [new-group]', () => {
   const items = menuItemsOf(menus(tree)[0])
-  assert.deepEqual(items.map((item) => item.props['data-id']), ['new-group'])
+  assert.deepEqual(items.map((item) => item.props['data-id']), ['logo', 'new-group'])
 })
-/* 关掉当前菜单（点菜单外） */
-menus(tree)[0].props.onKeyDown({ key: 'Escape', preventDefault() {} })
+
+/* ---- 目录也能换图标：右键 → 设置图标… → 选择器 → setWorkspaceLogo(group:<id>) ---- */
+rowByDataId(tree, 'g1').props.onContextMenu({ preventDefault() {}, clientX: 30, clientY: 40 })
 tree = await main.mini.act()
+menuItemsOf(menus(tree)[0]).find((item) => item.props['data-id'] === 'logo').props.onClick()
+tree = await main.mini.act()
+check('目录右键「设置图标…」→ 打开选择器（副标题是目录名）', () => {
+  const dialog = findAll(tree, (node) => node.kind === 'host' && node.props.role === 'dialog' && node.props['aria-label'] === '设置项目图标')[0]
+  assert.ok(dialog, '选择器没打开')
+  assert.ok(textOf(dialog).includes('Demo'), textOf(dialog).slice(0, 80))
+})
+const logoCells = byClass(tree, 'fo-logo-cell')
+logoCells[0].props.onClick()
+tree = await main.mini.act()
+check('选图标后写入 group:<id>（不是裸的 g1）', () => {
+  const call = main.api.calls.filter((c) => c.method === 'setWorkspaceLogo').pop()
+  assert.ok(call, '没有调用 setWorkspaceLogo')
+  assert.equal(call.key, 'group:g1')
+  assert.match(String(call.icon), /^lucide:/)
+})
+check('选完选择器自动关闭', () => {
+  assert.equal(findAll(tree, (node) => node.kind === 'host' && node.props['aria-label'] === '设置项目图标').length, 0)
+})
+/* 菜单在打开选择器时已经关掉了（runMenu 第一步 setMenu(null)） */
 
 /* ---- 7. 菜单 rename → groupAction 被调用 ---- */
 check('菜单已关闭', () => { assert.equal(menus(tree).length, 0) })
 rowByDataId(tree, 'g1').props.onContextMenu({ preventDefault() {}, clientX: 30, clientY: 40 })
 tree = await main.mini.act()
-menuItemsOf(menus(tree)[0])[0].props.onClick()
+menuItemsOf(menus(tree)[0]).find((item) => item.props['data-id'] === 'rename').props.onClick()
 tree = await main.mini.act()
 check('点「重命名」→ 出现就地输入框（不是弹窗）', () => {
   const input = findAll(tree, (node) => node.kind === 'host' && node.type === 'input' && node.props['aria-label'] === '目录名')
@@ -2345,7 +2386,7 @@ featnavItems(failTree).find((item) => textOf(item).includes('看板')).props.onC
 failTree = await failing.mini.act()
 rowByDataId(failTree, 'g1').props.onContextMenu({ preventDefault() {}, clientX: 30, clientY: 40 })
 failTree = await failing.mini.act()
-menuItemsOf(menus(failTree)[0])[1].props.onClick() // 删除
+menuItemsOf(menus(failTree)[0]).find((item) => item.props['data-id'] === 'delete').props.onClick()
 failTree = await failing.mini.act()
 check('groupAction 抛错 → 出现 role=alert 的提示条，且带宿主给的文案', () => {
   const alerts = alertBoxes(failTree)
@@ -2993,9 +3034,20 @@ check('CSS 只引用宿主那 14 个令牌', () => {
   assert.equal(used.length, 14)
 })
 check('CSS 的选择器都以 fo- 类为根（状态类只作为 .fo-x 的复合修饰，不污染宿主）', () => {
-  const roots = [...new Set((CSS.match(/(?:^|[\s,>+~(])\.([a-zA-Z][a-zA-Z0-9_-]*)/gm) || []).map((hit) => hit.replace(/^[\s,>+~(.]*/, '')))]
-  assert.ok(roots.length > 20)
-  assert.deepEqual(roots.filter((name) => !name.startsWith('fo-')), [])
+  /* 只看每条选择器的**根类**：.fo-taskcard-host .task-meta 这种「在 fo- 容器里使用宿主类名」
+     不会污染外面，按原来的「所有类都必须 fo- 开头」会误报。 */
+  const bare = CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+  const selectors = [...bare.matchAll(/([^{}]+)\{/g)]
+    .map((match) => match[1])
+    .flatMap((head) => head.split(','))
+    .map((part) => part.trim())
+    .filter((part) => part && !part.startsWith('@'))
+  const roots = selectors.map((selector) => {
+    const hit = selector.match(/\.([a-zA-Z][a-zA-Z0-9_-]*)/)
+    return hit ? hit[1] : ''
+  }).filter(Boolean)
+  assert.ok(roots.length > 20, '选择器数量不对：' + roots.length)
+  assert.deepEqual([...new Set(roots)].filter((name) => !name.startsWith('fo-')), [])
 })
 
 /* ---- 12. 防回退红线：模块顶层不 import react ---- */

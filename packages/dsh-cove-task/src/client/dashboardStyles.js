@@ -76,10 +76,12 @@ export const CSS = `
 /* ============ 活跃日历（GitHub 贡献图：周列 × 7 行 + 月标 + 图例） ============ */
 .fd-cal { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
 /* 日历固定一栏（27 周 × 10px ≈ 340）：热力图不需要占满整卡，右边留给 AI 提示 */
-.fd-cal-main { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; min-height: 0; }
-.fd-cal-calendar { flex: 0 0 auto; width: 342px; max-width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.fd-cal-main { display: flex; gap: 18px; align-items: flex-start; flex-wrap: nowrap; min-height: 0; }
+/* 卡片变窄时：日历让位（格子跟着缩），提示语始终在右边 —— 换行的是文字，不是这一行 */
+.fd-cal-calendar { flex: 0 1 342px; min-width: 168px; display: flex; flex-direction: column; gap: 6px; }
 .fd-cal-hints {
-  flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+  /* 提示语有下限宽度：再窄就让日历缩，而不是把字挤成一列 */
+  flex: 1 1 0; min-width: 140px; display: flex; flex-direction: column; gap: 6px;
   padding-left: 16px; border-left: 1px solid var(--fd-line); justify-content: center;
 }
 .fd-cal-hints-head { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--fd-dim); }
@@ -88,6 +90,7 @@ export const CSS = `
   color: var(--fd-brand); background: color-mix(in oklab, var(--fd-brand) 16%, transparent);
 }
 .fd-cal-hints-list { margin: 0; padding-left: 14px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; line-height: 1.45; color: var(--fd-text); }
+.fd-cal-hints-list li { overflow-wrap: anywhere; word-break: break-word; }
 .fd-cal-hints-list li::marker { color: var(--fd-dim); }
 .fd-cal-scroll { overflow-x: auto; overflow-y: hidden; min-height: 0; scrollbar-width: thin; }
 /* 两列：左边星期标签，右边月标 + 周网格；列数由 --fd-cal-weeks 决定，格子 1fr 撑满卡片宽度 */

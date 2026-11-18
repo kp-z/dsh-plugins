@@ -17,6 +17,12 @@ const extract = name => {
   assert.ok(match, `production function ${name} must exist`)
   return match[0]
 }
+/* 模块级（0 缩进）的纯函数：load() 现在也要归一化 state.okr。 */
+const extractTop = name => {
+  const match = source.match(new RegExp('function ' + name + '\\([^]*?\\n}'))
+  assert.ok(match, `production module function ${name} must exist`)
+  return match[0]
+}
 const defaults = source.match(/const DEFAULT_STATE = \{[^]*?\n}/)
 assert.ok(defaults, 'production DEFAULT_STATE must exist')
 const plain = value => JSON.parse(JSON.stringify(value))
@@ -88,7 +94,7 @@ function harness(current, old = legacy) {
   })
   vm.createContext(h)
   h.feishuTaskNo = () => 0
-  vm.runInContext(defaults[0] + '\n' + ['load', 'persistState', 'creationPending', 'normalizeTask', 'createTaskDoc', 'createTaskFromSession'].map(extract).join('\n'), h)
+  vm.runInContext(defaults[0] + '\n' + extractTop('normalizeOkrMeta') + '\n' + ['load', 'persistState', 'creationPending', 'normalizeTask', 'createTaskDoc', 'createTaskFromSession'].map(extract).join('\n'), h)
   return { h, reads, writes, adoptionCalls, effects, logs }
 }
 

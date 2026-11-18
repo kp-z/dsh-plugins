@@ -284,6 +284,12 @@ const persisted = JSON.parse(await readFile(stateFile, 'utf8'))
 check('分组落盘（state.json 里有 workspaceGroups）', Array.isArray(persisted.workspaceGroups) && persisted.workspaceGroups.length === 1)
 check('落盘内容与接口一致', persisted.workspaceGroups[0].members.length === 2)
 
+/* 目录图标的数据面：groups[] 要带 logo / logoColor（右键设置图标后靠它回读） */
+{
+  const groups = (await json('/api/overview')).data.groups || []
+  const group = groups[0] || {}
+  check('GET /api/overview 的 groups 带 logo / logoColor 字段', 'logo' in group && 'logoColor' in group, JSON.stringify({ id: group.id, logo: group.logo }))
+}
 const dropped = await post({ action: 'delete', id: groupId })
 check('delete 之后目录清空', dropped.status === 200 && dropped.data.groups.length === 0)
 
