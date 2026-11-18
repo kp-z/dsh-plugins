@@ -88,6 +88,12 @@ importers:
       dagre-d3-es:
         specifier: ^7.0.14
         version: 7.0.14
+      react:
+        specifier: 18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: 18.3.1
+        version: 18.3.1(react@18.3.1)
       rolldown:
         specifier: 1.2.5
         version: 1.2.5
