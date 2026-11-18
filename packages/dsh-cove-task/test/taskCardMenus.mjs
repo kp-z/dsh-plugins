@@ -37,6 +37,7 @@ class Node {
   removeEventListener(type) { delete this.listeners[type] }
   remove() { if (this.parentNode) { const i = this.parentNode.children.indexOf(this); if (i >= 0) this.parentNode.children.splice(i, 1); this.parentNode = null } }
   focus() { this.focused += 1 }
+  contains(node) { let cur = node; while (cur) { if (cur === this) return true; cur = cur.parentNode } return false }
   click() { if (this.listeners.click) this.listeners.click() }
   get text() { return (this.textContent || '') + this.children.map((c) => (typeof c === 'string' ? c : c.text)).join('') }
 }
@@ -123,6 +124,12 @@ check('Escape 关闭并归还焦点', () => {
   assert.equal(doc.body.children.length, 0)
   assert.equal(localAnchor.focused, 1)
   assert.equal(menu.parentNode, null)
+})
+check('菜单内部 mousedown 不关闭（否则点选项永远不会触发）', () => {
+  const doc = makeDoc()
+  const { menu } = openPriorityMenu(anchor, 'P0', () => {}, { document: doc, el })
+  doc.fire('mousedown', { target: menu.children[1] })
+  assert.equal(doc.body.children.length, 1)
 })
 check('外部点击关闭', () => {
   const doc = makeDoc()

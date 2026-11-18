@@ -715,7 +715,12 @@ export function createGraphView(deps) {
         const dimmed = anyFocused && node.id !== focusedId
         const card = cardGeometry({ ...node, x: pos.x, y: pos.y })
         /* 点击卡片 = 聚焦（高亮节点 + 相关边 + 其余降透明度），不再弹详情侧栏，避免与建议侧栏打架。 */
-        const activate = () => { if (interactive && typeof onFocusTask === 'function') onFocusTask(node.id) }
+        /* 与 ReactFlow 视图统一：单击任务卡 = 选中 + 打开右侧详情。 */
+        const activate = () => {
+          if (!interactive) return
+          if (typeof onFocusTask === 'function') onFocusTask(node.id)
+          if (typeof onOpenTask === 'function') onOpenTask(node.id, node)
+        }
         const state = String(node.state || 'ghost')
         const tip = `${node.fullTitle || node.id}${node.ghost ? (node.missing ? '（任务不存在，仅剩关系）' : '（属于其它分组）') : ''}`
         /* 所有节点（含 ghost）都是同一张面板卡：内容变了才重建（签名不变就复用）。 */

@@ -251,8 +251,20 @@ export const CSS = `
 }
 .fo-subnav .fo-scope { border-right: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .fo-subnav .fo-scope-head { padding: 2px 12px 4px; border-bottom: 0; }
-.fo-subnav .fo-scope-body { padding: 0; }
+/* 底部留 4px：外框用 ::before 的 -4px 画，滚动容器（overflow:auto）会把它裁掉。 */
+.fo-subnav .fo-scope-body { padding: 0 0 4px; }
 .fo-subnav .fo-scope-list { display: flex; flex-direction: column; gap: 8px; }
+/* 二级菜单外面一层边缘：把「看板」下面这些 tab 框成一组，表示它们属于这个一级菜单。
+   用绝对定位伪元素画框，不参与布局 —— 不挤占项目名宽度，也不改变行的左对齐。 */
+.fo-subnav .fo-scope-list { position: relative; }
+.fo-subnav .fo-scope-list::before {
+  content: ''; position: absolute; inset: -4px 0; border-radius: 14px;
+  border: 1px solid ${g(T.label1, 10)};
+  background: ${g(T.label1, 2)};
+  pointer-events: none;
+}
+.fo-subnav .fo-scope-list > * { position: relative; z-index: 1; }
+
 
 /* 行 = 一级项的同一套取值（只是字号交给 CSS 变量，视觉上和 rail 一级项没有区别） */
 .fo-subnav .fo-row {
@@ -337,9 +349,13 @@ export const CSS = `
 .fo-subnav .fo-row-menu:hover { background: ${g(T.label1, 8)}; color: ${T.label1}; }
 
 .fo-subnav .fo-scope-note { padding: 2px 12px 6px; font-size: 11px; color: ${g(T.label2, 70)}; }
-.fo-subnav .fo-input { height: 30px; border-radius: 8px; }
-/* 收起态：二级菜单也不展开 rail，就留在「看板」下面做成图标列。
-   行仍是原来的树行（点行选范围 / 点目录图标展开 / 右键菜单都在），只把文字与行尾按钮藏掉。 */
+/* 说明：折叠在品牌 logo 上，刷新在正文头部；底部固定区只留「在浏览器打开」。 */
+/* rail 收起：只留 56px 图标条（按钮仍可点，能再展开） */
+/* rail 收起：只留 52px 图标条。**caret 必须一起藏**——只藏文字、留着 ▾ 会让图标偏左，
+   用户实测「折叠时图标没对齐」就是这么来的。 */
+.fo-root[data-rail="0"] { --fo-rail-w: 80px; --fo-rail-item: 44px; }
+/* 收起态：二级菜单（目录列）留在「看板」下面，做成图标列 —— 不是浮层，rail 宽度也不变。
+   三级（项目）在收起态不展开：TreeNav 收到 railCollapsed 时直接不渲染项目行。 */
 .fo-root[data-rail="0"] .fo-subnav { display: flex; padding: 4px 0 0; gap: 2px; }
 .fo-root[data-rail="0"] .fo-subnav :is(.fo-scope-head, .fo-scope-note, .fo-row-label, .fo-row-menu, .fo-row-count) { display: none; }
 .fo-root[data-rail="0"] .fo-subnav .fo-row {
@@ -352,11 +368,16 @@ export const CSS = `
   margin: 2px 0 0; padding: 0; background: transparent;
 }
 .fo-root[data-rail="0"] .fo-subnav .fo-dot.is-logo { flex: 0 0 20px; }
-/* 说明：折叠在品牌 logo 上，刷新在正文头部；底部固定区只留「在浏览器打开」。 */
-/* rail 收起：只留 56px 图标条（按钮仍可点，能再展开） */
-/* rail 收起：只留 52px 图标条。**caret 必须一起藏**——只藏文字、留着 ▾ 会让图标偏左，
-   用户实测「折叠时图标没对齐」就是这么来的。 */
-.fo-root[data-rail="0"] { --fo-rail-w: 80px; --fo-rail-item: 44px; }
+/* 收起态外框：顶边拉直（不做圆角），像从上面那个一级项挂下来的一列 */
+.fo-root .fo-subnav .fo-scope-list::before { border-radius: 0 0 14px 14px; }
+/* 外框的两条侧线接到一级项的外边框：去掉顶边那条横线，并把展开态一级项的
+   底角拉平 —— 看起来就是「这一个 tab 下面挂着一列」。 */
+.fo-root .fo-subnav .fo-scope-list::before { border-top-width: 0; }
+.fo-root .fo-featnav-item[data-expandable="1"][data-expanded="1"] {
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+
+
 /* 收起态：logo 与下面的一级项**同尺寸正方形**（36×36 / 圆角 10），整条 rail 只留图标列 */
 .fo-root[data-rail="0"] .fo-brand { justify-content: center; padding: 8px 0; }
 /* 收起态 logo：必须显式改 flex-basis —— 基础规则里的 flex 是 0 0 40px，
@@ -904,8 +925,9 @@ export const CSS = `
 /* 拖动中：节点位置改走 <g> 的 transform（见 GraphView），拖动时把节点提升成独立合成层（will-change），
    并去掉阴影/过渡/filter —— foreignObject 里的 box-shadow / drop-shadow 在 Chromium 里会留下一层「残影」。 */
 .fo-node.is-dragging { filter: none; transition: none; will-change: transform; }
-.fo-node.is-dragging .fo-node-dom { outline: none; }
+.fo-node.is-dragging .fo-node-dom { outline: none; box-shadow: none; }
 .fo-node.is-dragging .fo-node-dom * { box-shadow: none; transition: none; }
+
 
 /* ============ 节点卡片：foreignObject 里的面板卡 ============
    卡片本体（描边/圆角/间距）由 src/card/taskCardStyles.js 提供；这里只画「画布这一层」的
@@ -940,25 +962,114 @@ export const CSS = `
   --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
   --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
 }
+.fo-menu-scope {
+  --tc-bg: var(--dsw-alias-bg-base);
+  --tc-card: var(--dsw-alias-bg-layer-1);
+  --tc-text: var(--dsw-alias-label-primary);
+  --tc-text-1: var(--dsw-alias-label-primary);
+  --tc-text-2: var(--dsw-alias-label-secondary);
+  --tc-text-3: var(--dsw-alias-label-secondary);
+  --tc-sub: var(--dsw-alias-bg-layer-2);
+  --tc-line: var(--dsw-alias-border-l1);
+  --tc-line-hover: var(--dsw-alias-border-l2);
+  --tc-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
+  --tc-select: color-mix(in oklab, var(--dsw-alias-brand-primary) 8%, transparent);
+  --tc-accent: var(--dsw-alias-brand-primary);
+  --tc-accent-text: var(--dsw-alias-brand-primary);
+  --tc-accent-weak: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
+  --tc-accent-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 32%, transparent);
+  --tc-ok: var(--dsw-alias-state-success-primary);
+  --tc-ok-weak: color-mix(in oklab, var(--dsw-alias-state-success-primary) 14%, transparent);
+  --tc-ok-line: color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, transparent);
+  --tc-warn: var(--dsw-alias-state-warn-primary);
+  --tc-warn-weak: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 14%, transparent);
+  --tc-warn-line: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 32%, transparent);
+  --tc-danger: var(--dsw-alias-state-error-primary);
+  --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
+  --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
+}
 .fo-node-dom > * { height: 100%; box-sizing: border-box; }
-.fo-node:hover .fo-node-dom { outline: 1px solid ${g(T.label1, 18)}; outline-offset: -1px; }
+.fo-node:hover .fo-node-dom { box-shadow: inset 0 0 0 1px ${g(T.label1, 18)}; }
 /* 选中态不要用 SVG filter：foreignObject 上的 drop-shadow 在 Chromium 合成层里会留下竖条纹残影。
    改成卡片的 box-shadow（在 foreignObject 内部，安全）。 */
 .fo-node.is-selected { filter: none; }
 .fo-node.is-selected .fo-node-dom {
-  outline: 1px solid ${T.brand}; outline-offset: -1px;
-  box-shadow: 0 0 10px ${g(T.brand, 35)};
+  box-shadow: inset 0 0 0 1px ${T.brand}, 0 0 10px ${g(T.brand, 35)};
 }
 /* 状态只给一个安静的提示：阻塞/挂起时描边带一点状态色，扫一眼画布就能找到卡住的那几张 */
-.fo-node[data-state="blocked"] .fo-node-dom { outline: 1px solid ${g(T.error, 34)}; outline-offset: -1px; }
-.fo-node[data-state="suspended"] .fo-node-dom { outline: 1px solid ${g(T.warn, 32)}; outline-offset: -1px; }
+.fo-node[data-state="blocked"] .fo-node-dom { box-shadow: inset 0 0 0 1px ${g(T.error, 34)}; }
+.fo-node[data-state="suspended"] .fo-node-dom { box-shadow: inset 0 0 0 1px ${g(T.warn, 32)}; }
 /* ghost（不在本分组的任务）：虚线框，不可点 */
 .fo-node.is-ghost .fo-node-dom { box-sizing: border-box; border: 1px dashed ${g(T.idle, 55)}; }
 /* 聚焦：选中的卡片是主角，其余降透明度（hover 回一点，仍可点） */
 .fo-node.is-dimmed { opacity: .3; }
 .fo-node.is-dimmed:hover { opacity: .75; }
 .fo-node:focus-visible { outline: none; }
-.fo-node:focus-visible .fo-node-dom { outline: 2px solid ${T.brand}; outline-offset: -2px; }
+.fo-node:focus-visible .fo-node-dom { box-shadow: inset 0 0 0 2px ${T.brand}; }
+
+
+/* ============ 卡片字段就地编辑 ============ */
+.fo-fieldedit-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in oklab, var(--dsw-alias-bg-base) 55%, transparent); backdrop-filter: blur(3px); }
+.fo-fieldedit { width: min(380px, 92vw); display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--fo-glass-line); background: var(--fo-glass-card); box-shadow: var(--fo-glass-shadow); backdrop-filter: var(--fo-glass-blur); }
+.fo-fieldedit-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fo-fieldedit-close { width: 24px; height: 24px; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 18px; cursor: pointer; }
+.fo-fieldedit-close:hover { background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); color: var(--dsw-alias-label-primary); }
+.fo-fieldedit-task { font-size: 11px; color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-fieldedit-input { width: 100%; height: 32px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid var(--fo-glass-line); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; }
+.fo-fieldedit-label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
+.fo-fieldedit-choices { display: flex; flex-wrap: wrap; gap: 5px; }
+.fo-fieldedit-choice { height: 28px; min-width: 38px; border-radius: 7px; border: 1px solid var(--fo-glass-line); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11px; cursor: pointer; }
+.fo-fieldedit-choice[data-active="1"] { color: var(--dsw-alias-brand-primary); border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 35%, transparent); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 10%, transparent); }
+.fo-fieldedit-error { font-size: 11px; color: var(--dsw-alias-state-error-primary); }
+.fo-fieldedit-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 2px; }
+
+/* ============ 右侧单 dock：详情 / 建议互斥切换 ============ */
+   不再让详情 + 建议各占一列；窄容器下也不会把建议挤到正文下面。 */
+.fo-root[data-rightdock="1"] .fo-body {
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 34%, 380px) !important;
+}
+.fo-rightdock {
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; height: 100%;
+  border-left: 1px solid var(--fo-glass-line);
+  background: var(--fo-glass-card);
+  backdrop-filter: var(--fo-glass-blur);
+  -webkit-backdrop-filter: var(--fo-glass-blur);
+  overflow: hidden;
+}
+.fo-rightdock-tabs {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 2px;
+  padding: 7px 10px 0; border-bottom: 1px solid var(--fo-glass-line);
+}
+.fo-rightdock-tab {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 27px; padding: 0 10px;
+  border: 0; border-radius: 8px 8px 0 0;
+  font: inherit; font-size: 11px; font-weight: 600;
+  color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer;
+}
+.fo-rightdock-tab:hover { color: var(--dsw-alias-label-primary); background: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent); }
+.fo-rightdock-tab[data-active="1"] { color: var(--dsw-alias-brand-primary); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 9%, transparent); }
+.fo-rightdock-badge {
+  min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: var(--dsw-alias-bg-base); background: var(--dsw-alias-brand-primary);
+}
+.fo-rightdock > .fo-detail,
+.fo-rightdock > .fo-organize {
+  flex: 1 1 auto; min-height: 0; height: auto;
+  border-left: 0; border-radius: 0; box-shadow: none;
+}
+.fo-rightdock > .fo-organize {
+  position: relative !important;
+  width: auto !important;
+  max-width: none !important;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.fo-rightdock .fo-org-resize,
+.fo-rightdock .fo-org-head-actions [data-action="dock"] { display: none; }
 
 /* ============ 右栏：详情（独立玻璃层） ============ */
 .fo-detail {
@@ -970,6 +1081,12 @@ export const CSS = `
   backdrop-filter: var(--fo-glass-blur);
   -webkit-backdrop-filter: var(--fo-glass-blur);
 }
+.fo-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.fo-detail-head .fo-detail-eyebrow { flex: 1 1 auto; min-width: 0; padding-top: 4px; }
+.fo-detail-top-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; max-width: 62%; }
+.fo-detail-top-actions .fo-btn { height: 24px; padding: 0 7px; font-size: 10px; }
+.fo-detail-close { width: 24px; padding: 0 !important; font-size: 16px !important; line-height: 1; }
+.fo-detail-close-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .fo-detail-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: ${T.label2}; }
 .fo-detail-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.45; word-break: break-word; }
 .fo-kv { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; margin: 0; font-size: 12px; }
@@ -1020,7 +1137,6 @@ export const CSS = `
 .fo-ref-kind { flex: 0 0 auto; font-size: 10px; color: ${T.label2}; }
 .fo-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fo-muted { margin: 0; font-size: 12px; color: ${T.label2}; }
-.fo-detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; }
 
 /* ============ 右栏：一键整理建议抽屉（task-16） ============
    每条建议 = 一次「改一条关系」的动作，所以卡片上必须同时有：类型徽标、两端标题、模型自评的把握、
@@ -1215,6 +1331,8 @@ export const CSS = `
 .fo-org-item-actions { display: flex; align-items: center; gap: 8px; }
 .fo-org-done { font-size: 11px; color: ${T.label2}; }
 .fo-org-empty { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
+.fo-org-empty.is-loading { display: flex; align-items: center; gap: 6px; }
+.fo-org-empty.is-loading .fo-spinner { width: 12px; height: 12px; border-width: 2px; }
 .fo-org-dropped { display: flex; flex-direction: column; gap: 6px; }
 .fo-org-dropped > .fo-btn { align-self: flex-start; }
 .fo-org-dropped-list { display: flex; flex-direction: column; gap: 4px; }
@@ -1252,16 +1370,287 @@ export const CSS = `
 }
 
 /* React Flow：只用它的连接点算边端点，不把连接点画出来 */
+
+/* ============ 视图切换：画布 / 列表 ============ */
+.fo-view-switch {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 12%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-bg-base) 45%, transparent);
+}
+.fo-view-btn {
+  height: 26px; padding: 0 10px; border: 0; border-radius: 8px;
+  font: inherit; font-size: 11px; color: var(--dsw-alias-label-secondary);
+  background: transparent; cursor: pointer;
+}
+.fo-view-btn:hover { color: var(--dsw-alias-label-primary); background: color-mix(in oklab, var(--dsw-alias-label-primary) 6%, transparent); }
+.fo-view-btn[data-active="1"] {
+  color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--dsw-alias-label-primary) 14%, transparent);
+}
+/* ============ 列表模式：按状态分组的任务看板 ============ */
+.fo-board-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--dsw-alias-label-secondary); }
+.fo-opp-content { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; height: 360px; min-height: 0; padding: 12px 16px 16px; overflow: hidden; }
+.fo-flow-graph.is-solo .fo-opp-content { flex: 1 1 auto; height: auto; }
+
+.fo-opp-empty {
+  display: flex; align-items: center; justify-content: center;
+  flex: 1 1 auto; min-height: 140px; padding: 18px;
+  font-size: 12px; color: var(--dsw-alias-label-secondary);
+}
+/* OKR */
+.fo-okr-list { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px; }
+.fo-okr-overview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 4px; flex-wrap: wrap; }
+.fo-okr-overview-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.fo-okr-overview-head h2 { margin: 0; font-size: 20px; font-weight: 900; letter-spacing: -.025em; color: var(--dsw-alias-label-primary); }
+.fo-okr-overview-head span { font-size: 10px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+.fo-scope-chip { flex: 0 0 auto; max-width: 260px; height: 24px; padding: 0 8px; border: 1px solid color-mix(in oklab, var(--dsw-alias-brand-primary) 30%, transparent); border-radius: 6px; background: color-mix(in oklab, var(--dsw-alias-brand-primary) 10%, transparent); color: var(--dsw-alias-brand-primary); font: inherit; font-size: 9px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.fo-okr-overview-actions { display: flex; align-items: center; gap: 8px; }
+.fo-okr-refresh { height: 30px; padding: 0 13px; border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 12%, transparent); border-radius: 9px; background: color-mix(in oklab, var(--dsw-alias-label-primary) 4%, transparent); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.fo-okr-refresh:hover { color: var(--dsw-alias-label-primary); background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); }
+.fo-okr-new { height: 30px; padding: 0 14px; border: 0; border-radius: 9px; background: var(--dsw-alias-state-success-primary); color: var(--dsw-alias-label-primary); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.fo-okr-new:hover { filter: brightness(1.08); }
+.fo-okr-objective {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 18px;
+  padding: 20px; border-radius: 18px;
+  border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-bg-layer-1) 82%, var(--dsw-alias-bg-base));
+}
+.fo-okr-o-badge {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: 56px; height: 56px; padding: 0; border: 0; border-radius: 15px;
+  color: var(--dsw-alias-label-primary); font: inherit; cursor: pointer; overflow: hidden;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--dsw-alias-brand-primary) 82%, var(--dsw-alias-label-primary)), var(--dsw-alias-brand-primary));
+  box-shadow: 0 7px 20px color-mix(in oklab, var(--dsw-alias-brand-primary) 18%, transparent);
+  filter: hue-rotate(42deg) saturate(1.18);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.fo-okr-o-badge:hover { transform: translateY(-1px); box-shadow: 0 9px 24px color-mix(in oklab, var(--dsw-alias-brand-primary) 28%, transparent); }
+.fo-okr-o-badge:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.fo-okr-o-index { font-size: 14px; font-weight: 900; letter-spacing: -.02em; transition: opacity .15s ease; }
+.fo-okr-o-chevron { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; opacity: 0; transition: opacity .15s ease; }
+.fo-okr-o-badge:hover .fo-okr-o-index { opacity: 0; }
+.fo-okr-o-badge:hover .fo-okr-o-chevron { opacity: 1; }
+.fo-okr-objective-body { position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fo-okr-kr { margin-left: -14px; }
+.fo-okr-objective-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; min-width: 0; }
+.fo-okr-objective-title { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 auto; padding-top: 1px; }
+.fo-okr-objective-title h4 { margin: 0; font-size: 16px; font-weight: 800; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.fo-okr-objective-title h4:hover { text-decoration: underline; text-decoration-color: color-mix(in oklab, var(--dsw-alias-label-primary) 22%, transparent); text-underline-offset: 3px; }
+.fo-okr-labels { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.fo-okr-label { font-size: 9px; color: var(--dsw-alias-label-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fo-okr-status { flex: 0 0 auto; padding: 2px 8px; border-radius: 6px; font-size: 9px; color: var(--dsw-alias-label-secondary); background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); }
+.fo-okr-status[data-status="completed"] { color: var(--dsw-alias-state-success-primary); background: color-mix(in oklab, var(--dsw-alias-state-success-primary) 13%, transparent); }
+.fo-okr-status[data-status="at-risk"] { color: var(--dsw-alias-state-error-primary); background: color-mix(in oklab, var(--dsw-alias-state-error-primary) 13%, transparent); }
+.fo-okr-status[data-status="in-progress"] { color: var(--dsw-alias-brand-primary); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 15%, transparent); }
+.fo-okr-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 9px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+.fo-okr-progress, .fo-okr-kr-progress { height: 7px; border-radius: 999px; overflow: hidden; background: color-mix(in oklab, var(--dsw-alias-label-primary) 9%, transparent); }
+.fo-okr-progress i, .fo-okr-kr-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--dsw-alias-brand-primary), var(--dsw-alias-state-success-primary)); }
+.fo-okr-objective[data-status="in-progress"] .fo-okr-progress i { background: linear-gradient(90deg, var(--dsw-alias-state-warn-primary), color-mix(in oklab, var(--dsw-alias-state-warn-primary) 70%, var(--dsw-alias-state-error-primary))); }
+.fo-okr-objective[data-status="completed"] .fo-okr-progress i { background: var(--dsw-alias-state-success-primary); }
+.fo-okr-objective[data-status="at-risk"] .fo-okr-progress i { background: var(--dsw-alias-state-error-primary); }
+.fo-okr-objective[data-status="not-started"] .fo-okr-progress i { background: var(--dsw-alias-label-secondary); }
+.fo-okr-kr-list { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.fo-okr-kr {
+  position: relative; display: flex; flex-direction: column; gap: 7px;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 9%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 80%, var(--dsw-alias-bg-base));
+}
+.fo-okr-kr::before { content: ''; position: absolute; left: -32px; top: 21px; width: 24px; height: 2px; background: linear-gradient(to right, color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent), transparent); filter: hue-rotate(42deg) saturate(1.18); pointer-events: none; }
+.fo-okr-kr::after { content: ''; position: absolute; left: -32px; top: -4px; bottom: -4px; width: 2px; background: linear-gradient(to bottom, color-mix(in oklab, var(--dsw-alias-brand-primary) 30%, transparent), color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent)); filter: hue-rotate(42deg) saturate(1.18); pointer-events: none; }
+.fo-okr-kr:first-child::after { top: -34px; }
+.fo-okr-kr.is-last::after { top: -4px; bottom: auto; height: 26px; }
+.fo-okr-kr-dot { position: absolute; left: -36px; top: 18px; z-index: 2; width: 8px; height: 8px; padding: 0; border: 2px solid color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent); border-radius: 50%; background: var(--dsw-alias-brand-primary); filter: hue-rotate(42deg) saturate(1.18); cursor: pointer; }
+.fo-okr-kr-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fo-okr-kr-title { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.fo-okr-kr-title:hover { text-decoration: underline; text-decoration-color: color-mix(in oklab, var(--dsw-alias-label-primary) 22%, transparent); text-underline-offset: 3px; }
+.fo-okr-kr-nums { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.fo-okr-kr-status { flex: 0 0 auto; padding: 1px 7px; border-radius: 5px; font-size: 8px; color: var(--dsw-alias-label-secondary); background: color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent); }
+.fo-okr-kr-status[data-status="completed"] { color: var(--dsw-alias-state-success-primary); background: color-mix(in oklab, var(--dsw-alias-state-success-primary) 11%, transparent); }
+.fo-okr-kr-status[data-status="at-risk"] { color: var(--dsw-alias-state-error-primary); background: color-mix(in oklab, var(--dsw-alias-state-error-primary) 11%, transparent); }
+.fo-okr-kr-status[data-status="in-progress"] { color: var(--dsw-alias-brand-primary); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 11%, transparent); }
+.fo-okr-kr[data-status="completed"] .fo-okr-kr-progress i { background: var(--dsw-alias-state-success-primary); }
+.fo-okr-kr[data-status="at-risk"] .fo-okr-kr-progress i { background: var(--dsw-alias-state-error-primary); }
+.fo-okr-kr[data-status="in-progress"] .fo-okr-kr-progress i { background: var(--dsw-alias-brand-primary); }
+.fo-okr-kr[data-status="not-started"] .fo-okr-kr-progress i { background: var(--dsw-alias-label-secondary); }
+.fo-okr-kr-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fo-okr-kr-actions { display: flex; align-items: center; gap: 4px; }
+.fo-okr-kr-percent { font-size: 10px; font-weight: 600; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+.fo-okr-kr-tasks-btn { height: 21px; padding: 0 8px; border: 1px solid color-mix(in oklab, var(--dsw-alias-brand-primary) 22%, transparent); border-radius: 5px; background: color-mix(in oklab, var(--dsw-alias-brand-primary) 8%, transparent); color: var(--dsw-alias-brand-primary); font: inherit; font-size: 8px; font-weight: 600; cursor: pointer; }
+.fo-okr-kr-tasks-btn:hover { background: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent); }
+.fo-okr-tasks { display: flex; flex-direction: column; gap: 3px; padding: 6px 0 1px; border-top: 1px dashed color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent); }
+.fo-okr-task { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 4px 5px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; }
+.fo-okr-task:hover { background: color-mix(in oklab, var(--dsw-alias-brand-primary) 7%, transparent); }
+.fo-okr-task:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.fo-okr-task-no { flex: 0 0 auto; font-size: 8px; color: var(--dsw-alias-label-secondary); }
+.fo-okr-task-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--dsw-alias-label-primary); }
+.fo-okr-task-status { flex: 0 0 auto; font-size: 8px; color: var(--dsw-alias-label-secondary); }
+.fo-okr-task-status[data-status="done"] { color: var(--dsw-alias-state-success-primary); }
+.fo-okr-task-status[data-status="blocked"] { color: var(--dsw-alias-state-error-primary); }
+.fo-okr-task-status[data-status="in-progress"] { color: var(--dsw-alias-brand-primary); }
+.fo-okr-add-kr { align-self: flex-start; height: 22px; padding: 0 7px; border: 1px dashed color-mix(in oklab, var(--dsw-alias-label-primary) 18%, transparent); border-radius: 6px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 9px; cursor: pointer; }
+.fo-okr-add-kr:hover { color: var(--dsw-alias-brand-primary); border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 36%, transparent); }
+.fo-okr-create-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in oklab, var(--dsw-alias-bg-base) 72%, transparent); backdrop-filter: blur(4px); }
+.fo-okr-create { display: flex; flex-direction: column; gap: 10px; width: min(420px, 100%); padding: 18px; border-radius: 14px; border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 12%, transparent); background: var(--dsw-alias-bg-overlay); box-shadow: 0 18px 48px color-mix(in oklab, var(--dsw-alias-bg-base) 70%, transparent); }
+.fo-okr-create h3 { margin: 0; font-size: 14px; font-weight: 800; color: var(--dsw-alias-label-primary); }
+.fo-okr-create-owner { margin-top: -6px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
+.fo-okr-create label { display: flex; flex-direction: column; gap: 5px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
+.fo-okr-create input { height: 31px; padding: 0 8px; border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 14%, transparent); border-radius: 7px; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: inherit; font-size: 11px; }
+.fo-okr-create-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 2px; }
+.fo-okr-create-error { font-size: 10px; color: var(--dsw-alias-state-error-primary); }
+.fo-okr-edit { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 5px 0; }
+.fo-okr-edit-input { flex: 1 1 160px; min-width: 0; height: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid color-mix(in oklab, var(--dsw-alias-brand-primary) 30%, transparent); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: inherit; font-size: 11px; }
+.fo-okr-edit-error { flex: 1 1 100%; font-size: 9px; color: var(--dsw-alias-state-error-primary); }
+/* Plan matrix */
+.fo-opp-plan-wrap { display: flex; flex-direction: column; gap: 5px; flex: 1 1 auto; min-height: 0; }
+.fo-opp-plan-hint { flex: 0 0 auto; font-size: 9px; color: var(--dsw-alias-label-secondary); }
+.fo-opp-plan-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; border-radius: 12px; }
+.fo-opp-plan-grid { display: grid; min-width: 2000px; gap: 7px; align-items: stretch; padding-bottom: 4px; }
+.fo-plan-task { width: 100%; min-width: 0; cursor: grab; }
+.fo-plan-task:active { cursor: grabbing; }
+.fo-plan-task.is-dragging { opacity: .4; }
+.fo-taskcard-host { width: 100%; height: auto; border-radius: 0; overflow: visible; }
+.fo-taskcard-host > div { height: auto; }
+.fo-flow-node .fo-taskcard-host { height: auto; border-radius: 9px; overflow: hidden; }
+.fo-flow-node .fo-taskcard-host > div { height: auto; box-sizing: border-box; }
+.fo-plan-task .fo-taskcard-host > div { height: auto; }
+/* 卡片标签：先换行，超出卡片高度就自动裁掉，避免 O/KR/工作区等长标签顶破右侧。 */
+.fo-taskcard-host .task-main { position: relative; }
+.fo-taskcard-more {
+  position: absolute; right: 2px; bottom: -1px; z-index: 3;
+  padding: 0 4px; font-size: 12px; line-height: 1;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--tc-card, var(--dsw-alias-bg-layer-1));
+  pointer-events: none;
+}
+
+.fo-taskcard-host .task-meta {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 4px 6px; min-width: 0;
+  max-height: 44px; overflow: hidden;
+  transition: max-height .16s ease, background-color .16s ease;
+}
+
+.fo-taskcard-host .task-meta > .chip,
+.fo-taskcard-host .task-meta > .badge,
+.fo-taskcard-host .task-meta > .people-group {
+  min-width: 0; max-width: 100%;
+}
+.fo-taskcard-host .task-meta .chip {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fo-taskcard-host .task-meta .chip[role="button"],
+.fo-taskcard-host .task-meta .badge[role="button"],
+.fo-taskcard-host .task-meta .due[role="button"] { cursor: pointer; }
+.fo-taskcard-host .task-meta .chip[role="button"]:focus-visible,
+.fo-taskcard-host .task-meta .badge[role="button"]:focus-visible,
+.fo-taskcard-host .task-meta .due[role="button"]:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.fo-taskcard-host .task-meta .chip-field { flex: 0 1 auto; }
+.fo-taskcard-host .task-meta .chip-workspace { flex: 0 1 auto; }
+.fo-opp-plan-corner, .fo-opp-plan-colhead {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 9px; border-radius: 9px;
+  font-size: 10px; font-weight: 800; color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
+}
+.fo-opp-plan-corner { left: 0; z-index: 4; }
+.fo-opp-plan-colhead[data-status="todo"] .fo-board-dot { background: var(--dsw-alias-label-secondary); }
+.fo-opp-plan-colhead[data-status="blocked"] .fo-board-dot { background: var(--dsw-alias-state-error-primary); }
+.fo-opp-plan-colhead[data-status="in-progress"] .fo-board-dot { background: var(--dsw-alias-brand-primary); }
+.fo-opp-plan-colhead[data-status="suspended"] .fo-board-dot { background: var(--dsw-alias-state-warn-primary); }
+.fo-opp-plan-colhead[data-status="done"] .fo-board-dot { background: var(--dsw-alias-state-success-primary); }
+.fo-opp-plan-colhead[data-status="cancelled"] .fo-board-dot { background: var(--dsw-alias-label-secondary); opacity: .5; }
+.fo-opp-plan-count { margin-left: auto; min-width: 17px; padding: 0 5px; border-radius: 999px; text-align: center; font-size: 9px; background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); }
+.fo-opp-plan-rowhead {
+  position: sticky; left: 0; z-index: 2;
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 2px;
+  min-height: 74px; padding: 10px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
+  border-left: 3px solid var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-bg-base);
+}
+.fo-opp-plan-obj { font-size: 8px; font-weight: 800; letter-spacing: .04em; color: var(--dsw-alias-brand-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-opp-plan-kr { font-size: 11px; font-weight: 700; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-opp-plan-meta { font-size: 8px; color: var(--dsw-alias-label-secondary); }
+.fo-opp-plan-cell {
+  display: flex; flex-direction: column; gap: 5px;
+  min-height: 74px; padding: 5px; border-radius: 10px;
+  border: 1px dashed color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-bg-base) 45%, transparent);
+}
+.fo-opp-plan-cell[data-status="in-progress"] { border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 20%, transparent); }
+.fo-opp-plan-cell[data-status="blocked"] { border-color: color-mix(in oklab, var(--dsw-alias-state-error-primary) 18%, transparent); }
+.fo-opp-plan-cell[data-status="done"] { border-color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 15%, transparent); }
+.fo-opp-plan-cell[data-status="cancelled"] { opacity: .55; }
+.fo-opp-plan-cell.is-drop { border-style: solid; border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 42%, transparent); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 7%, transparent); }
+.fo-opp-plan-empty { display: flex; align-items: center; justify-content: center; flex: 1 1 auto; min-height: 58px; font-size: 10px; color: var(--dsw-alias-label-secondary); opacity: .4; }
+/* Progress timeline */
+.fo-gantt { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.fo-gantt-axis { display: grid; grid-template-columns: 160px 1fr; gap: 8px; padding: 0 2px; }
+.fo-gantt-axis-label { font-size: 10px; font-weight: 800; color: var(--dsw-alias-label-secondary); }
+.fo-gantt-axis-track { display: flex; justify-content: space-between; font-size: 9px; color: var(--dsw-alias-label-secondary); border-bottom: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); padding-bottom: 3px; }
+.fo-gantt-row { display: grid; grid-template-columns: 160px 1fr; gap: 8px; align-items: stretch; }
+.fo-gantt-label { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 8px; border-radius: 9px; background: color-mix(in oklab, var(--dsw-alias-bg-base) 55%, transparent); border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 9%, transparent); border-left: 2px solid var(--dsw-alias-brand-primary); }
+.fo-gantt-obj { font-size: 8px; font-weight: 800; color: var(--dsw-alias-brand-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-gantt-kr { font-size: 10px; font-weight: 700; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-gantt-meta { font-size: 8px; color: var(--dsw-alias-label-secondary); }
+.fo-gantt-track { position: relative; border-radius: 9px; background: color-mix(in oklab, var(--dsw-alias-label-primary) 4%, transparent); border: 1px dashed color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); overflow: hidden; }
+.fo-gantt-today { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--dsw-alias-state-warn-primary); opacity: .55; }
+.fo-gantt-bar { position: absolute; height: 20px; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0 5px; border-radius: 5px; font-size: 8px; color: var(--dsw-alias-label-primary); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, var(--dsw-alias-bg-layer-1)); border: 1px solid color-mix(in oklab, var(--dsw-alias-brand-primary) 28%, transparent); overflow: hidden; }
+.fo-gantt-bar[data-status="done"] { background: color-mix(in oklab, var(--dsw-alias-state-success-primary) 13%, var(--dsw-alias-bg-layer-1)); border-color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 25%, transparent); }
+.fo-gantt-bar[data-status="blocked"] { background: color-mix(in oklab, var(--dsw-alias-state-error-primary) 13%, var(--dsw-alias-bg-layer-1)); border-color: color-mix(in oklab, var(--dsw-alias-state-error-primary) 25%, transparent); }
+.fo-gantt-bar:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.fo-gantt-bar-no { flex: 0 0 auto; font-size: 8px; opacity: .65; }
+.fo-gantt-bar-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-gantt-axis-bottom { display: flex; justify-content: space-between; padding: 2px 2px 0 168px; font-size: 8px; color: var(--dsw-alias-label-secondary); }
+
+
+/* 标题后的筛选 + Workflow 右下角悬浮工具 */
+.fo-filter-wrap.is-title-filter { flex: 0 0 auto; margin-left: 2px; }
+.fo-filter-wrap.is-title-filter .fo-btn[data-active="1"] { color: var(--dsw-alias-brand-primary); border-color: color-mix(in oklab, var(--dsw-alias-brand-primary) 46%, transparent); background: color-mix(in oklab, var(--dsw-alias-brand-primary) 7%, transparent); }
+.fo-filter-wrap.is-title-filter .fo-filter-pop { left: 0; right: auto; }
+.fo-flow-float-actions {
+  position: absolute; right: 12px; bottom: 12px; z-index: 6;
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px; border-radius: 11px;
+  border: 1px solid var(--fo-glass-line);
+  background: var(--fo-glass-card);
+  box-shadow: var(--fo-glass-shadow);
+  backdrop-filter: var(--fo-glass-blur); -webkit-backdrop-filter: var(--fo-glass-blur);
+}
+.fo-flow-float-btn {
+  height: 26px; padding: 0 9px; border: 0; border-radius: 8px;
+  font: inherit; font-size: 10px; font-weight: 600;
+  color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer;
+}
+.fo-flow-float-btn:hover:not(:disabled) { color: var(--dsw-alias-label-primary); background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); }
+.fo-flow-float-btn:disabled { cursor: default; opacity: .45; }
+
 .fo-flow-graphs { height: 100%; }
 .fo-flow-graph { flex: 0 0 auto; min-height: 0; }
 .fo-flow-graph.is-solo { flex: 1 1 auto; }
 .fo-flow-canvas { flex: 0 0 auto; height: 360px; }
 .fo-flow-graph.is-solo .fo-flow-canvas { flex: 1 1 auto; height: auto; min-height: 0; }
+.fo-flow-edge { cursor: pointer; }
+.fo-flow-edge:hover .react-flow__edge-path { stroke: var(--dsw-alias-state-error-primary) !important; stroke-width: 2.5 !important; }
+.fo-flow-edge .react-flow__edge-interaction { cursor: pointer; }
+.fo-edge-delete { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--dsw-alias-state-error-primary); border-radius: 50%; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-state-error-primary); font: inherit; font-size: 11px; line-height: 1; cursor: pointer; box-shadow: 0 2px 6px color-mix(in oklab, var(--dsw-alias-bg-base) 70%, transparent); z-index: 10; }
+.fo-edge-delete:hover { background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-bg-base); }
 .fo-flow-canvas .fo-flow-handle {
-  opacity: 0 !important; width: 1px !important; height: 1px !important;
-  min-width: 0 !important; min-height: 0 !important; border: 0 !important;
-  background: transparent !important; pointer-events: none !important;
+  opacity: .5; width: 16px; height: 16px;
+  min-width: 16px; min-height: 16px;
+  border: 2px solid var(--dsw-alias-brand-primary) !important;
+  border-radius: 50%; background: var(--dsw-alias-bg-base) !important;
+  pointer-events: all; cursor: crosshair; z-index: 6;
+  transition: opacity .15s ease, transform .15s ease, background-color .15s ease;
 }
+.fo-flow-node:hover .fo-flow-handle, .fo-flow-canvas .fo-flow-handle:hover { opacity: 1; }
+.fo-flow-canvas .fo-flow-handle-in { left: -8px; }
+.fo-flow-canvas .fo-flow-handle-out { right: -8px; }
+.fo-flow-canvas .react-flow__handle-connecting { background: var(--dsw-alias-brand-primary) !important; opacity: 1; }
 `
 
 /** 项目分色槽位 → CSS 变量引用（组件只用这个，永远不写死颜色）。 */

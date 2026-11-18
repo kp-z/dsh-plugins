@@ -48,6 +48,8 @@ function viewportOf(deps) {
 export function mountCardMenu(menu, anchor, deps) {
   const doc = resolveDoc(deps)
   const body = (deps && deps.body) || doc.body
+  /* 菜单挂在 body 上，不在卡片的 .fo-node-dom 里；补一个主题作用域，复用卡片的 --tc-* 令牌。 */
+  if (menu.classList && !menu.classList.contains('fo-menu-scope')) menu.classList.add('fo-menu-scope')
   body.appendChild(menu)
 
   const rect = anchor && typeof anchor.getBoundingClientRect === 'function'
@@ -76,7 +78,11 @@ export function mountCardMenu(menu, anchor, deps) {
     else if (menu.parentNode && typeof menu.parentNode.removeChild === 'function') menu.parentNode.removeChild(menu)
     if (restoreFocus && anchor && typeof anchor.focus === 'function') anchor.focus()
   }
-  const onOutside = (event) => { if (event && event.target === menu) return; close(false) }
+  const onOutside = (event) => {
+    const target = event && event.target
+    if (target && (target === menu || (typeof menu.contains === 'function' && menu.contains(target)))) return
+    close(false)
+  }
   const onKey = (event) => { if (event && event.key === 'Escape') { close(true); return } }
   const onScroll = () => close(false)
   if (doc.addEventListener) {

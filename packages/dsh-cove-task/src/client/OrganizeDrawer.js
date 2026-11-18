@@ -245,7 +245,9 @@ export function createOrganizeDrawer(deps) {
           ? h('div', { className: 'fo-org-group-body' },
             items.length
               ? items.map((item) => itemNode(item, batch))
-              : h('p', { className: 'fo-org-empty' }, generating ? '正在生成…' : '没有找到关系'),
+              : h('p', { className: 'fo-org-empty' + (generating ? ' is-loading' : '') },
+                generating ? h('span', { className: 'fo-spinner', 'aria-hidden': 'true' }) : null,
+                h('span', null, generating ? '正在生成…' : '没有找到关系')),
             /* 只有存在可操作/可撤销的条目时才显示组操作行；空组不再放两个灰按钮。 */
             (pending.length || accepted.length)
               ? h('div', { className: 'fo-org-group-actions' },
@@ -373,8 +375,8 @@ export function createOrganizeDrawer(deps) {
         shown.length
           ? shown.map(groupNode)
           : (generating ? null : h('p', { className: 'fo-org-empty' }, '暂无建议')),
-        /* 生成中：spinner 放在列表底部（最新组的位置），不占顶部。 */
-        generating
+        /* 生成中且还没有任何组：兜底一个居中的 spinner；有组时 spinner 已贴在「正在生成…」旁边。 */
+        generating && !shown.length
           ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
           : null,
       ),

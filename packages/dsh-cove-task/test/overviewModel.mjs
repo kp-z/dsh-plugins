@@ -379,6 +379,13 @@ test('buildTree：scope 选中态落在对应行上', () => {
   assert.equal(project.byKey['project:wB'].selected, true)
 })
 
+test('buildTree：目录行带手动图标（group:<id> 的配置要透传到行上）', () => {
+  const withLogo = [{ id: 'g1', name: '插件', members: ['wA'], labels: {}, logo: 'lucide:puzzle', logoColor: 'blue' }]
+  const tree = buildTree(withLogo, TASKS, { selection: { kind: 'group', id: 'g1' } })
+  const row = tree.rows.find((item) => item.kind === 'group')
+  assert.equal(row.logo, 'lucide:puzzle')
+  assert.equal(row.logoColor, 'blue')
+})
 test('buildTree：空输入 / 坏输入不抛', () => {
   const empty = buildTree(null, null, undefined)
   assert.deepEqual(empty.rows.map((row) => row.key), [], '没有目录就没有可见行（「全部任务」不在二级里）')
@@ -400,13 +407,12 @@ test('rowMenu：全部任务行只有刷新', () => {
 
 test('rowMenu：目录行 = 重命名 / 删除 / 分隔线 / 新建目录', () => {
   const items = rowMenu({ kind: 'group', id: 'g1' }, GROUPS, { kind: 'group', id: 'g1' })
-  assert.deepEqual(items.map((item) => item.kind), ['item', 'item', 'separator', 'item'])
-  assert.deepEqual(items.filter((item) => item.kind === 'item').map((item) => item.id), ['rename', 'delete', 'new-group'])
-  assert.equal(items[1].danger, true)
-  assert.equal(items[1].groupId, 'g1')
-  assert.deepEqual(rowMenu({ kind: 'group', id: UNGROUPED_KEY, ungrouped: true }, GROUPS, { kind: 'all' }), [
-    { id: 'new-group', label: '新建目录', kind: 'item' },
-  ])
+  assert.deepEqual(items.map((item) => item.kind), ['item', 'item', 'item', 'separator', 'item'])
+  assert.deepEqual(items.filter((item) => item.kind === 'item').map((item) => item.id), ['logo', 'rename', 'delete', 'new-group'])
+  assert.equal(items[0].id, 'logo', '目录也有「设置图标…」')
+  assert.equal(items[2].danger, true)
+  assert.equal(items[2].groupId, 'g1')
+  assert.deepEqual(rowMenu({ kind: 'group', id: UNGROUPED_KEY, ungrouped: true }, GROUPS, { kind: 'all' }).map((item) => item.id), ['logo', 'new-group'])
 })
 
 test('rowMenu：项目行 = 设置图标 / 移入目录 ▸ / 移出目录 / 只看这个项目', () => {
@@ -439,7 +445,7 @@ test('rowMenu：项目行 = 设置图标 / 移入目录 ▸ / 移出目录 / 只
 test('rowMenu：坏输入不抛', () => {
   assert.deepEqual(rowMenu(null, null, null), [])
   assert.deepEqual(rowMenu({ kind: 'nope' }, 'x', 1), [])
-  assert.deepEqual(rowMenu({ kind: 'group', id: 'g1' }, [{ id: '' }], { kind: 'group', id: 'g1' }).length, 4)
+  assert.deepEqual(rowMenu({ kind: 'group', id: 'g1' }, [{ id: '' }], { kind: 'group', id: 'g1' }).length, 5)
 })
 
 /* ---------------- 统计 ---------------- */

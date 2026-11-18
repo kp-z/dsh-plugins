@@ -59,6 +59,17 @@ function adaptApi(raw) {
     markSessionSeen: fn('markSessionSeen'),
     /* 关系写回（手动连边 / 断开、建议「同步到飞书」重试）：旧宿主没有就退化成 null。 */
     relationWrite: fn('relationWrite'),
+    /* OKR 的 O/KR：能力位保留给**显式动作**；建议流程不再自动调用它。 */
+    okrAuto: fn('okrAuto'),
+    taskStatus: fn('taskStatus'),
+    taskPriority: fn('taskPriority'),
+    taskStartTime: fn('taskStartTime'),
+    taskEta: fn('taskEta'),
+    taskSchedule: fn('taskSchedule'),
+    workspaceBind: fn('workspaceBind'),
+    okrApply: fn('okrApply'),
+    okrCreate: fn('okrCreate'),
+    okrUpdate: fn('okrUpdate'),
     /* 历史指标（task-21）：洞察页要「更全面」时用它取 /api/insight/stats；
        旧宿主没有这个方法就是 null —— 洞察页自己降级成「只有快照口径」，不报错。 */
     insightStats: fn('insightStats'),
@@ -354,6 +365,8 @@ export function createOverviewPanel(deps) {
       return model.isObj(value) ? value : {}
     })
     const [detailId, setDetailId] = useState('')
+    /* 右侧只有一个 dock：详情/建议切换，避免两栏互相挤到下面或重叠。 */
+    const [rightTab, setRightTab] = useState('detail')
     /* 画布聚焦：点节点/按 F 都会落到这里；点空白或 Esc 取消。纯前端瞬态，不进 store。 */
     const [focusedId, setFocusedId] = useState('')
     /* 本地拖动位置：{ 图 key: { 任务 id: {x,y} } }，落 store（键 nodePos），「复位布局」清图。 */
@@ -586,6 +599,7 @@ export function createOverviewPanel(deps) {
       return keywordNeedle ? list.filter((graph) => asArray(graph.nodes).length > 0) : list
     }, [drawing, keywordNeedle])
     const scopedTasks = useMemo(() => model.scopeTasks(visibleTasks, scope, groups), [visibleTasks, scope, groups])
+
     /* 当前功能（rail 选中项）：Header 标题、搜索是否收窄数据、正文渲染都用它 */
     const activeFeature = featureById(features, activeFeatureId)
     /* 只有注册了 search:true 的功能（关系）才让搜索收窄页面数据；运行/洞察只弹浮层 */
@@ -652,8 +666,13 @@ export function createOverviewPanel(deps) {
       if (id === 'move-new') { setCreatingFor(row.id); setCreating(true); return }
       if (id === 'focus') { setScope({ kind: 'project', id: row.id }); return }
       if (id === 'logo') {
-        const current = Array.isArray(workspaces) ? workspaces.find((w) => String(w.key || '') === String(row.id || '')) : null
-        setLogoPicker({ key: String(row.id || ''), title: String(row.label || row.id || '') })
+        /* 目录和项目共用一张本地配置表：目录的 key 加 group: 前缀，避免和 workspace key 撞 */
+        const isGroup = String(row.kind) === 'group'
+        const key = isGroup ? 'group:' + String(row.id || '') : String(row.id || '')
+        const current = isGroup
+          ? (Array.isArray(groups) ? groups.find((group) => String(group.id || '') === String(row.id || '')) : null)
+          : (Array.isArray(workspaces) ? workspaces.find((w) => String(w.key || '') === String(row.id || '')) : null)
+        setLogoPicker({ key, title: String(row.label || row.id || '') })
         setLogoQuery('')
         setLogoTab('icon')
         setLogoColor(String((current && current.logoColor) || ''))
@@ -760,6 +779,7 @@ export function createOverviewPanel(deps) {
       const key = model.str(id)
       if (!key) return
       setDetailId(key)
+      setRightTab('detail')
       /* 点节点 = 选中 + 聚焦（task-15）：其余节点随之降透明度。 */
       setFocusedId(key)
     }, [])
@@ -773,7 +793,8 @@ export function createOverviewPanel(deps) {
     const blurCanvas = useCallback(() => {
       setFocusedId('')
       setDetailId('')
-    }, [])
+      if (org.open) setRightTab('suggest')
+    }, [org.open])
 
     /* 拖动落位：松手时 GraphView 已经吸附过网格，这里只负责按「图 key + 任务 id」存下来。 */
     const moveNode = useCallback((graphKey, id, pos) => {
@@ -952,12 +973,15 @@ export function createOverviewPanel(deps) {
     }, [organizeEffective])
 
     const toggleOrganize = useCallback(() => {
+      const opening = org.open !== true
+      setRightTab(opening ? 'suggest' : 'detail')
       setOrg((prev) => ({ ...prev, open: prev.open !== true }))
-    }, [])
+    }, [org.open])
 
     const closeOrganize = useCallback(() => {
       setOrg((prev) => ({ ...prev, open: false }))
-    }, [])
+      if (detailId) setRightTab('detail')
+    }, [detailId])
 
     /** 组标题里的范围文案：全部 / 项目名 / 目录名。 */
     const scopeLabelOf = useCallback((batch) => {
@@ -985,6 +1009,7 @@ export function createOverviewPanel(deps) {
      * 入口点击不再等于「跑一次几十秒的分析」——要重算按侧栏顶部的「重新分析」。
      */
     const openOrganize = useCallback(() => {
+      setRightTab('suggest')
       setOrg((prev) => ({ ...prev, open: true }))
       return Promise.resolve(org.batch || null)
     }, [org.batch])
@@ -1002,6 +1027,7 @@ export function createOverviewPanel(deps) {
     const runOrganize = useCallback((scopeArg) => {
       const fn = apiRef.current.organize
       if (!fn) return Promise.resolve(null)
+      setRightTab('suggest')
       /* 生成和读取必须是同一个范围：否则项目批次的 batchId 不在 all 的 batches 里，
          下一次轮询会把刚生成的那一组整组替换掉。 */
       const scopeToRun = model.normScope((scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope)
@@ -1044,6 +1070,7 @@ export function createOverviewPanel(deps) {
     const organizeGraph = useCallback((graph) => {
       const scopeToRun = scopeOfGraph(graph)
       /* 只负责「打开右侧建议面板」，不在入口上直接跑分析（生成新的建议在面板里点）。 */
+      setRightTab('suggest')
       setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun }))
       return Promise.resolve(null)
     }, [scopeOfGraph])
@@ -1264,6 +1291,7 @@ export function createOverviewPanel(deps) {
       const key = model.str(id)
       if (!key || !tasksById[key]) return
       setDetailId(key)
+      setRightTab('detail')
       setFocusedId(key)
       if (!scopedTasks.some((task) => model.str(task.id) === key)) setScope({ kind: 'all', id: '' })
     }, [scopedTasks, tasksById])
@@ -1274,6 +1302,10 @@ export function createOverviewPanel(deps) {
       const nodes = asArray(drawing && drawing.nodes)
       return nodes.find((node) => node.id === detailId && node.ghost !== true) || nodes.find((node) => node.id === detailId) || null
     }, [detailId, drawing])
+    const detailOpen = Boolean(detailTask || detailNode)
+    const rightDockOpen = detailOpen || org.open
+    const showDetail = detailOpen && (!org.open || rightTab !== 'suggest')
+    const showOrganize = org.open && (!detailOpen || rightTab === 'suggest')
 
     /* task-15 冗余审计：正文头部只留「当前范围（面包屑）+ 搜索框 + 必要动作」。
        - 功能名删掉：它已经在 rail 品牌区、功能项、以及这里的第三次出现 —— 三处只留功能项。
@@ -1312,6 +1344,28 @@ export function createOverviewPanel(deps) {
     const featureHint = activeFeature ? model.str(activeFeature.hint) : ''
     const hostCan = hostCapability(host)
 
+    /** Plan 拖拽改状态：交给宿主真实写飞书；失败只提示，不本地假装成功。 */
+    const changeTaskStatus = useCallback((taskId, status) => {
+      const fn = apiRef.current.taskStatus
+      if (!fn) { setHostNote('当前宿主版本不支持在 Plan 里改状态，请升级插件。'); return Promise.resolve(null) }
+      const label = { done: '已完成', suspended: '已挂起', todo: '待办', 'in-progress': '进行中' }[status] || status
+      setHostNote(`正在把任务改为「${label}」…`)
+      return Promise.resolve(fn(taskId, status))
+        .then((result) => {
+          if (result && result.ok) {
+            setHostNote(`已改为「${label}」`)
+            load(true)
+          } else {
+            setHostNote((result && result.error) || `改为「${label}」失败`)
+          }
+          return result
+        })
+        .catch((error) => {
+          setHostNote((error && error.message) || `改为「${label}」失败`)
+          return null
+        })
+    }, [load])
+
     /* 功能页的 ctx：数据 + 交互全在这里，功能组件自己不取数据、不碰 store。 */
     const featureCtx = {
       featureHint,
@@ -1327,6 +1381,8 @@ export function createOverviewPanel(deps) {
       hostReason: hostCan.reason,
       onOpenTask: (id) => openTask(id),
       onFocusTask: focusTask,
+      onTaskStatus: changeTaskStatus,
+      onTaskUpdated: () => load(true),
       /* 画布卡片上的「整理」：按这张图的项目/目录范围跑 AI 关系建议，并打开右侧建议栏。
          宿主没有 organize 接口就置空，卡片不渲染这个按钮。 */
       onOrganizeGraph: apiRef.current.organize ? organizeGraph : null,
@@ -1354,10 +1410,13 @@ export function createOverviewPanel(deps) {
       relations,
       groups,
       workspaces,
+      okr: data && data.okr && typeof data.okr === 'object' ? data.okr : { objectives: [], keyResults: [] },
       stats: model.isObj(data && data.stats) ? data.stats : {},
       now: Number(data && data.now) || Date.now(),
       treeProps: {
         tree,
+        /* 收起态只列目录（二级），项目（三级）不展开 */
+        railCollapsed: !railOpen,
         renamingId,
         creating,
         creatingFor,
@@ -1381,7 +1440,8 @@ export function createOverviewPanel(deps) {
 
     return h('div', {
       className: 'fo-root',
-      'data-detail': detailTask || detailNode ? '1' : '0',
+      'data-detail': detailOpen ? '1' : '0',
+      'data-rightdock': rightDockOpen ? '1' : '0',
       'data-busy': busy ? '1' : '0',
       'data-scope': scope.kind,
       'data-rail': railOpen ? '1' : '0',
@@ -1607,6 +1667,7 @@ export function createOverviewPanel(deps) {
                     if (org.open) return toggleOrganize()
                     const nextScope = model.normScope(scope)
                     const same = model.scopeKey(org.scope) === model.scopeKey(nextScope)
+                    setRightTab('suggest')
                     setOrg((prev) => (same
                       ? { ...prev, open: true }
                       : {
@@ -1668,51 +1729,69 @@ export function createOverviewPanel(deps) {
             shellNode || (featureComponent ? h(featureComponent, featureCtx) : null),
           ),
         ),
-        (detailTask || detailNode)
-          ? h(DetailPanel, {
-            task: detailTask,
-            node: detailNode,
-            tasksById,
-            colorOf,
-            hostReady: hostCan.ok,
-            hostReason: hostCan.reason,
-            onOpenSession: openSession,
-            onClose: () => { setDetailId(''); setFocusedId('') },
-            onSelectTask: jumpToTask,
-            onFocusProject: (key) => setScope({ kind: 'project', id: key }),
-            onAddRelation: addRelation,
-            onRemoveRelation: removeRelation,
-            /* 候选：全部任务，最近的在前（关系图里连边常常是跨目录的，所以不做范围裁剪） */
-            candidates: tasks.map((item) => ({ id: model.str(item.id), label: `T${model.taskNo(item) || ''} ${model.collapse(item.title)}`.trim() })),
-          })
-          : null,
-        org.open
-          ? h(OrganizeDrawer, {
-            open: true,
-            batch: org.batch,
-            groups: org.groups && org.groups.length ? org.groups : (org.batch ? [org.batch] : []),
-            visible: org.visible,
-            status: org.status,
-            phase: org.phase,
-            error: org.error,
-            failed: org.failed,
-            droppedOpen: org.droppedOpen,
-            scopeLabel: scopeLabelOf,
-            onLoadMore: loadMoreGroups,
-            onAcceptGroup: acceptOrganize,
-            onRejectGroup: rejectOrganize,
-            onUndoGroup: undoOrganize,
-            /* 本机已接受但飞书没同步上的关系：抽屉里逐条「同步」。 */
-            onRetrySync: retrySyncItem,
-            onClose: closeOrganize,
-            onToggleDropped: toggleDropped,
-            /* 顶部的「固定 / 浮层」切换与「重新分析」 */
-            docked: organizeEffective === 'dock',
-            width: organizeWidth,
-            onResize: resizeOrganize,
-            onToggleDock: toggleOrganizeDock,
-            onRerun: () => runOrganize(org.scope),
-          })
+        rightDockOpen
+          ? h('div', { className: 'fo-rightdock' },
+            detailOpen && org.open ? h('div', { className: 'fo-rightdock-tabs', role: 'tablist', 'aria-label': '右侧面板' },
+              h('button', {
+                type: 'button', className: 'fo-rightdock-tab', role: 'tab',
+                'data-active': showDetail ? '1' : '0',
+                'aria-selected': showDetail ? 'true' : 'false',
+                onClick: () => setRightTab('detail'),
+              }, '详情'),
+              h('button', {
+                type: 'button', className: 'fo-rightdock-tab', role: 'tab',
+                'data-active': showOrganize ? '1' : '0',
+                'aria-selected': showOrganize ? 'true' : 'false',
+                onClick: () => setRightTab('suggest'),
+              }, '建议', Number(org.batch && org.batch.pending) > 0 ? h('span', { className: 'fo-rightdock-badge' }, String(Number(org.batch.pending))) : null),
+            ) : null,
+            showDetail
+              ? h(DetailPanel, {
+                task: detailTask,
+                node: detailNode,
+                tasksById,
+                colorOf,
+                hostReady: hostCan.ok,
+                hostReason: hostCan.reason,
+                onOpenSession: openSession,
+                onClose: () => { setDetailId(''); setFocusedId(''); if (org.open) setRightTab('suggest') },
+                onSelectTask: jumpToTask,
+                onFocusProject: (key) => setScope({ kind: 'project', id: key }),
+                onAddRelation: addRelation,
+                onRemoveRelation: removeRelation,
+                /* 候选：全部任务，最近的在前（关系图里连边常常是跨目录的，所以不做范围裁剪） */
+                candidates: tasks.map((item) => ({ id: model.str(item.id), label: `T${model.taskNo(item) || ''} ${model.collapse(item.title)}`.trim() })),
+              })
+              : null,
+            showOrganize
+              ? h(OrganizeDrawer, {
+                open: true,
+                batch: org.batch,
+                groups: org.groups && org.groups.length ? org.groups : (org.batch ? [org.batch] : []),
+                visible: org.visible,
+                status: org.status,
+                phase: org.phase,
+                error: org.error,
+                failed: org.failed,
+                droppedOpen: org.droppedOpen,
+                scopeLabel: scopeLabelOf,
+                onLoadMore: loadMoreGroups,
+                onAcceptGroup: acceptOrganize,
+                onRejectGroup: rejectOrganize,
+                onUndoGroup: undoOrganize,
+                /* 本机已接受但飞书没同步上的关系：抽屉里逐条「同步」。 */
+                onRetrySync: retrySyncItem,
+                onClose: closeOrganize,
+                onToggleDropped: toggleDropped,
+                /* 右侧 dock 内固定；宽度由 dock 控制，拖动/浮层按钮由 CSS 隐藏。 */
+                docked: true,
+                width: organizeWidth,
+                onResize: resizeOrganize,
+                onToggleDock: toggleOrganizeDock,
+                onRerun: () => runOrganize(org.scope),
+              })
+              : null,
+          )
           : null,
       ),
       menu ? h(Menu, { React, h, menu, onRun: runMenu, onClose: () => setMenu(null) }) : null,

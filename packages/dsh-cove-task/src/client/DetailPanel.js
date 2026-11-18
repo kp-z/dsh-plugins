@@ -122,7 +122,6 @@ export function createDetailPanel(deps) {
       title: openTitle,
       onClick: () => { if (canOpen && typeof onOpenSession === 'function') onOpenSession(sessionId, title) },
     }, '打开会话'))
-    if (typeof onClose === 'function') actions.push(h('button', { key: 'close', type: 'button', className: 'fo-btn', onClick: onClose }, '关闭详情'))
     if (workspace.key && workspace.key !== model.UNGROUPED_KEY && typeof onFocusProject === 'function') {
       actions.push(h('button', {
         key: 'focus',
@@ -130,8 +129,12 @@ export function createDetailPanel(deps) {
         className: 'fo-btn',
         'data-variant': 'ghost',
         onClick: () => onFocusProject(workspace.key),
-      }, '只看这个项目'))
+      }, '只看项目'))
     }
+    if (typeof onClose === 'function') actions.push(h('button', {
+      key: 'close', type: 'button', className: 'fo-btn fo-detail-close',
+      title: '关闭详情', 'aria-label': '关闭详情', onClick: onClose,
+    }, h('span', { className: 'fo-detail-close-label' }, '关闭详情'), h('span', { 'aria-hidden': 'true' }, '×')))
 
     const candidates = (Array.isArray(candidateProp) ? candidateProp : [])
       .filter((row) => row && model.str(row.id) && model.str(row.id) !== id)
@@ -170,14 +173,17 @@ export function createDetailPanel(deps) {
       : null
 
     return h('aside', { className: 'fo-detail', 'aria-label': '任务详情' },
-      h('div', { className: 'fo-detail-eyebrow' },
-        h('span', { className: 'fo-dot', style: { '--fo-c': stateVar(state) }, 'aria-hidden': 'true' }),
-        h('span', null, node && node.ghost === true
-          ? (node.missing === true ? '缺失任务' : '跨分组任务')
-          : `任务 ${no > 0 ? `T${no}` : id.slice(0, 8)}`),
-        Number.isFinite(colorIndex)
-          ? h('span', { className: 'fo-dot', style: { '--fo-c': decoVar(colorIndex) }, 'aria-hidden': 'true' })
-          : null,
+      h('div', { className: 'fo-detail-head' },
+        h('div', { className: 'fo-detail-eyebrow' },
+          h('span', { className: 'fo-dot', style: { '--fo-c': stateVar(state) }, 'aria-hidden': 'true' }),
+          h('span', null, node && node.ghost === true
+            ? (node.missing === true ? '缺失任务' : '跨分组任务')
+            : `任务 ${no > 0 ? `T${no}` : id.slice(0, 8)}`),
+          Number.isFinite(colorIndex)
+            ? h('span', { className: 'fo-dot', style: { '--fo-c': decoVar(colorIndex) }, 'aria-hidden': 'true' })
+            : null,
+        ),
+        h('div', { className: 'fo-detail-top-actions' }, actions),
       ),
       h('h2', { className: 'fo-detail-title' }, title),
       h('dl', { className: 'fo-kv' }, rows.flatMap(([key, value, mono]) => [
@@ -191,7 +197,6 @@ export function createDetailPanel(deps) {
           ? '这个任务只在关系里出现，任务表里查不到：可能是跨清单引用，或者条目已经被删掉。'
           : `这个任务属于 ${node.workspaceLabel || '另一个项目'}，画在这里只是为了让依赖方向不断链。`)
         : null,
-      h('div', { className: 'fo-detail-actions' }, actions),
     )
   }
 
