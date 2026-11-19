@@ -24,7 +24,7 @@
 
 ## 阶段表
 
-- [ ] **S1 骨架 + 能出声**（约 1 小时）
+- [x] **S1 骨架 + 能出声**（约 1 小时）
   - 建包 `packages/dsh-broadcast`：package.json / tsconfig / cordis.patch.yml / src/config.ts / src/index.ts
   - 配置项：`enabled`（默认 **false**）、`voice`（默认 `zh-CN-XiaoxiaoNeural`）、`rate`、`volume`、`engine`（edge-tts | say | auto）
   - 移植 edge-tts 客户端（来自 `flashyiyi/dsh-voice-announcer`，**BSD-3-Clause，保留署名**，见 `NOTICE`），
@@ -83,3 +83,5 @@
 ## 运行日志
 
 （每次运行的收尾追加一行：日期 / 完成阶段 / 验证命令结果 / 未决问题）
+
+- 2026-11-20 / **S1 骨架 + 能出声** / `pnpm --filter dsh-broadcast build` 通过（tsc 无错）；`node --test "test/*.test.ts"` **26 passed / 0 failed**；`broadcast_say` 同一条代码路径实测出声：engine=auto 时 edge-tts 失败 → 回落 `say`（4.9s 播完/web 实测峰值 0.644、rms 0.116 非静音，`afplay` 播放成功）。 / **未决**：edge-tts 在线合成当前不可用——新端点 `api.msedgeservices.com` 握手 403、老端点 `speech.platform.bing.com` 返回 404（curl 与 Node WebSocket 两种方式都验过），`auto` 已自动回落 `say`；协议实现按「端点可配 + 失败回落」保留，等厂商接口恢复或改接别的 provider 再验。

@@ -40,7 +40,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/client.js','lib/client.js')\"",
+    "build": "tsc -p tsconfig.json && node -e \"const f=require('node:fs'); if (f.existsSync('src/client.js')) f.copyFileSync('src/client.js','lib/client.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test \"test/*.test.ts\"",
     "dev": "tsc -p tsconfig.json --watch"
