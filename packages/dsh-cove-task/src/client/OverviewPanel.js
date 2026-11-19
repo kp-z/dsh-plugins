@@ -1024,18 +1024,21 @@ export function createOverviewPanel(deps) {
     }, [])
 
     /** 跑一次分析：零副作用，只出建议；失败给 role=alert 的错误条（重试按钮再跑一次）。 */
-    const runOrganize = useCallback((scopeArg) => {
+    const runOrganize = useCallback((scopeArg, hintArg) => {
       const fn = apiRef.current.organize
       if (!fn) return Promise.resolve(null)
+      /* 底部对话框补的要求：只随这一次生成发出去，发完即清空输入框，
+         但留在 org.hint 里供组头回看「这组是照哪句话重生成的」。 */
+      const hintText = typeof hintArg === 'string' ? hintArg.trim() : ''
       setRightTab('suggest')
       /* 生成和读取必须是同一个范围：否则项目批次的 batchId 不在 all 的 batches 里，
          下一次轮询会把刚生成的那一组整组替换掉。 */
       const scopeToRun = model.normScope((scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope)
       /* 点「建议」就**立刻**把右侧建议栏打开（分析可能要几十秒 —— 先给用户一个在跑的侧栏，
          而不是让按钮干转、什么也没发生）。 */
-      setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun, status: 'running', phase: 'organize', error: '', failed: {} }))
+      setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun, hint: hintText, status: 'running', phase: 'organize', error: '', failed: {} }))
       return Promise.resolve()
-        .then(() => fn(scopeToRun))
+        .then(() => fn(scopeToRun, hintText))
         .then((res) => {
           if (!alive.current) return null
           const batch = res && res.batch ? res.batch : null
@@ -1051,6 +1054,7 @@ export function createOverviewPanel(deps) {
               batch,
               groups: batch ? [batch, ...previous] : previous,
               visible: 1,
+              hint: model.str(batch && batch.hint) || '',
               batchId: model.str(batch && batch.batchId) || prev.batchId,
               status: 'ready', phase: '',
               error: '',
@@ -1789,6 +1793,8 @@ export function createOverviewPanel(deps) {
                 onResize: resizeOrganize,
                 onToggleDock: toggleOrganizeDock,
                 onRerun: () => runOrganize(org.scope),
+                /* 底部对话框：带上这一句只重跑当前这一组（同一个 scope = 同一条 cove 会话）。 */
+                onHintSubmit: (text) => { void runOrganize(org.scope, text) },
               })
               : null,
           )

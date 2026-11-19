@@ -1245,6 +1245,29 @@ export const CSS = `
   flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
 }
+/* 这一组依据的用户要求（建议栏底部对话框提交的那句话）：单行省略，hover 看全文。 */
+.fo-org-group-hint {
+  margin: 2px 2px 8px; padding: 0 8px;
+  font-size: 11px; line-height: 1.6; color: ${T.brand};
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 底部对话框：和列表同宽，贴着栏底；输入框可多行，Enter 提交、Shift+Enter 换行。 */
+.fo-org-composer {
+  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 6px;
+  margin-top: 10px; padding: 8px 0 2px;
+  border-top: 1px solid var(--fo-glass-line);
+}
+.fo-org-composer-input {
+  flex: 1 1 auto; min-width: 0; max-height: 96px; resize: none;
+  padding: 7px 10px; box-sizing: border-box;
+  border: 1px solid var(--fo-glass-line); border-radius: 10px;
+  background: ${g(T.bgLayer2, 55)}; color: ${T.label1};
+  font: inherit; font-size: 12px; line-height: 1.5;
+}
+.fo-org-composer-input::placeholder { color: ${g(T.label2, 80)}; }
+.fo-org-composer-input:focus { outline: none; border-color: ${g(T.brand, 55)}; }
+.fo-org-composer-input:disabled { opacity: .6; }
+.fo-org-composer-send { flex: 0 0 auto; height: 32px; min-width: 32px; padding: 0 8px; }
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
 .fo-org-notes[data-tone="error"] { color: ${T.error}; }
 /* 组只是「一段」：用分割线隔开，不再套卡片；真正的卡片始终是每一条建议。 */

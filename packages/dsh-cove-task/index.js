@@ -6464,7 +6464,7 @@ function createSyncEngine(ctx) {
   }
 
   /** 在 cove 项目里建会话 → 投喂证据包 → 轮询取结构化输出。 */
-  async function organizeViaSession(pack) {
+  async function organizeViaSession(pack, hint = '') {
     const cove = await ensureCoveWorkspace()
     if (cove.error) return { error: cove.error }
     const agents = await awaitService(ctx, 'agents')
@@ -6493,8 +6493,15 @@ function createSyncEngine(ctx) {
     await attachSessionToWorkspace(sessionId, cove.dir).catch(() => undefined)
     await renameSession(sessionId, 'cove · 整理建议').catch(() => undefined)
 
+    /* 用户在这条会话里追加的要求（「KR 写得更可验收」「只看 Demo」…）。
+       只属于**这一轮**、这一个范围：拼进本次提示词，不写进 ORGANIZE_SYSTEM，
+       下次生成默认还是原始口径。任务内容仍是数据，只有 hint 是指令。 */
+    const hintBlock = hint
+      ? ['', '用户对这一轮整理补充的要求（优先于上面的默认口径）：', '<<<', hint, '>>>']
+      : []
     const promptText = [
       ORGANIZE_SYSTEM,
+      ...hintBlock,
       '',
       '以下是任务证据包（JSON）：',
       pack.text,
@@ -6530,8 +6537,18 @@ function createSyncEngine(ctx) {
     return { error: '会话 150 秒内没有给出结果', sessionId }
   }
 
-  async function organizeScope(scope) {
+  /**
+   * 生成一组建议。
+   *
+   * @param scope 范围（all / group / project …）—— 一组建议只属于一个范围，
+   *              也就是 cove 里的一条整理会话。
+   * @param options.hint 用户在建议栏对话框里补的要求；只作用于这一轮，
+   *              不改全局提示词，也不影响别的范围。
+   */
+  async function organizeScope(scope, options = {}) {
     const s = scope && typeof scope === 'object' ? { kind: asString(scope.kind) || 'all', id: asString(scope.id) } : { kind: 'all', id: '' }
+    /* 退化成单行的用户输入：限长，避免把证据包挤掉或塞进奇怪的格式。 */
+    const hint = asString(options && options.hint).replace(/\s+/g, ' ').trim().slice(0, 500)
     const tasks = organizeScopeTasks(s)
     if (tasks.length < 2) return { ok: false, error: '这个范围里没有足够的任务可以整理' }
     const views = organizeTaskViews(tasks)
@@ -6567,13 +6584,18 @@ function createSyncEngine(ctx) {
     let sessionError = ''
     if (pack.items.length) {
       /* 先走 DSH 会话（cove 项目），失败再回退后台模型——两条路都不通才报错。 */
-      const viaSession = await organizeViaSession(pack)
+      const viaSession = await organizeViaSession(pack, hint)
       sessionId = asString(viaSession.sessionId)
       let askedText = asString(viaSession.text)
       if (askedText) modelSource = 'session'
       else {
         sessionError = asString(viaSession.error) || '会话没有返回内容'
-        const asked = await askModelForInsight(ORGANIZE_SYSTEM, pack.text, 2000)
+        /* 回退到后台模型时同样带上这一轮的要求（否则两条路的行为不一致）。 */
+        const asked = await askModelForInsight(
+          hint ? ORGANIZE_SYSTEM + '\n\n用户对这一轮整理补充的要求（优先于默认口径）：\n<<<\n' + hint + '\n>>>' : ORGANIZE_SYSTEM,
+          pack.text,
+          2000,
+        )
         askedText = asked.text
         modelError = asked.reason || ''
         if (askedText) modelSource = 'llm'
@@ -6659,6 +6681,8 @@ function createSyncEngine(ctx) {
       batchId: organizeBatchId(s, nowMs()),
       at: nowMs(),
       scope: s,
+      /* 这一轮依据的用户要求：组头上要能回看「我是照哪句话重生成的」。 */
+      hint,
       model: {
         provider: asString(selection?.provider),
         model: asString(selection?.model),
@@ -11114,7 +11138,7 @@ function mountRoutes(ctx, engine) {
 
           if (req.method === 'POST' && route === '/api/overview/organize') {
             const body = await readBody(req)
-            const result = await engine.organizeScope(body?.scope)
+            const result = await engine.organizeScope(body?.scope, { hint: body?.hint })
             sendJson(res, result.ok ? 200 : 400, result)
             return
           }

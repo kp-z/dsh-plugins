@@ -94,6 +94,9 @@ export function createOrganizeDrawer(deps) {
     const latestItems = Array.isArray(latest && latest.items) ? latest.items : []
 
 
+    /* 底部对话框：这一轮要模型怎么改（「KR 写得更可验收」「只看 Demo」…）。
+       只随提交那一次发给服务端，不落 store —— 它属于「这一组建议」而不是视图偏好。 */
+    const [hintText, setHintText] = useState('')
     const [expanded, setExpanded] = useState({})
     /* 「当前组」= 用户正在看/展开的那一组（默认最新）。接受以上只作用于它。 */
     const latestId = model.str(latest && latest.batchId)
@@ -245,6 +248,11 @@ export function createOrganizeDrawer(deps) {
             h('span', { className: 'fo-org-group-time' }, etaText(batch.at)),
             h('span', { className: 'fo-org-group-counts' }, counts.join(' · ')),
           ),
+          /* 这一组是照哪句要求重生成的：回看时不用猜「为什么这批和上一批不一样」。 */
+          model.str(batch.hint)
+            ? h('p', { className: 'fo-org-group-hint', title: model.str(batch.hint) },
+              '要求：' + model.str(batch.hint))
+            : null,
           /* 归档后收起时，撤销仍留在组头，避免必须先展开才能回退。 */
           !open && accepted.length && typeof p.onUndoGroup === 'function'
             ? h('div', { className: 'fo-org-group-actions' },
@@ -390,6 +398,50 @@ export function createOrganizeDrawer(deps) {
           ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
           : null,
       ),
+      /* 底部对话框：能改这一组的建议（「KR 写得更可验收」），也能征求新一轮建议。
+         只对当前范围（= cove 里一条整理会话）生效，提交后**重新生成一组**。 */
+      typeof p.onHintSubmit === 'function'
+        ? h('form', {
+          className: 'fo-org-composer',
+          onSubmit: (event) => {
+            if (event && event.preventDefault) event.preventDefault()
+            const text = model.str(hintText).trim()
+            if (!text || running) return
+            p.onHintSubmit(text)
+            setHintText('')
+          },
+        },
+          h('textarea', {
+            className: 'fo-org-composer-input',
+            rows: 1,
+            value: hintText,
+            placeholder: '让 AI 改一改这组建议，或提新要求…',
+            'aria-label': '对这一组建议的要求',
+            disabled: running,
+            onChange: (event) => setHintText(model.str(event.currentTarget.value)),
+            onKeyDown: (event) => {
+              /* Enter 提交、Shift+Enter 换行：对话框的常规手感。 */
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                const text = model.str(hintText).trim()
+                if (!text || running) return
+                p.onHintSubmit(text)
+                setHintText('')
+              }
+            },
+          }),
+          h('button', {
+            type: 'submit',
+            className: 'fo-btn fo-org-composer-send',
+            'data-size': 'sm',
+            'data-variant': 'primary',
+            'data-action': 'composer-send',
+            disabled: running || !model.str(hintText).trim(),
+            title: running ? '正在生成，等这一组跑完' : '按这句话重新生成这一组建议',
+            'aria-label': '按这句话重新生成这一组建议',
+          }, h('span', { 'aria-hidden': 'true' }, '↵')),
+        )
+        : null,
     )
   }
 }

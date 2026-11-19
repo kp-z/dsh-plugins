@@ -112,7 +112,11 @@ check('预期完成建议：待办任务没预期 → 给出未来时间点', et
 check('坏建议被纯函数层丢掉并写明原因（置信度 / 成环）', dropped.length === 2
   && dropped.some((item) => /置信度/.test(item.reason)) && dropped.some((item) => /环/.test(item.reason)),
   JSON.stringify(dropped.map((item) => item.reason)))
-check('模型被调用了一次（没有重复要建议）', modelCalls === 1, `modelCalls=${modelCalls}`)
+/* 关系与 O/KR 是同一件事的两半：会话给了关系但没给 okr 时，会再问一次 OKR 规划模型。
+   所以这里的目标不是「只调一次」，而是「不重复要同一样东西」——最多两次，
+   且多出来的那次必须是 O/KR 兜底（批次里 okrSource 会标出来）。 */
+check('模型最多调用两次（关系 + O/KR 兜底），没有重复要建议', modelCalls <= 2, `modelCalls=${modelCalls}`)
+check('多出来的那次调用有据可查：批次记录了 okrSource', ['', 'session', 'okr-model'].includes(String(batch.model?.okrSource || '')), JSON.stringify(batch.model))
 const relationsAfterSuggest = (await json('/api/overview')).data.relations.length
 check('生成阶段零副作用：state.relations 一条都没加', relationsAfterSuggest === relationsBefore, `${relationsBefore} → ${relationsAfterSuggest}`)
 

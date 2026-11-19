@@ -110,8 +110,14 @@ export function createApi({ fetchImpl } = {}) {
      * 一键整理。scopeKind/scopeId 省略表示「全部任务」。
      * 返回 { batch, dropped, complete, candidates }：**只出建议**，不会写关系。
      */
-    organize(scope) {
-      return post('/api/overview/organize', { scope: scope || { kind: 'all', id: '' } });
+    organize(scope, hint) {
+      /* hint：建议栏底部对话框里这一轮的补充要求（「KR 写得更可验收」这种）。
+         只作用于这一组 / 这一次会话，不改变默认口径。 */
+      const text = typeof hint === 'string' ? hint.trim() : '';
+      return post('/api/overview/organize', {
+        scope: scope || { kind: 'all', id: '' },
+        ...(text ? { hint: text } : {}),
+      });
     },
     /** 某范围最近一批建议（面板重开时取回；没有就是 batch:null）。 */
     async organizeView(scope) {
