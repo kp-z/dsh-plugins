@@ -1,21 +1,29 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { apply, inject, name } from '../lib/index.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { apply, inject, name } from '../lib/index.js'
 
-/** 最小 cordis context 替身：只提供 apply 用到的那两样。 */
+/** 最小 cordis context 替身：只提供 apply 用到的那几样。 */
 function fakeContext() {
   const tools = []
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>()
   const logs = []
   const ctx = {
     logger: () => ({
-      info: (...args) => logs.push(args),
-      warn: (...args) => logs.push(args),
-      error: (...args) => logs.push(args),
+      info: (...args: unknown[]) => logs.push(args),
+      warn: (...args: unknown[]) => logs.push(args),
+      debug: (...args: unknown[]) => logs.push(args),
+      error: (...args: unknown[]) => logs.push(args),
     }),
-    tools: { register: (tool) => tools.push(tool) },
+    tools: { register: (tool: unknown) => tools.push(tool) },
+    on: (eventName: string, callback: (...args: unknown[]) => void) => {
+      const list = listeners.get(eventName) ?? []
+      list.push(callback)
+      listeners.set(eventName, list)
+      return () => {}
+    },
   }
-  return { ctx, tools, logs }
+  return { ctx, tools, listeners, logs }
 }
 
 test('模块契约：name / inject 符合 DSH 插件约定', () => {
@@ -27,16 +35,23 @@ test('apply 注册唯一工具 broadcast_say，参数与输出 schema 正确', (
   const { ctx, tools } = fakeContext()
   apply(ctx as never, {})
   assert.equal(tools.length, 1)
-  const tool = tools[0]
+  const tool = tools[0] as Record<string, any>
   assert.equal(tool.name, 'broadcast_say')
   assert.equal(tool.parameters.type, 'object')
   assert.deepEqual(tool.parameters.required, ['text'])
   assert.equal(tool.parameters.properties.text.type, 'string')
   assert.equal(tool.output.schema.type, 'string')
   assert.equal(typeof tool.execute, 'function')
-  // 工具描述要说清副作用（联网合成 + 出声）
   assert.match(tool.description, /联网/)
   assert.match(tool.description, /播报/)
+})
+
+test('apply 订阅 session/event（S2 的自动播报入口）', () => {
+  const { ctx, listeners, logs } = fakeContext()
+  apply(ctx as never, { enabled: true })
+  assert.equal(listeners.get('session/event')?.length, 1)
+  // 加载日志里能看到开关与引擎，便于排查「为什么不响」
+  assert.ok(logs.some((args) => String(args[0]).includes('dsh-broadcast 已加载')))
 })
 
 test('定义与示例工具同构：defineTool 产出 name/description/parameters/output/execute', () => {
