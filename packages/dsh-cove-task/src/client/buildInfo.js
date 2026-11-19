@@ -2,6 +2,6 @@
  * 构建号（自动生成，别手改）：scripts/stamp-build.mjs 在 build:client 前写入。
  * 界面上会显示它，用来判断「页面跑的是不是最新包」。
  */
-export const BUILD_SHA = "170c1f3+dirty"
-export const BUILD_AT = "11-19 22:26"
-export const BUILD_LABEL = "170c1f3+dirty · 11-19 22:26"
+export const BUILD_SHA = "6e346bd+dirty"
+export const BUILD_AT = "11-19 22:33"
+export const BUILD_LABEL = "6e346bd+dirty · 11-19 22:33"
