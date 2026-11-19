@@ -16,6 +16,8 @@ function fakeContext() {
       error: (...args: unknown[]) => logs.push(args),
     }),
     tools: { register: (tool: unknown) => tools.push(tool) },
+    // 宿主服务按需现取：测试里一个都没有（插件必须能在缺服务时照常加载）
+    get: (_name: string) => undefined,
     on: (eventName: string, callback: (...args: unknown[]) => void) => {
       const list = listeners.get(eventName) ?? []
       list.push(callback)

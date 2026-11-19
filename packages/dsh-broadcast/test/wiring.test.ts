@@ -54,15 +54,19 @@ function harness(overrides: Parameters<typeof resolveConfig>[0] = {}) {
 
 const session = (id: string, header: Record<string, unknown> = { delegationDepth: 0 }) => ({ id, header })
 
+/** 文案生成是异步的（S3 可能要走模型），断言前先把微任务跑完。 */
+const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
 /** 足够长（> minChars 30）的一句收尾，避免测试因为「太短」被静默。 */
 const LONG = '这一轮把接口改好了，单元测试和真机都过了一遍，日志也看过了，你可以看一下要不要合并到主干。'
 
-test('一轮正常结束：把这一轮的话洗干净念出来', () => {
+test('一轮正常结束：把这一轮的话洗干净念出来', async () => {
   clock = 10_000
   const { listener, spoken, decisions } = harness()
   listener(session('s1'), assistantEvent(1, '我把 \`retry\` 改成三次退避了，测试都过了，可以直接上线，你看要不要现在合并。'))
   listener(session('s1'), assistantEvent(1, '另外把日志里那个路径 /Users/kp/a.ts 删了。', ['edit', 'bash']))
   listener(session('s1'), turnEndEvent(1, 'completed'))
+  await settle()
 
   assert.equal(spoken.length, 1)
   const text = spoken[0] ?? ''
@@ -73,11 +77,12 @@ test('一轮正常结束：把这一轮的话洗干净念出来', () => {
   assert.deepEqual(decisions.at(-1)?.tools, ['edit', 'bash'])
 })
 
-test('回复太短：不开口', () => {
+test('回复太短：不开口', async () => {
   clock = 10_000
   const { listener, spoken, decisions } = harness()
   listener(session('s2'), assistantEvent(1, '好的。'))
   listener(session('s2'), turnEndEvent(1, 'completed'))
+  await settle()
   assert.deepEqual(spoken, [])
   assert.equal(decisions.at(-1)?.decision.action, 'silent')
 })
@@ -90,21 +95,23 @@ test('报错轮：念一句短提示，不去念报错原文', () => {
   assert.deepEqual(spoken, ['这一轮出错了，需要你看一眼。'])
 })
 
-test('子代理会话默认不出声，打开开关才播', () => {
+test('子代理会话默认不出声，打开开关才播', async () => {
   clock = 10_000
   const quiet = harness()
   quiet.listener(session('s4', { origin: 'subagent', delegationDepth: 1 }), assistantEvent(1, LONG))
   quiet.listener(session('s4', { origin: 'subagent', delegationDepth: 1 }), turnEndEvent(1, 'completed'))
+  await settle()
   assert.deepEqual(quiet.spoken, [])
 
   clock = 10_000
   const loud = harness({ announceSubagent: true })
   loud.listener(session('s5', { delegationDepth: 1 }), assistantEvent(1, LONG))
   loud.listener(session('s5', { delegationDepth: 1 }), turnEndEvent(1, 'completed'))
+  await settle()
   assert.equal(loud.spoken.length, 1)
 })
 
-test('同一会话 2 秒内连播只出声一次；不同会话互不影响', () => {
+test('同一会话 2 秒内连播只出声一次；不同会话互不影响', async () => {
   clock = 10_000
   const { listener, spoken } = harness()
   const long = LONG
@@ -117,20 +124,76 @@ test('同一会话 2 秒内连播只出声一次；不同会话互不影响', ()
   // 另一个会话同一时刻结束，应该照常播
   listener(session('b'), assistantEvent(1, long))
   listener(session('b'), turnEndEvent(1, 'completed'))
+  await settle()
 
   assert.equal(spoken.length, 2, 'a 的第 2 轮被去抖，b 不受影响')
   clock = 13_000 // 3 秒后，a 又能播了
   listener(session('a'), assistantEvent(3, long))
   listener(session('a'), turnEndEvent(3, 'completed'))
+  await settle()
   assert.equal(spoken.length, 3)
 })
 
-test('总开关关闭：一条都不播', () => {
+test('总开关关闭：一条都不播', async () => {
   clock = 10_000
   const { listener, spoken } = harness({ enabled: false })
   listener(session('s6'), assistantEvent(1, LONG))
   listener(session('s6'), turnEndEvent(1, 'completed'))
+  await settle()
   assert.deepEqual(spoken, [])
+})
+
+test('文案生成器拿到这一轮的正文、工具名和收尾方式', async () => {
+  clock = 10_000
+  const inputs: { text: string; tools: readonly string[]; kind: string }[] = []
+  const spoken: string[] = []
+  const listener = createSessionListener({
+    config: resolveConfig({ enabled: true }),
+    speak: async (text) => { spoken.push(text) },
+    summarize: async (input) => {
+      inputs.push(input)
+      return { text: '模型写的一句话。' }
+    },
+    now: () => clock,
+  })
+  listener(session('s9'), assistantEvent(1, LONG, ['read', 'edit']))
+  listener(session('s9'), turnEndEvent(1, 'completed'))
+  await settle()
+  assert.equal(inputs.length, 1)
+  assert.match(inputs[0]?.text ?? '', /这一轮把接口改好了/)
+  assert.deepEqual(inputs[0]?.tools, ['read', 'edit'])
+  assert.equal(inputs[0]?.kind, 'completed')
+  assert.deepEqual(spoken, ['模型写的一句话。'])
+})
+
+test('同一轮的 turn/end 重复到达：只播一次', async () => {
+  clock = 10_000
+  const { listener, spoken, decisions } = harness()
+  listener(session('s10'), assistantEvent(1, LONG))
+  listener(session('s10'), turnEndEvent(1, 'completed'))
+  await settle()
+  listener(session('s10'), turnEndEvent(1, 'completed'))
+  await settle()
+  assert.equal(spoken.length, 1)
+  assert.equal(decisions.at(-1)?.decision.action, 'silent')
+})
+
+test('文案生成失败不吞异常：交给 onError', async () => {
+  clock = 10_000
+  const errors: unknown[] = []
+  const listener = createSessionListener({
+    config: resolveConfig({ enabled: true }),
+    speak: async () => {},
+    summarize: async () => { throw new Error('模型彻底挂了') },
+    now: () => clock,
+    onError: (error) => errors.push(error),
+  })
+  listener(session('s11'), assistantEvent(1, LONG))
+  listener(session('s11'), turnEndEvent(1, 'completed'))
+  await settle()
+  await settle()
+  assert.equal(errors.length, 1)
+  assert.match(String((errors[0] as Error).message), /模型彻底挂了/)
 })
 
 test('脏事件不抛、不播', () => {
@@ -157,8 +220,8 @@ test('播放失败不会把异常抛回事件总线', async () => {
   })
   listener(session('s8'), assistantEvent(1, LONG))
   listener(session('s8'), turnEndEvent(1, 'completed'))
-  await Promise.resolve()
-  await Promise.resolve()
+  await settle()
+  await settle()
   assert.equal(errors.length, 1)
   assert.match(String((errors[0] as Error).message), /afplay/)
 })

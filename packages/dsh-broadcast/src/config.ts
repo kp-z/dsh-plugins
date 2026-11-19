@@ -25,6 +25,12 @@ export const BroadcastConfig = z.object({
   /** 摘要长度上限（字）。80 字约 16 秒，再长就听不下去了。 */
   maxChars: z.number().default(80),
 
+  /** 是否让宿主的模型把这一轮说成人话（关掉就只做本地截断）。 */
+  useModel: z.boolean().default(true),
+
+  /** 模型改写超时（ms）：拿不到就用本地截断，不让播放干等。 */
+  modelTimeoutMs: z.number().default(6000),
+
   /** 回复短于这个字数就不播（'收到' 这类不值得开口）。 */
   minChars: z.number().default(30),
 
@@ -52,6 +58,8 @@ export function resolveConfig(raw: Partial<BroadcastConfig> = {}): BroadcastConf
     rate: raw.rate ?? '+8%',
     volume: raw.volume ?? 100,
     maxChars: raw.maxChars ?? 80,
+    useModel: raw.useModel ?? true,
+    modelTimeoutMs: raw.modelTimeoutMs ?? 6000,
     minChars: raw.minChars ?? 30,
     announceSubagent: raw.announceSubagent ?? false,
     debounceMs: raw.debounceMs ?? 2000,
