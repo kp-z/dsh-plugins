@@ -9,9 +9,11 @@
  *  - 坏建议只丢那一条，不整批失败。
  */
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   MAX_ITEMS,
+  MAX_OKR_ITEMS,
   MIN_CONFIDENCE,
   ORGANIZE_SYSTEM,
   buildEvidencePack,
@@ -356,6 +358,84 @@ check('校验：模型给的时间建议置信度不够也丢（门槛 0.9）', 
   })
   assert.equal(checked.items[0].status, 'dropped')
   assert.match(checked.items[0].reason, /置信度/)
+})
+
+/* ---- O/KR 建议：同一次会话产出，但只作为建议，接受后才落库 ---- */
+
+check('解析：items 之外的 okr 数组要原样取出来', () => {
+  const parsed = parseOrganizeResponse(JSON.stringify({
+    items: [],
+    okr: [{ id: 'a', objective: 'O1 让看板可读', keyResult: 'KR1 画布稳定', confidence: 0.8, evidence: '正文提到' }],
+    notes: 'x',
+  }))
+  assert.equal(parsed.okr.length, 1)
+  assert.equal(parsed.okr[0].objective, 'O1 让看板可读')
+})
+
+check('校验：O/KR 缺字段 / 引用范围外任务 / 同一任务重复 都会被逐条标注', () => {
+  const tasks = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B', objective: 'O', keyResult: 'KR' }]
+  const checked = validateOrganizeItems({
+    items: [
+      { kind: 'okr', from: 'a', objective: 'O1', keyResult: 'KR1', evidence: 'e' },
+      { kind: 'okr', from: 'a', objective: 'O2', keyResult: 'KR2', evidence: 'e' },
+      { kind: 'okr', from: 'b', objective: 'O3', keyResult: 'KR3', evidence: 'e' },
+      { kind: 'okr', from: 'zzz', objective: 'O4', keyResult: 'KR4', evidence: 'e' },
+      { kind: 'okr', from: 'a', objective: '', keyResult: 'KR5', evidence: 'e' },
+    ],
+    tasks,
+    relations: [],
+    now: 1,
+  })
+  assert.equal(checked.items[0].status, 'pending')
+  assert.equal(checked.items[1].status, 'dropped')
+  assert.match(checked.items[1].reason, /重复/)
+  assert.equal(checked.items[2].status, 'dropped')
+  assert.match(checked.items[2].reason, /已经有 O\/KR/)
+  assert.equal(checked.items[3].status, 'dropped')
+  assert.match(checked.items[3].reason, /范围外/)
+  assert.equal(checked.items[4].status, 'dropped')
+  assert.match(checked.items[4].reason, /Objective/)
+})
+
+check('校验：O/KR 建议数量有上限，超出被丢弃', () => {
+  const tasks = Array.from({ length: MAX_OKR_ITEMS + 3 }, (_, i) => ({ id: 't' + i }))
+  const items = tasks.map((task, i) => ({ kind: 'okr', from: task.id, objective: 'O' + i, keyResult: 'KR' + i, evidence: 'e' }))
+  const checked = validateOrganizeItems({ items, tasks, relations: [], now: 1 })
+  assert.equal(checked.items.filter((item) => item.status === 'pending').length, MAX_OKR_ITEMS)
+  assert.ok(checked.items.some((item) => item.status === 'dropped' && /上限/.test(item.reason)))
+})
+
+check('批次与面板视图：objective / keyResult 一路带下去', () => {
+  const tasks = [{ id: 'a', title: 'A' }]
+  const checked = validateOrganizeItems({
+    items: [{ kind: 'okr', from: 'a', objective: 'O1', keyResult: 'KR1', confidence: 0.9, evidence: 'e' }],
+    tasks,
+    relations: [],
+    now: 1,
+  })
+  const batch = makeOrganizeBatch({ at: 1, scope: { kind: 'all', id: '' }, items: checked.items })
+  assert.equal(batch.items[0].type, 'okr')
+  assert.equal(batch.items[0].objective, 'O1')
+  assert.equal(batch.items[0].keyResult, 'KR1')
+  const projected = projectOrganize(batch, tasks)
+  assert.equal(projected.items[0].objective, 'O1')
+  assert.equal(projected.items[0].keyResult, 'KR1')
+  assert.match(projected.items[0].impact.note, /O\/KR/)
+})
+
+/* ---- 宿主侧接线（源码级守卫）：提示词要求 okr、批次计数、接受/撤销都分流 ---- */
+
+check('宿主：整理会话的提示词与批次都带 okr，接受/撤销按 kind 分流', () => {
+  const host = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  /* 会话提示词必须要求模型产出 okr，否则它永远不会给 */
+  assert.match(host, /"okr":\[\{"id":"任务id"/, '会话提示词的 JSON schema 里缺少 okr')
+  /* 解析结果要转成 okr 建议条目 */
+  assert.match(host, /parsed\.okr/, '没有读取 parsed.okr')
+  /* 统计进批次 model，便于排查「为什么这轮没有 O/KR」 */
+  assert.match(host, /okr: checked\.items\.filter/, '批次 model 里缺少 okr 计数')
+  /* 接受：走 applyOkrLabels；撤销：还原成接受前的值 */
+  assert.match(host, /if \(item\.kind === 'okr'\)[\s\S]{0,400}?applyOkrLabels/, '接受分支没有接 applyOkrLabels')
+  assert.match(host, /beforeOkr/, '接受时没有记录写之前的 O/KR，撤销就无法还原')
 })
 
 console.log(`\norganizeSuggestions.js: ${passed} passed, ${failures.length} failed`)

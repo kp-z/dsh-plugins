@@ -2017,7 +2017,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   })
 }
 
-/* ---- 建议只出建议：打开建议栏绝不自动写 O/KR ---- */
+/* ---- 建议只出建议：O/KR 可以「建议」，但绝不自动「写入」 ---- */
 {
   const okrCalls = []
   const fx = await mountPanel({
@@ -2029,11 +2029,48 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
   ft = await fx.mini.act()
-  check('打开建议栏不调用 O/KR 自动配置接口，也不出现自动配置提示', () => {
+  check('打开建议栏不调用 O/KR 自动配置接口（没有任何自动写入）', () => {
     assert.equal(okrCalls.length, 0, '建议流程不能自动写 O/KR；必须等人确认')
-    assert.equal(byClass(ft, 'fo-org-okr').length, 0, '建议面板里不再有自动配置状态')
+    /* 旧的「自动配置状态」条仍然不许回来：O/KR 只能以建议卡片的形式出现。 */
+    assert.equal(byClass(ft, 'fo-org-okr').length, 0, '建议面板里不该有自动配置状态')
     const pageNotes = findAll(ft, (node) => node.kind === 'host' && classNameOf(node).split(/\s+/).includes('fo-note'))
     assert.equal(pageNotes.some((node) => textOf(node).includes('O/KR')), false, '正文页头也不该出现 O/KR 提示')
+  })
+}
+
+/* ---- O/KR 建议卡片：出现了也只是 pending，接受才落库 ---- */
+{
+  const accepted = []
+  const batch = {
+    batchId: 'b-okr',
+    at: 1,
+    scope: { kind: 'all', id: '' },
+    notes: '',
+    pending: 1,
+    items: [{
+      id: 'okr-1', type: 'okr', kind: 'okr',
+      from: 'a', to: '', fromTitle: '任务A', toTitle: '',
+      objective: 'O1 让看板可读', keyResult: 'KR1 画布稳定',
+      confidence: 0.8, evidence: '正文提到', status: 'pending', reason: '',
+      impact: { blocked: [], blockedCount: 0, note: '接受后写入这条任务的 O/KR（会同步回飞书字段）。' },
+    }],
+  }
+  const backend = makeOrganizeBackend({ restore: batch })
+  const backend2 = {
+    ...backend.api,
+    accept: (batchId, itemIds) => { accepted.push(itemIds); return Promise.resolve({ ok: true, results: [{ id: 'okr-1', ok: true }], batch }) },
+  }
+  const fx = await mountPanel({ organizeApi: backend2, store: makeStore({ organize: { open: true, batchId: 'b-okr' } }) })
+  const ft = fx.tree
+  check('O/KR 建议卡片渲染出 objective / keyResult，且默认只是待处理', () => {
+    const cards = findAll(ft, (node) => node.kind === 'host' && classNameOf(node).split(/\s+/).includes('fo-org-item'))
+    const okrCard = cards.find((node) => node.props['data-kind'] === 'okr')
+    assert.ok(okrCard, '应该渲染出一张 O/KR 卡片')
+    assert.equal(okrCard.props['data-status'], 'pending', '未接受前必须停在 pending')
+    const text = textOf(okrCard)
+    assert.ok(text.includes('O1 让看板可读'), '卡片要显示 Objective')
+    assert.ok(text.includes('KR1 画布稳定'), '卡片要显示 Key Result')
+    assert.equal(accepted.length, 0, '仅渲染不能触发落库')
   })
 }
 
