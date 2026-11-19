@@ -267,8 +267,7 @@ export function createOrganizeDrawer(deps) {
           ),
           /* 这一组是照哪句要求重生成的：回看时不用猜「为什么这批和上一批不一样」。 */
           model.str(batch.hint)
-            ? h('p', { className: 'fo-org-group-hint', title: model.str(batch.hint) },
-              '要求：' + model.str(batch.hint))
+            ? h('p', { className: 'fo-org-group-hint', title: model.str(batch.hint) }, model.str(batch.hint))
             : null,
           /* 归档后收起时，撤销仍留在组头，避免必须先展开才能回退。 */
           !open && accepted.length && typeof p.onUndoGroup === 'function'
@@ -335,20 +334,18 @@ export function createOrganizeDrawer(deps) {
     /* 「模式」= 这一轮让模型往哪个方向改（照 cove 的 Normal/Code/Markdown 切换位）。
        选中项以 accent 色表达，提交时把关注点作为一句短前缀并进要求里。 */
     const COMPOSER_MODES = [
-      { id: 'all', label: '全部重排', desc: '关系和 O/KR 一起看', icon: 'sparkles', accent: 'brand' },
-      { id: 'relation', label: '只调关系', desc: '前置 / 来源连线', icon: 'link', accent: 'idle' },
-      { id: 'okr', label: '只调 O/KR', desc: '目标与关键结果的口径', icon: 'target', accent: 'success' },
+      { id: 'all', label: '全部', icon: 'sparkles', accent: 'brand' },
+      { id: 'relation', label: '关系', icon: 'link', accent: 'idle' },
+      { id: 'okr', label: 'O/KR', icon: 'target', accent: 'success' },
     ]
     const activeMode = COMPOSER_MODES.find((row) => row.id === composerMode) || COMPOSER_MODES[0]
     /* 工具菜单：本场景三个真正有用的动作（附件/表情对这里没有意义，不摆假按钮）。 */
     const COMPOSER_TOOLS = [
-      { id: 'expand', label: composerExpanded ? '收起输入框' : '展开输入框', desc: composerExpanded ? '回到单行' : '多写几句要求', icon: composerExpanded ? 'shrink' : 'expand' },
-      { id: 'template', label: '插入示例要求', desc: '照着改一改再发', icon: 'message' },
-      { id: 'clear', label: '清空输入', desc: '丢掉这条草稿', icon: 'close' },
+      { id: 'expand', label: composerExpanded ? '收起' : '展开', icon: composerExpanded ? 'shrink' : 'expand' },
+      { id: 'template', label: '示例', icon: 'message' },
+      { id: 'clear', label: '清空', icon: 'close' },
     ]
-    const composerPlaceholder = generating
-      ? '正在按上一条要求重生成…'
-      : (activeMode.id === 'okr' ? '说说 O/KR 该怎么改…' : (activeMode.id === 'relation' ? '说说关系该怎么改…' : '让 AI 改一改这组建议，或提新要求…'))
+    const composerPlaceholder = generating ? '生成中…' : '修改建议…'
 
     /* 提交：原文 + 关注点分开传（组头只显示原文，指令由服务端按白名单合成）。 */
     const submitHint = () => {
@@ -502,9 +499,7 @@ export function createOrganizeDrawer(deps) {
                   onClick: () => runComposerTool(tool.id),
                 },
                   h('span', { className: 'fo-org-composer-menu-icon' }, icon(tool.icon)),
-                  h('span', { className: 'fo-org-composer-menu-text' },
-                    h('span', { className: 'fo-org-composer-menu-label' }, tool.label),
-                    h('span', { className: 'fo-org-composer-menu-desc' }, tool.desc)),
+                  h('span', { className: 'fo-org-composer-menu-label' }, tool.label),
                 ))) : null,
             ),
             /* 模式按钮 + 菜单（acc 色表达当前关注点，照 cove 的 Normal/Code/Markdown） */
@@ -515,7 +510,7 @@ export function createOrganizeDrawer(deps) {
                 'data-action': 'composer-mode',
                 'data-accent': activeMode.accent,
                 title: activeMode.label,
-                'aria-label': '这一轮改什么：' + activeMode.label,
+                'aria-label': activeMode.label,
                 'aria-expanded': modeMenuOpen ? 'true' : 'false',
                 disabled: generating,
                 onClick: () => { setModeMenuOpen((prev) => !prev); setToolMenuOpen(false) },
@@ -533,9 +528,7 @@ export function createOrganizeDrawer(deps) {
                   onClick: () => { setComposerMode(row.id); setModeMenuOpen(false) },
                 },
                   h('span', { className: 'fo-org-composer-menu-icon' }, icon(row.icon)),
-                  h('span', { className: 'fo-org-composer-menu-text' },
-                    h('span', { className: 'fo-org-composer-menu-label' }, row.label),
-                    h('span', { className: 'fo-org-composer-menu-desc' }, row.desc)),
+                  h('span', { className: 'fo-org-composer-menu-label' }, row.label),
                   row.id === activeMode.id ? h('span', { className: 'fo-org-composer-menu-dot', 'aria-hidden': 'true' }) : null,
                 ))) : null,
             ),
@@ -545,7 +538,7 @@ export function createOrganizeDrawer(deps) {
               rows: 1,
               value: hintText,
               placeholder: composerPlaceholder,
-              'aria-label': '对这一组建议的要求',
+              'aria-label': '修改建议',
               disabled: running,
               onChange: (event) => setHintText(model.str(event.currentTarget.value)),
               onKeyDown: (event) => {
@@ -561,15 +554,10 @@ export function createOrganizeDrawer(deps) {
               className: 'fo-org-composer-send',
               'data-action': 'composer-send',
               disabled: running || !model.str(hintText).trim(),
-              title: generating ? '正在生成，等这一组跑完' : '按这句话重新生成这一组建议',
-              'aria-label': '按这句话重新生成这一组建议',
+              title: generating ? '生成中' : '重新生成',
+              'aria-label': '重新生成',
             }, generating ? h('span', { className: 'fo-spinner' }) : icon('send')),
           ),
-          /* 快捷键提示行（cove 底部同样有一行 sendHint）。 */
-          h('div', { className: 'fo-org-composer-hint' },
-            generating
-              ? '正在按上一条要求重生成…'
-              : 'Enter 发送 · Shift+Enter 换行 · 只作用于这一组'),
         )
         : null,
     )
