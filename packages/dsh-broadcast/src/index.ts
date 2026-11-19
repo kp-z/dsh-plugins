@@ -1,15 +1,16 @@
 /**
  * dsh-broadcast —— 会话结束语音播报。
  *
- * 当前阶段：S2（触发 + 文本清洗）。每轮结束自动播报这一轮说了什么，
- * 但还没有「说人话」的模型改写（S3）：S2 的文案是本地清洗 + 首段截断。
+ * 当前阶段：S3（说人话）。每轮结束先让宿主的模型把这一轮讲成 2–3 句口语，
+ * 再交给 S1 的播放链念出来；模型不可用/超时/返回空就回落到本地截断。
  * 阶段表见 `docs/plans/dsh-broadcast.md`。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { speak } from './announce.js'
 import { BroadcastConfig, resolveConfig } from './config.js'
-import { createSessionListener } from './wiring.js'
+import { summarizeReply, type HostServicesLike } from './summarizer.js'
+import { createSessionListener, type SummaryInput } from './wiring.js'
 
 export { BroadcastConfig }
 export const name = 'broadcast'
@@ -18,7 +19,20 @@ export const inject = ['tools']
 export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   const config = resolveConfig(raw)
   const logger = ctx.logger('broadcast')
-  logger.info('dsh-broadcast 已加载（enabled=%s engine=%s voice=%s）', config.enabled, config.engine, config.voice)
+  logger.info('dsh-broadcast 已加载（enabled=%s engine=%s voice=%s useModel=%s）', config.enabled, config.engine, config.voice, config.useModel)
+
+  /** 现取宿主服务：服务可能晚于本插件挂上来，宿主重载后旧句柄也不该认死。 */
+  const hostServices = (): HostServicesLike => {
+    const pick = <T>(name: string): T | undefined => {
+      try {
+        return (ctx.get(name) as T | undefined) ?? undefined
+      } catch {
+        // 宿主服务不可用时 get 可能抛，探测失败就当没有
+        return undefined
+      }
+    }
+    return { llm: pick('llm'), defaultModel: pick('agentDefaultModel') }
+  }
 
   // 播放串行化：两条会话同时结束也不能叠音（前一条念完再念下一条）。
   let queue: Promise<unknown> = Promise.resolve()
@@ -54,9 +68,27 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
     },
   }))
 
+  /** 文案：模型先说人话，失败/超时/空内容就回落到本地截断（落哪一级都记一行日志）。 */
+  const summarize = async (input: SummaryInput): Promise<{ text: string }> => {
+    const result = await summarizeReply({
+      ...input,
+      maxChars: config.maxChars,
+      useModel: config.useModel,
+      timeoutMs: config.modelTimeoutMs,
+      services: hostServices(),
+    })
+    if (result.source === 'model') {
+      logger.debug('播报文案来自模型（%s，%dms）', result.channel, result.ms)
+    } else {
+      logger.info('播报文案回落到 %s：%s', result.source, result.reason ?? '')
+    }
+    return { text: result.text }
+  }
+
   const listener = createSessionListener({
     config,
     speak: enqueue,
+    summarize,
     onDecision: ({ sessionId, decision, tools }) => {
       if (decision.action === 'silent') {
         logger.debug('跳过播报（%s）：%s', sessionId, decision.reason)

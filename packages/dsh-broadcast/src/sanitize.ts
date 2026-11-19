@@ -101,3 +101,55 @@ export function summarizeLocally(markdown: string, maxChars: number): string {
   const paragraph = firstParagraph(cleaned)
   return clipToSentence(paragraph !== '' ? paragraph : cleaned, maxChars)
 }
+
+/**
+ * 原始首句（第三级回落：连首段都洗没了，就念原文第一句）。
+ *
+ * 与上一级的区别：**不丢行**。表格行、路径、英文标识符在这里都留着——只剥代码块和行内代码，
+ * 因为念出来是个句子总比一声不响强；但整段都是代码时仍然是空（那种回复本来就不该念）。
+ */
+export function firstSentence(text: string, maxChars: number): string {
+  const withoutBlocks = text.replace(/\r\n?/g, '\n').replace(/```[\s\S]*?```/g, ' ').replace(/~~~[\s\S]*?~~~/g, ' ')
+  for (const line of withoutBlocks.split('\n')) {
+    const stripped = line
+      .replace(/`[^`\n]*`/g, ' ') // 行内代码
+      .replace(/[*_~`>|]/g, ' ') // 强调与表格符号
+      .replace(/\s+/g, ' ')
+      .trim()
+    // 至少得有一个字母或汉字，否则只是符号堆
+    if (!/[\p{L}]/u.test(stripped)) continue
+    return clipToSentence(stripped, maxChars)
+  }
+  return ''
+}
+
+/** 模型爱加的开场白：剥掉再说（剥不干净也不影响后面继续洗）。 */
+const MODEL_PREAMBLES = /^(?:好的|好|行|可以|明白|明白了|收到)[，,：:\s]*|^(?:总结如下|摘要如下|播报如下|以下是要念的内容)[：:\s]*/u
+
+/** 包住整段的引号：中英文都算。 */
+const WRAPPING_QUOTES = /^["'`“”‘’「」『』]+|["'`“”‘’「」『』]+$/gu
+
+/**
+ * 洗模型输出：去开场白 → 去整段引号 → 去 Markdown → 截到句号。
+ *
+ * 模型经常不听话（加「好的，」开头、用引号包起来、顺手用 **加粗**），
+ * 而这里**不做信任**：洗不出来就返回空串，让上层回落到本地截断。
+ */
+export function cleanModelOutput(raw: string, maxChars: number): string {
+  let text = raw.replace(/\r\n?/g, '\n').trim()
+  if (text === '') return ''
+
+  // 开场白可能叠两层（「好的，总结如下：」），剥到不再变化为止
+  for (let round = 0; round < 3; round += 1) {
+    const next = text.replace(MODEL_PREAMBLES, '').trim()
+    if (next === text) break
+    text = next
+  }
+
+  text = sanitizeForSpeech(text)
+  text = text.replace(WRAPPING_QUOTES, '').trim()
+
+  // 模型可能把 2–3 句排成多行：取第一段再截句，别把整段都念了
+  const paragraph = firstParagraph(text)
+  return clipToSentence(paragraph !== '' ? paragraph : text, maxChars).replace(WRAPPING_QUOTES, '').trim()
+}
