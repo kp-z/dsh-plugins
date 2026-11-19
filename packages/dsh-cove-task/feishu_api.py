@@ -413,7 +413,7 @@ def list_custom_fields(token, tasklist):
     return items
 
 
-def _field_target(items, action):
+def _field_target(items, action, warnings=None):
     guid = action.get('field_guid')
     name = action.get('name')
     if guid is not None:
@@ -422,8 +422,23 @@ def _field_target(items, action):
     else:
         _identifier(name, 'name')
         matches = [f for f in items if f['name'] == name]
+    if len(matches) > 1:
+        # 与 larkTasklist.js 的 set_custom_field 同口径：按名称写入时，若同名字段有多个，
+        # 只在 allow_duplicates 下容忍，并按「类型可接受 + guid 字典序」稳定选一个，
+        # 保证和 ensure_custom_field 选的是同一个字段。
+        if guid is not None or action.get('allow_duplicates') is not True:
+            raise ValueError('字段重名/重复 GUID，拒绝写入')
+        accepted = action.get('accepted_types') or None
+        expected = action.get('expected_type')
+        typed = [f for f in matches if (accepted and f['type'] in accepted)
+                 or (not accepted and (expected is None or f['type'] == expected))]
+        pool = typed if typed else matches
+        pool = sorted(pool, key=lambda f: f['guid'])
+        matches = [pool[0]]
+        if warnings is not None:
+            warnings.append('字段「%s」有重复定义，写入 guid=%s' % (name, pool[0]['guid']))
     if len(matches) != 1:
-        raise ValueError('字段重名/重复 GUID，拒绝写入' if len(matches) > 1 else '没有匹配的字段')
+        raise ValueError('没有匹配的字段')
     target = matches[0]
     if guid is not None and name is not None and target['name'] != name:
         raise ValueError('field_guid 与 name 不匹配')
@@ -528,17 +543,30 @@ def ensure_custom_field(token, action):
         names = _option_names(action.get('options'))
         items = list_custom_fields(token, action.get('tasklist'))
         matches = [f for f in items if f['name'] == name]
+        warnings = []
         if len(matches) > 1:
-            raise ValueError('字段重名，拒绝创建/写入')
+            # 兼容历史清单：同名字段可能是旧版本重复建出来的（也可能是别的插件建的）。
+            # 调用方显式 allow_duplicates 时容忍，并按 guid 排序选第一个**类型可接受**的，
+            # 保证每次运行都选同一个（不会这次写 A、下次写 B）。
+            # 口径与 larkTasklist.js 的 ensure_custom_field 完全一致。
+            if action.get('allow_duplicates') is not True:
+                raise ValueError('字段重名，拒绝创建/写入')
+            accepted = action.get('accepted_types') or [kind]
+            usable = [f for f in matches if f['type'] in SUPPORTED_FIELD_TYPES and f['type'] in accepted]
+            if not usable:
+                raise ValueError('字段重名且没有可用类型，拒绝创建/写入')
+            usable.sort(key=lambda f: f['guid'])
+            matches = [usable[0]]
+            warnings.append('字段「%s」有重复定义，使用 guid=%s（类型 %s）' % (name, usable[0]['guid'], usable[0]['type']))
         if matches:
             target = matches[0]
             result.update(guid=target['guid'], type=target['type'])
             if target['type'] != kind:
                 raise ValueError(f'字段「{name}」已存在但类型是 {target["type"]}，不是 {kind}')
             added = []
-            warnings = []
             if kind in ('single_select', 'multi_select'):
-                target, added, warnings = _complete_options(token, target, names)
+                target, added, extra = _complete_options(token, target, names)
+                warnings.extend(extra or [])
             result.update(ok=True, added=added)
             if warnings:
                 result['warnings'] = warnings
@@ -573,7 +601,8 @@ def set_custom_field(token, action, failed_ensures=None):
     task = urllib.parse.quote(_identifier(action.get('task'), 'task'), safe='')
     if action.get('expected_type') is not None and action['expected_type'] not in SUPPORTED_FIELD_TYPES:
         raise ValueError('不支持 expected_type')
-    target = _field_target(list_custom_fields(token, action.get('tasklist')), action)
+    field_warnings = []
+    target = _field_target(list_custom_fields(token, action.get('tasklist')), action, field_warnings)
     failure = (failed_ensures or {}).get((action.get('tasklist'), target['name']))
     if failure:
         return {'op': 'set_custom_field', 'ok': False, 'skipped': 'ensure_failed',
@@ -611,8 +640,11 @@ def set_custom_field(token, action, failed_ensures=None):
     res = call(token, f'/task/v2/tasks/{task}?user_id_type=open_id', method='PATCH',
                body={'task': {'custom_fields': [value]}, 'update_fields': ['custom_fields']})
     ok = isinstance(res, dict) and res.get('code') == 0
-    return {'op': 'set_custom_field', 'ok': ok, 'guid': target['guid'], 'type': kind,
-            'error': None if ok else str(res.get('msg') or res.get('code'))[:200] if isinstance(res, dict) else 'malformed API response'}
+    receipt = {'op': 'set_custom_field', 'ok': ok, 'guid': target['guid'], 'type': kind,
+               'error': None if ok else str(res.get('msg') or res.get('code'))[:200] if isinstance(res, dict) else 'malformed API response'}
+    if field_warnings:
+        receipt['warnings'] = field_warnings
+    return receipt
 
 
 def ensure_tasklist(token, action):

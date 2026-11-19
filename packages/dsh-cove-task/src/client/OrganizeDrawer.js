@@ -173,7 +173,8 @@ export function createOrganizeDrawer(deps) {
       if (failure) {
         children.push(h('p', { key: 'fail', className: 'fo-org-fail', role: 'alert' }, `没落库：${failure}`))
       } else if (model.str(item.warning)) {
-        children.push(h('p', { key: 'warn', className: 'fo-org-impact', 'data-tone': 'idle' }, model.str(item.warning)))
+        children.push(h('p', { key: 'warn', className: 'fo-org-impact', 'data-tone': item.kind === 'okr' ? 'warn' : 'idle' },
+          item.kind === 'okr' ? '写回飞书失败，本地值已回滚：' + model.str(item.warning) : model.str(item.warning)))
         if (typeof p.onRetrySync === 'function' && item.kind !== 'eta') {
           children.push(h('div', { key: 'sync', className: 'fo-org-item-actions' },
             iconBtn('retry-sync', 'sync', model.str(item.retryAction) === 'remove' ? '重试撤销同步' : '同步到飞书', () => p.onRetrySync(item, batch), { disabled: running, text: model.str(item.retryAction) === 'remove' ? '重试撤销' : '同步' }),

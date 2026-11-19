@@ -433,8 +433,12 @@ check('宿主：整理会话的提示词与批次都带 okr，接受/撤销按 k
   assert.match(host, /parsed\.okr/, '没有读取 parsed.okr')
   /* 统计进批次 model，便于排查「为什么这轮没有 O/KR」 */
   assert.match(host, /okr: checked\.items\.filter/, '批次 model 里缺少 okr 计数')
-  /* 接受：走 applyOkrLabels；撤销：还原成接受前的值 */
-  assert.match(host, /if \(item\.kind === 'okr'\)[\s\S]{0,400}?applyOkrLabels/, '接受分支没有接 applyOkrLabels')
+  /* 接受：O/KR 走 applyOkrLabels，而且必须**一次批量**（逐条会为同一清单反复 ensure，
+     最终一致的字段列表会让它重复创建同名 O/KR，之后按名字写入就被拒）。 */
+  const acceptRegion = host.slice(host.indexOf('async function acceptOrganizeItems'), host.indexOf('async function undoOrganizeItems'))
+  assert.ok(acceptRegion.includes('applyOkrLabels('), '接受分支没有接 applyOkrLabels')
+  assert.ok(/okrItems\.map\(/.test(acceptRegion), 'O/KR 应该批量一次应用（okrItems.map 传进 applyOkrLabels）')
+  assert.ok(!/for \(const item of okrItems\)[\s\S]{0,200}await applyOkrLabels/.test(acceptRegion), '不要在 okr 循环里逐条 await applyOkrLabels')
   assert.match(host, /beforeOkr/, '接受时没有记录写之前的 O/KR，撤销就无法还原')
 })
 
