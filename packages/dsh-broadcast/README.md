@@ -66,6 +66,15 @@ dsh plugin --profile web add file:packages/dsh-broadcast
 # then restart dsh
 ```
 
+The packaged desktop app has no `dsh` on PATH, and **it usually runs the `desktop` profile, not
+`web`** — install into the profile your app actually boots, or the button will never appear:
+
+```bash
+node packages/dsh-broadcast/scripts/link-profile.mjs desktop --dry-run   # see what it would change
+node packages/dsh-broadcast/scripts/link-profile.mjs desktop             # backup → manifest → symlink → import check
+# restart DSH, then: curl -s http://127.0.0.1:52559/dsh-broadcast/state
+```
+
 ## Debug
 
 `broadcast_say(text)` (a tool, always available) speaks a line on demand and reports which
