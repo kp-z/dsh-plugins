@@ -1270,7 +1270,6 @@ export const CSS = `
   transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
 .fo-org-composer-square:hover:not(:disabled) { color: ${T.label1}; border-color: ${g(T.label1, 22)}; background: ${g(T.bgLayer2, 70)}; }
-.fo-org-composer-square.is-on { color: ${T.brand}; border-color: ${g(T.brand, 50)}; background: ${g(T.brand, 12)}; }
 .fo-org-composer-square[data-accent="brand"] { color: ${T.brand}; border-color: ${g(T.brand, 45)}; }
 .fo-org-composer-square[data-accent="idle"] { color: ${T.idle}; border-color: ${g(T.idle, 45)}; }
 .fo-org-composer-square[data-accent="success"] { color: ${T.success}; border-color: ${g(T.success, 45)}; }
@@ -1308,12 +1307,14 @@ export const CSS = `
   font: inherit; font-size: 12px; line-height: 20px;
   transition: border-color .15s ease;
   scrollbar-width: none;
+  /* 高度靠**拖拽输入框下缘**调整（用户口径：不要「放大」按钮）。 */
+  resize: vertical; min-height: 34px; max-height: 45vh;
 }
 .fo-org-composer-input::-webkit-scrollbar { width: 0; height: 0; }
 .fo-org-composer-input::placeholder { color: ${g(T.label2, 80)}; }
 .fo-org-composer-input:focus { outline: none; border-color: ${g(T.brand, 55)}; }
 .fo-org-composer-input:disabled { opacity: .6; color: ${T.label2}; }
-.fo-org-composer.is-expanded .fo-org-composer-input { height: auto; min-height: 10rem; max-height: 16rem; }
+
 
 /* 发送：主题色实心；禁用时退成灰玻璃 */
 .fo-org-composer-send {
