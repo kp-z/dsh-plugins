@@ -1768,7 +1768,9 @@ function makeOrganizeBackend(options) {
 
 const ORGANIZE_TRIGGER = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'organize')[0]
 /* 点入口只是打开侧栏（读上次结论）；要真的跑分析得按侧栏顶部的「重新分析」。 */
-const ORGANIZE_RERUN = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0]
+/* 右上角「提供新的建议」已并到底部发送键：空着发 = 按当前口径重新生成一组。 */
+const ORGANIZE_SEND = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'composer-send')[0]
+const ORGANIZE_RERUN = (tree) => ({ props: { disabled: !ORGANIZE_SEND(tree) || ORGANIZE_SEND(tree).props.disabled, title: ORGANIZE_SEND(tree) ? ORGANIZE_SEND(tree).props.title : '', onClick: () => { const form = findAll(organizeDrawers(tree)[0], (node) => node.kind === 'host' && node.type === 'form' && classNameOf(node).split(/\\s+/).includes('fo-org-composer'))[0]; if (form) form.props.onSubmit({ preventDefault() {} }) } } })
 const organizeDrawers = (tree) => findAll(tree, (node) => node.kind === 'host' && node.type === 'aside' && classNameOf(node).split(/\s+/).includes('fo-organize'))
 const orgItems = (tree, status) => findAll(tree, (node) => node.kind === 'host' && node.type === 'article'
   && classNameOf(node).split(/\s+/).includes('fo-org-item') && (!status || node.props['data-status'] === status))
@@ -1800,7 +1802,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(organizeDrawers(ft).length, 1, '侧栏立刻打开')
   })
   /* 面板里的「提供新的建议」才跑模型：范围 = 打开面板时的页面范围 */
-  findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
+  ORGANIZE_RERUN(ft).props.onClick()
   ft = await fx.mini.act()
   check('「提供新的建议」按当前页面范围跑', () => {
     assert.equal(backend.log.organize.length, 1)
@@ -1917,8 +1919,9 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
 }
 
 {
-  /* 底部对话框：按这一组的要求重新生成（只作用于当前范围） */
-  const backend = makeOrganizeBackend()
+  /* 底部对话框：按这一组的要求重新生成（只作用于当前范围）。
+     给一份已有批次，避免打开抽屉时自动跑一次生成（否则发送键处于「生成中」禁用态）。 */
+  const backend = makeOrganizeBackend({ restore: organizeBatchFixture() })
   const fx = await mountPanel({ organizeApi: backend.api })
   let ft = fx.tree
   ORGANIZE_TRIGGER(ft).props.onClick()
@@ -1931,11 +1934,10 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   const sendBtn = () => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'button'
     && node.props['data-action'] === 'composer-send')[0]
 
-  check('建议栏底部有一行对话框（输入框 + 发送），默认禁用发送', () => {
+  check('建议栏底部有一行对话框（输入框 + 发送）', () => {
     assert.ok(composer(), '抽屉底部应有 .fo-org-composer')
     assert.ok(composerInput(), '应有输入框')
     assert.ok(sendBtn(), '应有发送按钮')
-    assert.equal(sendBtn().props.disabled, true, '没输入时发送按钮要禁用')
     assert.equal(composerInput().props.placeholder, '修改建议…', '占位文案要短（用户口径：别堆提示）')
   })
 
@@ -1943,36 +1945,35 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   const squareBtn = (action) => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'button'
     && node.props['data-action'] === action)[0]
 
-  check('照 cove 的 composer 形制：工具 / 模式两个方按钮 + 单行输入 + 发送', () => {
-    assert.ok(squareBtn('composer-tools'), '应有「工具」方按钮')
+  check('底部只留两个按钮：模式 + 发送（「放大」按钮已去掉，靠拖拽输入框调高度）', () => {
     assert.ok(squareBtn('composer-mode'), '应有「模式」方按钮')
+    assert.equal(squareBtn('composer-tools'), undefined, '「工具/放大」按钮应删除')
     assert.equal(String(composerInput().props.rows), '1', '输入框默认单行（rows=1）')
     assert.equal(sendBtn().props.type, 'submit', '发送是 submit 按钮（回车也能提交）')
-    /* 用户口径：不要成堆的提示文案，尤其底部那行快捷键提示已删除。 */
+    /* 按钮总数 = 2（模式 + 发送），没有第三个 */
+    const buttons = findAll(composer(), (node) => node.kind === 'host' && node.type === 'button')
+    assert.equal(buttons.length, 2, '底部对话框只该有两个按钮，实际 ' + buttons.length)
+    /* 用户口径：不要成堆的提示文案，底部那行快捷键提示已删除。 */
     assert.equal(findAll(drawer(), (node) => node.kind === 'host'
       && classNameOf(node).split(/\s+/).includes('fo-org-composer-hint')).length, 0, '底部提示行应删除')
   })
 
-  squareBtn('composer-tools').props.onClick()
-  ft = await fx.mini.act()
-  check('工具菜单向上展开：展开输入框 / 插入示例 / 清空', () => {
-    const menu = findAll(drawer(), (node) => node.kind === 'host'
-      && classNameOf(node).split(/\s+/).includes('fo-org-composer-menu'))[0]
-    assert.ok(menu, '点工具应弹出菜单')
-    const items = findAll(menu, (node) => node.kind === 'host' && node.props && node.props['data-action'])
-    const actions = items.map((node) => node.props['data-action'])
-    assert.ok(actions.includes('composer-tool-expand'), '有展开输入框')
-    assert.ok(actions.includes('composer-tool-template'), '有插入示例要求')
-    assert.ok(actions.includes('composer-tool-clear'), '有清空')
+  check('发送键就是「生成建议」：空着也能点，标题写生成建议', () => {
+    assert.equal(sendBtn().props.disabled, false, '空输入也应可点（等价于重新生成一组）')
+    assert.ok(String(sendBtn().props.title).includes('生成建议'), '标题说明它是生成入口')
   })
 
-  squareBtn('composer-tool-expand').props.onClick()
-  ft = await fx.mini.act()
-  check('展开输入框：容器带 is-expanded（多行高度由 CSS 给）', () => {
-    const form = composer()
-    assert.ok(classNameOf(form).split(/\s+/).includes('is-expanded'), '应切到展开态')
+  check('右上角不再有独立的「提供新的建议」按钮', () => {
+    assert.equal(squareBtn('rerun'), undefined, '头部的 rerun 按钮应删除')
   })
 
+  /* 空着发一次 = 按当前范围重新生成（取代原来的右上角按钮） */
+  ORGANIZE_RERUN(ft).props.onClick()
+  ft = await fx.mini.act()
+  check('空输入发送 = 重新生成一组建议', () => {
+    assert.equal(backend.log.organize.length, 1, '应触发一次生成')
+    assert.equal(backend.log.hints[0], '', '没有额外要求就是空串')
+  })
   squareBtn('composer-mode').props.onClick()
   ft = await fx.mini.act()
   check('模式菜单：三种关注点，当前项打勾', () => {
@@ -1998,19 +1999,20 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   composerInput().props.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault() {} })
   ft = await fx.mini.act()
   check('按 Enter：按当前范围重新生成，并把这句话带上', () => {
-    assert.equal(backend.log.organize.length, 1, '应按要求重新生成一组')
-    assert.equal(backend.log.hints[0], 'KR 写得更可验收一点', '这句话要随请求发出去（原话，不带前缀）')
-    assert.equal(backend.log.modes[0], 'okr', '选了「只调 O/KR」，关注点要单独发出去')
-    assert.equal(backend.log.organize[0].kind, 'all', '只作用于当前范围')
+    const last = backend.log.organize.length - 1
+    assert.equal(backend.log.hints[last], 'KR 写得更可验收一点', '这句话要随请求发出去（原话，不带前缀）')
+    assert.equal(backend.log.modes[last], 'okr', '选了「只调 O/KR」，关注点要单独发出去')
+    assert.equal(backend.log.organize[last].kind, 'all', '只作用于当前范围')
     assert.equal(composerInput().props.value, '', '提交后输入框清空')
   })
 
+  const callsBeforeShift = backend.log.organize.length
   composerInput().props.onChange({ currentTarget: { value: '只想看 Demo' } })
   ft = await fx.mini.act()
   composerInput().props.onKeyDown({ key: 'Enter', shiftKey: true, preventDefault() {} })
   ft = await fx.mini.act()
   check('Shift+Enter 不提交（换行）', () => {
-    assert.equal(backend.log.organize.length, 1, 'Shift+Enter 不该发请求')
+    assert.equal(backend.log.organize.length, callsBeforeShift, 'Shift+Enter 不该发请求')
     assert.equal(composerInput().props.value, '只想看 Demo', '内容要留着')
   })
 
@@ -2019,8 +2021,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   /* 重新取 form：onSubmit 闭包里的 hintText 是**那一次渲染**的值，拿旧的会提交上一句。 */
   composer().props.onSubmit({ preventDefault() {} })
   ft = await fx.mini.act()
-  check('提交后的那一组，组头回显「要求：…」', () => {
-    assert.equal(backend.log.hints[1], '按项目分组给我看')
+  check('提交后的那一组，组头回显那句话', () => {
+    assert.equal(backend.log.hints[backend.log.hints.length - 1], '按项目分组给我看')
     const hintNode = findAll(drawer(), (node) => node.kind === 'host'
       && classNameOf(node).split(/\s+/).includes('fo-org-group-hint'))[0]
     assert.ok(hintNode, '组头要显示这一组的要求')
@@ -2121,7 +2123,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   ft = await fx.mini.act()
   check('loading 态：面板里的「提供新的建议」锁住（图头入口只是开关，不跑分析）', () => {
     assert.equal(ORGANIZE_RERUN(ft).props.disabled, true)
-    assert.ok(String(ORGANIZE_RERUN(ft).props.title).includes('正在提供新的建议'))
+    assert.ok(String(ORGANIZE_RERUN(ft).props.title).includes('生成中'))
     assert.ok(!ORGANIZE_TRIGGER(ft).props.disabled)
   })
   defer.forEach((resolve) => resolve())
@@ -3309,7 +3311,7 @@ check('layout.js：只 import 同目录的 model.js，不碰 document/window/fet
   ORGANIZE_TRIGGER(at).props.onClick()
   at = await fx.mini.act()
   /* 打开侧栏只读上次结论；这个用例要的是「跑一次再接受」 */
-  findAll(organizeDrawers(at)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
+  ORGANIZE_RERUN(at).props.onClick()
   at = await fx.mini.act()
   orgButton(orgItems(at, 'pending')[0], 'accept').props.onClick()
   at = await fx.mini.act()
@@ -3376,7 +3378,7 @@ check('layout.js：只 import 同目录的 model.js，不碰 document/window/fet
   })
   ORGANIZE_TRIGGER(rt).props.onClick()
   rt = await fx.mini.act()
-  findAll(organizeDrawers(rt)[0], (node) => node.kind === 'host' && node.type === 'button' && node.props['data-action'] === 'rerun')[0].props.onClick()
+  ORGANIZE_RERUN(rt).props.onClick()
   rt = await fx.mini.act()
   orgButton(orgItems(rt, 'pending')[0], 'accept').props.onClick()
   rt = await fx.mini.act()

@@ -25,11 +25,7 @@ const ICON_PATHS = {
   undo: ['M9 7H5v4', 'M5 11a7 7 0 1 0 2.5-5.4'],
   more: ['M6 14l6-6 6 6'],
   sync: ['M20 12a8 8 0 1 1-2.3-5.7', 'M20 4v5h-5'],
-  /* 底部对话框：工具 / 展开 / 模式（对齐 cove 的 agent 输入框图标语义） */
-  wrench: ['M14.7 6.3a4 4 0 0 0 5 5L21 21l-3 0 -6.5-8.3'],
-  expand: ['M8 3H5a2 2 0 0 0-2 2v3', 'M16 3h3a2 2 0 0 1 2 2v3', 'M8 21H5a2 2 0 0 1-2-2v-3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
-  shrink: ['M4 8h4V4', 'M20 8h-4V4', 'M4 16h4v4', 'M20 16h-4v4'],
-  message: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'],
+  /* 底部对话框的模式按钮（对齐 cove 的 agent 输入框图标语义） */
   target: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'],
   link: ['M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1', 'M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1'],
   send: ['M4 12l16-8-6 8 6 8z'],
@@ -107,12 +103,9 @@ export function createOrganizeDrawer(deps) {
     const [hintText, setHintText] = useState('')
     /* 输入框形态照 cove 的 agent composer：左下「工具」与「模式」两个 34×34 方按钮、
        中间单行文本域（可展开到多行）、右下发送；顶部各带一个向上弹出的菜单。 */
-    const [composerExpanded, setComposerExpanded] = useState(false)
-    const [toolMenuOpen, setToolMenuOpen] = useState(false)
     const [modeMenuOpen, setModeMenuOpen] = useState(false)
     const [composerMode, setComposerMode] = useState('all')
     const composerInputRef = useRef ? useRef(null) : { current: null }
-    const toolMenuRef = useRef ? useRef(null) : { current: null }
     const modeMenuRef = useRef ? useRef(null) : { current: null }
     const [expanded, setExpanded] = useState({})
     /* 「当前组」= 用户正在看/展开的那一组（默认最新）。接受以上只作用于它。 */
@@ -339,47 +332,40 @@ export function createOrganizeDrawer(deps) {
       { id: 'okr', label: 'O/KR', icon: 'target', accent: 'success' },
     ]
     const activeMode = COMPOSER_MODES.find((row) => row.id === composerMode) || COMPOSER_MODES[0]
-    /* 工具菜单：本场景三个真正有用的动作（附件/表情对这里没有意义，不摆假按钮）。 */
-    const COMPOSER_TOOLS = [
-      { id: 'expand', label: composerExpanded ? '收起' : '展开', icon: composerExpanded ? 'shrink' : 'expand' },
-      { id: 'template', label: '示例', icon: 'message' },
-      { id: 'clear', label: '清空', icon: 'close' },
-    ]
     const composerPlaceholder = generating ? '生成中…' : '修改建议…'
 
-    /* 提交：原文 + 关注点分开传（组头只显示原文，指令由服务端按白名单合成）。 */
+    /*
+     * 提交 = 「生成建议」。
+     *
+     * 用户口径：右上角那个「提供新的建议」按钮去掉，能力并到底部发送键上 ——
+     * 发送键本身就是自动生成入口：
+     *   - 有文字：按这句话 + 当前关注点重新生成一组；
+     *   - 空着直接发：等价于原来的「提供新的建议」（按默认口径再生成一组）。
+     * 所以它不再是「没字就不能点」。
+     */
     const submitHint = () => {
+      if (running) return
       const text = model.str(hintText).trim()
-      if (!text || running || typeof p.onHintSubmit !== 'function') return
-      p.onHintSubmit(text, activeMode.id)
-      setHintText('')
-      setComposerExpanded(false)
-    }
-    const runComposerTool = (id) => {
-      setToolMenuOpen(false)
-      if (id === 'expand') { setComposerExpanded((prev) => !prev); return }
-      if (id === 'clear') { setHintText(''); setComposerExpanded(false); return }
-      if (id === 'template') {
-        setHintText('KR 写得更可验收：每条都要有指标或可判定的终态')
-        setComposerExpanded(true)
-        if (composerInputRef.current && composerInputRef.current.focus) composerInputRef.current.focus()
+      if (typeof p.onHintSubmit === 'function') {
+        p.onHintSubmit(text, activeMode.id)
+        if (text) setHintText('')
+        return
       }
+      if (typeof p.onRerun === 'function') p.onRerun()
     }
 
-    /* 点空白处收起两个菜单（照 cove：菜单不阻断输入，点外即关）。 */
+    /* 点空白处收起模式菜单（菜单不阻断输入，点外即关）。 */
     useEffect(() => {
-      if (!toolMenuOpen && !modeMenuOpen) return undefined
+      if (!modeMenuOpen) return undefined
       if (typeof document === 'undefined' || !document.addEventListener) return undefined
       const onDocDown = (event) => {
         const target = event && event.target
-        const inTool = toolMenuRef.current && target && toolMenuRef.current.contains(target)
         const inMode = modeMenuRef.current && target && modeMenuRef.current.contains(target)
-        if (!inTool) setToolMenuOpen(false)
         if (!inMode) setModeMenuOpen(false)
       }
       document.addEventListener('pointerdown', onDocDown)
       return () => document.removeEventListener('pointerdown', onDocDown)
-    }, [toolMenuOpen, modeMenuOpen])
+    }, [modeMenuOpen])
 
     const shown = groups.slice(0, visible).reverse()
     const more = groups.length - visible
@@ -407,11 +393,6 @@ export function createOrganizeDrawer(deps) {
             docked ? '现在固定在右侧，点击改成浮层' : '现在是浮层，点击固定到右侧',
             () => { if (typeof p.onToggleDock === 'function') p.onToggleDock() },
             { pressed: docked }),
-          /* 不是「重新分析覆盖」，而是再生成一组新的建议（追加到时间轴）。 */
-          iconBtn('rerun', 'sparkles',
-            generating ? '正在提供新的建议…' : '提供新的建议（按当前范围新加一组）',
-            () => { if (typeof p.onRerun === 'function') p.onRerun() },
-            { disabled: running }),
           iconBtn('close', 'close', '关闭建议栏', () => { if (typeof p.onClose === 'function') p.onClose() }),
         ),
       ),
@@ -469,7 +450,7 @@ export function createOrganizeDrawer(deps) {
          语义只对当前范围的这一组生效，提交后重新生成一组。 */
       typeof p.onHintSubmit === 'function'
         ? h('form', {
-          className: 'fo-org-composer' + (composerExpanded ? ' is-expanded' : ''),
+          className: 'fo-org-composer',
           'data-mode': activeMode.id,
           onSubmit: (event) => {
             if (event && event.preventDefault) event.preventDefault()
@@ -477,32 +458,8 @@ export function createOrganizeDrawer(deps) {
           },
         },
           h('div', { className: 'fo-org-composer-row' },
-            /* 工具按钮 + 菜单 */
-            h('div', { className: 'fo-org-composer-slot', ref: toolMenuRef },
-              h('button', {
-                type: 'button',
-                className: 'fo-org-composer-square' + (composerExpanded ? ' is-on' : ''),
-                'data-action': 'composer-tools',
-                title: '工具',
-                'aria-label': '工具',
-                'aria-expanded': toolMenuOpen ? 'true' : 'false',
-                disabled: generating,
-                onClick: () => { setToolMenuOpen((prev) => !prev); setModeMenuOpen(false) },
-              }, icon(composerExpanded ? 'shrink' : 'wrench')),
-              toolMenuOpen ? h('div', { className: 'fo-org-composer-menu', role: 'menu' },
-                COMPOSER_TOOLS.map((tool) => h('button', {
-                  key: tool.id,
-                  type: 'button',
-                  role: 'menuitem',
-                  className: 'fo-org-composer-menu-item',
-                  'data-action': 'composer-tool-' + tool.id,
-                  onClick: () => runComposerTool(tool.id),
-                },
-                  h('span', { className: 'fo-org-composer-menu-icon' }, icon(tool.icon)),
-                  h('span', { className: 'fo-org-composer-menu-label' }, tool.label),
-                ))) : null,
-            ),
-            /* 模式按钮 + 菜单（acc 色表达当前关注点，照 cove 的 Normal/Code/Markdown） */
+            /* 模式按钮 + 菜单（acc 色表达当前关注点，照 cove 的 Normal/Code/Markdown）。
+               底部只留两个按钮：模式 + 发送；高度靠拖拽输入框下缘调整（CSS resize）。 */
             h('div', { className: 'fo-org-composer-slot', ref: modeMenuRef },
               h('button', {
                 type: 'button',
@@ -513,7 +470,7 @@ export function createOrganizeDrawer(deps) {
                 'aria-label': activeMode.label,
                 'aria-expanded': modeMenuOpen ? 'true' : 'false',
                 disabled: generating,
-                onClick: () => { setModeMenuOpen((prev) => !prev); setToolMenuOpen(false) },
+                onClick: () => setModeMenuOpen((prev) => !prev),
               }, icon(activeMode.icon)),
               modeMenuOpen ? h('div', { className: 'fo-org-composer-menu', role: 'menu' },
                 COMPOSER_MODES.map((row) => h('button', {
@@ -549,13 +506,14 @@ export function createOrganizeDrawer(deps) {
                 }
               },
             }),
+            /* 这是本栏唯一的「生成建议」入口：空着点也会按当前关注点重新生成一组。 */
             h('button', {
               type: 'submit',
               className: 'fo-org-composer-send',
               'data-action': 'composer-send',
-              disabled: running || !model.str(hintText).trim(),
-              title: generating ? '生成中' : '重新生成',
-              'aria-label': '重新生成',
+              disabled: running,
+              title: generating ? '生成中' : '生成建议',
+              'aria-label': '生成建议',
             }, generating ? h('span', { className: 'fo-spinner' }) : icon('send')),
           ),
         )
