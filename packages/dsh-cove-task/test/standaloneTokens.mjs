@@ -64,6 +64,27 @@ const darkDefined = definedIn(html.slice(darkAt))
 const used = new Set()
 for (const rel of MODULES) for (const token of collect(stripComments(read(rel)))) used.add(token)
 
+/* 事故：改令牌时多写了一个 }，CSS 解析把紧随其后的 `html, body { margin: 0; height: 100% }`
+   整条规则吞掉 —— 页面出现 8px 外边距、内容不满屏（左/右/下都是空白），看起来像整体回退。 */
+check('tasks.html 的样式块花括号必须平衡，且 reset 规则要被解析到', () => {
+  const style = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+  let depth = 0
+  let brokeAt = -1
+  for (const ch of style) {
+    if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth < 0) { brokeAt = 0; break }
+    }
+  }
+  assert.equal(brokeAt, -1, '样式块里出现了多余的 }（会把后面的规则吞掉）')
+  assert.equal(depth, 0, '样式块花括号不平衡')
+  /* reset 必须在**令牌块之后**、且不能被多余括号隔断 */
+  assert.ok(/html, body \{ margin: 0; height: 100%; \}/.test(style), '缺少 html,body reset')
+  /* 真正的守卫是上面的深度检查：多一个 } 会让深度变负、少一个不会归零。
+     （令牌块与 reset 之间本来就有「关 :root」「关 @media」两个 }，不能按「连续两个」判错。） */
+})
+
 check('独立页用到的每个 DSH 令牌，亮色兜底都有定义', () => {
   const missing = [...used].filter((token) => !lightDefined.has(token))
   assert.deepEqual(missing, [], 'tasks.html 亮色缺：' + missing.join(', '))
