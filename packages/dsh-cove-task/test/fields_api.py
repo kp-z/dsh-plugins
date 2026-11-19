@@ -73,6 +73,35 @@ class FieldsApiTests(unittest.TestCase):
         self.assertIn('重名', results[0]['error'])
         self.assertEqual(call.call_count, 2)
 
+    def test_duplicate_name_tolerated_only_with_allow_duplicates(self):
+        """同名字段有多个时：没显式 allow_duplicates 一律拒绝；给了就按 guid 稳定选一个并给出告警。
+
+        事故背景：OKR 的 O/KR 字段在飞书清单里被重复创建过（ensure 的列表是最终一致的），
+        之后所有按名字的写入都报「字段重名/重复 GUID，拒绝写入」，本地值随即被回滚 ——
+        用户看到的是「点了接受没生效」。Node 后端一直支持 allow_duplicates，Python 这条没跟上。"""
+        two = [field(guid='b-field', name='O', kind='text'), field(guid='a-field', name='O', kind='text')]
+        # 1) 不显式允许重复：拒绝，且不能去创建第三个
+        results, call = self.run_actions([dict(op='ensure_custom_field', tasklist='list-1', name='O', type='text')], [page(two)])
+        self.assertFalse(results[0]['ok'])
+        self.assertIn('重名', results[0]['error'])
+        self.assertEqual(call.call_count, 1)
+        # 2) 显式允许：选 guid 字典序第一个，给告警，不新增字段
+        allowed = dict(op='ensure_custom_field', tasklist='list-1', name='O', type='text', allow_duplicates=True)
+        results, call = self.run_actions([allowed], [page(two)])
+        self.assertTrue(results[0]['ok'])
+        self.assertEqual(results[0]['guid'], 'a-field')
+        self.assertTrue(any('重复定义' in w for w in results[0].get('warnings', [])))
+        self.assertEqual(call.call_count, 1)
+        # 3) 按名字写入（set_custom_field）同样只在允许时容忍
+        write = dict(op='set_custom_field', tasklist='list-1', task='task-1', name='O', value='目标', accepted_types=['text'])
+        results, _ = self.run_actions([write], [page(two)])
+        self.assertFalse(results[0]['ok'])
+        self.assertIn('重名', results[0]['error'])
+        write_allowed = dict(write, allow_duplicates=True)
+        results, _ = self.run_actions([write_allowed], [page(two), {'code': 0, 'data': {}}])
+        self.assertTrue(results[0]['ok'])
+        self.assertEqual(results[0]['guid'], 'a-field')
+
     def test_ensure_type_conflict_and_unsupported_no_writes(self):
         results, call = self.run_actions([self.ensure()], [page([field(kind='text')])])
         self.assertFalse(results[0]['ok'])

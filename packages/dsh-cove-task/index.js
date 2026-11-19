@@ -4543,6 +4543,10 @@ function createSyncEngine(ctx) {
       listName: asString(task.listName),
       objective: asString(task.objective),
       keyResult: asString(task.keyResult),
+      /* O/KR 写回飞书的状态：失败时本地会被回滚，必须让面板能看到原因，
+         否则「点了接受、值又消失」在界面上完全没有解释。 */
+      okrSyncPending: task.okrSyncPending === true,
+      okrSyncError: asString(task.okrSyncError),
       trigger: asString(task.meta?.trigger),
       customFields,
       docs,
@@ -4658,7 +4662,7 @@ function createSyncEngine(ctx) {
       .update(JSON.stringify([
         tasks.map((task) => [task.id, task.title, task.done, task.workspaceKey, task.blocked, task.suspended, task.sessionId, task.running, task.runningSince, task.completedAt, task.startedAt, task.expectedAt, task.predecessors.length,
           /* 卡片上看得见的项也进哈希：排期/预期/文档/会话态变了页面才会自己刷。 */
-          task.priority, task.objective, task.keyResult, task.start, task.end, task.schedule?.nextText || '', task.commitment?.expectedAt || 0, task.commitment?.syncState || '',
+          task.priority, task.objective, task.keyResult, task.okrSyncError, task.start, task.end, task.schedule?.nextText || '', task.commitment?.expectedAt || 0, task.commitment?.syncState || '',
           task.sessionAlive === true, task.sessionUnread === true, task.listName, task.docs.length, task.members.length]),
         relations,
         groups,
@@ -6737,36 +6741,57 @@ function createSyncEngine(ctx) {
     if (!found.items.length) return { ok: false, error: '没有待接受的建议' }
     const writeBack = options.writeBack !== false
     const results = []
+
+    /*
+     * O/KR 一次性批量应用（不是每条各写一遍）。
+     *
+     * 为什么必须批量：applyOkrLabels 每次都会先 ensure_custom_field 再逐条 set。逐条接受时
+     * 会为**同一条清单**反复 ensure，而飞书的自定义字段列表是最终一致的 —— 连续几次
+     * ensure 看不到刚建的字段，就重复创建出同名 O/KR；之后按名字写入就会报
+     * 「字段重名/重复 GUID，拒绝写入」，本地值随即被回滚 ——用户看到的正是「点了接受没生效」。
+     * 批量后每条清单在一次接受里只 ensure 一次。
+     *
+     * 失败时把原因逐条写回 item.reason，前端照常显示「没落库：…」。
+     */
+    const okrItems = found.items.filter((item) => item.kind === 'okr')
+    if (okrItems.length) {
+      for (const item of okrItems) {
+        /* 记下写之前的 O/KR，撤销时才能还原（applyOkrLabels 不接受空值，空的只能报「不支持撤销」）。 */
+        const task = state.tasks.find((row) => String(row.id) === String(item.from))
+        item.beforeOkr = { objective: asString(task && task.objective), keyResult: asString(task && task.keyResult) }
+      }
+      let applied
+      try {
+        applied = await applyOkrLabels(okrItems.map((item) => ({
+          id: item.from,
+          objective: asString(item.objective),
+          keyResult: asString(item.keyResult),
+        })))
+      } catch (error) {
+        applied = { ok: false, error: error instanceof Error ? error.message : String(error) }
+      }
+      const failure = applied.ok ? '' : (asString(applied.error) || 'O/KR 没有写进去')
+      for (const item of okrItems) {
+        if (applied.ok) {
+          item.status = 'accepted'
+          item.acceptedAt = nowMs()
+          item.reason = ''
+          item.warning = ''
+          item.retryAction = ''
+        } else {
+          item.reason = failure
+        }
+        results.push({ id: item.id, kind: item.kind, from: item.from, to: '', ok: applied.ok === true, error: failure, warning: '' })
+      }
+    }
+
     for (const item of found.items) {
+      /* O/KR 已在上面的批量步骤处理完 */
+      if (item.kind === 'okr') continue
       let written
       let warning = ''
       let retryAction = ''
       try {
-        /* O/KR：走 applyOkrLabels（先改本地，再后台写回飞书的自定义字段）。
-           **只在人点了接受之后**才走这里——建议流程本身绝不自动写 O/KR。 */
-        if (item.kind === 'okr') {
-          /* 记下写之前的 O/KR，撤销时才能还原（applyOkrLabels 不接受空值，所以空的只能报「不支持撤销」）。 */
-          const target = state.tasks.find((task) => String(task.id) === String(item.from))
-          item.beforeOkr = {
-            objective: asString(target && target.objective),
-            keyResult: asString(target && target.keyResult),
-          }
-          const applied = await applyOkrLabels([{ id: item.from, objective: asString(item.objective), keyResult: asString(item.keyResult) }])
-          written = applied.ok
-            ? { ok: true }
-            : { ok: false, error: asString(applied.error) || 'O/KR 没有写进去' }
-          results.push({ id: item.id, kind: item.kind, from: item.from, to: '', ok: written.ok === true, error: written.error || '', warning })
-          if (written.ok) {
-            item.status = 'accepted'
-            item.acceptedAt = nowMs()
-            item.reason = ''
-            item.warning = ''
-            item.retryAction = ''
-          } else {
-            item.reason = asString(written.error) || '写入失败'
-          }
-          continue
-        }
         /* 预期完成：走 setTaskEta（会记一条承诺变更，并按设置写回飞书「预期完成」列）。 */
         if (item.kind === 'eta') {
           const at = Number(item.value) || 0

@@ -506,8 +506,10 @@ export function projectOrganize(batch, tasks) {
       evidence: str(item.evidence).slice(0, 240),
       status: str(item.status) || 'pending',
       reason: str(item.reason),
-      /* 落库成功但远端没同步上时的那句话（「已存本机，飞书未同步」）。 */
-      warning: str(item.warning),
+      /* 落库成功但远端没同步上时的那句话（「已存本机，飞书未同步」）。
+         O/KR 还要额外看任务上记的同步失败原因：写回飞书失败时本地值会被回滚，
+         不把原因带出来，界面上就只是「值不见了」。 */
+      warning: str(item.warning) || (item.kind === 'okr' ? str(known.get(str(item.from))?.okrSyncError) : ''),
       /* 重试时该补写还是该补删：add（接受后没同步）/ remove（撤销后没同步）。 */
       retryAction: str(item.retryAction),
       impact: describeImpact(item, arr(tasks)),
