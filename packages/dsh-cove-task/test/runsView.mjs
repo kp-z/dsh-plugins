@@ -78,6 +78,14 @@ check('优先级：全开时挂起赢', () => {
   assert.equal(stateOfTask({ suspended: true, blocked: true, blockedBy: [{}], running: true, started: true, done: true }), 'suspended')
 })
 
+check('已完成的任务不再被判成阻塞（done 优先于 blocked）', () => {
+  /* 用户实测：任务处理完了，气泡还一直是阻塞 —— 因为完成的任务仍带着一条没完成的前置。 */
+  assert.equal(stateOfTask({ done: true, blocked: true, blockedBy: [{ id: 'x' }] }), 'done')
+  assert.equal(stateOfTask({ done: true, blockedBy: [{ id: 'x', done: false }] }), 'done')
+  /* 没完成的照样按阻塞算 */
+  assert.equal(stateOfTask({ blockedBy: [{ id: 'x', done: false }] }), 'blocked')
+})
+
 check('优先级：去掉挂起后阻塞赢（显式 blocked 或 blockedBy 非空都算）', () => {
   assert.equal(stateOfTask({ blocked: true, running: true, started: true }), 'blocked')
   assert.equal(stateOfTask({ blockedBy: [{ id: 'x' }], running: true }), 'blocked')

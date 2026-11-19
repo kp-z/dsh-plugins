@@ -155,8 +155,18 @@ check('运行页自己是滚动容器（宿主 .fo-feature-host 不滚，页面�
   assert.ok(block.includes('overscroll-behavior: contain'), '滚到底不要带着宿主页面一起滚')
 })
 
-check('状态徽标只挂在运行中的泡上（用户口径：没在跑的气泡右上角不要状态泡）', () => {
-  assert.ok(src.includes('if (!isRunning) return null'), '非运行中的泡应直接不渲染徽标')
+check('状态徽标只挂在运行中 / 阻塞的泡上（用户口径：阻塞要和运行中一样有右上角标识）', () => {
+  /* 新口径：运行中挂三点动画徽标；阻塞挂静态警示徽标（持续态，不随活动流消失）。
+     未开始 / 挂起 / 刚完成仍然不挂（泡的颜色、KPI 与详情已经表达）。 */
+  assert.ok(
+    src.includes("if (!isRunning && row.state !== 'blocked') return null"),
+    '只允许运行中与阻塞两种泡渲染徽标',
+  )
+  const badgeBlock = src.slice(src.indexOf("row.state === 'blocked'"), src.indexOf('const pulse = pulseOf(row.id)'))
+  assert.ok(badgeBlock.includes("'data-badge': 'alert'"), '阻塞徽标要用警示图标')
+  assert.ok(badgeBlock.includes("'data-tone': 'warn'"), '阻塞徽标是警示色')
+  assert.ok(badgeBlock.includes('被阻塞'), '阻塞徽标的 aria-label / title 要说明「被阻塞」')
+  assert.ok(badgeBlock.includes('blockedBy'), '阻塞徽标要能指出在等哪条前置')
   const tooltip = src.slice(src.indexOf("className: 'frx-orb-tip-meta'"), src.indexOf("className: 'frx-orb-tip-hint'"))
   assert.ok(tooltip.includes('已完成'), '已完成气泡的 hover 浮层要写「已完成」，不能落成「未开始」')
 })

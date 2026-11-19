@@ -4450,7 +4450,8 @@ function createSyncEngine(ctx) {
     for (const task of taskRows) {
       const group = groupOf(task.id)
       const view = Object.fromEntries(Object.entries(group).map(([key, ids]) => [key, [...ids].map(summaries)]))
-      view.blockedBy = view.predecessors.filter((item) => !item.done)
+      /* 同 overviewView：前置已完成或不存在的都不算阻塞 */
+      view.blockedBy = view.predecessors.filter((item) => !item.done && item.missing !== true)
       view.ready = !view.blockedBy.length
       relationViews.set(task.id, view)
     }
@@ -4594,7 +4595,9 @@ function createSyncEngine(ctx) {
       const enriched = enrichWorkspace(task, workspaceRows)
       const link = linksOf(task.id)
       const predecessors = link.predecessors.map(summary)
-      const blockedBy = predecessors.filter((item) => !item.done)
+      /* 前置已完成的、以及**已经不存在**（被删/移出范围）的都不再阻塞：
+         后者以前会把任务永久钉在阻塞态（等一条永远等不到的边）。 */
+      const blockedBy = predecessors.filter((item) => !item.done && item.missing !== true)
       if (task.done) {
         /* 已完成的任务不计入就绪/阻塞的口径（和 relationStats 一致）。 */
       } else if (blockedBy.length) blocked += 1
@@ -4609,7 +4612,9 @@ function createSyncEngine(ctx) {
         /* 优先级：画布卡片的 P0-P3 徽标要用（列表卡上本来就有，别在图上丢掉）。 */
         priority: asString(task.priority),
         workspacePath: asString(enriched.workspacePath),
-        blocked: blockedBy.length > 0,
+        /* 已完成的任务不再是阻塞态：done 优先于 blocked，
+           否则「做完的任务」还会被算成阻塞（气泡一直是红的）。 */
+        blocked: !task.done && blockedBy.length > 0,
         ready: blockedBy.length === 0,
         started: task.started === true,
         suspended: state.suspensions?.[task.id]?.active === true,

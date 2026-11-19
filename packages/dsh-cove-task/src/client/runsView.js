@@ -61,12 +61,15 @@ const num = (value, fallback) => {
 /** 一个任务的运行态（优先级见 STATE_ORDER）。 */
 export function stateOfTask(task) {
   const t = isObj(task) ? task : {}
+  /* 已完成的任务不再算阻塞（done 优先于 blocked）：否则「已经处理掉的任务」
+     会因为还有一条没完成的前置，气泡一直红着 —— 用户实测报的就是这个。 */
+  const isDone = t.done === true
   const flags = {
     suspended: t.suspended === true,
-    blocked: t.blocked === true || arr(t.blockedBy).length > 0,
+    blocked: !isDone && (t.blocked === true || arr(t.blockedBy).length > 0),
     running: t.running === true,
     started: t.started === true,
-    done: t.done === true,
+    done: isDone,
   }
   for (const key of STATE_ORDER) {
     if (flags[key]) return key

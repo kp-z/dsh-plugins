@@ -538,9 +538,11 @@ export function createRunsFeature(deps) {
                 /* 完成率 = 该项目已完成任务占比（0~100）。
                    ≥8% 的下限只是让波浪线可见（0 时水面贴在圆底、裁剪后看不出来）。 */
                 const pct = Math.max(8, Math.min(100, progressOf(row.workspaceKey)))
+                const isBlocked = row.state === 'blocked'
                 const stateText = isRunning
                   ? '运行中'
-                  : (isUnread ? '运行结束，尚未查看' : (isDone ? '已完成' : (isSuspended ? '挂起' : '未开始')))
+                  : (isUnread ? '运行结束，尚未查看'
+                    : (isDone ? '已完成' : (isSuspended ? '挂起' : (isBlocked ? '被阻塞' : '未开始'))))
                 const meta = [row.title || '', stateText,
                   row.elapsedText && row.elapsedText !== '—' ? row.elapsedText : ''].filter(Boolean).join(' · ')
                 return h('div', {
@@ -565,10 +567,27 @@ export function createRunsFeature(deps) {
                   /* 状态对话气泡：贴在泡沿外右上角，尾巴朝左下指着泡。
                      没有新消息时由 prunePulses 丢掉 → 什么都不渲染（泡回到干净状态）。 */
                   (() => {
-                    /* 用户口径：**没在跑的气泡右上角不要状态泡**。
-                       只有运行中才挂徽标（三点动画）；未开始 / 挂起 / 阻塞 / 刚完成
-                       的状态已经由泡的颜色、KPI 与详情表达，再挂一个静态图标只是噪音。 */
-                    if (!isRunning) return null
+                    /* 运行中：三点动画的状态泡（有活动流才显示）。
+                       阻塞：静态警示徽标 —— 用户口径「阻塞状态右上角要有一个和正在运行类似的标识」，
+                       它不随活动流消失（阻塞是持续态，不是一闪而过的消息），所以直接按状态渲染。
+                       其余状态（未开始 / 挂起 / 刚完成）仍不挂徽标：泡的颜色、KPI 与详情已经表达。 */
+                    if (!isRunning && row.state !== 'blocked') return null
+                    if (row.state === 'blocked') {
+                      const blockers = (Array.isArray(row.blockedBy) ? row.blockedBy : []).map((ref) => ref && ref.title).filter(Boolean)
+                      const text = blockers.length
+                        ? '被阻塞：等 ' + (blockers.length > 2 ? blockers.slice(0, 2).join('、') + ' 等 ' + blockers.length + ' 条前置' : blockers.join('、'))
+                        : '被阻塞：还有前置任务没完成'
+                      return h('span', {
+                        key: 'pulse',
+                        className: 'frx-badge',
+                        'data-tone': 'warn',
+                        'data-badge': 'alert',
+                        role: 'status',
+                        'aria-label': text,
+                        title: text,
+                        style: { '--frx-badge-c': toneColor('warn') },
+                      }, badgeIcon('alert', 11) || h('i', { className: 'frx-badge-dot' }))
+                    }
                     const pulse = pulseOf(row.id)
                     if (!pulse) return null
                     /* 状态徽标：咬住泡的右上角，图标/三点表示状态；
