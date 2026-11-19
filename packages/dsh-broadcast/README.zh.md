@@ -59,6 +59,15 @@ dsh plugin --profile web add file:packages/dsh-broadcast
 # 然后重启 dsh
 ```
 
+装成桌面 App 的 DSH 里没有 `dsh` 命令，而且**它跑的是 `desktop` profile，不是 `web`**——
+装错地方重启后看不到按钮。用自带的安装器装进 App 真正启动的那个 profile：
+
+```bash
+node packages/dsh-broadcast/scripts/link-profile.mjs desktop --dry-run   # 先看会改什么
+node packages/dsh-broadcast/scripts/link-profile.mjs desktop             # 备份 → 改清单 → 软链 → 真 import 验证
+# 重启 DSH，然后：curl -s http://127.0.0.1:52559/dsh-broadcast/state
+```
+
 ## 调试
 
 调试工具 `broadcast_say(text)` 随时可用（不受总开关控制），会告诉你这次到底是哪个引擎出的声：
