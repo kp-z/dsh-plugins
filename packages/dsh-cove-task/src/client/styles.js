@@ -139,12 +139,11 @@ export const CSS = `
   display: flex; flex-direction: column; min-width: 0; min-height: 0;
   /* 拖动把手是绝对定位的，需要一个定位上下文 */
   position: relative;
-  border-right: 1px solid color-mix(in oklab, ${T.label1} 5%, transparent);
-  /* cove：深底 + 一层 5% 品牌色径向光晕 + 右侧投影 */
-  background:
-    radial-gradient(circle at 30% 20%, color-mix(in oklab, ${T.brand} 5%, transparent) 0%, transparent 70%),
-    color-mix(in oklab, ${T.bgBase} 96%, transparent);
-  box-shadow: 8px 0 32px -24px color-mix(in oklab, ${T.label1} 30%, transparent);
+  border-right: 1px solid var(--fo-glass-line);
+  /* 表面口径与 DSH 一致：左侧栏 = layer-1，中间 = bg-base，右栏 = layer-1。
+     以前这里多叠了一层品牌色径向光晕 + 96% 底色，和中间、右栏对不上（用户看到的就是
+     「左边发蓝、另两块发灰」）。DSH 的品牌色本身是黑白，这层光晕只会把整块染脏。 */
+  background: ${T.bgLayer1};
 }
 /* 右边缘拖动把手：6px 命中带，hover 时显一条品牌色细线（不占布局） */
 .fo-rail-resizer {
@@ -1026,15 +1025,15 @@ export const CSS = `
 /* ============ 右侧单 dock：详情 / 建议互斥切换 ============ */
 /* 不再让详情 + 建议各占一列；窄容器下也不会把建议挤到正文下面。 */
 .fo-root[data-rightdock="1"] .fo-body {
-  grid-template-columns: minmax(0, 1fr) clamp(280px, 34%, 380px) !important;
+  /* 宽度必须吃 --fo-dock-w：之前写死 clamp()，拖把手只改变量、列宽不动，看起来就是「拖不动」。 */
+  grid-template-columns: minmax(0, 1fr) var(--fo-dock-w) !important;
 }
 .fo-rightdock {
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0; height: 100%;
   border-left: 1px solid var(--fo-glass-line);
-  background: var(--fo-glass-card);
-  backdrop-filter: var(--fo-glass-blur);
-  -webkit-backdrop-filter: var(--fo-glass-blur);
+  /* 右栏与左侧栏同一层（layer-1）：三块表面只用 1px 分隔线分层，不各自加玻璃/模糊。 */
+  background: ${T.bgLayer1};
   overflow: hidden;
 }
 .fo-rightdock-tabs {
@@ -1068,8 +1067,9 @@ export const CSS = `
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.fo-rightdock .fo-org-resize,
+/* 右栏是停靠态，但仍要能拖宽度：把手挂在右栏左缘（aside 的 left:0 正好压在分隔线上）。 */
 .fo-rightdock .fo-org-head-actions [data-action="dock"] { display: none; }
+.fo-rightdock .fo-org-resize { left: -3px; width: 7px; z-index: 8; }
 
 /* ============ 右栏：详情（独立玻璃层） ============ */
 .fo-detail {

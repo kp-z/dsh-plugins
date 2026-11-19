@@ -582,12 +582,12 @@ check('玻璃分层：三层透明度 92% / 88%（面板底是不透明的 bg-ba
   assert.ok(root.includes('--fo-glass-line-hover: color-mix(in oklab, var(--dsw-alias-border-l2'))
   assert.ok(root.includes('--fo-glass-shadow: 0 8px 24px color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent)'))
   assert.ok(root.includes('background: var(--dsw-alias-bg-base'), '面板底仍是不透明的 bg-base')
-  /* rail 对齐 cove：实底（bg-base 96%）+ 5% 品牌色径向光晕 + 右侧投影，不再 blur */
+  /* rail 与 DSH 同一口径：实底 layer-1，不加品牌光晕/投影（用户口径：三块表面要一致） */
   const rail = ruleBody('.fo-rail')
-  assert.ok(rail.includes('radial-gradient('), 'rail 有品牌色径向光晕')
-  assert.ok(/color-mix\(in oklab, var\(--dsw-alias-bg-base[^)]*\)+ 96%, transparent\)/.test(rail), 'rail 实底 96%')
-  assert.ok(rail.includes('box-shadow:'), 'rail 有右侧投影')
-  assert.equal(rail.includes('backdrop-filter'), false, 'rail 不再是玻璃面')
+  assert.equal(rail.includes('radial-gradient('), false, 'rail 不再叠品牌色径向光晕')
+  assert.ok(rail.includes('background: var(--dsw-alias-bg-layer-1)'), 'rail 用 layer-1 实底（与右栏同层）')
+  assert.equal(rail.includes('box-shadow:'), false, 'rail 不再额外投影')
+  assert.equal(rail.includes('backdrop-filter'), false, 'rail 不是玻璃面')
 })
 check('玻璃风格全部走 color-mix(in oklab, …)，没有 in srgb 残留', () => {
   const mixes = CSS_BARE.match(/color-mix\(in oklab,/g) || []
@@ -669,11 +669,33 @@ check('侧栏宽度 192px / 收起 80px（与 cove 一致）', () => {
   assert.ok(containerBody('fopanel (max-width: 960px)').includes('--fo-rail-w: 196px'), '面板窄了才收窄 rail')
 })
 
+/* ---- 用户口径：左栏 / 中间 / 右栏必须是同一套表面，且右栏能拖宽度 ---- */
+check('三块表面同层：rail 与右栏都是 layer-1，中间是 bg-base', () => {
+  const rail = ruleBody('.fo-rail')
+  const dock = ruleBody('.fo-rightdock')
+  const main = ruleBody('.fo-main')
+  assert.ok(rail.includes('background: var(--dsw-alias-bg-layer-1)'), '左栏 = layer-1')
+  assert.ok(dock.includes('background: var(--dsw-alias-bg-layer-1)'), '右栏 = layer-1（与左栏同层）')
+  /* bgBase 令牌自带回退链（bg-base → layer-1），所以只钉前缀 */
+  assert.ok(main.includes('background: var(--dsw-alias-bg-base'), '中间 = bg-base')
+  /* 右栏不再自己叠玻璃层：那种「一块玻璃盖在底色上」正是三块看起来不一致的来源 */
+  assert.equal(dock.includes('backdrop-filter'), false, '右栏不再叠玻璃')
+})
+
+check('右栏宽度吃 --fo-dock-w（否则拖把手改了变量、列宽不认 = 拖不动）', () => {
+  const rule = CSS_BARE.slice(CSS_BARE.indexOf('[data-rightdock="1"] .fo-body'))
+  const body = rule.slice(0, rule.indexOf('}'))
+  assert.ok(body.includes('var(--fo-dock-w)'), '右栏列宽必须用 --fo-dock-w')
+  assert.equal(body.includes('clamp('), false, '不能再写死 clamp() 宽度')
+  /* 停靠态也要保留把手 */
+  assert.equal(/\.fo-rightdock \.fo-org-resize[^{]*\{[^}]*display: none/.test(CSS_BARE), false, '停靠态不能隐藏把手')
+})
+
 /* ---- task-14 → 用户口径：rail = 品牌（logo 即折叠按钮）+ 功能导航 ---- */
 check('rail 三段：品牌（logo 是折叠按钮）/ 功能导航 / 底部「复制地址」', () => {
   const rail = ruleBody('.fo-rail')
   assert.ok(rail.includes('display: flex') && rail.includes('flex-direction: column'))
-  assert.ok(rail.includes('border-right: 1px solid color-mix'), '右侧分隔线（label 5%）')
+  assert.ok(rail.includes('border-right: 1px solid var(--fo-glass-line)'), '右侧分隔线走统一描边令牌')
   const brand = ruleBody('.fo-brand')
   assert.ok(brand.includes('height: 48px'), '品牌区高 48px（cove h-12）')
   assert.ok(brand.includes('border-bottom: 1px solid color-mix'), '品牌区下边框（品牌色 20%）')

@@ -9,46 +9,53 @@
 <!-- 独立海湾页：跑的是面板自己的组件（OverviewPanel + 三个 feature），不是另写一份页面。
      这里只给宿主令牌的兜底值与整页尺寸，其余样式由面板自己注入。 -->
 <style>
+  /* 令牌**照抄 DSH 真实值**（从宿主主题里取的 alias → static 映射），不自己发明。
+     以前这里写死了一套偏蓝的调色板（brand #3b5bdb），页面整体发蓝、和 DSH 对不上。
+     DSH 的品牌色其实是**黑白**：浅色 #0f1115、深色 #f9fafb。
+     浅色模式三层背景全是纯白，靠 1px 分隔线分层；深色模式才是 bluish-950/875/850/800 阶梯。 */
   :root {
-    --dsw-alias-label-primary: #1f2430;
-    --dsw-alias-label-secondary: #5b6472;
-    --dsw-alias-bg-base: #f7f8fa;
+    --dsw-alias-label-primary: #0f1115;
+    --dsw-alias-label-secondary: #61666b;
+    --dsw-alias-label-tertiary: #81858c;
+    --dsw-alias-bg-base: #ffffff;
     --dsw-alias-bg-layer-1: #ffffff;
-    --dsw-alias-bg-layer-2: #f1f3f6;
-    --dsw-alias-bg-layer-3: #e9ecf1;
+    --dsw-alias-bg-layer-2: #ffffff;
+    --dsw-alias-bg-layer-3: #ffffff;
     --dsw-alias-bg-overlay: #ffffff;
-    --dsw-alias-border-l1: #e3e6eb;
-    --dsw-alias-border-l2: #cfd4dc;
-    --dsw-alias-brand-primary: #3b5bdb;
+    --dsw-alias-bg-sunken: #f9fafb;
+    --dsw-alias-border-l1: rgba(0, 0, 0, .04);
+    --dsw-alias-border-l2: rgba(0, 0, 0, .1);
+    --dsw-alias-brand-primary: #0f1115;
     --dsw-alias-state-warn-primary: #b45309;
     --dsw-alias-state-error-primary: #c0392b;
     --dsw-alias-state-success-primary: #1f9d55;
-    /* 关系图的 derived_from / temporal 边用它（漏了就是 stroke:none —— 2026-11-17 用户报「边看不见」） */
-    --dsw-alias-state-idle-primary: #8a92a1;
-    --dsw-specific-sidebar-fill: #fbfbfc;
-    --dsw-alias-bg-sunken: #eef1f5;
+    /* 关系图的 derived_from / temporal 边用它（漏了就是 stroke:none） */
+    --dsw-alias-state-idle-primary: #81858c;
+    --dsw-specific-sidebar-fill: #ffffff;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --dsw-alias-label-primary: #e9eaee;
-      --dsw-alias-label-secondary: #a7abb4;
-      --dsw-alias-bg-base: #131418;
-      --dsw-alias-bg-layer-1: #1b1d22;
-      --dsw-alias-bg-layer-2: #222429;
-      --dsw-alias-bg-layer-3: #2a2d34;
-      --dsw-alias-bg-overlay: #1e2126;
-      --dsw-alias-border-l1: #2a2d34;
-      --dsw-alias-border-l2: #3a3e47;
-      --dsw-alias-brand-primary: #4a63e0;
+      --dsw-alias-label-primary: #f9fafb;
+      --dsw-alias-label-secondary: #cfd3d6;
+      --dsw-alias-label-tertiary: #adb2b8;
+      --dsw-alias-bg-base: #151517;
+      --dsw-alias-bg-layer-1: #232324;
+      --dsw-alias-bg-layer-2: #2c2c2e;
+      --dsw-alias-bg-layer-3: #353638;
+      --dsw-alias-bg-overlay: #232324;
+      --dsw-alias-bg-sunken: #101113;
+      --dsw-alias-border-l1: rgba(255, 255, 255, .06);
+      --dsw-alias-border-l2: rgba(255, 255, 255, .12);
+      --dsw-alias-brand-primary: #f9fafb;
       --dsw-alias-state-warn-primary: #e0a458;
       --dsw-alias-state-error-primary: #ef4444;
       --dsw-alias-state-success-primary: #22c55e;
-      --dsw-alias-state-idle-primary: #6b7280;
-      --dsw-specific-sidebar-fill: #17181c;
-      --dsw-alias-bg-sunken: #101116;
+      --dsw-alias-state-idle-primary: #81858c;
+      --dsw-specific-sidebar-fill: #1b1b1c;
       color-scheme: dark;
     }
+  }
   }
   html, body { margin: 0; height: 100%; }
   body {
