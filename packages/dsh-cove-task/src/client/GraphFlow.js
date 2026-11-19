@@ -17,7 +17,7 @@ import { DEFAULT_FILTER, FILTER_RANGES, FILTER_STATUSES, inDateRange } from './G
 import { sideCardCount } from './cardParts.js'
 import { decoVar } from './styles.js'
 import { injectReactFlowStyles } from './reactflowStyles.js'
-import { buildOpp, mergeEmptyOkr, mergeOppStats, mergeOppStructure, parseOppDate } from './oppModel.js'
+import { buildOpp, buildPlanRows, mergeEmptyOkr, mergeOppStats, mergeOppStructure, parseOppDate } from './oppModel.js'
 
 /* 筛选条件存在浏览器本地：刷新/重开页面不丢，也不写回服务端。 */
 const FILTER_STORAGE_KEY = 'dsh-cove-task:filters:v1'
@@ -966,8 +966,9 @@ export function createGraphFlowFeature(deps) {
   function OppPlan(props) {
     const [draggingId, setDraggingId] = useState('')
     const [dropStatus, setDropStatus] = useState('')
-    const rows = props.model.objectives.flatMap((obj) => obj.krs.map((kr) => ({ obj, kr })))
+    /* 只按真实 KR 分组：没填 KR 的任务全部并进同一组，不拿清单名/工作区名冒充（见 buildPlanRows）。 */
     const allTasks = props.model.tasks
+    const rows = buildPlanRows(allTasks)
     const canMove = typeof props.onTaskStatus === 'function'
     const move = (id, status) => {
       if (!id || !status || !OPP_DRAG_TARGETS.has(status) || !canMove) { setDraggingId(''); setDropStatus(''); return }
@@ -988,17 +989,19 @@ export function createGraphFlowFeature(deps) {
             h('span', { className: 'fo-opp-plan-count' }, String(count)),
           )
         }),
-        ...rows.flatMap(({ obj, kr }) => [
-          h('div', { key: 'head-' + kr.id, className: 'fo-opp-plan-rowhead' },
-            h('div', { className: 'fo-opp-plan-obj' }, obj.title),
-            h('div', { className: 'fo-opp-plan-kr', title: kr.title }, kr.title),
-            h('div', { className: 'fo-opp-plan-meta' }, kr.done + '/' + kr.total + ' · ' + kr.progress + '%'),
+        ...rows.flatMap((row) => [
+          h('div', { key: 'head-' + row.id, className: 'fo-opp-plan-rowhead' },
+            /* Objective / KR 都只在**有真实值**时才渲染：没有 KR 的组不显示 KR 文案，
+               也不拿工作区名顶替 Objective（用户口径：不要填硬编码）。 */
+            row.objective ? h('div', { className: 'fo-opp-plan-obj' }, row.objective) : null,
+            row.title ? h('div', { className: 'fo-opp-plan-kr', title: row.title }, row.title) : null,
+            h('div', { className: 'fo-opp-plan-meta' }, row.done + '/' + row.total + ' · ' + row.progress + '%'),
           ),
           ...OPP_PLAN_COLUMNS.map(([status]) => {
-            const items = kr.tasks.filter((task) => task.status === status)
+            const items = row.tasks.filter((task) => task.status === status)
             const drop = canMove && OPP_DRAG_TARGETS.has(status)
             return h('div', {
-              key: 'cell-' + kr.id + '-' + status,
+              key: 'cell-' + row.id + '-' + status,
               className: 'fo-opp-plan-cell' + (dropStatus === status ? ' is-drop' : ''),
               'data-status': status,
               onDragOver: drop ? (event) => { event.preventDefault(); setDropStatus(status) } : undefined,

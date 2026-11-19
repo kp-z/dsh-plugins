@@ -86,6 +86,9 @@ export function buildOpp(nodes, taskById) {
         list: task.listName || '默认清单',
         objective: asText(task.objective || node.objective) || asText(task.workspaceTitle || node.workspaceTitle) || '未归入 Objective',
         keyResult: asText(task.keyResult || node.keyResult) || asText(task.listName) || '未归入 KR',
+        /* 真实字段（不做任何兜底）：Plan 只认这两个，不拿工作区/清单名冒充 O/KR。 */
+        objectiveRaw: asText(task.objective || node.objective),
+        keyResultRaw: asText(task.keyResult || node.keyResult),
         start,
         end,
         due: parseOppDate(task.due) || parseOppDate(task.expectedAt),
@@ -152,6 +155,53 @@ export function buildOpp(nodes, taskById) {
       maxEnd: tasks.reduce((max, task) => (task.end && (!max || task.end > max) ? task.end : max), null),
     },
   }
+}
+
+/**
+ * Plan 视图的行：只按**真实的** Key Result 分组。
+ *
+ * 为什么不复用 objectives[].krs：那套投影为了让 OKR 视图有内容，会给没填字段的任务
+ * 兜底（objective ← workspaceTitle，keyResult ← listName），于是 Plan 里每个
+ * 「工作区 × 清单」的组合都变成一行假 KR —— 用户看到的「key value 被填了硬编码」。
+ *
+ * 这里只认真实字段 keyResultRaw：
+ *   - 有值 → 该 KR 一行；
+ *   - 没值 → 全部并进**同一个**组（不再按清单名拆开），行头也不显示 KR 文案。
+ * 行头里的 Objective 同理：只有该组所有任务共享同一个真实 Objective 时才显示，
+ * 否则留空，绝不拿工作区名顶替。
+ *
+ * @param {Array} tasks buildOpp 产出的 tasks（或任意带 keyResultRaw/objectiveRaw 的数组）
+ */
+export function buildPlanRows(tasks) {
+  const list = Array.isArray(tasks) ? tasks : []
+  const buckets = new Map()
+  for (const task of list) {
+    if (!task) continue
+    const title = asText(task.keyResultRaw)
+    const key = title || ''
+    let row = buckets.get(key)
+    if (!row) {
+      row = { key, title, tasks: [], objectives: new Set() }
+      buckets.set(key, row)
+    }
+    row.tasks.push(task)
+    const objective = asText(task.objectiveRaw)
+    if (objective) row.objectives.add(objective)
+  }
+  return Array.from(buckets.values()).map((row) => {
+    const done = row.tasks.filter((task) => task.status === 'done').length
+    const total = row.tasks.length
+    return {
+      id: 'plan:' + row.key,
+      title: row.title,
+      /* 只有全组共享同一个真实 O 才显示它；混合/缺失都留空，不编造 */
+      objective: row.objectives.size === 1 ? Array.from(row.objectives)[0] : '',
+      tasks: row.tasks,
+      done,
+      total,
+      progress: progressOf(done, total),
+    }
+  }).sort((a, b) => (a.title || '\uffff').localeCompare(b.title || '\uffff'))
 }
 
 /**

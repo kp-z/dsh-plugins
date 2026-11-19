@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildOpp, mergeEmptyOkr, mergeOppStats, mergeOppStructure, oppStatus, parseOppDate } from '../src/client/oppModel.js'
+import { buildOpp, buildPlanRows, mergeEmptyOkr, mergeOppStats, mergeOppStructure, oppStatus, parseOppDate } from '../src/client/oppModel.js'
 
 let passed = 0
 const check = (name, fn) => { try { fn(); passed++; console.log('  ok  ' + name) } catch (error) { console.error('  FAIL ' + name); throw error } }
@@ -90,6 +90,58 @@ check('空 O/KR：保留定义，聚合进度仍按全量任务', () => {
   assert.equal(structured.objectives.find((obj) => obj.title === 'O1').krs.length, 2)
   assert.equal(structured.objectives.find((obj) => obj.title === 'O1').krs.find((kr) => kr.title === 'KR1').tasks.length, 0)
   assert.equal(structured.objectives.find((obj) => obj.title === 'O1').krs.find((kr) => kr.title === 'KR2').tasks.length, 1)
+})
+
+check('buildPlanRows：只按真实 KR 分组，没填 KR 的全部并进同一组', () => {
+  const model = buildOpp(
+    [
+      { id: 'a', state: 'open', no: 1 },
+      { id: 'b', state: 'open', no: 2 },
+      { id: 'c', state: 'open', no: 3 },
+      { id: 'd', state: 'open', no: 4 },
+    ],
+    {
+      /* a / b 没有 KR，但分属不同工作区与清单 —— 旧实现会因此拆成两行假 KR */
+      a: { workspaceTitle: '项目A', listName: '清单1' },
+      b: { workspaceTitle: '项目B', listName: '清单2' },
+      /* c / d 有真实 KR */
+      c: { workspaceTitle: '项目A', listName: '清单1', objective: 'O1', keyResult: 'KR1' },
+      d: { workspaceTitle: '项目A', listName: '清单1', objective: 'O1', keyResult: 'KR1', done: true },
+    },
+  )
+  const rows = buildPlanRows(model.tasks)
+  assert.equal(rows.length, 2, '应该只有「真实 KR1」和「未填 KR」两组')
+  const blank = rows.find((row) => row.title === '')
+  assert.ok(blank, '没填 KR 的组 title 必须是空串，不能填硬编码')
+  assert.equal(blank.tasks.length, 2, 'a / b 必须并进同一组（哪怕工作区/清单不同）')
+  assert.equal(blank.objective, '', '组内 Objective 不一致时不能编造')
+  const kr1 = rows.find((row) => row.title === 'KR1')
+  assert.equal(kr1.objective, 'O1')
+  assert.equal(kr1.total, 2)
+  assert.equal(kr1.done, 1)
+  assert.equal(kr1.progress, 50)
+})
+
+check('buildPlanRows：任务自带 demote 的假 KR 不会进入 Plan', () => {
+  /* 模型里的 keyResult 是兜底过的值；Plan 只认 keyResultRaw */
+  const model = buildOpp([{ id: 'a', state: 'open' }], { a: { workspaceTitle: '项目A', listName: '主线任务 · Main Quest' } })
+  assert.equal(model.tasks[0].keyResult, '主线任务 · Main Quest', '模型仍保留兜底（OKR 视图用）')
+  assert.equal(model.tasks[0].keyResultRaw, '', 'raw 字段必须是空的')
+  const rows = buildPlanRows(model.tasks)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].title, '', '不能把清单名当 KR 显示')
+})
+
+check('buildPlanRows：组内共享同一个真实 Objective 时才显示它', () => {
+  const tasks = [
+    { id: 'a', status: 'open', objectiveRaw: 'O1', keyResultRaw: '' },
+    { id: 'b', status: 'done', objectiveRaw: 'O1', keyResultRaw: '' },
+  ]
+  const rows = buildPlanRows(tasks)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].objective, 'O1')
+  assert.equal(rows[0].done, 1)
+  assert.equal(rows[0].progress, 50)
 })
 
 console.log('\noppModel.mjs: ' + passed + ' passed, 0 failed')
