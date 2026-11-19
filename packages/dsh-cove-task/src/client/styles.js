@@ -1257,8 +1257,7 @@ export const CSS = `
    两个方按钮各自带一个**向上**弹出的菜单（图标 + 名称 + 一句说明，选中项带 accent 与圆点）。
    展开态把文本域放到 10rem~16rem（cove 的 expand 同一口径）。 */
 .fo-org-composer {
-  flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
-  margin-top: 10px; padding: 10px 0 0;
+  flex: 0 0 auto; margin-top: 10px; padding: 10px 0 0;
   border-top: 1px solid var(--fo-glass-line);
 }
 .fo-org-composer-row { display: flex; align-items: flex-end; gap: 6px; }
@@ -1297,9 +1296,7 @@ export const CSS = `
 .fo-org-composer-menu-item[data-accent="brand"] .fo-org-composer-menu-icon { color: ${T.brand}; }
 .fo-org-composer-menu-item[data-accent="idle"] .fo-org-composer-menu-icon { color: ${T.idle}; }
 .fo-org-composer-menu-item[data-accent="success"] .fo-org-composer-menu-icon { color: ${T.success}; }
-.fo-org-composer-menu-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
-.fo-org-composer-menu-label { font-size: 12px; font-weight: 500; line-height: 1.3; }
-.fo-org-composer-menu-desc { font-size: 10px; color: ${T.label2}; line-height: 1.3; }
+.fo-org-composer-menu-label { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 500; line-height: 1.3; }
 .fo-org-composer-menu-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 999px; background: currentColor; color: ${T.brand}; }
 
 /* 文本域：34px 单行；展开到多行。滚动条隐藏（cove 同款），靠高度表达内容多少 */
@@ -1328,8 +1325,6 @@ export const CSS = `
 }
 .fo-org-composer-send:hover:not(:disabled) { background: ${g(T.brand, 32)}; border-color: ${g(T.brand, 60)}; }
 .fo-org-composer-send:disabled { background: ${g(T.label1, 5)}; border-color: var(--fo-glass-line); color: ${g(T.label2, 70)}; cursor: not-allowed; }
-/* 快捷键提示行（cove 的 sendHint 位） */
-.fo-org-composer-hint { padding: 0 2px; font-size: 10px; line-height: 1.5; color: ${g(T.label2, 78)}; }
 
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
 .fo-org-notes[data-tone="error"] { color: ${T.error}; }

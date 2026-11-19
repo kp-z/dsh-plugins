@@ -1936,22 +1936,21 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.ok(composerInput(), '应有输入框')
     assert.ok(sendBtn(), '应有发送按钮')
     assert.equal(sendBtn().props.disabled, true, '没输入时发送按钮要禁用')
-    assert.ok(String(composerInput().props.placeholder || '').includes('改一改'), '占位文案要说明能改建议')
+    assert.equal(composerInput().props.placeholder, '修改建议…', '占位文案要短（用户口径：别堆提示）')
   })
 
   /* act 必须写在 check 外面（check 是同步的，回调里不能 await）。 */
   const squareBtn = (action) => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'button'
     && node.props['data-action'] === action)[0]
 
-  check('照 cove 的 composer 形制：工具 / 模式两个方按钮 + 单行输入 + 发送 + 提示行', () => {
+  check('照 cove 的 composer 形制：工具 / 模式两个方按钮 + 单行输入 + 发送', () => {
     assert.ok(squareBtn('composer-tools'), '应有「工具」方按钮')
     assert.ok(squareBtn('composer-mode'), '应有「模式」方按钮')
     assert.equal(String(composerInput().props.rows), '1', '输入框默认单行（rows=1）')
     assert.equal(sendBtn().props.type, 'submit', '发送是 submit 按钮（回车也能提交）')
-    const hintRow = findAll(drawer(), (node) => node.kind === 'host'
-      && classNameOf(node).split(/\s+/).includes('fo-org-composer-hint'))[0]
-    assert.ok(hintRow, '底部要有一行快捷键提示（cove 的 sendHint 位）')
-    assert.ok(textOf(hintRow).includes('Enter 发送'), '提示行写明 Enter 发送')
+    /* 用户口径：不要成堆的提示文案，尤其底部那行快捷键提示已删除。 */
+    assert.equal(findAll(drawer(), (node) => node.kind === 'host'
+      && classNameOf(node).split(/\s+/).includes('fo-org-composer-hint')).length, 0, '底部提示行应删除')
   })
 
   squareBtn('composer-tools').props.onClick()
