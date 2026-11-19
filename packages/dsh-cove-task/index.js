@@ -6349,6 +6349,9 @@ function createSyncEngine(ctx) {
         createdAt: Number(task.createdAt) || 0,
         sessionId: asString(task.sessionId),
         taskNo: asString(task.no),
+        /* 已有的 O/KR：给模型看（别重复建议），也给校验用（已归组的任务不覆盖）。 */
+        objective: asString(task.objective),
+        keyResult: asString(task.keyResult),
         workspaceKey: key,
         projectKey,
         meta: { workspace: asString(task.meta?.workspace) || asString(task.workspaceTitle) },
@@ -6591,6 +6594,28 @@ function createSyncEngine(ctx) {
       /* 回退成功时不要把会话失败塞进 model.error（UI 会误报「AI 没给建议」）；
          单独记 sessionError，便于排查。 */
     }
+    /* O/KR 兜底：会话没按新 schema 给 okr（模型很常见），就单独问一次 OKR 规划模型。
+       它和关系分析是同一件事的两半，不该因为模型漏字段就整块消失。 */
+    let okrSource = okrItems.length ? 'session' : ''
+    if (!okrItems.length) {
+      const unlabeled = views.filter((row) => !asString(row.objective).trim() || !asString(row.keyResult).trim())
+      if (unlabeled.length) {
+        const asked = await suggestOkrLabels(unlabeled.map((row) => row.id))
+        if (asked.ok && Array.isArray(asked.assigned) && asked.assigned.length) {
+          okrItems = asked.assigned.map((row) => ({
+            kind: 'okr',
+            from: row.id,
+            to: '',
+            objective: row.objective,
+            keyResult: row.keyResult,
+            confidence: 0.7,
+            evidence: 'OKR 规划模型按任务共同目标归组',
+          }))
+          okrSource = 'okr-model'
+        }
+        /* 兜底失败不覆盖 modelError：关系建议已经拿到了，不该整批报错。 */
+      }
+    }
     /* AI 一条关系都没给时：先用「文本引用 / 同一会话 / 同项目相邻」给关系线索，
        再补按开始/创建时间的时间线建议（两条兜底可以同时出现）。 */
     const aiRelationCount = modelItems.length
@@ -6637,6 +6662,7 @@ function createSyncEngine(ctx) {
         temporal: temporalItems.length,
         eta: eta.items.length,
         okr: checked.items.filter((item) => item.kind === 'okr').length,
+        okrSource,
       },
       notes,
       items: checked.items,
