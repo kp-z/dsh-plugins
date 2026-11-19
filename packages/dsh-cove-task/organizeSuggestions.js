@@ -488,6 +488,7 @@ export function projectOrganize(batch, tasks) {
     at: num(batch.at, 0),
     scope: isObj(batch.scope) ? batch.scope : {},
     model: isObj(batch.model) ? batch.model : {},
+    hint: str(batch.hint).replace(/\s+/g, ' ').trim().slice(0, 500),
     notes: str(batch.notes).slice(0, 200),
     items: arr(batch.items).map((item) => ({
       id: str(item.id),
@@ -548,6 +549,8 @@ export function makeOrganizeBatch(input) {
     batchId: str(o.batchId) || organizeBatchId(scope, at),
     at,
     scope,
+    /* 这一轮用户补的要求（建议栏底部对话框）。空串表示按默认口径生成。 */
+    hint: str(o.hint).replace(/\s+/g, ' ').trim().slice(0, 500),
     model: isObj(o.model) ? o.model : {},
     notes: str(o.notes).slice(0, 200),
     items,

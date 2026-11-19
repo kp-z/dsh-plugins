@@ -425,6 +425,28 @@ check('批次与面板视图：objective / keyResult 一路带下去', () => {
 
 /* ---- 宿主侧接线（源码级守卫）：提示词要求 okr、批次计数、接受/撤销都分流 ---- */
 
+check('底部对话框的要求：只进这一轮的提示词，并随批次记下来', () => {
+  const host = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  /* 提示词里要真的有 hint 段，而且要包在分隔符里（避免用户输入被当成任务数据的一部分） */
+  assert.match(host, /用户对这一轮整理补充的要求/, '会话提示词缺少「这一轮的要求」段')
+  assert.match(host, /'<<<', hint, '>>>'/, '用户输入必须包在 <<< >>> 里，和任务数据分开')
+  /* 后台模型回退路径也要带同样的要求，否则两条路行为不一致 */
+  assert.match(host, /askModelForInsight\([\s\S]{0,220}hint/, '后台模型回退路径没带 hint')
+  /* 只作用于这一轮：不能写进 ORGANIZE_SYSTEM 常量 */
+  const pure = readFileSync(new URL('../organizeSuggestions.js', import.meta.url), 'utf8')
+  const systemConst = pure.slice(pure.indexOf('export const ORGANIZE_SYSTEM'), pure.indexOf("].join('\\n')"))
+  assert.equal(systemConst.includes('hint'), false, '全局提示词里不该混进用户 hint')
+})
+
+check('批次携带 hint：makeOrganizeBatch 透传、projectOrganize 带出去', () => {
+  const batch = makeOrganizeBatch({ at: 1, scope: { kind: 'all', id: '' }, hint: '  KR 写得更可验收  ', items: [] })
+  assert.equal(batch.hint, 'KR 写得更可验收', 'hint 要去掉首尾空白')
+  const projected = projectOrganize(batch, [])
+  assert.equal(projected.hint, 'KR 写得更可验收')
+  /* 没给就是空串（默认口径），不是 undefined */
+  assert.equal(makeOrganizeBatch({ at: 1, scope: { kind: 'all', id: '' }, items: [] }).hint, '')
+})
+
 check('宿主：整理会话的提示词与批次都带 okr，接受/撤销按 kind 分流', () => {
   const host = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
   /* 会话提示词必须要求模型产出 okr，否则它永远不会给 */

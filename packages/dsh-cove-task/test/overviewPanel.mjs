@@ -1679,7 +1679,7 @@ function organizeBatchFixture() {
 /** 假的一键整理后端：够跑「跑 → 出建议 → 逐条接受/拒绝 → 就地更新」。 */
 function makeOrganizeBackend(options) {
   const o = options || {}
-  const log = { organize: [], view: [], accept: [], reject: [], undo: [] }
+  const log = { organize: [], hints: [], view: [], accept: [], reject: [], undo: [] }
   const state = {
     batch: o.initial === undefined ? (Array.isArray(o.batches) ? (o.batches[0] || null) : null) : o.initial,
     batches: Array.isArray(o.batches) ? o.batches : null,
@@ -1700,13 +1700,16 @@ function makeOrganizeBackend(options) {
     log,
     getBatch: () => state.batch,
     api: {
-      organize: async (scope) => {
+      organize: async (scope, hint) => {
+        /* log.organize 保持「一次次范围」的老形状（既有断言都在用它），
+           hint 单独记，谁关心谁看。 */
         log.organize.push(scope)
+        log.hints.push(hint === undefined ? '' : hint)
         if (o.defer) { await new Promise((resolve) => { o.defer.push(resolve) }) }
         if (o.fail) throw new Error(o.fail)
         const base = o.result === undefined ? organizeBatchFixture() : o.result
-        /* 真后端会把请求范围写回 batch.scope；桩也照做，才能测「生成/读取同一范围」。 */
-        state.batch = { ...base, scope: { kind: scope.kind, id: scope.id } }
+        /* 真后端会把请求范围与这一轮的 hint 写回 batch；桩也照做。 */
+        state.batch = { ...base, scope: { kind: scope.kind, id: scope.id }, hint: hint || '' }
         return { ok: true, batch: state.batch, dropped: 1, complete: false, candidates: 2 }
       },
       organizeView: async (scope) => {
@@ -1909,6 +1912,68 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     const saved = fx.store.data.get('organize')
     assert.equal(saved.open, false)
     assert.equal(saved.batchId, 'b-1')
+  })
+}
+
+{
+  /* 底部对话框：按这一组的要求重新生成（只作用于当前范围） */
+  const backend = makeOrganizeBackend()
+  const fx = await mountPanel({ organizeApi: backend.api })
+  let ft = fx.tree
+  ORGANIZE_TRIGGER(ft).props.onClick()
+  ft = await fx.mini.act()
+  const drawer = () => organizeDrawers(ft)[0]
+  const composer = () => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'form'
+    && classNameOf(node).split(/\s+/).includes('fo-org-composer'))[0]
+  const composerInput = () => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'textarea'
+    && classNameOf(node).split(/\s+/).includes('fo-org-composer-input'))[0]
+  const sendBtn = () => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'button'
+    && node.props['data-action'] === 'composer-send')[0]
+
+  check('建议栏底部有一行对话框（输入框 + 发送），默认禁用发送', () => {
+    assert.ok(composer(), '抽屉底部应有 .fo-org-composer')
+    assert.ok(composerInput(), '应有输入框')
+    assert.ok(sendBtn(), '应有发送按钮')
+    assert.equal(sendBtn().props.disabled, true, '没输入时发送按钮要禁用')
+    assert.ok(String(composerInput().props.placeholder || '').includes('改一改'), '占位文案要说明能改建议')
+  })
+
+  /* act 必须写在 check 外面（check 是同步的，回调里不能 await）。 */
+  composerInput().props.onChange({ currentTarget: { value: 'KR 写得更可验收一点' } })
+  ft = await fx.mini.act()
+  check('输入内容后发送按钮可用', () => {
+    assert.equal(sendBtn().props.disabled, false, '有内容就能发')
+  })
+
+  composerInput().props.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault() {} })
+  ft = await fx.mini.act()
+  check('按 Enter：按当前范围重新生成，并把这句话带上', () => {
+    assert.equal(backend.log.organize.length, 1, '应按要求重新生成一组')
+    assert.equal(backend.log.hints[0], 'KR 写得更可验收一点', '这句话要随请求发出去')
+    assert.equal(backend.log.organize[0].kind, 'all', '只作用于当前范围')
+    assert.equal(composerInput().props.value, '', '提交后输入框清空')
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '只想看 QVIZ' } })
+  ft = await fx.mini.act()
+  composerInput().props.onKeyDown({ key: 'Enter', shiftKey: true, preventDefault() {} })
+  ft = await fx.mini.act()
+  check('Shift+Enter 不提交（换行）', () => {
+    assert.equal(backend.log.organize.length, 1, 'Shift+Enter 不该发请求')
+    assert.equal(composerInput().props.value, '只想看 QVIZ', '内容要留着')
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '按项目分组给我看' } })
+  ft = await fx.mini.act()
+  /* 重新取 form：onSubmit 闭包里的 hintText 是**那一次渲染**的值，拿旧的会提交上一句。 */
+  composer().props.onSubmit({ preventDefault() {} })
+  ft = await fx.mini.act()
+  check('提交后的那一组，组头回显「要求：…」', () => {
+    assert.equal(backend.log.hints[1], '按项目分组给我看')
+    const hintNode = findAll(drawer(), (node) => node.kind === 'host'
+      && classNameOf(node).split(/\s+/).includes('fo-org-group-hint'))[0]
+    assert.ok(hintNode, '组头要显示这一组的要求')
+    assert.ok(textOf(hintNode).includes('按项目分组给我看'), '要写清是哪句话')
   })
 }
 
