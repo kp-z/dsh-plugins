@@ -1,13 +1,17 @@
 # NOTICE
 
-## 第三方代码 / 协议
+## 本插件自身的许可
 
-`src/edge-tts.ts` 实现的是微软 Edge 在线语音合成（edge-tts）的 WebSocket 协议。
-协议细节与踩坑记录参考了 [flashyiyi/dsh-voice-announcer](https://github.com/flashyiyi/dsh-voice-announcer)
-（BSD-3-Clause, Copyright (c) flashyiyi）以及其引用的 edge-tts 客户端实现。
+本包代码以 MIT 许可发布，见 `LICENSE`。
+
+## 协议参考（未复制代码）
+
+`src/edge-tts.ts` 实现的微软 Edge 在线语音合成（edge-tts）WebSocket 协议，
+其细节与踩坑记录参考了 [flashyiyi/dsh-voice-announcer](https://github.com/flashyiyi/dsh-voice-announcer)
+（BSD-3-Clause, Copyright (c) flashyiyi）以及它引用的 edge-tts 客户端实现。
 
 本仓库的实现是按协议独立编写的，**没有复制上述项目的源码**（开发环境访问 GitHub 失败，
-无法拉取原文比对），因此不附带其版权声明；如果后续真的移植了对方代码，必须在此处与
+无法拉取原文比对），因此不附带其版权声明。如果将来真的移植了对方代码，必须在此处与
 `LICENSE` 中按 BSD-3-Clause 补上版权声明。
 
 ## 语音服务

@@ -18,9 +18,27 @@ export { BroadcastConfig }
 export const name = 'broadcast'
 export const inject = ['tools']
 
+/** 日志器：沙箱可能不给 `ctx.logger`，但插件绝不能因此加载失败（那个后果是整个 profile 起不来）。 */
+interface Logger {
+  info(...args: unknown[]): void
+  warn(...args: unknown[]): void
+  debug(...args: unknown[]): void
+}
+
+function safeLogger(ctx: Context): Logger {
+  try {
+    return ctx.logger('broadcast') as unknown as Logger
+  } catch {
+    const fallback = (...args: unknown[]): void => {
+      try { console.warn('[broadcast]', ...args) } catch { /* 连 console 都没有就算了 */ }
+    }
+    return { info: fallback, warn: fallback, debug: fallback }
+  }
+}
+
 export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   const config = resolveConfig(raw)
-  const logger = ctx.logger('broadcast')
+  const logger = safeLogger(ctx)
 
   // 开关真值：持久化值优先（重启后保持），其次才是配置里的默认值。
   const sw = createSwitch({
