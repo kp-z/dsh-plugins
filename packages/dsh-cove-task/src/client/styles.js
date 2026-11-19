@@ -1024,7 +1024,7 @@ export const CSS = `
 .fo-fieldedit-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 2px; }
 
 /* ============ 右侧单 dock：详情 / 建议互斥切换 ============ */
-   不再让详情 + 建议各占一列；窄容器下也不会把建议挤到正文下面。 */
+/* 不再让详情 + 建议各占一列；窄容器下也不会把建议挤到正文下面。 */
 .fo-root[data-rightdock="1"] .fo-body {
   grid-template-columns: minmax(0, 1fr) clamp(280px, 34%, 380px) !important;
 }
