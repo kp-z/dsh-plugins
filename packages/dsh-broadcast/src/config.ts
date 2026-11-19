@@ -31,6 +31,9 @@ export const BroadcastConfig = z.object({
   /** 是否播报子代理会话。默认否。 */
   announceSubagent: z.boolean().default(false),
 
+  /** 同一会话两次播报的最小间隔（ms）：防连播、防抖。 */
+  debounceMs: z.number().default(2000),
+
   /** 出错 / 中止时是否也给一句提示。 */
   announceFailure: z.boolean().default(true),
 
@@ -51,6 +54,7 @@ export function resolveConfig(raw: Partial<BroadcastConfig> = {}): BroadcastConf
     maxChars: raw.maxChars ?? 80,
     minChars: raw.minChars ?? 30,
     announceSubagent: raw.announceSubagent ?? false,
+    debounceMs: raw.debounceMs ?? 2000,
     announceFailure: raw.announceFailure ?? true,
     quietHours: raw.quietHours ?? '',
   }
