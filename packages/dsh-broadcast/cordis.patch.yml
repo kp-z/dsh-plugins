@@ -1,0 +1,4 @@
+# 本 bundle 的 patch：只把本插件自己插进 profile 的层栈。
+- insert:
+    - id: broadcast
+      name: dsh-broadcast

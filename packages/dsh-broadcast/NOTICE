@@ -1,0 +1,13 @@
+# NOTICE
+
+## 第三方代码
+
+`src/edge-tts.ts` 的 WebSocket 合成协议移植自
+[flashyiyi/dsh-voice-announcer](https://github.com/flashyiyi/dsh-voice-announcer)
+（BSD-3-Clause, Copyright (c) flashyiyi），改动了：只保留合成路径，去掉 sapi / 播放 / 设置界面，
+并把「取 token + 域名选择 + 失败回落」拆成可测的纯函数。原文与许可证见该仓库。
+
+## 语音服务
+
+默认引擎使用 Microsoft Edge 的在线语音合成服务（edge-tts 协议）。这是非官方公开接口，
+域名与鉴权方式可能随时变化；本插件在失败时自动回落到 macOS 的 `say`，并在日志里说明原因。

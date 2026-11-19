@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>播报音色与效果试听</title>
+<style>
+  :root{color-scheme:dark;--bg:#0b0d10;--card:#14181d;--line:#232a31;--fg:#e7ecf1;--dim:#8b98a5;--acc:#5eead4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:48px 24px;background:radial-gradient(120% 80% at 50% 0%,#161b21,var(--bg));color:var(--fg);
+       font:15px/1.6 -apple-system,"SF Pro Text","PingFang SC",sans-serif}
+  .wrap{max-width:720px;margin:0 auto}
+  h1{font-size:22px;letter-spacing:.3px;margin:0 0 6px}
+  p.lead{color:var(--dim);margin:0 0 28px;font-size:13px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);margin:32px 0 12px;font-weight:600}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:10px}
+  .row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .name{font-weight:600;font-size:14px}
+  .meta{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+  .desc{color:var(--dim);font-size:12.5px;margin:4px 0 10px}
+  audio{width:100%;height:34px;filter:invert(.92) hue-rotate(180deg)}
+  .tag{display:inline-block;font-size:11px;color:var(--acc);border:1px solid rgba(94,234,212,.35);
+       background:rgba(94,234,212,.08);border-radius:999px;padding:1px 8px;margin-left:8px;vertical-align:1px}
+  .bad{color:#fca5a5}
+</style></head><body><div class="wrap">
+<h1>播报音色与效果试听</h1>
+<p class="lead">同一句「收尾汇报」，两种念法 + 四个中文音色。用耳朵判断，比读参数快。</p>
+
+<h2>先说效果：整理前 vs 整理后</h2>
+
+<div class="item">
+  <div class="row"><span class="name">原文朗读<span class="tag">19.6s</span></span><span class="meta">含 Markdown / 代码 / 路径</span></div>
+  <div class="desc bad">代码块念成符号串，路径逐字母拼读——听不下去的那种。</div>
+  <audio controls preload="none" src="compare-raw.mp3"></audio>
+</div>
+
+<div class="item">
+  <div class="row"><span class="name">整理后 · 晓晓<span class="tag">9.5s</span></span><span class="meta">zh-CN-XiaoxiaoNeural</span></div>
+  <div class="desc">「好了，登录重试的退避逻辑改完了，测试十二个全过。还有一个超时时间默认八秒的事儿，需要你定一下。」</div>
+  <audio controls preload="none" src="compare-spoken.mp3"></audio>
+</div>
+
+<div class="item">
+  <div class="row"><span class="name">整理后 · 云希<span class="tag">9.6s</span></span><span class="meta">zh-CN-YunxiNeural</span></div>
+  <div class="desc">同一个摘要换个男声，语速略快、偏「汇报」语气。</div>
+  <audio controls preload="none" src="compare-spoken-yunxi.mp3"></audio>
+</div>
+
+<h2>音色候选（同一段文本）</h2>
+
+<div class="item"><div class="row"><span class="name">晓晓 · 女声</span><span class="meta">Xiaoxiao · 温暖</span></div>
+  <div class="desc">新闻/小说腔，默认首选，长句稳。</div>
+  <audio controls preload="none" src="edge-zh-CN-XiaoxiaoNeural.mp3"></audio></div>
+
+<div class="item"><div class="row"><span class="name">云扬 · 男声</span><span class="meta">Yunyang · 专业可靠</span></div>
+  <div class="desc">新闻播报腔，适合「结论先行」。</div>
+  <audio controls preload="none" src="edge-zh-CN-YunyangNeural.mp3"></audio></div>
+
+<div class="item"><div class="row"><span class="name">晓伊 · 女声</span><span class="meta">Xiaoyi · 活泼</span></div>
+  <div class="desc">偏年轻、有起伏，节奏快时更不容易犯困。</div>
+  <audio controls preload="none" src="edge-zh-CN-XiaoyiNeural.mp3"></audio></div>
+
+<div class="item"><div class="row"><span class="name">婷婷 · macOS 本地</span><span class="meta">say · 离线兜底</span></div>
+  <div class="desc">断网/微软接口失效时的退路，明显比神经网络音色生硬。</div>
+  <audio controls preload="none" src="macos-Tingting.aiff"></audio></div>
+
+</div></body></html>
