@@ -1251,23 +1251,86 @@ export const CSS = `
   font-size: 11px; line-height: 1.6; color: ${T.brand};
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* 底部对话框：和列表同宽，贴着栏底；输入框可多行，Enter 提交、Shift+Enter 换行。 */
+
+/* ============ 底部对话框（照 cove 的 agent Composer 形制） ============
+   结构：一行 [工具 34×34] [模式 34×34] [文本域 flex-1 34px] [发送 34px]，下面是快捷键提示行。
+   两个方按钮各自带一个**向上**弹出的菜单（图标 + 名称 + 一句说明，选中项带 accent 与圆点）。
+   展开态把文本域放到 10rem~16rem（cove 的 expand 同一口径）。 */
 .fo-org-composer {
-  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 6px;
-  margin-top: 10px; padding: 8px 0 2px;
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
+  margin-top: 10px; padding: 10px 0 0;
   border-top: 1px solid var(--fo-glass-line);
 }
+.fo-org-composer-row { display: flex; align-items: flex-end; gap: 6px; }
+.fo-org-composer-slot { position: relative; flex: 0 0 auto; }
+/* 方按钮：34×34、圆角 10、细边；当前态用品牌色描边（cove 的 indigo 位） */
+.fo-org-composer-square {
+  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--fo-glass-line); border-radius: 10px;
+  background: transparent; color: ${T.label2}; cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.fo-org-composer-square:hover:not(:disabled) { color: ${T.label1}; border-color: ${g(T.label1, 22)}; background: ${g(T.bgLayer2, 70)}; }
+.fo-org-composer-square.is-on { color: ${T.brand}; border-color: ${g(T.brand, 50)}; background: ${g(T.brand, 12)}; }
+.fo-org-composer-square[data-accent="brand"] { color: ${T.brand}; border-color: ${g(T.brand, 45)}; }
+.fo-org-composer-square[data-accent="idle"] { color: ${T.idle}; border-color: ${g(T.idle, 45)}; }
+.fo-org-composer-square[data-accent="success"] { color: ${T.success}; border-color: ${g(T.success, 45)}; }
+.fo-org-composer-square:disabled { opacity: .5; cursor: not-allowed; }
+
+/* 向上弹出的菜单：玻璃面 + 阴影，和面板其它浮层同一套 */
+.fo-org-composer-menu {
+  position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 30;
+  min-width: 208px; padding: 4px;
+  border: 1px solid var(--fo-glass-line); border-radius: 12px;
+  background: var(--fo-glass-card); box-shadow: var(--fo-glass-shadow);
+  backdrop-filter: var(--fo-glass-blur); -webkit-backdrop-filter: var(--fo-glass-blur);
+}
+.fo-org-composer-menu-item {
+  width: 100%; display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border: 0; border-left: 2px solid transparent; border-radius: 8px;
+  background: transparent; color: ${T.label1}; font: inherit; text-align: left; cursor: pointer;
+}
+.fo-org-composer-menu-item:hover { background: ${g(T.label1, 6)}; }
+.fo-org-composer-menu-item[data-active="1"] { background: ${g(T.brand, 12)}; border-left-color: ${T.brand}; }
+.fo-org-composer-menu-icon { flex: 0 0 auto; display: inline-flex; color: ${T.label2}; }
+.fo-org-composer-menu-item[data-active="1"] .fo-org-composer-menu-icon,
+.fo-org-composer-menu-item[data-accent="brand"] .fo-org-composer-menu-icon { color: ${T.brand}; }
+.fo-org-composer-menu-item[data-accent="idle"] .fo-org-composer-menu-icon { color: ${T.idle}; }
+.fo-org-composer-menu-item[data-accent="success"] .fo-org-composer-menu-icon { color: ${T.success}; }
+.fo-org-composer-menu-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.fo-org-composer-menu-label { font-size: 12px; font-weight: 500; line-height: 1.3; }
+.fo-org-composer-menu-desc { font-size: 10px; color: ${T.label2}; line-height: 1.3; }
+.fo-org-composer-menu-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 999px; background: currentColor; color: ${T.brand}; }
+
+/* 文本域：34px 单行；展开到多行。滚动条隐藏（cove 同款），靠高度表达内容多少 */
 .fo-org-composer-input {
-  flex: 1 1 auto; min-width: 0; max-height: 96px; resize: none;
-  padding: 7px 10px; box-sizing: border-box;
+  flex: 1 1 auto; min-width: 0; height: 34px; box-sizing: border-box;
+  padding: 6px 10px; resize: none; overflow: auto;
   border: 1px solid var(--fo-glass-line); border-radius: 10px;
   background: ${g(T.bgLayer2, 55)}; color: ${T.label1};
-  font: inherit; font-size: 12px; line-height: 1.5;
+  font: inherit; font-size: 12px; line-height: 20px;
+  transition: border-color .15s ease;
+  scrollbar-width: none;
 }
+.fo-org-composer-input::-webkit-scrollbar { width: 0; height: 0; }
 .fo-org-composer-input::placeholder { color: ${g(T.label2, 80)}; }
 .fo-org-composer-input:focus { outline: none; border-color: ${g(T.brand, 55)}; }
-.fo-org-composer-input:disabled { opacity: .6; }
-.fo-org-composer-send { flex: 0 0 auto; height: 32px; min-width: 32px; padding: 0 8px; }
+.fo-org-composer-input:disabled { opacity: .6; color: ${T.label2}; }
+.fo-org-composer.is-expanded .fo-org-composer-input { height: auto; min-height: 10rem; max-height: 16rem; }
+
+/* 发送：主题色实心；禁用时退成灰玻璃 */
+.fo-org-composer-send {
+  flex: 0 0 auto; width: 34px; height: 34px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid ${g(T.brand, 45)}; border-radius: 10px;
+  background: ${g(T.brand, 22)}; color: ${T.brand}; cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
+}
+.fo-org-composer-send:hover:not(:disabled) { background: ${g(T.brand, 32)}; border-color: ${g(T.brand, 60)}; }
+.fo-org-composer-send:disabled { background: ${g(T.label1, 5)}; border-color: var(--fo-glass-line); color: ${g(T.label2, 70)}; cursor: not-allowed; }
+/* 快捷键提示行（cove 的 sendHint 位） */
+.fo-org-composer-hint { padding: 0 2px; font-size: 10px; line-height: 1.5; color: ${g(T.label2, 78)}; }
+
 .fo-org-notes { margin: 0; font-size: 12px; color: ${T.label2}; line-height: 1.5; }
 .fo-org-notes[data-tone="error"] { color: ${T.error}; }
 /* 组只是「一段」：用分割线隔开，不再套卡片；真正的卡片始终是每一条建议。 */

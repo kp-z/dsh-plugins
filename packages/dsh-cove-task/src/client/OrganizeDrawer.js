@@ -25,6 +25,14 @@ const ICON_PATHS = {
   undo: ['M9 7H5v4', 'M5 11a7 7 0 1 0 2.5-5.4'],
   more: ['M6 14l6-6 6 6'],
   sync: ['M20 12a8 8 0 1 1-2.3-5.7', 'M20 4v5h-5'],
+  /* 底部对话框：工具 / 展开 / 模式（对齐 cove 的 agent 输入框图标语义） */
+  wrench: ['M14.7 6.3a4 4 0 0 0 5 5L21 21l-3 0 -6.5-8.3'],
+  expand: ['M8 3H5a2 2 0 0 0-2 2v3', 'M16 3h3a2 2 0 0 1 2 2v3', 'M8 21H5a2 2 0 0 1-2-2v-3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
+  shrink: ['M4 8h4V4', 'M20 8h-4V4', 'M4 16h4v4', 'M20 16h-4v4'],
+  message: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'],
+  target: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'],
+  link: ['M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1', 'M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1'],
+  send: ['M4 12l16-8-6 8 6 8z'],
 }
 
 /** 时间戳 → 「10-30 18:00」。 */
@@ -97,6 +105,15 @@ export function createOrganizeDrawer(deps) {
     /* 底部对话框：这一轮要模型怎么改（「KR 写得更可验收」「只看 QVIZ」…）。
        只随提交那一次发给服务端，不落 store —— 它属于「这一组建议」而不是视图偏好。 */
     const [hintText, setHintText] = useState('')
+    /* 输入框形态照 cove 的 agent composer：左下「工具」与「模式」两个 34×34 方按钮、
+       中间单行文本域（可展开到多行）、右下发送；顶部各带一个向上弹出的菜单。 */
+    const [composerExpanded, setComposerExpanded] = useState(false)
+    const [toolMenuOpen, setToolMenuOpen] = useState(false)
+    const [modeMenuOpen, setModeMenuOpen] = useState(false)
+    const [composerMode, setComposerMode] = useState('all')
+    const composerInputRef = useRef ? useRef(null) : { current: null }
+    const toolMenuRef = useRef ? useRef(null) : { current: null }
+    const modeMenuRef = useRef ? useRef(null) : { current: null }
     const [expanded, setExpanded] = useState({})
     /* 「当前组」= 用户正在看/展开的那一组（默认最新）。接受以上只作用于它。 */
     const latestId = model.str(latest && latest.batchId)
@@ -315,6 +332,58 @@ export function createOrganizeDrawer(deps) {
       if (typeof document !== 'undefined') document.body.style.cursor = 'col-resize'
     }
 
+    /* 「模式」= 这一轮让模型往哪个方向改（照 cove 的 Normal/Code/Markdown 切换位）。
+       选中项以 accent 色表达，提交时把关注点作为一句短前缀并进要求里。 */
+    const COMPOSER_MODES = [
+      { id: 'all', label: '全部重排', desc: '关系和 O/KR 一起看', icon: 'sparkles', accent: 'brand' },
+      { id: 'relation', label: '只调关系', desc: '前置 / 来源连线', icon: 'link', accent: 'idle' },
+      { id: 'okr', label: '只调 O/KR', desc: '目标与关键结果的口径', icon: 'target', accent: 'success' },
+    ]
+    const activeMode = COMPOSER_MODES.find((row) => row.id === composerMode) || COMPOSER_MODES[0]
+    /* 工具菜单：本场景三个真正有用的动作（附件/表情对这里没有意义，不摆假按钮）。 */
+    const COMPOSER_TOOLS = [
+      { id: 'expand', label: composerExpanded ? '收起输入框' : '展开输入框', desc: composerExpanded ? '回到单行' : '多写几句要求', icon: composerExpanded ? 'shrink' : 'expand' },
+      { id: 'template', label: '插入示例要求', desc: '照着改一改再发', icon: 'message' },
+      { id: 'clear', label: '清空输入', desc: '丢掉这条草稿', icon: 'close' },
+    ]
+    const composerPlaceholder = generating
+      ? '正在按上一条要求重生成…'
+      : (activeMode.id === 'okr' ? '说说 O/KR 该怎么改…' : (activeMode.id === 'relation' ? '说说关系该怎么改…' : '让 AI 改一改这组建议，或提新要求…'))
+
+    /* 提交：原文 + 关注点分开传（组头只显示原文，指令由服务端按白名单合成）。 */
+    const submitHint = () => {
+      const text = model.str(hintText).trim()
+      if (!text || running || typeof p.onHintSubmit !== 'function') return
+      p.onHintSubmit(text, activeMode.id)
+      setHintText('')
+      setComposerExpanded(false)
+    }
+    const runComposerTool = (id) => {
+      setToolMenuOpen(false)
+      if (id === 'expand') { setComposerExpanded((prev) => !prev); return }
+      if (id === 'clear') { setHintText(''); setComposerExpanded(false); return }
+      if (id === 'template') {
+        setHintText('KR 写得更可验收：每条都要有指标或可判定的终态')
+        setComposerExpanded(true)
+        if (composerInputRef.current && composerInputRef.current.focus) composerInputRef.current.focus()
+      }
+    }
+
+    /* 点空白处收起两个菜单（照 cove：菜单不阻断输入，点外即关）。 */
+    useEffect(() => {
+      if (!toolMenuOpen && !modeMenuOpen) return undefined
+      if (typeof document === 'undefined' || !document.addEventListener) return undefined
+      const onDocDown = (event) => {
+        const target = event && event.target
+        const inTool = toolMenuRef.current && target && toolMenuRef.current.contains(target)
+        const inMode = modeMenuRef.current && target && modeMenuRef.current.contains(target)
+        if (!inTool) setToolMenuOpen(false)
+        if (!inMode) setModeMenuOpen(false)
+      }
+      document.addEventListener('pointerdown', onDocDown)
+      return () => document.removeEventListener('pointerdown', onDocDown)
+    }, [toolMenuOpen, modeMenuOpen])
+
     const shown = groups.slice(0, visible).reverse()
     const more = groups.length - visible
     const latestBatch = latest || {}
@@ -398,48 +467,109 @@ export function createOrganizeDrawer(deps) {
           ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
           : null,
       ),
-      /* 底部对话框：能改这一组的建议（「KR 写得更可验收」），也能征求新一轮建议。
-         只对当前范围（= cove 里一条整理会话）生效，提交后**重新生成一组**。 */
+      /* 底部对话框：形态照 cove 的 agent Composer —— 左下「工具」+「模式」两个方按钮，
+         中间单行文本域（可展开多行），右下发送；两个按钮各带一个向上弹出的菜单。
+         语义只对当前范围的这一组生效，提交后重新生成一组。 */
       typeof p.onHintSubmit === 'function'
         ? h('form', {
-          className: 'fo-org-composer',
+          className: 'fo-org-composer' + (composerExpanded ? ' is-expanded' : ''),
+          'data-mode': activeMode.id,
           onSubmit: (event) => {
             if (event && event.preventDefault) event.preventDefault()
-            const text = model.str(hintText).trim()
-            if (!text || running) return
-            p.onHintSubmit(text)
-            setHintText('')
+            submitHint()
           },
         },
-          h('textarea', {
-            className: 'fo-org-composer-input',
-            rows: 1,
-            value: hintText,
-            placeholder: '让 AI 改一改这组建议，或提新要求…',
-            'aria-label': '对这一组建议的要求',
-            disabled: running,
-            onChange: (event) => setHintText(model.str(event.currentTarget.value)),
-            onKeyDown: (event) => {
-              /* Enter 提交、Shift+Enter 换行：对话框的常规手感。 */
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                const text = model.str(hintText).trim()
-                if (!text || running) return
-                p.onHintSubmit(text)
-                setHintText('')
-              }
-            },
-          }),
-          h('button', {
-            type: 'submit',
-            className: 'fo-btn fo-org-composer-send',
-            'data-size': 'sm',
-            'data-variant': 'primary',
-            'data-action': 'composer-send',
-            disabled: running || !model.str(hintText).trim(),
-            title: running ? '正在生成，等这一组跑完' : '按这句话重新生成这一组建议',
-            'aria-label': '按这句话重新生成这一组建议',
-          }, h('span', { 'aria-hidden': 'true' }, '↵')),
+          h('div', { className: 'fo-org-composer-row' },
+            /* 工具按钮 + 菜单 */
+            h('div', { className: 'fo-org-composer-slot', ref: toolMenuRef },
+              h('button', {
+                type: 'button',
+                className: 'fo-org-composer-square' + (composerExpanded ? ' is-on' : ''),
+                'data-action': 'composer-tools',
+                title: '工具',
+                'aria-label': '工具',
+                'aria-expanded': toolMenuOpen ? 'true' : 'false',
+                disabled: generating,
+                onClick: () => { setToolMenuOpen((prev) => !prev); setModeMenuOpen(false) },
+              }, icon(composerExpanded ? 'shrink' : 'wrench')),
+              toolMenuOpen ? h('div', { className: 'fo-org-composer-menu', role: 'menu' },
+                COMPOSER_TOOLS.map((tool) => h('button', {
+                  key: tool.id,
+                  type: 'button',
+                  role: 'menuitem',
+                  className: 'fo-org-composer-menu-item',
+                  'data-action': 'composer-tool-' + tool.id,
+                  onClick: () => runComposerTool(tool.id),
+                },
+                  h('span', { className: 'fo-org-composer-menu-icon' }, icon(tool.icon)),
+                  h('span', { className: 'fo-org-composer-menu-text' },
+                    h('span', { className: 'fo-org-composer-menu-label' }, tool.label),
+                    h('span', { className: 'fo-org-composer-menu-desc' }, tool.desc)),
+                ))) : null,
+            ),
+            /* 模式按钮 + 菜单（acc 色表达当前关注点，照 cove 的 Normal/Code/Markdown） */
+            h('div', { className: 'fo-org-composer-slot', ref: modeMenuRef },
+              h('button', {
+                type: 'button',
+                className: 'fo-org-composer-square',
+                'data-action': 'composer-mode',
+                'data-accent': activeMode.accent,
+                title: activeMode.label,
+                'aria-label': '这一轮改什么：' + activeMode.label,
+                'aria-expanded': modeMenuOpen ? 'true' : 'false',
+                disabled: generating,
+                onClick: () => { setModeMenuOpen((prev) => !prev); setToolMenuOpen(false) },
+              }, icon(activeMode.icon)),
+              modeMenuOpen ? h('div', { className: 'fo-org-composer-menu', role: 'menu' },
+                COMPOSER_MODES.map((row) => h('button', {
+                  key: row.id,
+                  type: 'button',
+                  role: 'menuitemradio',
+                  'aria-checked': row.id === activeMode.id ? 'true' : 'false',
+                  className: 'fo-org-composer-menu-item',
+                  'data-active': row.id === activeMode.id ? '1' : '0',
+                  'data-accent': row.accent,
+                  'data-action': 'composer-mode-' + row.id,
+                  onClick: () => { setComposerMode(row.id); setModeMenuOpen(false) },
+                },
+                  h('span', { className: 'fo-org-composer-menu-icon' }, icon(row.icon)),
+                  h('span', { className: 'fo-org-composer-menu-text' },
+                    h('span', { className: 'fo-org-composer-menu-label' }, row.label),
+                    h('span', { className: 'fo-org-composer-menu-desc' }, row.desc)),
+                  row.id === activeMode.id ? h('span', { className: 'fo-org-composer-menu-dot', 'aria-hidden': 'true' }) : null,
+                ))) : null,
+            ),
+            h('textarea', {
+              className: 'fo-org-composer-input',
+              ref: composerInputRef,
+              rows: 1,
+              value: hintText,
+              placeholder: composerPlaceholder,
+              'aria-label': '对这一组建议的要求',
+              disabled: running,
+              onChange: (event) => setHintText(model.str(event.currentTarget.value)),
+              onKeyDown: (event) => {
+                /* Enter 发送、Shift+Enter 换行（cove 的 composer 同一手势）。 */
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  submitHint()
+                }
+              },
+            }),
+            h('button', {
+              type: 'submit',
+              className: 'fo-org-composer-send',
+              'data-action': 'composer-send',
+              disabled: running || !model.str(hintText).trim(),
+              title: generating ? '正在生成，等这一组跑完' : '按这句话重新生成这一组建议',
+              'aria-label': '按这句话重新生成这一组建议',
+            }, generating ? h('span', { className: 'fo-spinner' }) : icon('send')),
+          ),
+          /* 快捷键提示行（cove 底部同样有一行 sendHint）。 */
+          h('div', { className: 'fo-org-composer-hint' },
+            generating
+              ? '正在按上一条要求重生成…'
+              : 'Enter 发送 · Shift+Enter 换行 · 只作用于这一组'),
         )
         : null,
     )

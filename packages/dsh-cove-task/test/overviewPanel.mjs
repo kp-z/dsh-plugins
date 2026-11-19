@@ -1679,7 +1679,7 @@ function organizeBatchFixture() {
 /** 假的一键整理后端：够跑「跑 → 出建议 → 逐条接受/拒绝 → 就地更新」。 */
 function makeOrganizeBackend(options) {
   const o = options || {}
-  const log = { organize: [], hints: [], view: [], accept: [], reject: [], undo: [] }
+  const log = { organize: [], hints: [], modes: [], view: [], accept: [], reject: [], undo: [] }
   const state = {
     batch: o.initial === undefined ? (Array.isArray(o.batches) ? (o.batches[0] || null) : null) : o.initial,
     batches: Array.isArray(o.batches) ? o.batches : null,
@@ -1700,11 +1700,12 @@ function makeOrganizeBackend(options) {
     log,
     getBatch: () => state.batch,
     api: {
-      organize: async (scope, hint) => {
+      organize: async (scope, hint, mode) => {
         /* log.organize 保持「一次次范围」的老形状（既有断言都在用它），
-           hint 单独记，谁关心谁看。 */
+           hint / mode 单独记，谁关心谁看。 */
         log.organize.push(scope)
         log.hints.push(hint === undefined ? '' : hint)
+        log.modes.push(mode === undefined ? 'all' : mode)
         if (o.defer) { await new Promise((resolve) => { o.defer.push(resolve) }) }
         if (o.fail) throw new Error(o.fail)
         const base = o.result === undefined ? organizeBatchFixture() : o.result
@@ -1939,6 +1940,56 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   })
 
   /* act 必须写在 check 外面（check 是同步的，回调里不能 await）。 */
+  const squareBtn = (action) => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'button'
+    && node.props['data-action'] === action)[0]
+
+  check('照 cove 的 composer 形制：工具 / 模式两个方按钮 + 单行输入 + 发送 + 提示行', () => {
+    assert.ok(squareBtn('composer-tools'), '应有「工具」方按钮')
+    assert.ok(squareBtn('composer-mode'), '应有「模式」方按钮')
+    assert.equal(String(composerInput().props.rows), '1', '输入框默认单行（rows=1）')
+    assert.equal(sendBtn().props.type, 'submit', '发送是 submit 按钮（回车也能提交）')
+    const hintRow = findAll(drawer(), (node) => node.kind === 'host'
+      && classNameOf(node).split(/\s+/).includes('fo-org-composer-hint'))[0]
+    assert.ok(hintRow, '底部要有一行快捷键提示（cove 的 sendHint 位）')
+    assert.ok(textOf(hintRow).includes('Enter 发送'), '提示行写明 Enter 发送')
+  })
+
+  squareBtn('composer-tools').props.onClick()
+  ft = await fx.mini.act()
+  check('工具菜单向上展开：展开输入框 / 插入示例 / 清空', () => {
+    const menu = findAll(drawer(), (node) => node.kind === 'host'
+      && classNameOf(node).split(/\s+/).includes('fo-org-composer-menu'))[0]
+    assert.ok(menu, '点工具应弹出菜单')
+    const items = findAll(menu, (node) => node.kind === 'host' && node.props && node.props['data-action'])
+    const actions = items.map((node) => node.props['data-action'])
+    assert.ok(actions.includes('composer-tool-expand'), '有展开输入框')
+    assert.ok(actions.includes('composer-tool-template'), '有插入示例要求')
+    assert.ok(actions.includes('composer-tool-clear'), '有清空')
+  })
+
+  squareBtn('composer-tool-expand').props.onClick()
+  ft = await fx.mini.act()
+  check('展开输入框：容器带 is-expanded（多行高度由 CSS 给）', () => {
+    const form = composer()
+    assert.ok(classNameOf(form).split(/\s+/).includes('is-expanded'), '应切到展开态')
+  })
+
+  squareBtn('composer-mode').props.onClick()
+  ft = await fx.mini.act()
+  check('模式菜单：三种关注点，当前项打勾', () => {
+    const menu = findAll(drawer(), (node) => node.kind === 'host'
+      && classNameOf(node).split(/\s+/).includes('fo-org-composer-menu'))[0]
+    assert.ok(menu, '点模式应弹出菜单')
+    const options = findAll(menu, (node) => node.kind === 'host' && node.props && node.props['data-action']
+      && String(node.props['data-action']).startsWith('composer-mode-'))
+    assert.equal(options.length, 3, '全部 / 只调关系 / 只调 O/KR')
+    const active = options.filter((node) => node.props['data-active'] === '1')
+    assert.equal(active.length, 1, '只有一个当前项')
+    assert.equal(active[0].props['data-action'], 'composer-mode-all', '默认是「全部」')
+  })
+
+  findAll(drawer(), (node) => node.kind === 'host' && node.props && node.props['data-action'] === 'composer-mode-okr')[0].props.onClick()
+  ft = await fx.mini.act()
   composerInput().props.onChange({ currentTarget: { value: 'KR 写得更可验收一点' } })
   ft = await fx.mini.act()
   check('输入内容后发送按钮可用', () => {
@@ -1949,7 +2000,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   ft = await fx.mini.act()
   check('按 Enter：按当前范围重新生成，并把这句话带上', () => {
     assert.equal(backend.log.organize.length, 1, '应按要求重新生成一组')
-    assert.equal(backend.log.hints[0], 'KR 写得更可验收一点', '这句话要随请求发出去')
+    assert.equal(backend.log.hints[0], 'KR 写得更可验收一点', '这句话要随请求发出去（原话，不带前缀）')
+    assert.equal(backend.log.modes[0], 'okr', '选了「只调 O/KR」，关注点要单独发出去')
     assert.equal(backend.log.organize[0].kind, 'all', '只作用于当前范围')
     assert.equal(composerInput().props.value, '', '提交后输入框清空')
   })

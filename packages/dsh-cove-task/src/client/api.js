@@ -110,12 +110,15 @@ export function createApi({ fetchImpl } = {}) {
      * 一键整理。scopeKind/scopeId 省略表示「全部任务」。
      * 返回 { batch, dropped, complete, candidates }：**只出建议**，不会写关系。
      */
-    organize(scope, hint) {
-      /* hint：建议栏底部对话框里这一轮的补充要求（「KR 写得更可验收」这种）。
-         只作用于这一组 / 这一次会话，不改变默认口径。 */
+    organize(scope, hint, mode) {
+      /* hint：建议栏底部对话框里这一轮的补充要求（「KR 写得更可验收」这种）；
+         mode：这一轮关注什么（all / relation / okr），服务端翻成一句要求。
+         都只作用于这一组 / 这一次会话，不改变默认口径。 */
       const text = typeof hint === 'string' ? hint.trim() : '';
+      const focus = typeof mode === 'string' && mode ? mode : 'all';
       return post('/api/overview/organize', {
         scope: scope || { kind: 'all', id: '' },
+        mode: focus,
         ...(text ? { hint: text } : {}),
       });
     },

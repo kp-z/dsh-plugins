@@ -431,11 +431,26 @@ check('底部对话框的要求：只进这一轮的提示词，并随批次记�
   assert.match(host, /用户对这一轮整理补充的要求/, '会话提示词缺少「这一轮的要求」段')
   assert.match(host, /'<<<', hint, '>>>'/, '用户输入必须包在 <<< >>> 里，和任务数据分开')
   /* 后台模型回退路径也要带同样的要求，否则两条路行为不一致 */
-  assert.match(host, /askModelForInsight\([\s\S]{0,220}hint/, '后台模型回退路径没带 hint')
+  assert.match(host, /askModelForInsight\([\s\S]{0,260}directive/, '后台模型回退路径没带这一轮的要求（directive）')
   /* 只作用于这一轮：不能写进 ORGANIZE_SYSTEM 常量 */
   const pure = readFileSync(new URL('../organizeSuggestions.js', import.meta.url), 'utf8')
   const systemConst = pure.slice(pure.indexOf('export const ORGANIZE_SYSTEM'), pure.indexOf("].join('\\n')"))
   assert.equal(systemConst.includes('hint'), false, '全局提示词里不该混进用户 hint')
+})
+
+check('关注点（mode）：只认白名单，未知值退成 all，并随批次落下来', () => {
+  const base = { at: 1, scope: { kind: 'all', id: '' }, items: [] }
+  assert.equal(makeOrganizeBatch({ ...base, mode: 'okr' }).mode, 'okr')
+  assert.equal(makeOrganizeBatch({ ...base, mode: 'relation' }).mode, 'relation')
+  assert.equal(makeOrganizeBatch({ ...base, mode: 'rm -rf /' }).mode, 'all', '未知 mode 必须退成 all')
+  assert.equal(makeOrganizeBatch(base).mode, 'all')
+  assert.equal(projectOrganize(makeOrganizeBatch({ ...base, mode: 'okr' }), []).mode, 'okr')
+  /* 服务端把 mode 翻成一句要求，且是白名单映射（客户端不能靠 mode 注入任意指令） */
+  const host = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  assert.match(host, /MODE_DIRECTIVE/, 'index.js 里应有 mode → 要求的白名单映射')
+  assert.match(host, /hasOwnProperty\.call\(MODE_DIRECTIVE/, 'mode 必须按白名单校验')
+  /* 批次里只存用户原话，指令不写进 hint（组头要读得懂） */
+  assert.match(host, /directive = \[MODE_DIRECTIVE\[mode\], hint\]/, '指令与用户原话应分开合成')
 })
 
 check('批次携带 hint：makeOrganizeBatch 透传、projectOrganize 带出去', () => {
