@@ -119,6 +119,9 @@ export function buildEvidencePack(input) {
       predecessors: arr(row.task.predecessors).map(str).slice(0, 6),
       successors: arr(row.task.successors).map(str).slice(0, 6),
       sources: arr(row.task.sourceTasks).map(str).slice(0, 6),
+      /* 已有 O/KR 一并给模型看：它就知道这些任务不用再建议（只输出非空值，省 token）。 */
+      ...(str(row.task.objective) ? { objective: str(row.task.objective).slice(0, 60) } : {}),
+      ...(str(row.task.keyResult) ? { keyResult: str(row.task.keyResult).slice(0, 60) } : {}),
     }
     const size = JSON.stringify(item).length
     if (chars + size > budget && kept.length) {
