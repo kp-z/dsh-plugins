@@ -2792,7 +2792,32 @@ delete globalThis.document
     assert.equal(running.props['data-tone'], 'brand', '运行中徽标应是品牌色（蓝）')
   })
 
-  check('没在运行的泡不挂状态徽标（时钟 / 挂起 / 阻塞图标都不再渲染）', () => {
+  /* mount 必须在 check 外面 await：check 是同步的，传 async 会把断言变成未处理的 rejection */
+  const blockedSnapshot = Object.assign({}, SNAPSHOT, {
+    tasks: [
+      makeTask('b1', 41, 'wA', '项目A', { blocked: true, ready: false, blockedBy: [{ id: 'p1', title: '前置任务', done: false }] }),
+    ],
+    relations: [],
+    stats: { tasks: 1, groups: 0, dependencyEdges: 0, provenanceEdges: 0, blocked: 1, ready: 0 },
+  })
+  const blockedRun = await mountPanel({ snapshot: blockedSnapshot, host: fakeHost })
+  /* 面板会从 store 恢复上次的功能页：显式点一次「运行」再断言 */
+  featnavItems(blockedRun.tree).find((item) => textOf(item).includes('运行')).props.onClick()
+  const btree = await blockedRun.mini.act()
+  check('阻塞的泡挂静态警示徽标（和运行中同款位置/形状，但不随活动流消失）', () => {
+    const slot = byClass(btree, 'frx-orb-slot').find((node) => node.props['data-state'] === 'blocked')
+    assert.ok(slot, '应该有一个阻塞泡')
+    const badges = byClass(slot, 'frx-badge')
+    assert.equal(badges.length, 1, '阻塞泡右上角要有徽标')
+    const badge = badges[0]
+    assert.equal(badge.props['data-badge'], 'alert', '阻塞徽标应该是警示图标')
+    assert.equal(badge.props['data-tone'], 'warn', '阻塞徽标是警示色')
+    const label = String(badge.props['aria-label'] || '')
+    assert.ok(label.startsWith('被阻塞'), `徽标要说明被阻塞，实际 ${label}`)
+    assert.ok(label.includes('前置任务'), `徽标要指出在等哪条前置，实际 ${label}`)
+  })
+
+  check('没在运行的泡不挂状态徽标（时钟 / 挂起图标都不再渲染）', () => {
     const badges = byClass(rtree, 'frx-badge')
     const kinds = badges.map((b) => b.props['data-badge'])
     assert.equal(kinds.includes('clock'), false, '未开始的泡不该再挂时钟徽标')
