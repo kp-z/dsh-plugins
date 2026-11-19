@@ -6549,6 +6549,18 @@ function createSyncEngine(ctx) {
     const s = scope && typeof scope === 'object' ? { kind: asString(scope.kind) || 'all', id: asString(scope.id) } : { kind: 'all', id: '' }
     /* 退化成单行的用户输入：限长，避免把证据包挤掉或塞进奇怪的格式。 */
     const hint = asString(options && options.hint).replace(/\s+/g, ' ').trim().slice(0, 500)
+    /* 「模式」只认白名单，由服务端合成一句关注点要求：客户端不能靠它注入任意指令。
+       全部 / 只调关系 / 只调 O/KR（对齐 cove composer 的模式切换位）。 */
+    const MODE_DIRECTIVE = {
+      all: '',
+      relation: '这一轮只调整任务关系（前置 / 来源），不要改动 O/KR。',
+      okr: '这一轮只调整 O/KR 的写法，不要改动任务关系。',
+    }
+    const mode = Object.prototype.hasOwnProperty.call(MODE_DIRECTIVE, asString(options && options.mode))
+      ? asString(options.mode)
+      : 'all'
+    /* 给模型的「这一轮要求」= 模式关注点 + 用户原话。批次里只存用户原话（组头要读得懂）。 */
+    const directive = [MODE_DIRECTIVE[mode], hint].filter(Boolean).join(' ')
     const tasks = organizeScopeTasks(s)
     if (tasks.length < 2) return { ok: false, error: '这个范围里没有足够的任务可以整理' }
     const views = organizeTaskViews(tasks)
@@ -6584,7 +6596,7 @@ function createSyncEngine(ctx) {
     let sessionError = ''
     if (pack.items.length) {
       /* 先走 DSH 会话（cove 项目），失败再回退后台模型——两条路都不通才报错。 */
-      const viaSession = await organizeViaSession(pack, hint)
+      const viaSession = await organizeViaSession(pack, directive)
       sessionId = asString(viaSession.sessionId)
       let askedText = asString(viaSession.text)
       if (askedText) modelSource = 'session'
@@ -6592,7 +6604,7 @@ function createSyncEngine(ctx) {
         sessionError = asString(viaSession.error) || '会话没有返回内容'
         /* 回退到后台模型时同样带上这一轮的要求（否则两条路的行为不一致）。 */
         const asked = await askModelForInsight(
-          hint ? ORGANIZE_SYSTEM + '\n\n用户对这一轮整理补充的要求（优先于默认口径）：\n<<<\n' + hint + '\n>>>' : ORGANIZE_SYSTEM,
+          directive ? ORGANIZE_SYSTEM + '\n\n用户对这一轮整理补充的要求（优先于默认口径）：\n<<<\n' + directive + '\n>>>' : ORGANIZE_SYSTEM,
           pack.text,
           2000,
         )
@@ -6681,8 +6693,9 @@ function createSyncEngine(ctx) {
       batchId: organizeBatchId(s, nowMs()),
       at: nowMs(),
       scope: s,
-      /* 这一轮依据的用户要求：组头上要能回看「我是照哪句话重生成的」。 */
+      /* 这一轮依据的用户要求与关注点：组头上要能回看「我是照哪句话重生成的」。 */
       hint,
+      mode,
       model: {
         provider: asString(selection?.provider),
         model: asString(selection?.model),
@@ -11138,7 +11151,7 @@ function mountRoutes(ctx, engine) {
 
           if (req.method === 'POST' && route === '/api/overview/organize') {
             const body = await readBody(req)
-            const result = await engine.organizeScope(body?.scope, { hint: body?.hint })
+            const result = await engine.organizeScope(body?.scope, { hint: body?.hint, mode: body?.mode })
             sendJson(res, result.ok ? 200 : 400, result)
             return
           }
