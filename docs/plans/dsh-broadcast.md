@@ -53,7 +53,7 @@
   - 测试：prompt 构造、输出清洗、回落链（假 stream 注入）
   - 验收：拿 3 段真实长回复，对比「原文 / 本地截断 / LLM 改写」的可听性
 
-- [ ] **S4 交互：对话框开关 + 状态**（约 1 小时）
+- [x] **S4 交互：对话框开关 + 状态**（约 1 小时）
   - 宿主路由 `/dsh-broadcast/state`（GET 读、POST 写），状态存插件配置，重启保留
   - 客户端 `conversation.input.left` 一个扬声器开关（抄 `dsh-mermaid-comm/src/client.js` 的写法：
     乐观更新 + 以宿主回读为准 + tooltip），开/关即时生效
@@ -87,3 +87,4 @@
 - 2026-11-20 / **S1 骨架 + 能出声** / `pnpm --filter dsh-broadcast build` 通过（tsc 无错）；`node --test "test/*.test.ts"` **26 passed / 0 failed**；`broadcast_say` 同一条代码路径实测出声：engine=auto 时 edge-tts 失败 → 回落 `say`（4.9s 播完/web 实测峰值 0.644、rms 0.116 非静音，`afplay` 播放成功）。 / **未决**：edge-tts 在线合成当前不可用——新端点 `api.msedgeservices.com` 握手 403、老端点 `speech.platform.bing.com` 返回 404（curl 与 Node WebSocket 两种方式都验过），`auto` 已自动回落 `say`；协议实现按「端点可配 + 失败回落」保留，等厂商接口恢复或改接别的 provider 再验。
 - 2026-11-20 / **S2 触发 + 文本清洗** / `pnpm --filter dsh-broadcast build` 通过；`node --test "test/*.test.ts"` **66 passed / 0 failed**；**真机回放**（取 `~/.dsh/sessions` 里一个真实 v4 会话的 11 轮事件，喂进 `createSessionListener`）：9 次 speak + 2 次 notice（aborted / blocked），产出文案 27–78 字、无 Markdown 残留；把其中一段真出声（say 兜底 12.3s）。清洗器对真实 2581 字长回复：2581 → 1322 字，反引号 / 斜杠 / http / 星号 / 表格 / 文件名 / `344px` 全部消失，首段 35 字直接可念。 / **未决**：① 模型用英文回复时文案仍是英文（S3 的改写约束负责）；② 被剥掉的行内代码会留下「来自真实的，」这种空档（S3 重写解决）；③ edge-tts 仍 403，仍走 say 兜底。
 - 2026-11-20 / **S3 说人话（核心）** / `pnpm --filter dsh-broadcast build` 通过；`node --test "test/*.test.ts"` **82 passed / 0 failed**（新增 prompt / summarizer 两组 + wiring 3 例）。**真实数据**（3 段真机长回复，4208 / 4570 / 4903 字）：原文洗完朗读 **261–345 秒**，本地截断只有 **7.5–14.8 秒**——这就是必须做「说人话」的量化理由（`say -o` + `afinfo` 实测时长）。**整链实测**（真回复 4570 字 → 提示词 system 269 字 / user 1915 字 → 假流两句话 → 清洗成 24 字 → 真出声 8.2 秒）。 / **未决**：模型这一级用的是**打桩的流**，真模型调用没在插件外验过——`ctx.get('llm')` 只在宿主进程里存在，而按协议本阶段不装 profile；S5 真机连跑时补这一验（回落到本地的三条路径已全部覆盖）。edge-tts 仍 403，继续 say 兜底。 / 依 `dsh-contract-butler/src/hostAi.ts` 的注入式写法与 `dsh-llm` 的 `GenerateOptions`/`StreamChunk` 类型核对过请求与 chunk 形状。
+- 2026-11-20 / **S4 交互：对话框开关 + 状态** / `pnpm --filter dsh-broadcast build` 通过；`node --test "test/*.test.ts"` **105 passed / 0 failed**（新增 state / routes / client 三组 + wiring 2 例）。**宿主侧真机级验证**（起真实 `http.createServer` 挂上插件自己的 handler，用 `fetch` 打）：GET 初始 `{enabled:false}` → POST 打开 → GET 回读 true → 磁盘 `{"enabled":true,...}` → 关/开各一次 → **新建 switch 读同一文件 = true（模拟重启后保持）** → 播报中 GET `speaking:true` → POST `{stop:true}` 后 `speaking:false`。**停止是真停**：`speak()` 播一条 ~20 秒的长句，1.0 秒时 abort → `AbortError` 立刻返回（不是播完才返回），停完再播一条照常出声。 / 未决：① 浏览器里那半个（扬声器图标、tooltip、点击）没法在本阶段验——插件没装 profile（协议要求 S5 才装），S5 装完点一次即验；已用 `node --check` + 客户端冒烟测试（模块外壳/槽位 `conversation.input.left`/路径与字段契约）兜住最容易炸的部分。② 安静时段顺手做了（`quietHours`，默认空=不启用），命中即静默，有跨零点测试。③ edge-tts 仍 403。

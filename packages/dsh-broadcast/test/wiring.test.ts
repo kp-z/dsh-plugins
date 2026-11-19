@@ -178,6 +178,49 @@ test('同一轮的 turn/end 重复到达：只播一次', async () => {
   assert.equal(decisions.at(-1)?.decision.action, 'silent')
 })
 
+test('总开关是活的：运行时改 config.enabled 立刻生效（对话框按钮就是改它）', async () => {
+  clock = 10_000
+  const { listener, spoken, config } = harness()
+  listener(session('s12'), assistantEvent(1, LONG))
+  listener(session('s12'), turnEndEvent(1, 'completed'))
+  await settle()
+  assert.equal(spoken.length, 1)
+
+  config.enabled = false
+  clock = 20_000
+  listener(session('s12'), assistantEvent(2, LONG))
+  listener(session('s12'), turnEndEvent(2, 'completed'))
+  await settle()
+  assert.equal(spoken.length, 1, '关掉之后一声不响')
+
+  config.enabled = true
+  clock = 30_000
+  listener(session('s12'), assistantEvent(3, LONG))
+  listener(session('s12'), turnEndEvent(3, 'completed'))
+  await settle()
+  assert.equal(spoken.length, 2, '再打开又能播')
+})
+
+test('安静时段：落在区间里就不播，出了区间照播', async () => {
+  clock = 10_000
+  const quiet = new Date(clock)
+  const from = String(quiet.getHours()).padStart(2, '0')
+  const to = String((quiet.getHours() + 1) % 24).padStart(2, '0')
+
+  const { listener, spoken } = harness({ quietHours: `${from}:00-${to}:00` })
+  listener(session('s13'), assistantEvent(1, LONG))
+  listener(session('s13'), turnEndEvent(1, 'completed'))
+  await settle()
+  assert.deepEqual(spoken, [], '安静时段不该开口')
+
+  // 两小时后：不在区间里（跨零点的写法也由 inQuietHours 处理）
+  clock = 10_000 + 2 * 60 * 60 * 1000
+  listener(session('s13'), assistantEvent(2, LONG))
+  listener(session('s13'), turnEndEvent(2, 'completed'))
+  await settle()
+  assert.equal(spoken.length, 1, '出了安静时段就该播')
+})
+
 test('文案生成失败不吞异常：交给 onError', async () => {
   clock = 10_000
   const errors: unknown[] = []

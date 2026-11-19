@@ -1,14 +1,16 @@
 /**
  * dsh-broadcast —— 会话结束语音播报。
  *
- * 当前阶段：S3（说人话）。每轮结束先让宿主的模型把这一轮讲成 2–3 句口语，
- * 再交给 S1 的播放链念出来；模型不可用/超时/返回空就回落到本地截断。
+ * 当前阶段：S4（对话框开关 + 状态）。host 持有开关真值（持久化在 profile 目录），
+ * 客户端只是遥控器：`/dsh-broadcast/state` 读写，播报中还能点一下停掉。
  * 阶段表见 `docs/plans/dsh-broadcast.md`。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { speak } from './announce.js'
 import { BroadcastConfig, resolveConfig } from './config.js'
+import { registerStateRoute } from './routes.js'
+import { createSwitch } from './state.js'
 import { summarizeReply, type HostServicesLike } from './summarizer.js'
 import { createSessionListener, type SummaryInput } from './wiring.js'
 
@@ -19,6 +21,13 @@ export const inject = ['tools']
 export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   const config = resolveConfig(raw)
   const logger = ctx.logger('broadcast')
+
+  // 开关真值：持久化值优先（重启后保持），其次才是配置里的默认值。
+  const sw = createSwitch({
+    fallback: config.enabled,
+    onPersistError: (error) => logger.warn('开关状态写盘失败：%s', error instanceof Error ? error.message : String(error)),
+  })
+  config.enabled = sw.isEnabled()
   logger.info('dsh-broadcast 已加载（enabled=%s engine=%s voice=%s useModel=%s）', config.enabled, config.engine, config.voice, config.useModel)
 
   /** 现取宿主服务：服务可能晚于本插件挂上来，宿主重载后旧句柄也不该认死。 */
@@ -34,13 +43,36 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
     return { llm: pick('llm'), defaultModel: pick('agentDefaultModel') }
   }
 
+  /** 当前这条播报的取消手柄；speaking 只反映「扬声器里现在有没有声音」。 */
+  let current: AbortController | null = null
+  let speaking = false
+
   // 播放串行化：两条会话同时结束也不能叠音（前一条念完再念下一条）。
   let queue: Promise<unknown> = Promise.resolve()
   const enqueue = (text: string): Promise<unknown> => {
-    queue = queue.then(() => speak(text, config)).catch((error: unknown) => {
-      logger.warn('播报失败：%s', error instanceof Error ? error.message : String(error))
-    })
+    const controller = new AbortController()
+    current = controller
+    speaking = true
+    queue = queue
+      .then(() => speak(text, config, { signal: controller.signal }))
+      .catch((error: unknown) => {
+        // 用户点了停止：这不是错误，别在日志里吓人一跳
+        if (controller.signal.aborted) return
+        logger.warn('播报失败：%s', error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => {
+        if (current === controller) {
+          current = null
+          speaking = false
+        }
+      })
     return queue
+  }
+
+  const stop = (): void => {
+    current?.abort()
+    current = null
+    speaking = false
   }
 
   ctx.tools.register(defineTool({
@@ -103,4 +135,16 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
 
   // 插件 ctx 没有 scope 标签，能收到主会话与各子代理的全部事件。
   ctx.on('session/event', listener)
+
+  // 对话框里的扬声器按钮：读开关、写开关、停掉正在播的那条。
+  registerStateRoute(ctx, {
+    isEnabled: () => sw.isEnabled(),
+    setEnabled: async (next) => {
+      config.enabled = next
+      await sw.setEnabled(next)
+      logger.info('播报开关 → %s', next ? '开' : '关')
+    },
+    isSpeaking: () => speaking,
+    stop,
+  })
 }
