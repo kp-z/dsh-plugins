@@ -6488,8 +6488,8 @@ function createSyncEngine(ctx) {
       pack.text,
       '',
       '只返回一个 JSON 对象（可以放在 \`\`\`json 围栏里）：',
-      '{"items":[{"kind":"depends_on|derived_from|temporal","from":"任务id","to":"任务id","confidence":0.8,"evidence":"原文证据"}],"notes":"一句话"}',
-      '输出要求：不要复述分析过程；evidence 不超过 40 字；notes 不超过 30 字；没有可靠关系就返回 {"items":[],"notes":"..."}。',
+      '{"items":[{"kind":"depends_on|derived_from|temporal","from":"任务id","to":"任务id","confidence":0.8,"evidence":"原文证据"}],"okr":[{"id":"任务id","objective":"目标","keyResult":"关键结果","confidence":0.8,"evidence":"原文证据"}],"notes":"一句话"}',
+      '输出要求：不要复述分析过程；evidence 不超过 40 字；notes 不超过 30 字；没有可靠关系就返回 {"items":[],"okr":[],"notes":"..."}。',
     ].join('\n')
     try {
       await sessions.prompt({
@@ -6545,6 +6545,8 @@ function createSyncEngine(ctx) {
     const models = await awaitService(ctx, 'agentDefaultModel')
     const selection = typeof models?.currentSelection === 'function' ? models.currentSelection() : undefined
     let modelItems = []
+    /* O/KR 建议：和关系由同一次会话产出，但**只作为建议**进面板，接受后才落库。 */
+    let okrItems = []
     let notes = ''
     let modelError = ''
     /** 这一组是从哪跑的：session（cove 会话）| llm（回退后台模型） */
@@ -6568,7 +6570,23 @@ function createSyncEngine(ctx) {
       else {
         const parsed = parseOrganizeResponse(askedText)
         if (parsed.error) modelError = parsed.error
-        else { modelItems = parsed.items; notes = parsed.notes }
+        else {
+          modelItems = parsed.items
+          notes = parsed.notes
+          /* 只做形状转换；校验（任务存在 / O、KR 非空 / 已有 O-KR 跳过 / 上限）
+             统一在 validateOrganizeItems 里做。 */
+          okrItems = (Array.isArray(parsed.okr) ? parsed.okr : [])
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+              kind: 'okr',
+              from: asString(row.id),
+              to: '',
+              objective: asString(row.objective),
+              keyResult: asString(row.keyResult),
+              confidence: Number(row.confidence) || 0,
+              evidence: asString(row.evidence),
+            }))
+        }
       }
       /* 回退成功时不要把会话失败塞进 model.error（UI 会误报「AI 没给建议」）；
          单独记 sessionError，便于排查。 */
@@ -6593,7 +6611,7 @@ function createSyncEngine(ctx) {
       })
       temporalItems = withoutRelationPairs(started.items)
     }
-    if (!modelItems.length && !temporalItems.length && !eta.items.length) {
+    if (!modelItems.length && !okrItems.length && !temporalItems.length && !eta.items.length) {
       /* 有任务、模型也确实回答过（哪怕 items 为空）：照样落一组空建议，
          让面板明确显示「看过，没有可靠关系」，而不是一个用户看不见的报错。
          只有「没任务」或「模型真的失败」才返回错误。 */
@@ -6601,7 +6619,8 @@ function createSyncEngine(ctx) {
       notes = notes || 'AI 看过这些任务，没有找到可落库的前置 / 来源 / 时间关系。'
     }
     /* 关系在前、预期完成在后：关系是"改图"，预期是"改配置"，先看图的改动。 */
-    const checked = validateOrganizeItems({ items: [...modelItems, ...temporalItems, ...eta.items], tasks: views, relations: state.relations, now: nowMs() })
+    /* 关系在前、O/KR 次之、预期完成最后：先看"改图"，再看"归组"，最后看"改配置"。 */
+    const checked = validateOrganizeItems({ items: [...modelItems, ...okrItems, ...temporalItems, ...eta.items], tasks: views, relations: state.relations, now: nowMs() })
     const batch = makeOrganizeBatch({
       batchId: organizeBatchId(s, nowMs()),
       at: nowMs(),
@@ -6617,6 +6636,7 @@ function createSyncEngine(ctx) {
         sessionError,
         temporal: temporalItems.length,
         eta: eta.items.length,
+        okr: checked.items.filter((item) => item.kind === 'okr').length,
       },
       notes,
       items: checked.items,
@@ -6691,6 +6711,31 @@ function createSyncEngine(ctx) {
       let warning = ''
       let retryAction = ''
       try {
+        /* O/KR：走 applyOkrLabels（先改本地，再后台写回飞书的自定义字段）。
+           **只在人点了接受之后**才走这里——建议流程本身绝不自动写 O/KR。 */
+        if (item.kind === 'okr') {
+          /* 记下写之前的 O/KR，撤销时才能还原（applyOkrLabels 不接受空值，所以空的只能报「不支持撤销」）。 */
+          const target = state.tasks.find((task) => String(task.id) === String(item.from))
+          item.beforeOkr = {
+            objective: asString(target && target.objective),
+            keyResult: asString(target && target.keyResult),
+          }
+          const applied = await applyOkrLabels([{ id: item.from, objective: asString(item.objective), keyResult: asString(item.keyResult) }])
+          written = applied.ok
+            ? { ok: true }
+            : { ok: false, error: asString(applied.error) || 'O/KR 没有写进去' }
+          results.push({ id: item.id, kind: item.kind, from: item.from, to: '', ok: written.ok === true, error: written.error || '', warning })
+          if (written.ok) {
+            item.status = 'accepted'
+            item.acceptedAt = nowMs()
+            item.reason = ''
+            item.warning = ''
+            item.retryAction = ''
+          } else {
+            item.reason = asString(written.error) || '写入失败'
+          }
+          continue
+        }
         /* 预期完成：走 setTaskEta（会记一条承诺变更，并按设置写回飞书「预期完成」列）。 */
         if (item.kind === 'eta') {
           const at = Number(item.value) || 0
@@ -6792,8 +6837,20 @@ function createSyncEngine(ctx) {
       let warning = ''
       let retryAction = ''
       try {
-        /* 预期完成：撤销 = 把预期清空（走同一条 promiseUpdate，会记一次承诺变更） */
-        if (item.kind === 'eta') {
+        /* O/KR：撤销 = 还原成接受之前的 O/KR。之前是空的就无法回滚
+           （applyOkrLabels 不接受空值），如实报错，让用户去 OKR 视图里手改。 */
+        if (item.kind === 'okr') {
+          const before = item.beforeOkr && typeof item.beforeOkr === 'object' ? item.beforeOkr : {}
+          const objective = asString(before.objective).trim()
+          const keyResult = asString(before.keyResult).trim()
+          if (!objective || !keyResult) {
+            written = { ok: false, error: '这条任务原来没有 O/KR，无法自动撤销；请在 OKR 视图里直接改' }
+          } else {
+            const restored = await applyOkrLabels([{ id: item.from, objective, keyResult }])
+            written = restored.ok ? { ok: true } : { ok: false, error: asString(restored.error) || 'O/KR 还原失败' }
+          }
+        } else if (item.kind === 'eta') {
+          /* 预期完成：撤销 = 把预期清空（走同一条 promiseUpdate，会记一次承诺变更） */
           const result = await setTaskEta(item.from, { when: '', reason: `撤销建议（batchId=${batch.batchId}）` })
           written = result.ok ? { ok: true } : { ok: false, error: asString(result.error) || '预期清空失败' }
           if (result.ok && result.sync && result.sync.ok === false && !result.sync.skipped) {

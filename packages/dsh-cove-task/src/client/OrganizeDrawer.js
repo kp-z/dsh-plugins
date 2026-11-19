@@ -13,7 +13,7 @@
  */
 import * as modelModule from '../overview/model.js'
 
-const KIND_LABEL = { depends_on: '前置', derived_from: '来源', temporal: '时间', eta: '预期完成' }
+const KIND_LABEL = { depends_on: '前置', derived_from: '来源', temporal: '时间', eta: '预期完成', okr: 'O/KR' }
 
 /* 面板里的按钮全部用图标；文案只放在 title / aria-label 里。 */
 const ICON_PATHS = {
@@ -140,7 +140,16 @@ export function createOrganizeDrawer(deps) {
           h('span', { className: 'fo-org-kind', 'data-kind': item.kind }, kindLabel),
           conf ? h('span', { className: 'fo-org-conf', title: '模型自评的把握' }, conf) : null,
         ),
-        item.kind === 'eta'
+        /* O/KR 建议：一条任务一条，展示「给哪条任务、写成什么」，不画 from → to。 */
+        item.kind === 'okr'
+          ? h('div', { key: 'route', className: 'fo-org-route fo-org-okr-suggest' },
+            h('span', { className: 'fo-org-from', title: item.from || '' }, model.str(item.fromTitle) || model.str(item.from)),
+            h('span', { className: 'fo-org-okr-pair' },
+              h('span', { className: 'fo-org-okr-o', title: 'Objective' }, 'O：' + model.str(item.objective)),
+              h('span', { className: 'fo-org-okr-kr', title: 'Key Result' }, 'KR：' + model.str(item.keyResult)),
+            ),
+          )
+          : item.kind === 'eta'
           ? h('div', { key: 'route', className: 'fo-org-route' },
             h('span', { className: 'fo-org-from', title: item.from || '' }, model.str(item.fromTitle) || model.str(item.from)),
             h('span', { className: 'fo-org-arrow', 'aria-hidden': 'true' }, '→'),

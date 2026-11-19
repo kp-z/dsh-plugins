@@ -1315,6 +1315,17 @@ export const CSS = `
 .fo-org-kind[data-kind="temporal"] { color: ${T.idle}; background: ${g(T.idle, 12)}; border-color: ${g(T.idle, 24)}; }
 /* 预期完成建议：绿色系（它是「改一个配置」，不是改关系） */
 .fo-org-kind[data-kind="eta"] { color: ${T.success}; background: ${g(T.success, 14)}; border-color: ${g(T.success, 30)}; }
+/* O/KR 建议：品牌色（它是「归组」，既不改图也不改时间） */
+.fo-org-kind[data-kind="okr"] { color: ${T.brand}; background: ${g(T.brand, 12)}; border-color: ${g(T.brand, 28)}; }
+/* O/KR 卡片：任务名一行，下面 O / KR 两行竖排（文案通常比"任务→任务"长） */
+.fo-org-okr-suggest { flex-direction: column; align-items: flex-start; gap: 3px; }
+.fo-org-okr-pair { display: flex; flex-direction: column; gap: 2px; min-width: 0; width: 100%; }
+.fo-org-okr-o, .fo-org-okr-kr {
+  display: block; min-width: 0; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; line-height: 1.45;
+}
+.fo-org-okr-kr { color: ${T.label2}; }
 .fo-org-conf { margin-left: auto; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 .fo-org-route { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
 .fo-org-from, .fo-org-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
