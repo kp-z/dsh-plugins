@@ -8,7 +8,7 @@
 import type { BroadcastConfig } from './config.js'
 import { summarizeLocally } from './sanitize.js'
 import { decodeAssistantMessage, decodeTurnEnd, isSubagentSession, sessionIdOf } from './session.js'
-import { decideTurn, type TurnDecision, type TurnPolicy } from './turn.js'
+import { decideTurn, inQuietHours, type TurnDecision, type TurnPolicy } from './turn.js'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -55,13 +55,13 @@ export function policyFromConfig(config: BroadcastConfig): TurnPolicy {
     announceFailure: config.announceFailure,
     minChars: config.minChars,
     debounceMs: config.debounceMs,
+    quietHours: config.quietHours,
   }
 }
 
 export function createSessionListener(deps: SessionListenerDeps): (session: unknown, event: unknown) => void {
   const states = new Map<string, TurnState>()
   const now = deps.now ?? Date.now
-  const policy = policyFromConfig(deps.config)
   const summarize = deps.summarize ?? (async (input) => ({ text: summarizeLocally(input.text, deps.config.maxChars) }))
 
   const prune = (): void => {
@@ -138,6 +138,7 @@ export function createSessionListener(deps: SessionListenerDeps): (session: unkn
 
     const text = state.texts.join('\n\n')
     const at = now()
+    // 策略每轮现算：总开关可以在运行时被对话框里的按钮改掉
     const decision = decideTurn(
       {
         isSubagent: isSubagentSession(session),
@@ -145,8 +146,9 @@ export function createSessionListener(deps: SessionListenerDeps): (session: unkn
         text,
         now: at,
         lastSpokenAt: state.lastSpokenAt,
+        quietNow: inQuietHours(new Date(at), deps.config.quietHours),
       },
-      policy,
+      policyFromConfig(deps.config),
     )
 
     emit(sessionId, decision, state.tools)

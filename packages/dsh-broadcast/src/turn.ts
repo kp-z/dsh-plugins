@@ -12,6 +12,8 @@ export interface TurnPolicy {
   readonly announceFailure: boolean
   readonly minChars: number
   readonly debounceMs: number
+  /** 安静时段（本地时间，"23:00-08:00"）；空串 = 不启用。 */
+  readonly quietHours: string
 }
 
 /** 一次 turn/end 的全部判定依据。 */
@@ -24,6 +26,8 @@ export interface TurnSignal {
   readonly now: number
   /** 这个会话上次真正开口的时间；没播过就是 undefined。 */
   readonly lastSpokenAt: number | undefined
+  /** 现在是不是落在安静时段里（由调用方按本地时间算好传进来，这里不碰时钟）。 */
+  readonly quietNow?: boolean
 }
 
 export type TurnDecision =
@@ -45,13 +49,37 @@ export function failureNotice(kind: string): string {
 }
 
 /**
+ * 现在是不是落在安静时段里。
+ *
+ * 写法是本地时间的 "HH:MM-HH:MM"，跨零点也支持（"23:00-08:00"）。
+ * 解析不出来一律当作「没设安静时段」——配置写错了不该让播报整个哑掉，
+ * 也不该半夜突然按错误的时段静音。
+ */
+export function inQuietHours(date: Date, spec: string): boolean {
+  const match = /^(\d{1,2}):(\d{2})\s*[-–~到至]\s*(\d{1,2}):(\d{2})$/.exec((spec ?? '').trim())
+  if (match === null) return false
+  const startHour = Number(match[1])
+  const startMin = Number(match[2])
+  const endHour = Number(match[3])
+  const endMin = Number(match[4])
+  if (startHour > 23 || endHour > 23 || startMin > 59 || endMin > 59) return false
+  const start = startHour * 60 + startMin
+  const end = endHour * 60 + endMin
+  if (start === end) return false
+  const now = date.getHours() * 60 + date.getMinutes()
+  // 跨零点（23:00-08:00）时，落在「起点之后」或「终点之前」都算
+  return start < end ? now >= start && now < end : now >= start || now < end
+}
+
+/**
  * 判定顺序 = 优先级：
- * 总开关 → 子代理 → 收尾方式 → 太短 → 去抖。
+ * 总开关 → 安静时段 → 子代理 → 收尾方式 → 太短 → 去抖。
  *
  * 为什么去抖放最后：只有「本来要念」的才需要压制，否则错误提示会被自己压掉。
  */
 export function decideTurn(signal: TurnSignal, policy: TurnPolicy): TurnDecision {
   if (!policy.enabled) return { action: 'silent', reason: '总开关关闭' }
+  if (signal.quietNow === true) return { action: 'silent', reason: '安静时段' }
   if (signal.isSubagent && !policy.announceSubagent) return { action: 'silent', reason: '子代理会话默认静默' }
 
   if (signal.kind !== 'completed') {

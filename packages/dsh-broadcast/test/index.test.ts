@@ -7,6 +7,7 @@ import { apply, inject, name } from '../lib/index.js'
 function fakeContext() {
   const tools = []
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>()
+  const routes: { kind: string; path: string }[] = []
   const logs = []
   const ctx = {
     logger: () => ({
@@ -24,8 +25,21 @@ function fakeContext() {
       listeners.set(eventName, list)
       return () => {}
     },
+    // 宿主服务按需注入：给一个假 webServer，验证路由真的挂上了
+    inject: (names: string[], callback: (host: unknown) => void) => {
+      if (!names.includes('webServer')) return
+      callback({
+        webServer: {
+          register: (spec: { kind: string; path: string }) => {
+            routes.push({ kind: spec.kind, path: spec.path })
+            return () => {}
+          },
+        },
+      })
+    },
+    effect: (fn: () => void) => fn(),
   }
-  return { ctx, tools, listeners, logs }
+  return { ctx, tools, listeners, routes, logs }
 }
 
 test('模块契约：name / inject 符合 DSH 插件约定', () => {
@@ -54,6 +68,12 @@ test('apply 订阅 session/event（S2 的自动播报入口）', () => {
   assert.equal(listeners.get('session/event')?.length, 1)
   // 加载日志里能看到开关与引擎，便于排查「为什么不响」
   assert.ok(logs.some((args) => String(args[0]).includes('dsh-broadcast 已加载')))
+})
+
+test('apply 挂上对话框开关的路由（S4 的遥控器）', () => {
+  const { ctx, routes } = fakeContext()
+  apply(ctx as never, { enabled: false })
+  assert.deepEqual(routes, [{ kind: 'exact', path: '/dsh-broadcast/state' }])
 })
 
 test('定义与示例工具同构：defineTool 产出 name/description/parameters/output/execute', () => {

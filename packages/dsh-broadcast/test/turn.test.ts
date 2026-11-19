@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decideTurn, failureNotice, type TurnPolicy, type TurnSignal } from '../lib/turn.js'
+import { decideTurn, failureNotice, inQuietHours, type TurnPolicy, type TurnSignal } from '../lib/turn.js'
 
 const policy: TurnPolicy = {
   enabled: true,
@@ -8,7 +8,11 @@ const policy: TurnPolicy = {
   announceFailure: true,
   minChars: 30,
   debounceMs: 2000,
+  quietHours: '',
 }
+
+/** 造一个本地时间点（只关心时与分）。 */
+const at = (hours: number, minutes = 0): Date => new Date(2026, 0, 15, hours, minutes, 0, 0)
 
 const signal = (overrides: Partial<TurnSignal> = {}): TurnSignal => ({
   isSubagent: false,
@@ -46,6 +50,35 @@ for (const item of cases) {
     assert.equal(decision.action, item.expect)
   })
 }
+
+test('安静时段：跨零点也认，端点不含', () => {
+  const spec = '23:00-08:00'
+  assert.equal(inQuietHours(at(23, 30), spec), true)
+  assert.equal(inQuietHours(at(2, 0), spec), true)
+  assert.equal(inQuietHours(at(7, 59), spec), true)
+  assert.equal(inQuietHours(at(8, 0), spec), false, '终点不含')
+  assert.equal(inQuietHours(at(22, 59), spec), false)
+  assert.equal(inQuietHours(at(12, 0), spec), false)
+})
+
+test('安静时段：普通区间、写法容错、非法值一律不管', () => {
+  assert.equal(inQuietHours(at(12, 0), '09:00-18:00'), true)
+  assert.equal(inQuietHours(at(8, 59), '09:00-18:00'), false)
+  assert.equal(inQuietHours(at(18, 0), '09:00-18:00'), false)
+  assert.equal(inQuietHours(at(12, 0), '9:00-18:00'), true, '一位数小时也认')
+  assert.equal(inQuietHours(at(12, 0), '09:00 到 18:00'), true, '中文连接词也认')
+  for (const bad of ['', '   ', 'abc', '25:00-08:00', '09:00-24:00', '10:00-10:00']) {
+    assert.equal(inQuietHours(at(10, 0), bad), false, `${bad} 应当当作没设`)
+  }
+})
+
+test('安静时段命中 → 静默（优先级在总开关之后）', () => {
+  const quiet = decideTurn(signal({ quietNow: true }), policy)
+  assert.equal(quiet.action, 'silent')
+  assert.match(quiet.action === 'silent' ? quiet.reason : '', /安静时段/)
+  assert.equal(decideTurn(signal({ quietNow: true }), { ...policy, enabled: false }).action, 'silent')
+  assert.equal(decideTurn(signal({ quietNow: false }), policy).action, 'speak')
+})
 
 test('提示语短、能听懂、说清要不要你管', () => {
   assert.match(failureNotice('error'), /出错/)
