@@ -44,12 +44,12 @@ export function removeTempAudio(file: string): void {
 }
 
 /** 播一个音频文件：选播放器，选不出来就抛（交给上层回落）。 */
-async function playTempAudio(file: string, signal?: AbortSignal | undefined): Promise<void> {
+async function playTempAudio(file: string, signal?: AbortSignal | undefined, volume = 100): Promise<void> {
   const kind = pickPlayer()
   if (kind === 'none' || kind === 'say') {
     throw new Error(kind === 'say' ? '只有 say 可用，播不了 mp3' : '找不到可用的播放器（afplay / ffplay）')
   }
-  await playFile(kind, file, { signal })
+  await playFile(kind, file, { signal, volume })
 }
 
 export interface SpeakDeps {
@@ -129,7 +129,7 @@ export async function speak(text: string, config: BroadcastConfig, deps: SpeakDe
   const synthBaidu = deps.synthesizeBaidu ?? synthesizeBaidu
   const writeTemp = deps.writeTemp ?? writeTempAudio
   const remove = deps.remove ?? removeTempAudio
-  const play = deps.play ?? ((file: string) => playTempAudio(file, deps.signal))
+  const play = deps.play ?? ((file: string) => playTempAudio(file, deps.signal, config.volume))
 
   const playAudio = async (audio: Buffer): Promise<void> => {
     const file = writeTemp(audio)

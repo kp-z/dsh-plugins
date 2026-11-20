@@ -41,6 +41,15 @@ test('hasCommand 能按 PATH 找到可执行文件', () => {
   assert.equal(hasCommand('definitely-not-a-real-binary-xyz'), false)
 })
 
+test('afplay 音量：100 原样不传参，其它值换成 -v 倍数（大于 100 可放大）', () => {
+  assert.deepEqual(afplayArgs('/tmp/a.mp3', 100), ['/tmp/a.mp3'])
+  assert.deepEqual(afplayArgs('/tmp/a.mp3'), ['/tmp/a.mp3'])
+  assert.deepEqual(afplayArgs('/tmp/a.mp3', 50), ['-v', '0.5', '/tmp/a.mp3'])
+  assert.deepEqual(afplayArgs('/tmp/a.mp3', 150), ['-v', '1.5', '/tmp/a.mp3'], '放大，用来救小音量')
+  assert.deepEqual(afplayArgs('/tmp/a.mp3', 0), ['-v', '0', '/tmp/a.mp3'])
+  assert.deepEqual(afplayArgs('/tmp/a.mp3', Number.NaN), ['/tmp/a.mp3'], '非法值按原样')
+})
+
 test('播放参数：afplay 只要文件路径，ffplay 不弹窗且播完退出', () => {
   assert.deepEqual(afplayArgs('/tmp/a.mp3'), ['/tmp/a.mp3'])
   assert.deepEqual(ffplayArgs('/tmp/a.mp3'), ['-nodisp', '-autoexit', '-loglevel', 'error', '/tmp/a.mp3'])

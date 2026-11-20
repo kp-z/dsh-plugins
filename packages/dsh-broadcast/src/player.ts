@@ -43,9 +43,16 @@ export function pickPlayer(options: { platform?: NodeJS.Platform; has?: (command
   return 'none'
 }
 
-/** afplay 参数（放完整文件，不循环）。 */
-export function afplayArgs(file: string): string[] {
-  return [file]
+/**
+ * afplay 参数。volume 是 0–100 的配置值 → afplay 的 -v 倍数（1 = 原样）。
+ *
+ * 为什么必须接上：`volume` 这个配置项以前只喂给 edge-tts 的 SSML，afplay 根本没收到它——
+ * 等于一个死配置。耳机音量偏小时用户调它没有任何效果。
+ * -v 支持大于 1 的倍数（放大），所以 >100 也照实传，让人能救回小音量。
+ */
+export function afplayArgs(file: string, volume = 100): string[] {
+  const level = Number.isFinite(volume) ? Math.max(0, volume) / 100 : 1
+  return level === 1 ? [file] : ['-v', String(level), file]
 }
 
 /** ffplay 参数：-nodisp -autoexit 不弹窗、播完退出，日志压到最低。 */
@@ -59,9 +66,13 @@ export function sayArgs(text: string, options: { voice?: string; rate?: number }
 }
 
 /** 播一个音频文件。 */
-export async function playFile(kind: PlayerKind, file: string, options: { signal?: AbortSignal | undefined } = {}): Promise<void> {
+export async function playFile(
+  kind: PlayerKind,
+  file: string,
+  options: { signal?: AbortSignal | undefined; volume?: number | undefined } = {},
+): Promise<void> {
   if (kind === 'afplay') {
-    await execFileAsync('afplay', afplayArgs(file), { signal: options.signal })
+    await execFileAsync('afplay', afplayArgs(file, options.volume ?? 100), { signal: options.signal })
     return
   }
   if (kind === 'ffplay') {
