@@ -1,8 +1,8 @@
-# dsh-mermaid-comm
+# @kpeace/dsh-mermaid-comm
 
 Make the AI **default to Mermaid diagrams** in development conversations. Rendering is handled by [`dsh-mermaid`](https://github.com/MrmoLabs/dsh-mermaid); this plugin focuses on prompt guidance, syntax validation, and output safety.
 
-[![npm](https://img.shields.io/npm/v/dsh-mermaid-comm)](https://www.npmjs.com/package/dsh-mermaid-comm)
+[![npm](https://img.shields.io/npm/v/@kpeace/dsh-mermaid-comm)](https://www.npmjs.com/package/dsh-mermaid-comm)
 
 ## Features
 
@@ -70,14 +70,14 @@ the corrected one.
 ## Installation
 
 ```sh
-dsh plugin --profile web add dsh-mermaid-comm dsh-mermaid
+dsh plugin --profile web add @kpeace/dsh-mermaid-comm dsh-mermaid
 ```
 
 **One command, two packages.** They split the work, and both are needed:
 
 | Package | Responsibility | Why it must be installed separately |
 |---|---|---|
-| `dsh-mermaid-comm` | prompt injection, `mermaid_validate`, the vault, the output gate | this plugin |
+| `@kpeace/dsh-mermaid-comm` | prompt injection, `mermaid_validate`, the vault, the output gate | this plugin |
 | `dsh-mermaid` | renders mermaid fences in the chat transcript | **it is only mounted if it is in `dsh.profile.bundles`** |
 
 `dsh-mermaid` is also declared as a regular dependency of this plugin, so installing this plugin alone does pull its code into `node_modules` — but "installed" is not "mounted": dsh only applies the `cordis.patch.yml` of packages listed in `dsh.profile.bundles`, so a package outside the roster is never mounted and nothing gets rendered. Hence the two-package command.
@@ -120,8 +120,8 @@ The output gate supports both ` ```mermaid ` and ` ```mermaidd ` fences. Each br
 
 ```sh
 pnpm install
-pnpm --filter dsh-mermaid-comm build
-pnpm --filter dsh-mermaid-comm typecheck
+pnpm --filter @kpeace/dsh-mermaid-comm build
+pnpm --filter @kpeace/dsh-mermaid-comm typecheck
 ```
 
 Install from a checkout:

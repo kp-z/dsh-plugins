@@ -1,4 +1,4 @@
-# 发布 dsh-mermaid-comm 到官方市场
+# 发布 @kpeace/dsh-mermaid-comm 到官方市场
 
 插件发布到 DSH 官方市场的路径：**npm 发布 → GitHub 仓库 → 向 awesome-dsh-plugin 提 PR**。
 本文档是逐步骤指引；需要你有 npm 账号和 GitHub 账号（当前机器均未登录）。
@@ -23,22 +23,22 @@ cd /Users/demo/dsh-plugins/packages/dsh-mermaid-comm
 npm publish --access public
 
 # 4. 验证
-npm view dsh-mermaid-comm
+npm view @kpeace/dsh-mermaid-comm
 ```
 
-> 包名 `dsh-mermaid-comm` 已确认未被占用。
+> 包名 `@kpeace/dsh-mermaid-comm` 已确认未被占用。
 > 以后更新版本：改 `version`（如 0.1.1 → 0.1.2），再 `npm publish`。
 
 ## 第 2 步：创建 GitHub 仓库并推送
 
 ```sh
-# 1. 在 GitHub 建公开仓库 aaron1zhang/dsh-mermaid-comm（或你的用户名）
+# 1. 在 GitHub 建公开仓库 aaron1zhang/@kpeace/dsh-mermaid-comm（或你的用户名）
 #    https://github.com/new
 #    （可以勾选 README，也可以不勾，用本地推送）
 
 # 2. 本地推送（当前目录就是 git 仓库，但注意 lib/ 被 gitignore，源码 + 配置入库即可）
 cd /Users/demo/dsh-plugins
-git remote add origin git@github.com:aaron1zhang/dsh-mermaid-comm.git
+git remote add origin git@github.com:aaron1zhang/@kpeace/dsh-mermaid-comm.git
 git push -u origin main
 
 # 3. 配置 SSH key（当前 git@github.com 认证失败，因为公钥没加到账号）
@@ -58,13 +58,13 @@ ssh -T git@github.com   # 应显示 Hi <user>! You've successfully authenticated
 2. 编辑 `README.md`，在 **Docs & Rendering** 分类（按字母序）加一行：
 
 ```markdown
-- [aaron1zhang/dsh-mermaid-comm](https://github.com/aaron1zhang/dsh-mermaid-comm) - Make the AI default to Mermaid diagrams in development conversations: global prompt guidance, mermaid_validate syntax check, and automatic chat-fence rendering to sanitized SVG.
+- [aaron1zhang/@kpeace/dsh-mermaid-comm](https://github.com/aaron1zhang/@kpeace/dsh-mermaid-comm) - Make the AI default to Mermaid diagrams in development conversations: global prompt guidance, mermaid_validate syntax check, and automatic chat-fence rendering to sanitized SVG.
 ```
 
 3. （可选）编辑 `README.zh.md` 对应分类加中文行：
 
 ```markdown
-- [aaron1zhang/dsh-mermaid-comm](https://github.com/aaron1zhang/dsh-mermaid-comm) - 让 AI 在开发交流中默认用 Mermaid 图表达：全局提示词引导 + mermaid_validate 语法校验 + 对话流代码围栏自动渲染为净化 SVG。
+- [aaron1zhang/@kpeace/dsh-mermaid-comm](https://github.com/aaron1zhang/@kpeace/dsh-mermaid-comm) - 让 AI 在开发交流中默认用 Mermaid 图表达：全局提示词引导 + mermaid_validate 语法校验 + 对话流代码围栏自动渲染为净化 SVG。
 ```
 
 4. 提交 PR。合并后 1 天内自动进
@@ -73,10 +73,10 @@ ssh -T git@github.com   # 应显示 Hi <user>! You've successfully authenticated
 ## 市场条目元数据（提交 PR 时参考）
 
 - **分类**：Docs & Rendering
-- **name**：`dsh-mermaid-comm`
+- **name**：`@kpeace/dsh-mermaid-comm`
 - **owner**：`aaron1zhang`（以实际 GitHub 用户名为准）
-- **url**：`https://github.com/aaron1zhang/dsh-mermaid-comm`
-- **npm**：`dsh-mermaid-comm`（有 npm 包时市场显示 `dsh plugin add dsh-mermaid-comm`）
+- **url**：`https://github.com/aaron1zhang/@kpeace/dsh-mermaid-comm`
+- **npm**：`@kpeace/dsh-mermaid-comm`（有 npm 包时市场显示 `dsh plugin add @kpeace/dsh-mermaid-comm`）
 - **en 描述**：Make the AI communicate with you using Mermaid diagrams by default in development conversations — prompt guidance, syntax validation, and automatic SVG rendering of chat code fences.
 - **zh 描述**：让 AI 在开发交流中默认用 Mermaid 图表达：全局提示词引导 + mermaid_validate 语法校验 + 对话流代码围栏自动渲染为净化 SVG。
 
@@ -84,7 +84,7 @@ ssh -T git@github.com   # 应显示 Hi <user>! You've successfully authenticated
 
 ```sh
 # 从市场装回验证（在任意 profile）
-dsh plugin --profile web add dsh-mermaid-comm
+dsh plugin --profile web add @kpeace/dsh-mermaid-comm
 dsh --profile web --dump-config | grep mermaid-comm   # 组合树有 entry
 ```
 

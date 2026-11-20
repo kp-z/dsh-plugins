@@ -1,4 +1,4 @@
-# dsh-ios-skin
+# @kpeace/dsh-ios-skin
 
 **Deep Fusion** — a DeepSeek-branded Liquid Glass theme for the DeepSeek Harness Web GUI.
 
@@ -74,7 +74,7 @@ Matching uses the stable hooks the plugins publish for the surfaces above — be
 
 ```sh
 # from the workspace root: build first
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin build
 
 # install the local package into a profile
 dsh plugin --profile web add file:/path/to/dsh-plugins/packages/dsh-ios-skin
@@ -86,7 +86,7 @@ Local `file:` packages are installed as **hard-link copies**. A rebuild rewrites
 Uninstall:
 
 ```sh
-dsh plugin --profile web remove dsh-ios-skin
+dsh plugin --profile web remove @kpeace/dsh-ios-skin
 # restart dsh web
 ```
 
@@ -94,7 +94,7 @@ dsh plugin --profile web remove dsh-ios-skin
 
 - **The theme is not a built-in appearance setting.** Third-party theme ids are an in-process extension of the official theme package and do not cross the built-in settings schema. The skin appears nowhere in Settings → Appearance and does not persist as a preference; it applies whenever the plugin is loaded. Remove the plugin to turn it off.
 - **The signature light band is activation-only.** It exists on active dock panes and floating tabs; a default single-pane session may show no band at all until a tab is selected or dragged out. It is paint-only and never changes geometry.
-- **The material layer rides on internal component class names.** The official front end emits CSS-module hashes; an upgrade can rename those components and the glass will stop appearing. Nothing crashes — hence a one-time, read-only probe at load: if none of the known local names match, the console prints `[dsh-ios-skin] material layer is inert: …`. The token layer, accessibility fallbacks and readability floors keep working in that case; only the glass surface layer is affected.
+- **The material layer rides on internal component class names.** The official front end emits CSS-module hashes; an upgrade can rename those components and the glass will stop appearing. Nothing crashes — hence a one-time, read-only probe at load: if none of the known local names match, the console prints `[@kpeace/dsh-ios-skin] material layer is inert: …`. The token layer, accessibility fallbacks and readability floors keep working in that case; only the glass surface layer is affected.
 - **New-UI coverage is intentionally narrow.** better-sidebar, dockkit and Agent Teams are plugins or front-end internals, not part of the official theme spec. The theme guarantees glass only for the surfaces listed above (bottom workbench, floating windows, tab strip, team panel); richer views — editor, diff, changes, tasks, side chat — keep their own token-based surfaces, and better-sidebar's internal layout keeps its token styling because the whole subtree opts out of generic class matching. A dockkit / better-sidebar upgrade that renames a hook can still return a surface to unthemed; the startup probe warns when nothing matches.
 - **Not every surface is glassed.** The material layer covers bars, rails, panels, dialogs, menus, toasts, cards and the user bubble. The header is flat, true circles stay round, and text/editable surfaces stay opaque by design.
 - **The type is only truly iOS on Apple platforms.** The font chain puts the font chosen in Settings first, then the iOS stack (`-apple-system` / SF Pro / SF Mono) as fallback; elsewhere that falls back to `system-ui` and the platform monospace, so the typography is close but not byte-identical.
@@ -107,9 +107,9 @@ dsh plugin --profile web remove dsh-ios-skin
 ## Development
 
 ```sh
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin typecheck
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin test
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin typecheck
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin test
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin build
 
 # rebuild the self-contained demo page from the real stylesheets
 node scripts/build-glass-demo.mjs

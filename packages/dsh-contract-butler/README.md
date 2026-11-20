@@ -1,4 +1,4 @@
-# dsh-contract-butler · 协议管家
+# @kpeace/dsh-contract-butler · 协议管家
 
 给一个项目做**契约纳管**：从代码里反向抽出边界契约（输入输出的形状），盯着它随版本演化，
 再拿运行时的真实载荷去对照声明。要解决的是"AI 写实现、人管约定"时最容易失控的那一环——
@@ -22,8 +22,8 @@
 
 ```bash
 pnpm build
-pnpm install:web      # 或 dsh plugin --profile web add dsh-contract-butler
-pnpm remove:web       # 或 dsh plugin --profile web remove dsh-contract-butler
+pnpm install:web      # 或 dsh plugin --profile web add @kpeace/dsh-contract-butler
+pnpm remove:web       # 或 dsh plugin --profile web remove @kpeace/dsh-contract-butler
 ```
 
 装好后重启 dsh，右侧栏会出现「契约」页签。
@@ -31,12 +31,12 @@ pnpm remove:web       # 或 dsh plugin --profile web remove dsh-contract-butler
 ## 面板
 
 界面在 `src/panel.html`：自包含的单文件页面，通过宿主路由
-`/dsh-contract-butler/panel` 提供，客户端那半边（`src/client.js`）只负责把它嵌进右侧栏页签。
+`/@kpeace/dsh-contract-butler/panel` 提供，客户端那半边（`src/client.js`）只负责把它嵌进右侧栏页签。
 单独调面板不必装到 profile 里：
 
 ```bash
 node scripts/dev-server.ts 4599     # 内存存储 + 演示项目，重启即清空
-# 打开 http://127.0.0.1:4599/dsh-contract-butler/panel
+# 打开 http://127.0.0.1:4599/@kpeace/dsh-contract-butler/panel
 ```
 
 ### 面板的第三方资源（不走 CDN）
@@ -49,12 +49,12 @@ node scripts/dev-server.ts 4599     # 内存存储 + 演示项目，重启即清
 
 三个文件的 sha256 与来源 URL 记在 `src/vendor/README.md`（升级时四个数一起改）。构建把
 `src/vendor/` 同步到 `lib/vendor/`（`npm run build:assets`），运行时由宿主那条**只读白名单路由**
-`GET /dsh-contract-butler/vendor/:file` 吐出来：命中给一年 `immutable`（面板引用带 `?v=6.5.3`
+`GET /@kpeace/dsh-contract-butler/vendor/:file` 吐出来：命中给一年 `immutable`（面板引用带 `?v=6.5.3`
 当缓存钥匙），未知名字 / `..` / URL 编码穿越一律 404，磁盘缺失才 500 且带可读路径。
 
 - **组件没加载出来也不静默失败**：字段表退回静态渲染（仍是定宽列 + 首列固定 + 横向滚动，
   只是不能拖列宽、不能排序），并在表上方写明「高级表格组件未加载，已退化为静态表」。
-- 拖过的列宽存在 `localStorage['dsh-contract-butler.cols']`，输入/输出两张表共用一份，刷新还在。
+- 拖过的列宽存在 `localStorage['@kpeace/dsh-contract-butler.cols']`，输入/输出两张表共用一份，刷新还在。
 
 ## AI 理解用的是宿主的模型服务
 
