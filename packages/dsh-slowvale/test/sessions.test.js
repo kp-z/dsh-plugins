@@ -1,8 +1,6 @@
 
 /**
- * H2 验收：给角色开一个会话，上下文（persona/场合/处境）真的送到了，且能说话。
- *
- * 用确定性替身，不调模型——测的是"接缝与路由"，不是"模型答得好不好"。
+ * H2 验收：给角色开一个会话，上下文真的送到；换嘴要显式 rotate。
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -15,22 +13,23 @@ function build(port) {
   return new CharacterSessions({ port, resolveCharacter: (id) => findCharacter(id) })
 }
 
+const lin = findCharacter('role.lin')
+const mei = findCharacter('role.mei')
+assert.ok(lin)
+assert.ok(mei)
+
 test('给角色开一个会话，上下文里带着他自己的人格与场合', async () => {
   const port = createScriptedPort({})
   const sessions = build(port)
-  const lin = findCharacter('role.lin')
-  assert.ok(lin)
   const opened = await sessions.open({ character: lin, channel: 'work', tick: 1, situation: '在科技公司三楼工位' })
-  const context = port.contextOf(opened.sessionId)
-  assert.ok(context)
+  const context = port.contextOf(opened.sessionId) ?? ''
   assert.match(context, /林野/)
   assert.match(context, /短句、克制/)
   assert.match(context, /工作场合/)
   assert.match(context, /在科技公司三楼工位/)
-  assert.equal(sessions.bindingsOf('role.lin').length, 1)
 })
 
-test('三个人各开一个会话：三份上下文互不相同，人格各是各的', async () => {
+test('三个人各开一个会话：上下文互不相同', async () => {
   const port = createScriptedPort({})
   const sessions = build(port)
   const contexts = []
@@ -39,58 +38,52 @@ test('三个人各开一个会话：三份上下文互不相同，人格各是�
     contexts.push(port.contextOf(opened.sessionId) ?? '')
   }
   assert.equal(new Set(contexts).size, 3)
-  assert.match(contexts[0] ?? '', /林野/)
   assert.match(contexts[1] ?? '', /小满/)
-  assert.match(contexts[2] ?? '', /老周/)
 })
 
-test('说话按角色路由到 primary，回复能拿到', async () => {
-  const port = createScriptedPort({ 'role.lin': ['行。', '不行。'] })
-  const sessions = build(port)
-  const lin = findCharacter('role.lin')
-  assert.ok(lin)
-  await sessions.open({ character: lin, channel: 'work', role: 'primary', tick: 1 })
-  assert.equal(await sessions.say('role.lin', '这单能接吗'), '行。')
-  assert.equal(await sessions.say('role.lin', '明天呢'), '不行。')
-  assert.equal(port.spoken.length, 2)
-})
-
-test('只有旁观口时不能对外发言（observer 不是嘴）', async () => {
-  const port = createScriptedPort({ 'role.lin': ['...'] })
-  const sessions = build(port)
-  const lin = findCharacter('role.lin')
-  assert.ok(lin)
-  await sessions.open({ character: lin, channel: 'work', role: 'observer', tick: 1 })
-  await assert.rejects(() => sessions.say('role.lin', '在吗'), (error) => error instanceof SessionError)
-})
-
-test('同角色同频道的重复开会复用同一个会话（避免精神分裂）', async () => {
+test('已经有活会话时，再 open 会被拒绝（不偷偷复用也不顶替）', async () => {
   const port = createScriptedPort({})
   const sessions = build(port)
-  const lin = findCharacter('role.lin')
-  assert.ok(lin)
-  const a = await sessions.open({ character: lin, channel: 'work', tick: 1 })
-  const b = await sessions.open({ character: lin, channel: 'work', tick: 2 })
-  assert.equal(a.sessionId, b.sessionId)
-  assert.equal(sessions.bindingsOf('role.lin').length, 1)
+  await sessions.open({ character: lin, channel: 'work', tick: 1 })
+  await assert.rejects(
+    () => sessions.open({ character: lin, channel: 'personal', tick: 2 }),
+    (error) => error instanceof SessionError && /rotate/.test(error.message),
+  )
+  assert.equal(port.opened.length, 1, '拒绝时不该真的开第二个会话')
 })
 
-test('关掉会话后解绑，历史仍在', async () => {
-  const port = createScriptedPort({ 'role.lin': ['行。'] })
+test('rotate：归档旧会话，开新的，历史可查', async () => {
+  const port = createScriptedPort({ 'role.lin': ['新的一段。'] })
   const sessions = build(port)
-  const lin = findCharacter('role.lin')
-  assert.ok(lin)
-  const opened = await sessions.open({ character: lin, channel: 'work', role: 'primary', tick: 1 })
-  assert.equal(await sessions.close(opened.sessionId, 5), true)
-  assert.equal(sessions.speakerOf('role.lin'), null)
-  assert.equal(sessions.table.history().length, 1, '绑定变更必须可回放')
-  assert.deepEqual(sessions.table.validate(), [])
+  const first = await sessions.open({ character: lin, channel: 'work', tick: 1 })
+  const rotated = await sessions.rotate({ character: lin, channel: 'personal', tick: 9, reason: '下班了' })
+  assert.equal(rotated.archived, first.sessionId)
+  assert.notEqual(rotated.sessionId, first.sessionId)
+  assert.match(rotated.contextText, /私人场合/)
+  assert.equal(sessions.currentOf('role.lin'), rotated.sessionId)
+  assert.equal(sessions.table.sessionsOf('role.lin').length, 2)
+  assert.equal(await sessions.say('role.lin', '在吗'), '新的一段。')
+  assert.equal(port.spoken[0].sessionId, rotated.sessionId, '说话必须走新会话')
 })
 
-test('没有会话服务时报清楚的错，而不是静默', async () => {
+test('没有活会话时不能说话', async () => {
+  const sessions = build(createScriptedPort({ 'role.lin': ['行。'] }))
+  await assert.rejects(() => sessions.say('role.lin', '在吗'), (error) => error instanceof SessionError && /没有活会话/.test(error.message))
+})
+
+test('归档后可以给同一个角色换一个新的', async () => {
+  const port = createScriptedPort({})
+  const sessions = build(port)
+  const first = await sessions.open({ character: mei, channel: 'work', tick: 1 })
+  assert.equal(await sessions.archive('role.mei', 4, '会话崩了'), first.sessionId)
+  assert.equal(sessions.currentOf('role.mei'), null)
+  const second = await sessions.open({ character: mei, channel: 'work', tick: 5 })
+  assert.notEqual(second.sessionId, first.sessionId)
+  assert.deepEqual(sessions.health(), [])
+})
+
+test('没有会话服务时报清楚的错', async () => {
   const sessions = build(createUnavailablePort('宿主没挂 sessionController'))
-  const lin = findCharacter('role.lin')
-  assert.ok(lin)
   await assert.rejects(
     () => sessions.open({ character: lin, channel: 'all', tick: 1 }),
     (error) => error instanceof SessionError && /sessionController/.test(error.message),

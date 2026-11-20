@@ -5,25 +5,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { BindingTable } from '../lib/model/binding.js'
 import { CHARACTERS, findCharacter } from '../lib/content/characters.js'
 import { CONTEXT_VERSION, DEFAULT_PROVIDERS, buildContext } from '../lib/model/context.js'
 
 const lin = findCharacter('role.lin')
 assert.ok(lin)
 
-test('同一个角色、不同会话，注入的人格部分完全一致', () => {
-  const table = new BindingTable()
-  table.bind({ sessionId: 'work', characterId: 'role.lin', role: 'primary', channel: 'work', tick: 0 })
-  table.bind({ sessionId: 'home', characterId: 'role.lin', role: 'secondary', channel: 'personal', tick: 0 })
-  const a = buildContext({ character: lin, channel: 'work', tick: 1 })
-  const b = buildContext({ character: lin, channel: 'personal', tick: 1 })
+test('换嘴（换场）后，注入的人格部分完全一致——人不变', () => {
+  const work = buildContext({ character: lin, channel: 'work', tick: 1 })
+  const home = buildContext({ character: lin, channel: 'personal', tick: 9 })
   assert.equal(
-    a.sections.find((section) => section.key === 'persona')?.text,
-    b.sections.find((section) => section.key === 'persona')?.text,
+    work.sections.find((section) => section.key === 'persona')?.text,
+    home.sections.find((section) => section.key === 'persona')?.text,
     '人格只跟人有关，跟用哪张嘴无关',
   )
-  assert.notEqual(a.text, b.text)
+  assert.notEqual(work.text, home.text, '变的应该只有场合那一节')
 })
 
 test('新增一层注入不需要改 buildContext', () => {
