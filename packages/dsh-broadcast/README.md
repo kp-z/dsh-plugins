@@ -72,7 +72,7 @@ ones that ship by default.
 | `voice` | `zh-CN-XiaoxiaoNeural` | edge-tts voice. Any of its Chinese voices works. |
 | `sayVoice` | `''` | The offline voice you actually hear (a `say -v` name). Empty = derive from `voice`. The picker in the composer writes this. |
 | `rate` | `'+8%'` | Speech rate (edge-tts `+N%`; converted to `say -r` on fallback). |
-| `volume` | `100` | Volume 0–100 (SSML prosody). |
+| `volume` | `100` | Playback level. 100 = untouched; below 100 lowers it, **above 100 amplifies** (`afplay -v`) — the way out when a Bluetooth headset is simply too quiet. The `say` fallback follows the system volume (it has no per-process level). |
 | `voiceId` | `''` | Which voice to use: `baidu` (online) or `say:<name>` (offline). The picker writes this. |
 | `engine` | `auto` | `auto` follows `voiceId` (online, falling back to `say`); `edge` / `baidu` / `say` force one engine, and a forced engine fails loudly instead of substituting. |
 | `maxChars` | `80` | Spoken-length cap. 80 chars ≈ 16 s — longer is "can't stand it", not "can't finish it". |
