@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Prompt notes",
+    "description": "A right-sidebar \"Notes\" tab: a pad of paper notes for standing prompts, skills and MCP servers. A push pin turns each one on; choose its scope — every session, one workspace, or a single session. The System tab shows what DSH already injects. Notes can be imported and exported, and the assistant can manage them through tools. Needs dsh-better-sidebar. Prompt notes add tokens to every request; a pinned MCP note runs a local command, so pin only what you trust. Restart DSH after updating.",
+    "detail": "docs/DETAIL.md"
+  }
+}

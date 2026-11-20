@@ -1,0 +1,16 @@
+# dsh-prompt-notes：把「提示词便签」接进 profile 的层栈。
+#
+# host 半体：把已启用的便签注入 system prompt（一个 interpolate:false 的段）+ /dsh-prompt-notes/ 路由
+# client 半体：在右侧栏注册「便签」页签（依赖 dsh-better-sidebar 提供的 registerTab）
+#
+# 默认没有便签 → 注入段为空 → 装上不改变任何请求。可选配置：
+#   maxChars: 8000   # 每个会话里提示词便签的字数预算；0 = 不限
+#   order: 100       # system prompt 段位置（0=persona，500=plan policy）
+#   file: ~          # 数据文件，默认 $DSH_HOME/prompt-notes/notes.json
+#   mcp: true        # false = 不登记任何 MCP 便签（MCP 会启动本地进程）
+#   pollMs: 2000     # 探测数据文件被外部改动的间隔（毫秒）
+#   enabled: true    # false = 整个插件休眠
+- insert:
+    - id: prompt-notes
+      name: "@kpeace/dsh-prompt-notes"
+      config: {}

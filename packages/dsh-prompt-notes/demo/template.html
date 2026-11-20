@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dsh-prompt-notes · demo</title>
+<style>
+:root{color-scheme:dark;--dsw-alias-bg-base:#1b1f2a;--dsw-alias-bg-layer-1:#232938;--dsw-alias-bg-layer-2:#2c3345;--dsw-alias-bg-overlay:#2a3142;--dsw-alias-border-l1:#323a4e;--dsw-alias-border-l2:#414a62;--dsw-alias-brand-primary:#5b8def;--dsw-alias-label-primary:#e8ecf4;--dsw-alias-label-secondary:#8d97ad;--dsw-alias-state-error-primary:#e5584f;--dsw-alias-state-idle-primary:#7a8399;--dsw-alias-state-success-primary:#3fb27f;--dsw-alias-state-warn-primary:#e0a030;--demo-bg:#0f1218}
+:root[data-theme=light]{color-scheme:light;--dsw-alias-bg-base:#f6f7f9;--dsw-alias-bg-layer-1:#ffffff;--dsw-alias-bg-layer-2:#eceef2;--dsw-alias-bg-overlay:#ffffff;--dsw-alias-border-l1:#dfe2e8;--dsw-alias-border-l2:#c9ced8;--dsw-alias-brand-primary:#3b6fe0;--dsw-alias-label-primary:#1c2230;--dsw-alias-label-secondary:#667085;--dsw-alias-state-error-primary:#d43b32;--dsw-alias-state-idle-primary:#8a92a3;--dsw-alias-state-success-primary:#1f9d63;--dsw-alias-state-warn-primary:#c98410;--demo-bg:#e4e7ed}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--demo-bg);color:var(--dsw-alias-label-primary);font:13px/1.5 system-ui,-apple-system,"PingFang SC","Segoe UI",sans-serif}
+.demo{display:flex;gap:28px;align-items:flex-start;justify-content:center;padding:24px;max-width:1000px;margin:0 auto}
+.frame{flex:none;width:400px;height:min(740px,calc(100vh - 48px));min-height:560px;border-radius:12px;overflow:hidden;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);box-shadow:0 20px 50px rgba(0,0,0,.35)}
+#panel{width:100%;height:100%}
+.side{flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:18px}h2{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}
+p{margin:0;color:var(--dsw-alias-label-secondary)}
+.card{padding:12px 14px;border-radius:10px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1)}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;padding:6px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer;text-align:left}
+.chip small{color:var(--dsw-alias-label-secondary);font-size:11px;font-family:ui-monospace,Menlo,monospace}
+.chip[aria-pressed=true]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:#fff}.chip[aria-pressed=true] small{color:rgba(255,255,255,.8)}
+.chip:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+ul{margin:0;padding-left:18px;color:var(--dsw-alias-label-secondary)}li{margin:3px 0}li b{color:var(--dsw-alias-label-primary);font-weight:600}
+code{font:12px ui-monospace,Menlo,monospace;background:var(--dsw-alias-bg-layer-2);padding:1px 5px;border-radius:4px}
+.note{font-size:12px}
+[hidden]{display:none!important}
+@media (max-width:820px){.demo{flex-direction:column-reverse;align-items:stretch;padding:12px;gap:14px}.frame{width:100%;height:78vh;min-height:520px}.side{min-width:0}}
+</style>
+</head>
+<body>
+<div class="demo">
+  <div class="frame"><div id="panel"></div></div>
+  <aside class="side">
+    <div>
+      <h1><span data-i18n="zh">便签 · 交互 demo</span><span data-i18n="en" hidden>Notes · interactive demo</span></h1>
+      <p><span data-i18n="zh">真实的前端代码 + 真实的校验/预算逻辑；后端是浏览器内的模拟数据，刷新即还原。左边就是会出现在 DSH 右侧栏里的面板。</span><span data-i18n="en" hidden>Real client code and real validation/budget logic; the backend is in-browser mock data and resets on refresh. The panel on the left is what appears in DSH's right sidebar.</span></p>
+    </div>
+    <div class="card">
+      <h2><span data-i18n="zh">① 切换「观察者」——同一批便签，不同会话看到的不一样</span><span data-i18n="en" hidden>① Switch the observer — same notes, different per session</span></h2>
+      <div class="row">
+        <button class="chip" data-set="viewer:a" aria-pressed="true"><span data-i18n="zh">会话 A</span><span data-i18n="en" hidden>Session A</span><small>/proj/a</small></button>
+        <button class="chip" data-set="viewer:b"><span data-i18n="zh">会话 B</span><span data-i18n="en" hidden>Session B</span><small>/other</small></button>
+        <button class="chip" data-set="viewer:none"><span data-i18n="zh">无会话（分屏窗格）</span><span data-i18n="en" hidden>No session (split pane)</span><small>—</small></button>
+      </div>
+      <ul style="margin-top:8px">
+        <li><span data-i18n="zh"><b>会话 A</b>：全局 + 工作区 <code>/proj</code> + 仅会话 A 的便签都生效</span><span data-i18n="en" hidden><b>Session A</b>: global + workspace <code>/proj</code> + session-A-only notes are in effect</span></li>
+        <li><span data-i18n="zh"><b>会话 B</b>：只有全局的生效；另两类掉进「在别处生效」</span><span data-i18n="en" hidden><b>Session B</b>: only global ones; the others fall into "In effect elsewhere"</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><span data-i18n="zh">② 试试这些</span><span data-i18n="en" hidden>② Try these</span></h2>
+      <ul>
+        <li><span data-i18n="zh">点<b>图钉</b>拔掉/钉上，纸条会「垂下来」；点纸条打开编辑页</span><span data-i18n="en" hidden>Click a <b>pin</b> to unpin/pin — the note droops; click a note to open the editor</span></li>
+        <li><span data-i18n="zh">拨动右上<b>总开关</b>：全部变成「总开关已关」</span><span data-i18n="en" hidden>Flip the <b>master switch</b>: everything becomes "Master is off"</span></li>
+        <li><span data-i18n="zh">「架构评审清单（很长）」放不下<b>字数预算</b>，盖红色「超出预算」章</span><span data-i18n="en" hidden>The long checklist does not fit the <b>budget</b> and gets a red "Over budget" stamp</span></li>
+        <li><span data-i18n="zh">底部写一句话回车，或点「技能 / MCP / 详细编辑」新建；技能重名会被拒绝</span><span data-i18n="en" hidden>Type at the bottom and press Enter, or use "Skill / MCP / full editor"; duplicate skill names are rejected</span></li>
+        <li><span data-i18n="zh">切到<b>系统</b>标签：系统自带的注入内容，点一张看全文并「复制为我的便签」</span><span data-i18n="en" hidden>Open the <b>System</b> tab: what DSH already injects; open one to read it and "Copy as my note"</span></li>
+        <li><span data-i18n="zh">眼睛图标：看这个会话里便签<b>实际</b>贡献给模型的文本</span><span data-i18n="en" hidden>Eye icon: the text the notes <b>actually</b> contribute to the model in this session</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2><span data-i18n="zh">③ 外观</span><span data-i18n="en" hidden>③ Appearance</span></h2>
+      <div class="row">
+        <button class="chip" data-set="theme:dark" aria-pressed="true"><span data-i18n="zh">深色桌面</span><span data-i18n="en" hidden>Dark desk</span></button>
+        <button class="chip" data-set="theme:light"><span data-i18n="zh">浅色桌面</span><span data-i18n="en" hidden>Light desk</span></button>
+        <button class="chip" data-set="lang:zh" aria-pressed="true">中文</button>
+        <button class="chip" data-set="lang:en">English</button>
+        <button class="chip" data-reset><span data-i18n="zh">重置数据</span><span data-i18n="en" hidden>Reset data</span></button>
+      </div>
+      <p class="note" style="margin-top:8px"><span data-i18n="zh">纸张是拟物插画，明暗两种桌面下都是浅色纸、深色墨水；只有「桌面」跟随主题。</span><span data-i18n="en" hidden>Paper is skeuomorphic artwork: light paper and dark ink on both desks; only the desk follows the theme.</span></p>
+    </div>
+  </aside>
+</div>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>
