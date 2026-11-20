@@ -58,7 +58,7 @@ function contacts(): Json {
 
 /** 朋友圈族。 */
 function moments(): Json {
-  return { moments: [], has_more: false, next_cursor: null, head: null }
+  return { moments: [], posts: [], items: [], feed: [], entries: [], has_more: false, next_cursor: null, head: null }
 }
 
 /** 市场族。 */
@@ -112,6 +112,8 @@ export const SHAPES: readonly ShapeRule[] = [
   { method: 'GET', pattern: /^\/game\/phone\/my-business$/, body: () => ({ businesses: [] }) },
   { method: 'GET', pattern: /^\/game\/phone\/singer$/, body: () => ({ songs: [], fans: [], income: 0 }) },
   { method: 'GET', pattern: /^\/game\/phone\/apps\/.+\/listings$/, body: () => ({ listings: [], has_more: false }) },
+  { method: 'GET', pattern: /^\/game\/phone\/apps\/bank$/, body: () => ({ loans: [], debt: 0, balance: 128000, credit_limit: 50000, entries: [], transactions: [] }) },
+  { method: 'GET', pattern: /^\/game\/phone\/apps\/gacha$/, body: () => ({ card_sets: [], owned: [], tickets: 0, pity: 0 }) },
   { method: 'GET', pattern: /^\/game\/phone\/apps\/.+$/, body: emptyPage },
 
   // ── 朋友圈 ────────────────────────────────────────────────────────────────
