@@ -34,6 +34,7 @@ export interface HostServicesLike {
 }
 
 export interface SummarizeOptions extends PromptInput {
+  /** 保留：本地截断只用 text，其余段落仅供模型使用。 */
   /** 播报字数上限。 */
   readonly maxChars: number
   /** 模型超时（ms），默认 6000。 */
@@ -137,7 +138,12 @@ export async function summarizeReply(options: SummarizeOptions): Promise<Summary
       reason = route.reason
     } else {
       try {
-        const { system, user } = buildPrompt({ text: options.text, tools: options.tools, kind: options.kind })
+        const { system, user } = buildPrompt({
+          text: options.text,
+          ask: options.ask,
+          actions: options.actions,
+          kind: options.kind,
+        })
         const signal = AbortSignal.timeout(timeoutMs)
         const streamed = (services.llm as LlmLike).stream({
           provider: route.provider,

@@ -7,25 +7,39 @@
  */
 import type { BroadcastConfig } from './config.js'
 import { summarizeLocally } from './sanitize.js'
-import { decodeAssistantMessage, decodeTurnEnd, isSubagentSession, sessionIdOf } from './session.js'
+import {
+  decodeAssistantMessage,
+  decodeTurnEnd,
+  decodeUserMessage,
+  isSubagentSession,
+  sessionIdOf,
+  type ToolAction,
+} from './session.js'
 import { decideTurn, inQuietHours, type TurnDecision, type TurnPolicy } from './turn.js'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-/** 生成播报文案的入参。 */
+/** 生成播报文案的入参。原料越具体，模型越能说「你让我做的事做到哪了」。 */
 export interface SummaryInput {
+  /** 用户这一轮的原话。 */
+  readonly ask: string
   readonly text: string
   readonly tools: readonly string[]
+  /** 做过的事（名字 + 对象），按顺序。 */
+  readonly actions: readonly ToolAction[]
   readonly kind: string
 }
 
 /** 每个会话记住的东西。 */
 interface TurnState {
   turn: number
+  /** 用户这一轮的原话（多句取最后一句非审批的）。 */
+  ask: string
   texts: string[]
   tools: string[]
+  actions: ToolAction[]
   /** 上次真正出声的时间（去抖用，跨轮保留）。 */
   lastSpokenAt: number | undefined
   /** 上一轮已经处理过 `turn/end` 的轮次号（重复事件去重用）。 */
@@ -72,6 +86,26 @@ export function createSessionListener(deps: SessionListenerDeps): (session: unkn
     }
   }
 
+  /** 新一轮的空状态；同一轮就沿用原来的（新事件不该把已累积的东西清掉）。 */
+  const stateFor = (previous: TurnState | undefined, turn: number): TurnState => {
+    if (previous !== undefined && previous.turn === turn) return previous
+    return {
+      turn,
+      ask: previous?.ask ?? '',
+      texts: [],
+      tools: [],
+      actions: [],
+      lastSpokenAt: previous?.lastSpokenAt,
+      handledTurn: previous?.handledTurn,
+    }
+  }
+  /** 事件里带的 turn（user/message 也有，但类型上是 unknown）。 */
+  const asTurn = (data: unknown): number | undefined => {
+    if (!isRecord(data)) return undefined
+    const turn = data.turn
+    return typeof turn === 'number' && Number.isFinite(turn) ? turn : undefined
+  }
+
   const emit = (sessionId: string, decision: TurnDecision, tools: readonly string[]): void => {
     try {
       deps.onDecision?.({ sessionId, decision, tools })
@@ -95,23 +129,28 @@ export function createSessionListener(deps: SessionListenerDeps): (session: unkn
     if (sessionId === undefined) return
     if (!isRecord(event) || typeof event.type !== 'string') return
 
+    // 用户这一轮要什么：这是「汇报」和「复述」的分水岭
+    if (event.type === 'user/message') {
+      const decoded = decodeUserMessage(event.data)
+      if (decoded !== null && decoded.fromHuman) {
+        const previous = states.get(sessionId)
+        const turn = asTurn(event.data) ?? previous?.turn ?? 0
+        const state = stateFor(previous, turn)
+        // 多句时说最后一句：前面的多半是背景，最后一句才是要求
+        state.ask = decoded.text
+        states.set(sessionId, state)
+        prune()
+      }
+      return
+    }
+
     if (event.type === 'assistant/message') {
       const decoded = decodeAssistantMessage(event.data)
       if (decoded === null) return
-      const previous = states.get(sessionId)
-      // 新的一轮：正文与工具清空，去抖时间保留
-      const state: TurnState =
-        previous === undefined || previous.turn !== decoded.turn
-          ? {
-              turn: decoded.turn,
-              texts: [],
-              tools: [],
-              lastSpokenAt: previous?.lastSpokenAt,
-              handledTurn: previous?.handledTurn,
-            }
-          : previous
+      const state = stateFor(states.get(sessionId), decoded.turn)
       if (decoded.text !== '') state.texts.push(decoded.text)
       state.tools.push(...decoded.tools)
+      state.actions.push(...decoded.actions)
       states.set(sessionId, state)
       prune()
       return
@@ -121,13 +160,7 @@ export function createSessionListener(deps: SessionListenerDeps): (session: unkn
     const ended = decodeTurnEnd(event.data)
     if (ended === null) return
 
-    const state: TurnState = states.get(sessionId) ?? {
-      turn: ended.turn,
-      texts: [],
-      tools: [],
-      lastSpokenAt: undefined,
-      handledTurn: undefined,
-    }
+    const state: TurnState = states.get(sessionId) ?? stateFor(undefined, ended.turn)
 
     // 同一轮重复到达（重放、宿主重复提交）：不重复播
     if (state.handledTurn === ended.turn) {
@@ -159,9 +192,13 @@ export function createSessionListener(deps: SessionListenerDeps): (session: unkn
     } else if (decision.action === 'speak') {
       // 判定通过就记下时间：文案生成可能要等模型，去抖不该被这段延迟绕过
       state.lastSpokenAt = at
-      void announce(sessionId, { text, tools: state.tools, kind: ended.kind }).catch((error: unknown) =>
-        deps.onError?.(error),
-      )
+      void announce(sessionId, {
+        ask: state.ask,
+        text,
+        tools: state.tools,
+        actions: state.actions,
+        kind: ended.kind,
+      }).catch((error: unknown) => deps.onError?.(error))
     }
 
     // 这一轮结束了：正文与工具清空，会话状态留着（记去抖与去重）
