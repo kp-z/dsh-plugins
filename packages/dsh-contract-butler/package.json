@@ -1,5 +1,5 @@
 {
-  "name": "dsh-contract-butler",
+  "name": "@kpeace/dsh-contract-butler",
   "version": "0.1.0",
   "description": "DSH 插件：协议管家——从代码反向抽取契约、盯着它演化、并对运行时真实载荷做对照，供人把关人机之间的输入输出约定。",
   "type": "module",

@@ -1,5 +1,5 @@
 {
-  "name": "dsh-cove-task",
+  "name": "@kpeace/dsh-cove-task",
   "version": "0.25.0",
   "type": "module",
   "description": "Cove Task：配置飞书个人授权，定时把飞书任务与文档同步到本地，任务可直接开成 DSH 会话。",
