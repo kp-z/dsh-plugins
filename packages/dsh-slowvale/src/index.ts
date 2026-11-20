@@ -26,3 +26,5 @@ export { moodProvider, relationshipProvider, socialProviders } from './model/soc
 export type { SocialState } from './model/social-context.js'
 export { DEFAULT_STEP_PIXELS, facingFor, stepToward, ticksToReach } from './rules/movement.js'
 export type { Facing, MoveState, Point } from './rules/movement.js'
+export { Messenger } from './runtime/messenger.js'
+export type { SmsMessage, SmsThread, MessengerOptions, Receipt, DeliveredReply } from './runtime/messenger.js'
