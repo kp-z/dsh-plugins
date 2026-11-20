@@ -17,11 +17,15 @@
 //   内容相同但已不是硬链接 → 归一化为硬链接（跨设备等无法硬链接时退化为复制）
 //   `link:` 依赖的 node_modules 是符号链接、天然同源，本脚本对它是 no-op。
 //
+// 顺带：把 profile 的 `dsh.profile.bundles` 里因包改名而失效的旧名字改写掉
+//       （包改名后 dsh 解析不到旧 bundle 名，插件会静默消失）。
+//
 // 用法：node scripts/sync-profile-links.mjs [profile] [--dry-run] [--prune]
 //   profile     目标 profile 名，默认 web（也可写 --profile=web）
 //   --dry-run   只报告差异不写盘；有差异时退出码 1（可当门禁）
 //   --prune     额外删除副本里源码已不存在的文件（默认只报告不删）
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,7 +40,9 @@ const MAX_LIST = 20
 const HELP = `用法: node scripts/sync-profile-links.mjs [profile] [--dry-run] [--prune]
   profile     目标 profile 名，默认 web
   --dry-run   只报告差异不写盘；有差异时退出码 1
-  --prune     额外删除副本里源码已不存在的文件`
+  --prune     额外删除副本里源码已不存在的文件
+
+同时对齐 dsh.profile.bundles 里因改名失效的旧包名（写盘前自动备份 package.json）`
 
 function parseArgs(argv) {
   const opts = { profile: 'web', dryRun: false, prune: false, help: false }
@@ -249,6 +255,47 @@ function report(name, r, opts) {
   }
 }
 
+// profile 的 `dsh.profile.bundles` 是按**名字**解析包的：包一改名（dsh-x → @scope/dsh-x），
+// 旧条目就解析不到，dsh 会跳过整个 bundle——表现就是「插件不见了」。
+// 这里把仍指向旧名的条目，按 deps 里 basename 相同、且确实装上了的新名字改写掉。
+function planBundleAlignment(profileDir, profileJson) {
+  const bundles = profileJson?.dsh?.profile?.bundles
+  if (!Array.isArray(bundles)) return null
+  const req = createRequire(path.join(profileDir, 'package.json'))
+  // node_modules 里存在就算能解析：有些包只暴露 ESM exports，require.resolve 会误判成失败。
+  const resolves = (name) => {
+    if (fs.existsSync(path.join(profileDir, 'node_modules', name))) return true
+    try {
+      req.resolve(name)
+      return true
+    } catch {
+      return false
+    }
+  }
+  const deps = Object.keys(profileJson.dependencies || {})
+  const renamed = []
+  const pending = []
+  const unresolved = []
+  const next = []
+  for (const name of bundles) {
+    let entry = name
+    // 已不是当前依赖名、但 deps 里有同 basename 的新名字 → 是改名残留，跟着 deps 走
+    if (!deps.includes(name)) {
+      const sameBase = deps.filter((dep) => dep.split('/').pop() === name)
+      const ready = sameBase.filter(resolves)
+      if (ready.length === 1) {
+        entry = ready[0]
+        renamed.push([name, entry])
+      } else if (sameBase.length) pending.push([name, sameBase[0]])
+      else if (!resolves(name) && !name.startsWith('@deepseek-ai/')) unresolved.push(name) // @deepseek-ai/* 由 app 自带
+    } else if (!resolves(name)) {
+      unresolved.push(name)
+    }
+    if (!next.includes(entry)) next.push(entry)
+  }
+  return { renamed, pending, unresolved, next, changed: renamed.length > 0 || next.length !== bundles.length }
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2))
   if (opts.help) {
@@ -274,6 +321,34 @@ function main() {
   let drift = 0
   let failed = 0
   const notInstalled = []
+
+  const bundles = planBundleAlignment(profileDir, profileJson)
+  if (bundles) {
+    if (bundles.renamed.length) {
+      console.log('bundle 名还是旧包名（dsh 会解析不到、整个插件被跳过）：')
+      for (const [from, to] of bundles.renamed) console.log('  → ' + from + '  ⟶  ' + to)
+    }
+    for (const [from, to] of bundles.pending) {
+      console.log('  ! ' + from + ' 的依赖已改名成 ' + to + '，但还没装：先在该 profile 完成安装再重跑本脚本')
+    }
+    if (bundles.unresolved.length) {
+      console.log('  ! bundles 里这些名字在 profile 中解析不到（不是本仓库的本地包？）：' + bundles.unresolved.join(', '))
+    }
+    if (bundles.changed) {
+      drift += bundles.renamed.length
+      if (opts.dryRun) {
+        console.log('  （--dry-run 未写盘）')
+      } else {
+        const backup = profileJsonPath + '.bak-bundles-' + Date.now()
+        fs.copyFileSync(profileJsonPath, backup)
+        profileJson.dsh.profile.bundles = bundles.next
+        fs.writeFileSync(profileJsonPath, JSON.stringify(profileJson, null, 2) + '\n')
+        console.log('  ✓ bundles 已改写，原文件备份为 ' + path.basename(backup) + '（重启 dsh 生效）')
+      }
+    }
+    if (bundles.renamed.length || bundles.pending.length) console.log('')
+  }
+
   const outsideRepo = []
 
   for (const [name, spec] of localDeps) {
