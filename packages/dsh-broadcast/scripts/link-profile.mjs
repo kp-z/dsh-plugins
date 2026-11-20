@@ -64,17 +64,21 @@ if (dryRun) {
   process.exit(0)
 }
 
-// 1. 备份
-const backupPath = manifestPath + '.bak-broadcast-' + new Date().toISOString().replace(/[:.]/g, '-')
-copyFileSync(manifestPath, backupPath)
-console.log('备份    :', backupPath)
+// 1. 备份（只在真的要改清单时做，重复执行不留垃圾）
+const needsWrite = needsDep || needsBundle
+let backupPath = ''
+if (needsWrite) {
+  backupPath = manifestPath + '.bak-broadcast-' + new Date().toISOString().replace(/[:.]/g, '-')
+  copyFileSync(manifestPath, backupPath)
+  console.log('备份    :', backupPath)
+}
 
 // 2. 改 profile 清单：依赖 + 层栈条目
 if (needsDep) {
   pkg.dependencies = { ...(pkg.dependencies ?? {}), [PACKAGE_NAME]: depSpec }
 }
 if (needsBundle) bundles.push(PACKAGE_NAME)
-if (needsDep || needsBundle) writeFileSync(manifestPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+if (needsWrite) writeFileSync(manifestPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
 
 // 3. node_modules 软链（等价于 hoisted 安装，且源码改动即时生效）
 const existing = existsSync(linkPath) ? lstatSync(linkPath) : null
@@ -94,12 +98,15 @@ try {
   if (mod.name !== 'broadcast') throw new Error('导出的 name 不是 broadcast')
   console.log('加载验证: OK（name=' + mod.name + '，inject=' + JSON.stringify(mod.inject) + '）')
 } catch (error) {
-  console.error('✗ 装上了但加载失败，正在还原清单：', String(error))
-  copyFileSync(backupPath, manifestPath)
+  console.error('✗ 装上了但加载失败：', String(error))
+  if (backupPath !== '') {
+    copyFileSync(backupPath, manifestPath)
+    console.error('已把 profile 清单还原到', backupPath)
+  }
   process.exit(1)
 }
 
 console.log('')
-console.log('下一步：重启 DSH（profile=' + profile + '），然后验证：')
+console.log('下一步：重启 DSH（profile=' + profileDir + '），然后验证：')
 console.log('  curl -s http://127.0.0.1:52559/' + PACKAGE_NAME + '/state')
 console.log('  应返回 {"toggle":true,...}；输入框左侧出现扬声器按钮')
