@@ -1,21 +1,25 @@
 # PROGRESS
 
-## 2026-11-20 21:40 · H1 完成（v2 修订）
+## 2026-11-20 22:15 · H2 完成
+
+**这一小时做**：会话接缝 + 角色会话管理 + DSH 端口（发话/收话/超时）。
 
 **做了什么**：
-- `model/character.ts`：角色数据模型（id/name/appearance/home/work/persona/createdAtTick）
-- `model/context.ts`：ContextBundle + provider 机制（persona / channel / situation / memory 四层）
-- 三个角色改成 Character（含家、工作地、外观），persona 只作为其中一个字段
-- 11 个单测全绿（5 绑定不变量 + 5 解耦 + 1 persona prompt）
-
-**为什么改**（用户提议）：角色与会话解耦，会话每次开口向世界要一份 bundle，
-以后要加关系/心情/传闻，只加 provider，不动调用方。
+- `runtime/session-port.ts`：SessionPort 接缝；ScriptedPort（确定性替身，不调模型）；UnavailablePort（宿主没挂服务时给人话原因）
+- `runtime/character-sessions.ts`：按角色开/说话/关；**只允许按 characterId 说话**，路由规则（primary→secondary，observer 不算）才有地方执行
+- `runtime/dsh-port.ts`：真端口——`sessionController.prompt` 发话 + `session/event` 收话；按 sessionId 匹配回复；超时按失败；`attach` 接已有会话（不自己造）
+- 24 个单测全绿（新增 6 个 DSH 端口用例：请求形状、跨会话不串、超时、attach、提取器）
 
 **关键决策**：
-- bundle 分节 + 每节带 source：可单测、可追溯"他当时看到了什么"。
-- 角色本体不放"当前在哪/在干嘛/会话 id/记忆正文"——这些要么随 tick 变，要么属于绑定或检索结果。
+- 端口**不自己创建会话**：建会话是宿主的事（模型/权限/计费），端口只 attach 已有会话。
+- 同一角色 + 同频道重复开会议复用同一会话：否则同一个人的两段回答会落在两个上下文里。
+- 回复提取器可替换：事件形状（`assistant/message` + content[].text）取自 agent-world 的 decode，**还没真机验证**，所以留了注入点。
 
-**卡点**：无。
+**卡点 / 待验**：
+- 真机事件形状需验证（H2.5 用宿主实跑一次，确认 type/content 结构）。
+- 本包需要 @types/node（借用 dsh-agent-world/node_modules 的软链），正式安装时补 devDependency。
 
-**下一个小时（H2）从哪开始**：会话接入——sessionController 创建/接管会话，
-首条上下文用 `buildContext(...).text`；验"给林野开一个工作会话，要它回一句，且答得像林野"。
+**下一个小时（H2.5 → 并入 H3）**：真机联调 + 注入层扩展。
+1. 在宿主里起一个会话，attach 给林野，问一句，确认真回；
+2. 加 relationship / mood 两个 provider；
+3. 验收：三人同问，答得像三个人（人工比对 + 记录差异）。
