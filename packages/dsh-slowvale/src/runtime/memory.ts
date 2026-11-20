@@ -49,11 +49,6 @@ export function memoryFromThread(
   })
 }
 
-/** 判断一句"你是不是忘了"的问法有没有依据（诊断用）。 */
-export function mentionsAny(memory: readonly string[], keyword: string): boolean {
-  return memory.some((line) => line.includes(keyword))
-}
-
 /** 给 CharacterSessions.open 用的便捷包装。 */
 export function memoriesFor(
   messages: readonly SmsMessage[],
