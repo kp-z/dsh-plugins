@@ -20,4 +20,4 @@
 # 二者都不依赖对方，任何安装顺序/路径都不会产生重复 id。
 - insert:
     - id: mermaid-comm
-      name: dsh-mermaid-comm
+      name: "@kpeace/dsh-mermaid-comm"
