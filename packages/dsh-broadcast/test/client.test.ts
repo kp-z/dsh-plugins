@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
 /**
- * 客户端半边的冒烟测试：不渲染（没有真 React），只验证模块外壳、
- * 槽位注入与「宿主路径/字段」这三件最容易在浏览器里才炸的事。
+ * 客户端半边的冒烟测试：不渲染真实 DOM，只验证模块外壳、槽位注入，以及
+ * 「菜单必须 portal 到 body」这条最容易在真机才炸的约定。
  */
-function loadClient() {
+function loadClient(options: { withReactDom?: boolean } = {}) {
   const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   const loaded: { id: string; factory: (require: (name: string) => unknown) => unknown }[] = []
 
@@ -14,10 +14,10 @@ function loadClient() {
     getElementById: () => null,
     createElement: () => ({ id: '', textContent: '' }),
     head: { appendChild: () => {} },
+    body: {},
   }
   const fakeWindow = { __ModuleLoader__: { load: (spec: unknown) => loaded.push(spec as never) } }
 
-  // 客户端文件是给浏览器用的（window / document 全局），这里只做模块加载那一段
   const run = new Function('window', 'document', source)
   run(fakeWindow, fakeDocument)
 
@@ -29,18 +29,23 @@ function loadClient() {
     createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }),
     useState: (initial: unknown) => [initial, () => {}],
     useEffect: () => {},
+    useLayoutEffect: () => {},
     useCallback: (fn: unknown) => fn,
+    useRef: () => ({ current: null }),
   }
+  const reactDom = options.withReactDom === false
+    ? undefined
+    : { createPortal: (node: unknown, target: unknown) => ({ type: 'portal', node, target }) }
+
   const require = (name: string): unknown => {
     if (name === 'react') return react
-    // primitives 在测试里故意拿不到：客户端必须能退回原生 title 而不是崩掉
+    if (name === 'react-dom') {
+      if (reactDom === undefined) throw new Error('react-dom unavailable')
+      return reactDom
+    }
     throw new Error('not available in test: ' + name)
   }
-  return spec.factory(require) as {
-    name: string
-    inject: string[]
-    apply: (ctx: unknown) => unknown
-  }
+  return spec.factory(require) as { name: string; inject: string[]; apply: (ctx: unknown) => unknown }
 }
 
 test('客户端模块：名字、依赖与槽位注入', () => {
@@ -67,12 +72,20 @@ test('客户端模块：名字、依赖与槽位注入', () => {
   assert.equal(typeof dispose, 'function', '必须返回 disposer，否则重新声明槽位会撞 id')
 })
 
-test('客户端模块：拿不到官方 Tooltip 也不能崩（退回原生 title）', () => {
-  const mod = loadClient()
+test('拿不到官方 Tooltip / react-dom 也不能崩（各自有退路）', () => {
+  const mod = loadClient({ withReactDom: false })
   assert.equal(typeof mod.apply, 'function')
 })
 
-test('客户端模块：没有 slots 服务时安静退出', () => {
+test('菜单走 portal：源码里必须 portal 到 body，否则会被玻璃卡片的 backdrop-filter 带偏', () => {
+  const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(source, /createPortal\(panel, document\.body\)/)
+  assert.match(source, /containingBlockOf/, '没有 portal 时的兜底要做包含块修正')
+  assert.match(source, /backdrop-filter/)
+  assert.match(source, /position:fixed/)
+})
+
+test('没有 slots 服务时安静退出', () => {
   const mod = loadClient()
   assert.doesNotThrow(() => mod.apply(undefined))
   assert.doesNotThrow(() => mod.apply({}))

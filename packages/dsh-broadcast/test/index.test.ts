@@ -58,8 +58,8 @@ test('apply 注册唯一工具 broadcast_say，参数与输出 schema 正确', (
   assert.equal(tool.parameters.properties.text.type, 'string')
   assert.equal(tool.output.schema.type, 'string')
   assert.equal(typeof tool.execute, 'function')
-  assert.match(tool.description, /联网/)
   assert.match(tool.description, /播报/)
+  assert.match(tool.description, /临时目录/)
 })
 
 test('apply 订阅 session/event（S2 的自动播报入口）', () => {

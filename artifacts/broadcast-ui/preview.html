@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+  :root{
+    --dsw-alias-bg-elevated:#fff; --dsw-alias-label-primary:#1b1b1f; --dsw-alias-label-secondary:#5f5f68;
+    --dsw-alias-label-tertiary:#8b8b93; --dsw-alias-border-secondary:rgba(0,0,0,.12);
+    --dsw-alias-interactive-bg-hover-solid:rgba(0,0,0,.055);
+    --dsw-alias-state-business-primary:#2f6bff; --dsw-alias-state-business-tertiary:rgba(47,107,255,.10);
+  }
+  body{margin:0;padding:34px;background:#f2f2f5;font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+  .label{font:600 10.5px/1 -apple-system,sans-serif;color:#9a9aa2;letter-spacing:.06em;margin:0 0 9px 2px}
+  .card{background:#fff;border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.10);padding:16px 16px 12px;margin-bottom:26px;backdrop-filter:blur(20px)}
+  .row{display:flex;align-items:center;gap:8px;padding-top:10px}
+  .plus{width:28px;height:28px;border-radius:999px;background:rgba(0,0,0,.05);display:grid;place-items:center;color:#5f5f68;font-size:15px}
+  .chip-like{height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border:1px solid var(--dsw-alias-border-secondary);border-radius:999px;color:#5f5f68;font-size:12.5px;font-weight:500}
+  @keyframes dbc-pulse{0%,100%{opacity:1}50%{opacity:.45}}.dbc-chip{height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:999px;border:1px solid var(--dsw-alias-border-secondary,rgba(0,0,0,.12));background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none;font-size:12.5px;font-weight:500;line-height:1;white-space:nowrap;letter-spacing:.01em;transition:background-color .12s,color .12s,border-color .12s}.dbc-chip>span{display:block;line-height:1;position:relative;top:-.5px}.dbc-chip:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.dbc-chip:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.dbc-chip[data-off='true']{opacity:.55}.dbc-chip[data-speaking='true']{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary,rgba(47,107,255,.1))}.dbc-chip svg{flex:none}.dbc-chip .dbc-caret{opacity:.5;margin-left:1px}.dbc-chip[data-speaking='true'] .dbc-wave{animation:dbc-pulse 1.05s ease-in-out infinite}.dbc-chip[data-speaking='true'] .dbc-wave-2{animation-delay:.16s}.dbc-panel{position:fixed;z-index:2147483000;box-sizing:border-box;width:244px;max-height:min(62vh,360px);overflow:auto;padding:4px;border-radius:14px;border:1px solid var(--dsw-alias-border-secondary,rgba(0,0,0,.1));background:var(--dsw-alias-bg-elevated,#fff);box-shadow:0 12px 40px rgba(0,0,0,.13),0 2px 6px rgba(0,0,0,.06)}.dbc-panel::-webkit-scrollbar{width:8px}.dbc-panel::-webkit-scrollbar-thumb{background:rgba(0,0,0,.16);border-radius:8px}.dbc-switch{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:9px 9px;border:none;border-radius:10px;background:transparent;cursor:pointer;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.2;text-align:left}.dbc-switch:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}.dbc-switch:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}.dbc-track{width:26px;height:15px;border-radius:999px;flex:none;margin-left:auto;position:relative;background:var(--dsw-alias-border-secondary,rgba(0,0,0,.18));transition:background-color .16s}.dbc-track[data-on='true']{background:var(--dsw-alias-state-business-primary)}.dbc-knob{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:999px;background:#fff;transition:transform .16s;box-shadow:0 1px 2px rgba(0,0,0,.25)}.dbc-track[data-on='true'] .dbc-knob{transform:translateX(11px)}.dbc-sep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-secondary,rgba(0,0,0,.08))}.dbc-gap{height:10px}.dbc-group{font-size:11px;font-weight:600;line-height:1;color:var(--dsw-alias-label-tertiary);padding:10px 9px 2px;letter-spacing:.03em}.dbc-ghint{font-size:11px;line-height:1.4;color:var(--dsw-alias-label-tertiary);padding:4px 9px 6px}.dbc-item{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:34px;border:none;background:transparent;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.3;padding:7px 9px;border-radius:9px;cursor:pointer;text-align:left}.dbc-item:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}.dbc-item:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}.dbc-item[data-current='true']{background:var(--dsw-alias-state-business-tertiary,rgba(47,107,255,.1))}.dbc-check{width:11px;height:11px;flex:none;margin-left:auto;margin-right:2px;opacity:0;stroke-width:1.6;color:var(--dsw-alias-state-business-primary)}.dbc-item[data-current='true'] .dbc-check{opacity:1}
+  .dbc-panel{position:static!important;visibility:visible!important;margin-left:88px}
+</style></head><body>
+<div style="width:540px">
+  <p class="label">关（暗+斜杠） / 开 / 播报中（蓝底+脉冲）</p>
+  <div class="card">
+    <div class="row" style="padding-top:0">
+      <span class="plus">+</span>
+      <span class="chip-like">权限 ⌄</span>
+      <button class="dbc-chip" data-off="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 5.9h2.4L8.4 3.4v9.2L5.1 9.9H2.7z"/><path d="M10.6 5.9l3.2 4.2M13.8 5.9l-3.2 4.2"/></svg><span>在线女声</span><svg class="dbc-caret" width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 4.1L5 6.9l2.8-2.8"/></svg></button>
+      <button class="dbc-chip"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 5.9h2.4L8.4 3.4v9.2L5.1 9.9H2.7z"/><path class="dbc-wave" d="M10.5 5.8a3.1 3.1 0 0 1 0 4.4"/></svg><span>在线女声</span><svg class="dbc-caret" width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 4.1L5 6.9l2.8-2.8"/></svg></button>
+      <button class="dbc-chip" data-speaking="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 5.9h2.4L8.4 3.4v9.2L5.1 9.9H2.7z"/><path class="dbc-wave" d="M10.5 5.8a3.1 3.1 0 0 1 0 4.4"/></svg><span>在线女声</span><svg class="dbc-caret" width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 4.1L5 6.9l2.8-2.8"/></svg></button>
+    </div>
+  </div>
+
+  <p class="label">展开的菜单</p>
+  <div class="dbc-panel" role="menu">
+    <button class="dbc-switch" role="switch" aria-checked="true"><span>自动播报</span><span class="dbc-track" data-on="true"><span class="dbc-knob"></span></span></button>
+    <div class="dbc-sep"></div>
+    <div class="dbc-group">在线音色</div>
+    <div class="dbc-ghint">神经网络合成，中文最自然</div>
+    <button class="dbc-item" data-current="true" role="menuitemradio"><span>在线女声</span><svg class="dbc-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.4l2.2 2.2 5-5.2"/></svg></button>
+    <div class="dbc-gap"></div>
+    <div class="dbc-group">本机音色 · 离线</div>
+    <div class="dbc-ghint">系统自带，断网可用，语调偏机械</div>
+    <button class="dbc-item" data-current="false" role="menuitemradio"><span>婷婷</span><svg class="dbc-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.4l2.2 2.2 5-5.2"/></svg></button>
+    <button class="dbc-item" data-current="false" role="menuitemradio"><span>美佳</span><svg class="dbc-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.4l2.2 2.2 5-5.2"/></svg></button>
+    <button class="dbc-item" data-current="false" role="menuitemradio"><span>Eddy</span><svg class="dbc-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.4l2.2 2.2 5-5.2"/></svg></button>
+    <button class="dbc-item" data-current="false" role="menuitemradio"><span>Reed</span><svg class="dbc-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.4l2.2 2.2 5-5.2"/></svg></button>
+  </div>
+</div>
+</body></html>

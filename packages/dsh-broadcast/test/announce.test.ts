@@ -1,31 +1,35 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { clipForSpeech, speak } from '../lib/announce.js'
+import { clipForSpeech, enginePlan, speak } from '../lib/announce.js'
 import { resolveConfig } from '../lib/config.js'
 
-const config = resolveConfig({ engine: 'auto' })
-const text = '这一轮把播报骨架搭好了，要不要我接着做触发？'
+const auto = resolveConfig({ engine: 'auto' })
+const text = '这一轮把播报的音色换成在线的了，要不要现在听听看？'
 
-/** 一次完整的假链路：记录每一跳，便于断言顺序。 */
+/** 假链路：记录每一跳，便于断言顺序与清理。 */
 function recorder(overrides = {}) {
   const calls = []
   const deps = {
-    synthesize: async () => {
-      calls.push('synth')
-      return Buffer.from('fake-mp3')
+    synthesizeEdge: async () => {
+      calls.push('edge')
+      return Buffer.from('mp3-edge')
     },
-    writeTemp: () => {
-      calls.push('write')
+    synthesizeBaidu: async () => {
+      calls.push('baidu')
+      return Buffer.from('mp3-baidu')
+    },
+    writeTemp: (audio) => {
+      calls.push(`write:${audio.toString()}`)
       return '/tmp/dsh-broadcast/fake.mp3'
     },
-    play: async (file) => {
-      calls.push(`play:${file}`)
+    play: async () => {
+      calls.push('play')
     },
-    remove: (file) => {
-      calls.push(`remove:${file}`)
+    remove: () => {
+      calls.push('remove')
     },
     say: async (_value, options) => {
-      calls.push(`say:${options.voice}:${options.rate}`)
+      calls.push(`say:${options.voice}`)
     },
     now: () => 1000,
     ...overrides,
@@ -33,67 +37,98 @@ function recorder(overrides = {}) {
   return { calls, deps }
 }
 
-test('edge 成功：合成 → 落盘 → 播放 → 删临时文件', async () => {
+test('默认（auto、在线音色）：走百度，成功就用它', async () => {
   const { calls, deps } = recorder()
-  const result = await speak(text, config, deps)
-  assert.equal(result.engine, 'edge')
+  const result = await speak(text, auto, deps)
+  assert.equal(result.engine, 'baidu')
   assert.equal(result.fallbackReason, undefined)
-  assert.deepEqual(calls, ['synth', 'write', 'play:/tmp/dsh-broadcast/fake.mp3', 'remove:/tmp/dsh-broadcast/fake.mp3'])
+  assert.deepEqual(calls, ['baidu', 'write:mp3-baidu', 'play', 'remove'])
 })
 
-test('合成 403：自动回落 say，并说明原因', async () => {
+test('显式 engine=edge：走 edge-tts（端点恢复后即可启用）', async () => {
+  const { calls, deps } = recorder()
+  const result = await speak(text, resolveConfig({ engine: 'edge' }), deps)
+  assert.equal(result.engine, 'edge')
+  assert.deepEqual(calls, ['edge', 'write:mp3-edge', 'play', 'remove'])
+})
+
+test('在线合成挂了：退到 say，并把原因留在结果里', async () => {
   const { calls, deps } = recorder({
-    synthesize: async () => {
-      throw new Error('edge-tts 连接失败（握手被拒或网络不可达）')
+    synthesizeBaidu: async () => {
+      calls.push('baidu')
+      throw new Error('baidu 超时')
     },
+  })
+  const result = await speak(text, auto, deps)
+  assert.equal(result.engine, 'say')
+  assert.match(result.fallbackReason ?? '', /baidu 超时/)
+  assert.ok(calls.includes('say:Tingting'))
+})
+
+test('选了在线音色：只走百度，不会偷偷用 say', async () => {
+  const config = resolveConfig({ engine: 'auto', voiceId: 'baidu' })
+  const { calls, deps } = recorder()
+  const result = await speak(text, config, deps)
+  assert.equal(result.engine, 'baidu')
+  assert.deepEqual(calls, ['baidu', 'write:mp3-baidu', 'play', 'remove'])
+})
+
+test('选了在线音色但它挂了：仍然退到 say（宁可机械也要有声音）', async () => {
+  const config = resolveConfig({ engine: 'auto', voiceId: 'baidu' })
+  const { calls, deps } = recorder({
+    synthesizeBaidu: async () => { throw new Error('baidu 500') },
   })
   const result = await speak(text, config, deps)
   assert.equal(result.engine, 'say')
-  assert.match(result.fallbackReason ?? '', /握手被拒/)
-  assert.deepEqual(calls, ['say:Tingting:205']) // +8% 基准 190 → 205
+  assert.match(result.fallbackReason ?? '', /baidu 500/)
 })
 
-test('播放失败也要删临时文件，然后回落 say', async () => {
+test('选了本机音色：一次网络都不碰，直接 say 那个音色', async () => {
+  const config = resolveConfig({ engine: 'auto', voiceId: 'say:Eddy (中文（中国大陆）)' })
+  const { calls, deps } = recorder()
+  const result = await speak(text, config, deps)
+  assert.equal(result.engine, 'say')
+  assert.deepEqual(calls, ['say:Eddy (中文（中国大陆）)'])
+})
+
+test('显式 engine=edge 时失败直接抛，不回落（调试用）', async () => {
+  const config = resolveConfig({ engine: 'edge' })
+  const { deps } = recorder({
+    synthesizeEdge: async () => { throw new Error('403 Forbidden') },
+  })
+  await assert.rejects(() => speak(text, config, deps), /edge 播报失败：403 Forbidden/)
+})
+
+test('播放失败也要删临时文件，然后回落下一档', async () => {
   const { calls, deps } = recorder({
     play: async () => {
       calls.push('play-failed')
       throw new Error('afplay 退出码 1')
     },
   })
-  const result = await speak(text, config, deps)
+  const result = await speak(text, auto, deps)
   assert.equal(result.engine, 'say')
+  assert.ok(calls.indexOf('remove') > calls.indexOf('play-failed'), '失败后仍要删临时文件')
   assert.match(result.fallbackReason ?? '', /afplay/)
-  assert.deepEqual(calls.slice(0, 4), ['synth', 'write', 'play-failed', 'remove:/tmp/dsh-broadcast/fake.mp3'])
-  assert.equal(result.engine, 'say')
-})
-
-test('engine=edge 时不回落，直接抛错（便于定位）', async () => {
-  const { deps } = recorder({
-    synthesize: async () => {
-      throw new Error('403 Forbidden')
-    },
-  })
-  await assert.rejects(
-    () => speak(text, { ...config, engine: 'edge' }, deps),
-    /edge-tts 播报失败：403 Forbidden/,
-  )
-})
-
-test('engine=say 时完全不碰网络合成', async () => {
-  const { calls, deps } = recorder()
-  const result = await speak(text, { ...config, engine: 'say' }, deps)
-  assert.equal(result.engine, 'say')
-  assert.deepEqual(calls, ['say:Tingting:205'])
 })
 
 test('空文本直接拒绝，不去念空气', async () => {
   const { calls, deps } = recorder()
-  await assert.rejects(() => speak('   \n  ', config, deps), /没有可播报的文字/)
+  await assert.rejects(() => speak('   \n  ', auto, deps), /没有可播报的文字/)
   assert.deepEqual(calls, [])
 })
 
 test('clipForSpeech 折叠空白并按上限截断', () => {
   assert.equal(clipForSpeech('  你好\n\n  世界  ', 80), '你好 世界')
   assert.equal(clipForSpeech('一二三四五', 3), '一二三')
-  assert.equal(clipForSpeech('一二三', 0), '一二三') // 上限非法时不截
+  assert.equal(clipForSpeech('一二三', 0), '一二三')
+})
+
+test('enginePlan：选了什么就只走那一条', () => {
+  assert.deepEqual(enginePlan(resolveConfig({})).engines, ['baidu', 'say'])
+  assert.deepEqual(enginePlan(resolveConfig({ voiceId: 'baidu' })).engines, ['baidu', 'say'])
+  assert.deepEqual(enginePlan(resolveConfig({ voiceId: 'say:Meijia' })).engines, ['say'])
+  assert.deepEqual(enginePlan(resolveConfig({ engine: 'say' })).engines, ['say'])
+  assert.deepEqual(enginePlan(resolveConfig({ engine: 'baidu' })).engines, ['baidu'])
+  assert.deepEqual(enginePlan(resolveConfig({ engine: 'edge' })).engines, ['edge'])
 })

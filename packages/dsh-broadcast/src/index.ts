@@ -12,11 +12,18 @@ import { BroadcastConfig, resolveConfig } from './config.js'
 import { registerStateRoute } from './routes.js'
 import { createStateStore } from './state.js'
 import { summarizeReply, type HostServicesLike } from './summarizer.js'
-import { auditionText, resolveSayVoice } from './voices.js'
+import { auditionText, normalizeVoiceId } from './voices.js'
 import { createSessionListener, type SummaryInput } from './wiring.js'
 
 export { BroadcastConfig }
 export const name = 'broadcast'
+
+/** 引擎 → 人话（日志与工具返回都用它，别再各写一份）。 */
+const ENGINE_LABELS: Record<string, string> = {
+  edge: 'edge-tts 在线',
+  baidu: '百度在线',
+  say: '本机 say',
+}
 export const inject = ['tools']
 
 /** 日志器：沙箱可能不给 `ctx.logger`，但插件绝不能因此加载失败（那个后果是整个 profile 起不来）。 */
@@ -43,12 +50,12 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
 
   // 开关与音色的真值：持久化值优先（重启后保持），其次才是配置里的默认值。
   const store = createStateStore({
-    fallback: { enabled: config.enabled, sayVoice: config.sayVoice },
+    fallback: { enabled: config.enabled, voiceId: normalizeVoiceId(config.voiceId) },
     onPersistError: (error) => logger.warn('状态写盘失败：%s', error instanceof Error ? error.message : String(error)),
   })
   config.enabled = store.get().enabled
-  config.sayVoice = store.get().sayVoice
-  logger.info('dsh-broadcast 已加载（enabled=%s engine=%s voice=%s useModel=%s）', config.enabled, config.engine, config.voice, config.useModel)
+  config.voiceId = normalizeVoiceId(store.get().voiceId)
+  logger.info('dsh-broadcast 已加载（enabled=%s engine=%s voiceId=%s useModel=%s）', config.enabled, config.engine, config.voiceId, config.useModel)
 
   /** 现取宿主服务：服务可能晚于本插件挂上来，宿主重载后旧句柄也不该认死。 */
   const hostServices = (): HostServicesLike => {
@@ -66,6 +73,8 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   /** 当前这条播报的取消手柄；speaking 只反映「扬声器里现在有没有声音」。 */
   let current: AbortController | null = null
   let speaking = false
+  /** 最近一次实际出声的引擎：诊断「听起来不对」时唯一可信的答案。 */
+  let lastEngine: string | null = null
 
   // 播放串行化：两条会话同时结束也不能叠音（前一条念完再念下一条）。
   let queue: Promise<unknown> = Promise.resolve()
@@ -74,7 +83,14 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
     current = controller
     speaking = true
     queue = queue
-      .then(() => speak(text, config, { signal: controller.signal }))
+      .then(async () => {
+        const result = await speak(text, config, { signal: controller.signal })
+        lastEngine = result.engine
+        if (result.fallbackReason !== undefined) {
+          logger.info('播报引擎 %s（回落原因：%s）', result.engine, result.fallbackReason)
+        }
+        return result
+      })
       .catch((error: unknown) => {
         // 用户点了停止：这不是错误，别在日志里吓人一跳
         if (controller.signal.aborted) return
@@ -98,8 +114,8 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   ctx.tools.register(defineTool({
     name: 'broadcast_say',
     description:
-      '把一段文字念出来（调试用，手动触发一次播报）。会联网调用 edge-tts 合成语音，'
-      + '失败自动回落到系统 say；音频只落在临时目录、播完即删。它不受总开关控制。',
+      '把一段文字念出来（调试用，手动触发一次播报）。按当前音色选择走在线合成（edge-tts / 百度），'
+      + '失败回落到系统 say；音频只落在临时目录、播完即删。它不受总开关控制。',
     parameters: {
       text: {
         type: 'string',
@@ -113,7 +129,8 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
     },
     async execute(args, exec) {
       const result = await speak(args.text, config, { signal: exec.signal })
-      const engine = result.engine === 'edge' ? 'edge-tts' : 'say 兜底'
+      lastEngine = result.engine
+      const engine = ENGINE_LABELS[result.engine] ?? result.engine
       const reason = result.fallbackReason ? `；回落原因：${result.fallbackReason}` : ''
       logger.info('手动播报完成（%s，%dms）%s', engine, result.ms, reason)
       return `已播报（${engine}，${result.ms}ms）${reason}`
@@ -166,13 +183,14 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
     },
     isSpeaking: () => speaking,
     stop,
-    currentVoice: () => resolveSayVoice(config),
+    currentVoice: () => normalizeVoiceId(config.voiceId),
+    lastEngine: () => lastEngine,
     setVoice: async (voice) => {
-      config.sayVoice = voice
-      await store.set({ sayVoice: voice })
-      logger.info('播报音色 → %s', voice)
+      config.voiceId = normalizeVoiceId(voice)
+      await store.set({ voiceId: config.voiceId })
+      logger.info('播报音色 → %s', config.voiceId)
       // 换完立刻念一句：用户点的是「选择」，耳朵要马上有反馈
-      void enqueue(auditionText(voice))
+      void enqueue(auditionText(config.voiceId))
     },
   })
 }
