@@ -1,5 +1,5 @@
 {
-  "name": "dsh-ios-skin",
+  "name": "@kpeace/dsh-ios-skin",
   "version": "0.3.0",
   "description": "DSH 插件：iOS 26 液态玻璃（Liquid Glass）主题——官方设计 token 全面重调 + 磨砂玻璃材质层，支持浅色/深色、降低透明度与高对比度。",
   "license": "MIT",
