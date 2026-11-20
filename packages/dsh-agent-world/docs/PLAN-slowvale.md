@@ -206,3 +206,36 @@ canvas 有了，但 `background.png` 没被请求——**场景挂载**这一步
 再用 /game/state/scene 的返回体做对照（两者应当同构）。
 
 这件事和"角色走路"是同一个根：**视觉管道**。做完它，办公室场景和角色会一起出现。
+
+## 城市里有一个人在走（/show）
+
+### 做了什么
+
+在 HUD 的场景挂载还没通的情况下，用**同一套资产**做了个最小渲染器，先把"有人在这个城市里走"立住。
+
+| 文件 | 职责 |
+| --- | --- |
+| src/adapters/slowvale/stage.ts | 状态机：每张图取交互点（spawn/target/pose）当路点，直线走过去；走满 3 个点换下一张图 |
+| src/adapters/slowvale/viewer.ts | /show 页面：Canvas2D，底图 + 物件按 y+delta 排序 + 人物分层合成，相机跟随 |
+| scripts/slowvale-dev.mjs | 每 100ms 推一次 stage，世界快照里的位置也取自它（两个页面看到同一个人） |
+
+路线（6 个主要场景循环）：company（办公室）→ commercial_street → convenience_store → park → restaurant → home_public → 回到办公室。
+
+### 关键数据（不是猜的）
+
+角色帧来自 PersonalityPicker.js 的动画表：walk 在第 2 行，方向块起点 right 0 / up 6 / left 12 / down 18，
+各 6 帧，帧 32×32；idle 在第 1 行。角色由 4 层合成（Body / Eyes / Outfit / Hair），
+路径 /assets/character_generator/bundles/base/<Part>/<file>。
+
+### 实测
+
+- /api/show/state 连续采样：company → commercial_street → park → restaurant → home_public → company（循环成立）
+- /show 页面：canvas 1222×804，非背景像素采样 9.8 万，background.png 已加载，4 张角色层已加载
+- 500ms 内 drawImage 调用 93 次（约 15 帧 × 底图+物件+4 层人物）—— 真的在画，不是静止图
+- 截图：artifacts/slowvale-walk.jpg
+
+### 这一层与 HUD 的关系
+
+stage 产出的就是"谁在哪、朝哪、在不在走"，正是 HUD 的 presence 需要的形状。
+等 scene_state 管道对齐后，把这个 frame 直接喂给 presence 即可，**不用再写一遍**。
+所以这不是绕路，是把渲染管道从最难的一端（前端协议）换到最确定的一端（自己的画布）先跑通。
