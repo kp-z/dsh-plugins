@@ -106,6 +106,6 @@ export const WORLD_CONTRACTS: readonly ContractMeta[] = [
     kind: "behavior",
     owner: "world",
     summary: "世界是 DSH 团队的**只读投影**，不许反向改团队",
-    verify: "test/client-plugin.test.js",
+    verify: "test/team-projection.test.js",
   },
 ]

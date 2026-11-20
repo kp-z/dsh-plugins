@@ -307,28 +307,6 @@ test('每一条边界规则都指向真实存在的模块（或明确是未来�
   }
 })
 
-test('web/ 一旦存在，只许 import protocol', () => {
-  const webSrc = join(ROOT, 'web', 'src')
-  if (!existsSync(webSrc)) return // M4 之前还没建，跳过（不是失败）
-
-  const violations = []
-  for (const relPath of listTs(webSrc)) {
-    const source = readFileSync(join(webSrc, relPath.split('/').join(sep)), 'utf8')
-    // web 里的相对路径是相对它自己的，先归约成"从 web/src 出发"，再按 protocol 规则判。
-    const fromWeb = `web/${relPath}`
-    for (const imp of extractImports(source)) {
-      const target = resolveImportTarget(imp.specifier, fromWeb)
-      if (target !== 'external' && target !== 'web' && target !== 'protocol') {
-        violations.push({ relPath, specifier: imp.specifier, target })
-      }
-    }
-  }
-  assert.deepEqual(
-    violations,
-    [],
-    `web/ 只许 import protocol，但发现：\n${violations.map((v) => `· ${v.relPath} → ${v.specifier}`).join('\n')}`,
-  )
-})
 
 // ── 2. 契约层的类型一致性 ───────────────────────────────────────────────────
 

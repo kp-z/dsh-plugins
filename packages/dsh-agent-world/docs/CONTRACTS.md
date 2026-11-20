@@ -228,13 +228,13 @@
 | `dialogue.turn` | `turnId` 归组；`thinking → acting* → replied/failed`，phases 不降级 | 📘 | `test/dialogue-state.test.js` |
 | `dialogue.failure` | `failed` 必带原因；缺原因用兜底文案并记协议缺陷 | 📘 | `test/dialogue-state.test.js` |
 | `wire.event.coverage` | 10 种世界事件客户端**每种都有明确处理**；未知事件不许静默 `default:return`，必须诊断或重拉快照 | 📘 | `planned:P0` |
-| `world.readonly.projection` | 世界是 DSH 团队的**只读投影**，不许反向改团队 | 🔒 | `test/client-plugin.test.js` |
+| `world.readonly.projection` | 世界是 DSH 团队的**只读投影**，不许反向改团队 | 🔒 | `test/team-projection.test.js` |
 
 ### 4.5 E · 团队与成员
 
 | id | 承诺 | 等级 | 验收 |
 |---|---|---|---|
-| `team.projection` | 成员/任务来自官方 `agentTeam` projection，不轮询、不解析 tool call | 📘 | `test/client-plugin.test.js` |
+| `team.projection` | 成员/任务来自官方 `agentTeam` projection，不轮询、不解析 tool call | 📘 | `test/team-projection.test.js` |
 | `team.member` | 一个 subagent ↔ 一个角色，靠 `boundAgentId` 映射；名字取投影名 | 📘 | `test/bridge.test.js` |
 | `team.captain` | 队长 = 当前会话自己的 live agent（无则回退配置） | 📘 | `test/captain-session-config.test.js` |
 

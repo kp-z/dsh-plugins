@@ -18,3 +18,10 @@
         autoStart: true
         # 同屏角色上限（性能预算的一部分，见 docs/ARCHITECTURE.md §5.3）。
         maxAgents: 24
+        # Slow Vale 适配层：可视化入口（旧面板已删除）。独立端口，路径不用改。
+        # 静态产物要放在 workspace 下的 slowvaleAssetsDir 里（含 index.html 与 assets/）。
+        slowvale:
+          enabled: true
+          port: 7788
+          assetsDir: slowvale-mirror/site
+          place: 'place:office.tech_company_1'

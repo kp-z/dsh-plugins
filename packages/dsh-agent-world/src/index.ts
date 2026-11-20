@@ -38,6 +38,7 @@ import { planTeamSync } from './sim/index.js'
 import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
+import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { createPersonaStore } from './persona/store.js'
 import { registerDispatchTool } from './tools/dispatch.js'
 import { registerReportTool } from './tools/report.js'
@@ -1002,6 +1003,47 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   if (typeof on === 'function') {
     const off = on.call(ctx, 'agent/error', onAgentError)
     if (typeof off === 'function') ctx.effect(() => off as () => void, 'agent-world: error trace')
+  }
+
+  // ── Slow Vale 适配层：可视化入口（取代旧面板）────────────────────────────
+  //
+  // 独立端口、独立生命周期；**失败不拖垮世界**（世界能不能跑与有没有人看是两件事，
+  // 这条原则沿用旧面板的软依赖设计）。配置里的一位 switch 就能整个关掉。
+  if (resolved.slowvale.enabled) {
+    const slowvaleRoot = resolve(process.cwd(), resolved.slowvale.assetsDir)
+    if (!existsSync(join(slowvaleRoot, 'index.html'))) {
+      logger.debug('[slowvale] 静态产物不存在：' + slowvaleRoot + '（改 slowvaleAssetsDir，或把静态站放到这里）')
+    } else {
+      ctx.effect(() => {
+        let bridge: Bridge | null = null
+        let disposed = false
+        createSlowvaleBridge({
+          host: resolved.slowvale.host,
+          port: resolved.slowvale.port,
+          assetsDir: slowvaleRoot,
+          pushMs: resolved.slowvale.pushMs,
+          autoEnter: resolved.slowvale.autoEnter,
+          account: { email: resolved.slowvale.email, password: resolved.slowvale.password },
+          opts: {
+            worldId: resolved.slowvale.worldId,
+            viewerRoleId: resolved.slowvale.viewerRoleId,
+            place: resolved.slowvale.place,
+            startDate: resolved.slowvale.startDate,
+          },
+          getWorld: () => state.currentWorld() as unknown as { id: string; name: string; tick: number; paused?: boolean; agents: { id: string; name: string }[] } | null,
+          log: (line) => logger.info(line),
+        }).then((started) => {
+          bridge = started
+          if (disposed) void started.close()
+        }).catch((error: unknown) => {
+          logger.warn('[slowvale] 启动失败：' + String(error))
+        })
+        return () => {
+          disposed = true
+          if (bridge !== null) void bridge.close()
+        }
+      }, 'agent-world: slowvale bridge')
+    }
   }
 
   // ── HTTP：面板 + API ─────────────────────────────────────────────────────
