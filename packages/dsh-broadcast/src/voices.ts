@@ -45,15 +45,116 @@ const SAY_VOICES: readonly { id: string; label: string }[] = [
   { id: 'Daniel', label: 'Daniel' },
 ]
 
-/** 完整清单（顺序即界面顺序）。 */
-export const VOICE_OPTIONS: readonly VoiceOption[] = [
+/** 在线那一档（目前只有百度一个音色，见 README「已知限制」）。 */
+export const ONLINE_VOICES: readonly VoiceOption[] = [
   { id: BAIDU_VOICE_ID, label: '在线女声', kind: 'online', hint: '神经网络合成，中文最自然' },
+]
+
+/**
+ * 清单是**动态**的：在线那档写死（就一个），本机那档现读 `say -v '?'`——
+ * 用户在系统设置里下载了「增强」音色之后，菜单里立刻能看到，不用我改代码。
+ */
+export function listVoices(): VoiceOption[] {
+  return [...ONLINE_VOICES, ...listOfflineVoices()]
+}
+
+/** 静态兜底清单（拿来判 id 合法、跑测试用；不含动态发现的音色）。 */
+export const VOICE_OPTIONS: readonly VoiceOption[] = [
+  ...ONLINE_VOICES,
   ...SAY_VOICES.map((voice) => ({
     id: `say:${voice.id}`,
     label: voice.label,
     kind: 'offline' as const,
   })),
 ]
+
+/**
+ * 本机装了哪些 `say` 音色——**现读**，不写死。
+ *
+ * 为什么改成动态：macOS 的「增强 / 高级」音色要在系统设置里手动下载，装好之后
+ * `say -v '?'` 里会多出 `Tingting (增强)` 这类条目，质量比默认高不少。写死清单会让
+ * 用户下完却看不见——这正是「想换更好声音却没有选项」的另一种成因。
+ */
+export interface InstalledSayVoice {
+  readonly name: string
+  readonly lang: string
+  /** 自带的质量标记（增强 / Enhanced / Premium），没有就是 undefined。 */
+  readonly quality: string | undefined
+}
+
+/** 从 `say -v '?'` 的输出里解析（纯函数，便于用真实输出做样本测试）。 */
+export function parseSayVoices(stdout: string): InstalledSayVoice[] {
+  const out: InstalledSayVoice[] = []
+  for (const raw of stdout.split('\n')) {
+    // 形如： "Tingting            zh_CN    # 你好！我叫婷婷。"
+    // 名字里可能带空格与括号："Eddy (中文（中国大陆）)  zh_CN  # ..."
+    // 所以按「两个以上空格」或制表符切最后两段：语言码 + 示例
+    const line = raw.replace(/\s+#.*$/, '').trimEnd()
+    if (line === '') continue
+    const parts = line.split(/\t| {2,}/).map((part) => part.trim()).filter((part) => part !== '')
+    if (parts.length < 2) continue
+    const lang = parts[parts.length - 1] ?? ''
+    if (!/^[a-z]{2,3}[-_][A-Za-z]{2,4}$/.test(lang)) continue
+    const name = parts.slice(0, -1).join(' ').trim()
+    if (name === '') continue
+    const quality = /增强|Enhanced|Premium|Premium\(/i.exec(name)?.[0]
+    out.push({ name, lang, quality })
+  }
+  return out
+}
+
+/** 中文音色优先（普通话 > 台湾国语 > 粤语），再挑几个英文的。 */
+export function pickUsableVoices(installed: readonly InstalledSayVoice[], limit = 16): VoiceOption[] {
+  const rank = (lang: string): number =>
+    lang === 'zh_CN' ? 0 : lang === 'zh_TW' ? 1 : lang === 'zh_HK' ? 2 : 3
+  const sorted = [...installed].sort((a, b) => {
+    const byLang = rank(a.lang) - rank(b.lang)
+    if (byLang !== 0) return byLang
+    // 中文内部：有质量标记（增强/高级）的排前面
+    const qualityA = a.quality === undefined ? 1 : 0
+    const qualityB = b.quality === undefined ? 1 : 0
+    return qualityA - qualityB
+  })
+
+  const chinese = sorted.filter((voice) => voice.lang.startsWith('zh')).slice(0, limit)
+  const english = sorted.filter((voice) => !voice.lang.startsWith('zh')).slice(0, 3)
+
+  return [...chinese, ...english].map((voice) => {
+    // 「Tingting (增强)」→ 标签写「Tingting · 增强」，让下载过的更高质量版本一眼可辨。
+    // 注意：拼在模板字符串里的正则会被吃掉反斜杠（\s → s），所以这里用 new RegExp 单独构造。
+    let label = voice.name
+    if (voice.quality !== undefined) {
+      const stripped = voice.name.replace(new RegExp(`\\s*\\(\${voice.quality}\\)`), '').trim()
+      label = `${stripped === '' ? voice.name : stripped} · ${voice.quality}`
+    }
+    return { id: `say:${voice.name}`, label, kind: 'offline' as const }
+  })
+}
+
+/** 30 秒缓存：菜单每开一次就 spawn 一次 `say` 不值得。 */
+let cachedAt = 0
+let cachedList: VoiceOption[] | undefined
+
+/** 现读本机音色；读不到（非 macOS / say 不在）就退回写死的那几条。 */
+export function listOfflineVoices(options: { now?: number; refreshMs?: number } = {}): VoiceOption[] {
+  const now = options.now ?? Date.now()
+  const refreshMs = options.refreshMs ?? 30_000
+  if (cachedList !== undefined && now - cachedAt < refreshMs) return cachedList
+  try {
+    // 延迟 require：浏览器端不需要，Node 侧才用
+    const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
+    const stdout = execFileSync('say', ['-v', '?'], { encoding: 'utf8', timeout: 5000 })
+    const list = pickUsableVoices(parseSayVoices(stdout))
+    if (list.length > 0) {
+      cachedList = list
+      cachedAt = now
+      return list
+    }
+  } catch {
+    // 读不到就用兜底清单，绝不因此让菜单空掉
+  }
+  return SAY_VOICES.map((voice) => ({ id: `say:${voice.id}`, label: voice.label, kind: 'offline' as const }))
+}
 
 /** 老配置里写的 edge 音色 → 本机音色（迁移用）。 */
 const EDGE_TO_SAY: Record<string, string> = {
@@ -68,8 +169,11 @@ const EDGE_TO_SAY: Record<string, string> = {
   'en-US-GuyNeural': 'Daniel',
 }
 
+/** id 合不合法：静态清单里有，或者是 `say:` 前缀（本机能念的名字现读现认）。 */
 export function isKnownVoice(id: string): boolean {
-  return VOICE_OPTIONS.some((option) => option.id === id)
+  if (VOICE_OPTIONS.some((option) => option.id === id)) return true
+  const sayName = sayVoiceOf(id)
+  return sayName !== undefined && sayName.trim() !== ''
 }
 
 /** 'say:Eddy (中文（中国大陆）)' → 'Eddy (中文（中国大陆）)'；不是 say 音色返回 undefined。 */

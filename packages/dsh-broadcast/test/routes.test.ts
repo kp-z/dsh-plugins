@@ -4,7 +4,7 @@ import { Readable } from 'node:stream'
 import type http from 'node:http'
 import { test } from 'node:test'
 import { STATE_ROUTE, VOICES_ROUTE, createStateHandler, createVoicesHandler, statePayload, voicesPayload } from '../lib/routes.js'
-import { VOICE_OPTIONS } from '../lib/voices.js'
+import { VOICE_OPTIONS, listVoices } from '../lib/voices.js'
 
 /** 假的 IncomingMessage：只要能被 `on('data')` 读就行（真机给的是 Buffer）。 */
 function fakeReq(method: string, body?: string): http.IncomingMessage {
@@ -131,7 +131,9 @@ test('GET /voices 返回清单与当前选中项', () => {
   const payload = JSON.parse(out.body)
   assert.equal(payload.current, 'Tingting')
   assert.equal(payload.lastEngine, null)
-  assert.deepEqual(payload.voices, VOICE_OPTIONS.map((option) => ({ id: option.id, label: option.label, kind: option.kind, ...(option.hint !== undefined ? { hint: option.hint } : {}) })))
+  // 清单是动态的（现读本机 say），所以跟 listVoices() 对，而不是跟静态常量对
+  assert.deepEqual(payload.voices, listVoices())
+  assert.equal(payload.voices[0].kind, 'online', '在线那档永远排第一')
 })
 
 test('POST /voices 换音色并试听；清单外的音色 → 400', async () => {
@@ -151,7 +153,7 @@ test('POST /voices 换音色并试听；清单外的音色 → 400', async () =>
 
 test('voicesPayload 与处理器用的是同一份结构', () => {
   const d = deps()
-  assert.deepEqual(voicesPayload(d.deps), { current: 'Tingting', voices: VOICE_OPTIONS, lastEngine: null })
+  assert.deepEqual(voicesPayload(d.deps), { current: 'Tingting', voices: listVoices(), lastEngine: null })
 })
 
 test('客户端硬编码的路径与字段跟宿主对得上（两边不会各说各话）', () => {
