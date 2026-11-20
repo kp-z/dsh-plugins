@@ -14,14 +14,15 @@
 | --- | --- | --- | --- | --- |
 | `dsh-agent-world`<br>`0.1.0` | 把多智能体协作搬进一座可视化 **3D 小镇**：每个真实 subagent 是一个会走动的角色，每件任务是一张可被拾取的工单，每次调度是一次空间上的移动与协作。内容库层、模块协议与模拟内核已就位；当前能看见的是 2D 俯视调试视图，**3D 场景还没接上**。 | `file:packages/dsh-agent-world` | 未发布（`private`） | [README](packages/dsh-agent-world/README.md) |
 | `dsh-broadcast`<br>`0.1.0` | **会话结束语音播报**：每轮干完，让宿主自己的模型把这一轮说成 2–3 句普通话（≤ 80 字），再从宿主用 edge-tts 念出来（失败回落系统 `say`）。对话输入框里的扬声器按钮开关它，正在播报时同一个按钮就是「停止」。 | `file:packages/dsh-broadcast` | 未发布 | [README](packages/dsh-broadcast/README.zh.md) |
-| `dsh-contract-butler`<br>`0.1.0` | 协议管家：从代码里反向抽出边界契约（输入输出的形状），盯着它随版本演化，再拿运行时的真实载荷去对照声明——让「AI 写实现、人管约定」有一个可被人审阅的单一出处。 | `file:packages/dsh-contract-butler` | 未发布 | [README](packages/dsh-contract-butler/README.md) |
+| `@kpeace/dsh-contract-butler`<br>`0.1.0` | 协议管家：从代码里反向抽出边界契约（输入输出的形状），盯着它随版本演化，再拿运行时的真实载荷去对照声明——让「AI 写实现、人管约定」有一个可被人审阅的单一出处。 | `file:packages/dsh-contract-butler` | 未发布 | [README](packages/dsh-contract-butler/README.md) |
 | `@kpeace/dsh-daily`<br>`0.10.4` | **日报**插件：每日主动推荐多类型新闻，可用自然语言调教推荐偏好，索引网页与 YouTube / 哔哩哔哩视频，在右侧栏以常驻网页呈现——点一条就到了。 | `@kpeace/dsh-daily` | 0.10.4 | [README](packages/dsh-daily/README.md) |
-| `dsh-dev-git-graph`<br>`0.1.4` | 会话页里的 **Git Graph 面板**：源码级移植 [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 1.30.0，自动绑定当前会话工作区，渲染提交图（分支彩线、提交信息、日期、作者、refs），右键可执行原扩展的全部 git 操作。 | `dsh-dev-git-graph` | 0.1.3（本仓 0.1.4 未发） | [README](packages/dsh-dev-git-graph/README.md) |
-| `dsh-cove-task`<br>`0.25.0` | Cove Task：配置飞书个人授权后，定时把飞书任务与文档同步到本地；任务可直接开成 DSH 会话，进展、预期与协作结果再写回飞书。 | `file:packages/dsh-cove-task` | v0.25.0 待发（npm 未登录） | [README](packages/dsh-cove-task/README.md) |
-| `dsh-ios-skin`<br>`0.3.0` | DSH Web GUI 的 **iOS 26 液态玻璃（Liquid Glass）** 主题：官方设计 token 全面重调 + 真正的一层磨砂玻璃材质，支持浅色/深色、降低透明度与高对比度。当前版本叫「Deep Fusion」。 | `dsh-ios-skin` | 0.1.0（本仓 0.3.0 未发） | [README](packages/dsh-ios-skin/README.md) |
-| `dsh-mermaid-comm`<br>`0.3.1` | 让 AI 在开发交流中**优先用 Mermaid 图**表达：对话输入框的勾选按钮控制 prompt 引导，`mermaid_validate` 校验语法，输出闸门自动修复或摘掉画坏的图，Mermaid 图库把图按版本存进工作区。渲染由 [`dsh-mermaid`](https://github.com/MrmoLabs/dsh-mermaid) 承担。 | `dsh-mermaid-comm`（连同 `dsh-mermaid`） | 0.3.1 | [README](packages/dsh-mermaid-comm/README.md) |
-| `dsh-spellbook`<br>`0.2.5` | **咒语书**·前端效果库：右侧栏一个「咒语书」tab。一条咒语 = 一段说清机制的描述 + 一段真实跑得起来的示例代码（图版里跑的是真代码，不是录屏）；点一下就把那条咒语送进对话输入框，模型也能用 `spellbook_lookup` 查回来。 | `dsh-spellbook` | 0.2.5 | [README](packages/dsh-spellbook/README.md) |
-| `dsh-tab-split`<br>`0.1.0` | 会话**视图分屏**：新增一个「分屏」视图 tab，把已入驻的视图（对话 / Git 树 / …）拆成并排窗格。默认仍是官方单视图，点分屏按钮才激活。 | `file:packages/dsh-tab-split` | 未发布 | [README](packages/dsh-tab-split/README.md) |
+| `@kpeace/dsh-dev-git-graph`<br>`0.1.4` | 会话页里的 **Git Graph 面板**：源码级移植 [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 1.30.0，自动绑定当前会话工作区，渲染提交图（分支彩线、提交信息、日期、作者、refs），右键可执行原扩展的全部 git 操作。 | `@kpeace/dsh-dev-git-graph` | 0.1.3（本仓 0.1.4 未发） | [README](packages/dsh-dev-git-graph/README.md) |
+| `@kpeace/dsh-cove-task`<br>`0.25.0` | Cove Task：配置飞书个人授权后，定时把飞书任务与文档同步到本地；任务可直接开成 DSH 会话，进展、预期与协作结果再写回飞书。 | `file:packages/dsh-cove-task` | v0.25.0 待发（npm 未登录） | [README](packages/dsh-cove-task/README.md) |
+| `@kpeace/dsh-ios-skin`<br>`0.3.0` | DSH Web GUI 的 **iOS 26 液态玻璃（Liquid Glass）** 主题：官方设计 token 全面重调 + 真正的一层磨砂玻璃材质，支持浅色/深色、降低透明度与高对比度。当前版本叫「Deep Fusion」。 | `@kpeace/dsh-ios-skin` | 0.1.0（本仓 0.3.0 未发） | [README](packages/dsh-ios-skin/README.md) |
+| `@kpeace/dsh-mermaid-comm`<br>`0.3.1` | 让 AI 在开发交流中**优先用 Mermaid 图**表达：对话输入框的勾选按钮控制 prompt 引导，`mermaid_validate` 校验语法，输出闸门自动修复或摘掉画坏的图，Mermaid 图库把图按版本存进工作区。渲染由 [`dsh-mermaid`](https://github.com/MrmoLabs/dsh-mermaid) 承担。 | `@kpeace/dsh-mermaid-comm`（连同 `dsh-mermaid`） | 0.3.1 | [README](packages/dsh-mermaid-comm/README.md) |
+| `@kpeace/dsh-prompt-notes`<br>`0.3.0` | 右侧栏**便签簿**：一本横向便签，管理常驻提示词、技能与 MCP；每张纸有作用域（所有会话 / 一个工作区 / 单个会话），图钉决定它现在生不生效。MCP 便签只有人能钉住。 | `@kpeace/dsh-prompt-notes` | 0.3.0 | [README](packages/dsh-prompt-notes/README.md) |
+| `@kpeace/dsh-spellbook`<br>`0.2.5` | **咒语书**·前端效果库：右侧栏一个「咒语书」tab。一条咒语 = 一段说清机制的描述 + 一段真实跑得起来的示例代码（图版里跑的是真代码，不是录屏）；点一下就把那条咒语送进对话输入框，模型也能用 `spellbook_lookup` 查回来。 | `@kpeace/dsh-spellbook` | 0.2.5 | [README](packages/dsh-spellbook/README.md) |
+| `@kpeace/dsh-tab-split`<br>`0.1.0` | 会话**视图分屏**：新增一个「分屏」视图 tab，把已入驻的视图（对话 / Git 树 / …）拆成并排窗格。默认仍是官方单视图，点分屏按钮才激活。 | `file:packages/dsh-tab-split` | 未发布 | [README](packages/dsh-tab-split/README.md) |
 | `dsh-example-tool`<br>`0.1.0` | **最小工具类插件示例**：用 `defineTool` 注册 `example_git_status` 与 `example_echo`，演示插件模块契约、配置 schema 与 `output` / `render` 声明。写新插件从这里起步。 | `file:packages/example-tool` | 未发布 | [README](packages/example-tool/README.md) |
 
 ## 安装
@@ -44,8 +45,8 @@ dsh plugin --profile web remove <包名>
 - **联调用一个独立 profile**，别污染真实 profile：
   `dsh plugin --profile devtest add <pkg>`，再 `dsh --profile devtest`。
 - 有几个包的安装有额外前提，装之前先看它自己的 README：`dsh-daily`（必须装成真实目录，
-  不能用符号链接）、`dsh-cove-task`（启用它的 bundle 并授权飞书 CLI）、`dsh-dev-git-graph`
-  （依赖 `dsh-better-sidebar`）、`dsh-mermaid-comm`（与 `dsh-mermaid` 配套）。
+  不能用符号链接）、`@kpeace/dsh-cove-task`（启用它的 bundle 并授权飞书 CLI）、`@kpeace/dsh-dev-git-graph`
+  （依赖 `dsh-better-sidebar`）、`@kpeace/dsh-mermaid-comm`（与 `dsh-mermaid` 配套）。
 
 ## 仓库结构
 

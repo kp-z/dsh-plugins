@@ -1,0 +1,81 @@
+{
+  "name": "@kpeace/dsh-prompt-notes",
+  "version": "0.3.0",
+  "type": "module",
+  "description": "DSH 插件：便签 —— 右侧栏一本横向拟物便签簿，管理常驻提示词、技能与 MCP，按全局 / 工作区 / 单个会话控制注入范围，并读出系统自带的注入内容。",
+  "license": "MIT",
+  "author": "kp-z",
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "dsh-better-sidebar",
+    "dsh-plugin",
+    "harness",
+    "mcp",
+    "prompt",
+    "scope",
+    "sidebar",
+    "skill",
+    "sticky-notes",
+    "workspace"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kp-z/dsh-plugins.git",
+    "directory": "packages/dsh-prompt-notes"
+  },
+  "homepage": "https://github.com/kp-z/dsh-plugins/tree/main/packages/dsh-prompt-notes#readme",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": {
+      "default": "./client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "check": "node --check index.js && node --check client.js && for f in src/*.js test/e2e/*.mjs test/fixtures/*.mjs demo/*.js demo/*.mjs; do node --check \"$f\" || exit 1; done",
+    "e2e": "node test/e2e/smoke.mjs",
+    "demo": "node demo/build.mjs",
+    "e2e:scope": "node test/e2e/scope.mjs",
+    "e2e:share": "node test/e2e/share.mjs",
+    "e2e:robust": "node test/e2e/robust.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots",
+        "betterSidebar"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "dsh-better-sidebar": ">=0.12.0"
+  },
+  "peerDependenciesMeta": {
+    "dsh-better-sidebar": {
+      "optional": true
+    }
+  }
+}

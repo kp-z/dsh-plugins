@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300">
+  <defs>
+    <linearGradient id="pad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffdf0"/><stop offset="1" stop-color="#fbf3d4"/></linearGradient>
+    <linearGradient id="y" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6b0"/><stop offset="1" stop-color="#ffe985"/></linearGradient>
+    <linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d7ecff"/><stop offset="1" stop-color="#b6dbff"/></linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dcf5d0"/><stop offset="1" stop-color="#bfe8ae"/></linearGradient>
+    <radialGradient id="pin" cx=".34" cy=".28" r=".8"><stop offset="0" stop-color="#ffc0b8"/><stop offset=".14" stop-color="#ffc0b8"/><stop offset=".4" stop-color="#e8493d"/><stop offset="1" stop-color="#8e1e16"/></radialGradient>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#000" flood-opacity=".28"/></filter>
+  </defs>
+  <rect width="640" height="300" fill="#1f2430"/>
+  <g transform="translate(150 14)">
+    <!-- 索引标签：平色，当前页略高 -->
+    <rect x="10" y="2" width="50" height="22" rx="6" fill="#fdf8e2" stroke="#c9b977"/>
+    <rect x="64" y="5" width="44" height="19" rx="6" fill="#e6dcb4" stroke="#c9b977"/>
+    <rect x="112" y="5" width="52" height="19" rx="6" fill="#e6dcb4" stroke="#c9b977"/>
+    <rect x="168" y="5" width="44" height="19" rx="6" fill="#e6dcb4" stroke="#c9b977"/>
+    <rect x="216" y="5" width="40" height="19" rx="6" fill="#e0dfd6" stroke="#c9b977"/>
+    <rect x="0" y="24" width="340" height="262" rx="5" fill="url(#pad)" stroke="#c9b977"/>
+    <!-- 标题、总开关、字数量尺 -->
+    <rect x="14" y="36" width="64" height="16" fill="#ffcf5a" opacity=".55"/>
+    <rect x="270" y="34" width="52" height="20" rx="5" fill="#e4dfcb" stroke="#6d6753"/>
+    <rect x="300" y="36" width="20" height="16" rx="3" fill="#fafaf5"/>
+    <rect x="14" y="62" width="312" height="9" rx="2" fill="#fff9d6" stroke="#8d7c3c"/>
+    <rect x="14" y="62" width="138" height="9" rx="2" fill="#ffc400" opacity=".55"/>
+    <!-- 分组条：素色左标 -->
+    <rect x="12" y="82" width="52" height="18" rx="0" fill="#3c2d0a" opacity=".07"/><rect x="12" y="82" width="3" height="18" fill="#3f8a4f"/>
+    <rect x="22" y="88" width="30" height="6" rx="3" fill="#2f2410" opacity=".7"/>
+    <!-- 提示词（黄） -->
+    <g filter="url(#sh)"><rect x="14" y="106" width="312" height="54" fill="url(#y)"/></g>
+    <rect x="22" y="114" width="28" height="13" rx="2" fill="#2d2f33"/><rect x="56" y="116" width="92" height="9" rx="4" fill="#2f2410"/>
+    <rect x="22" y="134" width="214" height="6" rx="3" fill="#2f2410" opacity=".55"/><rect x="22" y="145" width="140" height="6" rx="3" fill="#2f2410" opacity=".55"/>
+    <rect x="262" y="140" width="46" height="13" rx="3" fill="none" stroke="#9a2820" stroke-width="1.4"/>
+    <circle cx="302" cy="106" r="8" fill="url(#pin)"/>
+    <!-- 技能（蓝） -->
+    <g filter="url(#sh)"><rect x="14" y="170" width="312" height="54" fill="url(#b)"/></g>
+    <rect x="22" y="178" width="28" height="13" rx="2" fill="#1f4f86"/><rect x="56" y="180" width="78" height="9" rx="4" fill="#2f2410"/>
+    <rect x="22" y="198" width="230" height="6" rx="3" fill="#2f4a66" opacity=".6"/><rect x="22" y="209" width="120" height="6" rx="3" fill="#2f4a66" opacity=".6"/>
+    <rect x="262" y="204" width="46" height="13" rx="3" fill="none" stroke="#14487f" stroke-width="1.4"/>
+    <circle cx="302" cy="170" r="8" fill="url(#pin)"/>
+    <!-- MCP（绿）+ 连接指示灯 -->
+    <g filter="url(#sh)"><rect x="14" y="234" width="312" height="40" fill="url(#g)"/></g>
+    <rect x="22" y="242" width="28" height="13" rx="2" fill="#1f6b3a"/><rect x="56" y="244" width="40" height="9" rx="4" fill="#2f2410"/>
+    <rect x="22" y="260" width="130" height="6" rx="3" fill="#2f4a2a" opacity=".6"/>
+    <circle cx="270" cy="263" r="4" fill="#2fbf57"/>
+    <circle cx="302" cy="234" r="8" fill="url(#pin)"/>
+  </g>
+</svg>
