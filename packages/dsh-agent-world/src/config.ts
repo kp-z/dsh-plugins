@@ -8,6 +8,47 @@
  */
 import z from '@deepseek-ai/schemastery'
 
+/**
+ * Slow Vale 适配层配置（P0 起取代旧面板前端）。
+ *
+ * 为什么是**独立端口**：Slow Vale 的构建产物用根路径绝对地址（/api、/assets），
+ * 挂在宿主 webServer 的前缀下就得重写 155 个文件里的路径。见 adapters/slowvale/server.ts。
+ */
+export interface SlowvaleConfig {
+  enabled: boolean
+  host: string
+  port: number
+  /** 构建产物目录（相对 workspace）。 */
+  assetsDir: string
+  /** SSE 推送周期（ms）；0 = 只发 connected。 */
+  pushMs: number
+  worldId: string
+  /** 默认地图（对应 assets/maps/ 下的目录名）。 */
+  place: string
+  /** 第 0 tick 对应的游戏日期。 */
+  startDate: string
+  email: string
+  password: string
+  /** 玩家自己扮演的角色 id；空串 = 取世界里的第一个角色。 */
+  viewerRoleId: string
+}
+
+export const DEFAULT_SLOWVALE: SlowvaleConfig = {
+  // 默认关闭：适配层要占一个端口，测试与 headless 场景都不该被它影响。
+  // 打开方式见 cordis.patch.yml（slowvale.enabled: true）。
+  enabled: false,
+  host: '127.0.0.1',
+  port: 7788,
+  assetsDir: 'slowvale-mirror/site',
+  pushMs: 1000,
+  worldId: 'w1',
+  place: 'downtown_street',
+  startDate: '2026-01-01',
+  email: 'demo@slowvale.dev',
+  password: 'slowvale123',
+  viewerRoleId: '',
+}
+
 export const AgentWorldConfig = z.object({
   /** 世界状态落盘目录：`<session workspace>/<stateDir>/`。 */
   stateDir: z.string().default('.agent-world'),
@@ -114,6 +155,23 @@ export const AgentWorldConfig = z.object({
   teamDescription: z
     .string()
     .default('一座小镇：每个居民是一个角色，玩家会直接跟他们说话，并让他们把镇上的活干完。'),
+
+  /** Slow Vale 适配层（替代旧面板）。关掉它世界照跑，只是没有可视化入口。 */
+  slowvale: z
+    .object({
+      enabled: z.boolean().default(false),
+      host: z.string().default('127.0.0.1'),
+      port: z.number().default(7788),
+      assetsDir: z.string().default('slowvale-mirror/site'),
+      pushMs: z.number().default(1000),
+      worldId: z.string().default('w1'),
+      place: z.string().default('downtown_street'),
+      startDate: z.string().default('2026-01-01'),
+      email: z.string().default('demo@slowvale.dev'),
+      password: z.string().default('slowvale123'),
+      viewerRoleId: z.string().default(''),
+    })
+    .default(DEFAULT_SLOWVALE),
 })
 
 export type AgentWorldConfig = Schemastery.TypeT<typeof AgentWorldConfig>
@@ -147,6 +205,34 @@ export function resolveConfig(config: Partial<AgentWorldConfig> = {}): AgentWorl
     teamDescription:
       config.teamDescription ??
       '一座小镇：每个居民是一个角色，玩家会直接跟他们说话，并让他们把镇上的活干完。',
+    slowvale: resolveSlowvale(config.slowvale),
+  }
+}
+
+/** Slow Vale 配置兜底：逐字段 ?? 默认，端口非法时退回 7788。 */
+function resolveSlowvale(input: Partial<SlowvaleConfig> | undefined): SlowvaleConfig {
+  const source = input ?? {}
+  return {
+    enabled: source.enabled ?? DEFAULT_SLOWVALE.enabled,
+    host: source.host ?? DEFAULT_SLOWVALE.host,
+    port:
+      typeof source.port === 'number' && Number.isFinite(source.port) && source.port > 0 && source.port < 65536
+        ? Math.floor(source.port)
+        : DEFAULT_SLOWVALE.port,
+    assetsDir:
+      typeof source.assetsDir === 'string' && source.assetsDir.trim() !== ''
+        ? source.assetsDir.trim()
+        : DEFAULT_SLOWVALE.assetsDir,
+    pushMs:
+      typeof source.pushMs === 'number' && Number.isFinite(source.pushMs) && source.pushMs >= 0
+        ? Math.floor(source.pushMs)
+        : DEFAULT_SLOWVALE.pushMs,
+    worldId: source.worldId ?? DEFAULT_SLOWVALE.worldId,
+    place: source.place ?? DEFAULT_SLOWVALE.place,
+    startDate: source.startDate ?? DEFAULT_SLOWVALE.startDate,
+    email: source.email ?? DEFAULT_SLOWVALE.email,
+    password: source.password ?? DEFAULT_SLOWVALE.password,
+    viewerRoleId: source.viewerRoleId ?? DEFAULT_SLOWVALE.viewerRoleId,
   }
 }
 

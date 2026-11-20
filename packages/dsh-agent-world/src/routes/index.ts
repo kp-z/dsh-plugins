@@ -15,9 +15,7 @@ import { createDialogueChannel, dialogueRoutes } from './dialogue.js'
 import type { DialogueChannel } from './dialogue.js'
 import type { DialoguePort } from './dialogue.js'
 import { eventsRoutes } from './events.js'
-import { panelRoutes } from './panel.js'
 import { HttpError } from './router.js'
-import { vendorRoutes } from './vendor.js'
 
 import type { EventSourcePort } from '../protocol/index.js'
 
@@ -47,15 +45,7 @@ export interface HttpDeps extends ApiDeps {
   vendorRoot?: string
 }
 
-/** 默认的面板静态目录：相对**编译产物**（`lib/routes/index.js` → `lib/web`）。 */
-function defaultWebRoot(): string {
-  return fileURLToPath(new URL('../web/', import.meta.url))
-}
 
-/** 默认的 vendored 资源目录（`lib/routes/index.js` → `lib/vendor`）。 */
-function defaultVendorRoot(): string {
-  return fileURLToPath(new URL('../vendor/', import.meta.url))
-}
 
 /**
  * 造完整路由表。
@@ -111,8 +101,6 @@ export function buildRoutes(deps: HttpDeps): RouteEntry[] {
     ...apiRoutes(deps),
     ...dialogueRoutes(dialogue),
     ...apiCatchAll(), // 必须在静态面板之前：否则 API 的错路径会被当成静态文件
-    ...vendorRoutes(deps.vendorRoot ?? defaultVendorRoot()), // 也在面板之前：白名单要优先于通配
-    ...panelRoutes(deps.webRoot ?? defaultWebRoot()),
   ]
 }
 

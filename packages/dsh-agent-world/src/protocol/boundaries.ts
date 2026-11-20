@@ -16,7 +16,7 @@
  * 2. **`tools/` 只许 import `protocol/`** —— 工具通过 **port 接口**拿东西，
  *    不许 import `state.ts` / `domain/` / `sim/`。这是"模块之间用协议通信"最直接的落点：
  *    今天 `tools/world.ts` 就是直接 import `../state.js`，这条规则会当场把它标红。
- * 3. **`web/` 只许 import `protocol/`** —— 浏览器侧不许伸手进宿主内部。
+ * 3. **`adapters/` 只许 import `protocol/`** —— 外部前端的适配层不许伸手进内核。
  *    `protocol/` 会把渲染需要的类型转出去，所以这不是限制能力，而是把缝收到一处。
  */
 import type { LibraryKind } from './library-kinds.js'
@@ -36,7 +36,7 @@ export type ModuleName =
   | 'tools'
   | 'routes'
   | 'app'
-  | 'web'
+  | 'adapters'
 
 /** 一个模块的边界规则。 */
 export interface BoundaryRule {
@@ -172,13 +172,14 @@ export const BOUNDARY_RULES: readonly BoundaryRule[] = [
     rationale: 'HTTP/SSE 是传输层：只做解析、调用、序列化。业务判断不在这里。',
   },
   {
-    module: 'web',
+    module: 'adapters',
     mayImport: ['protocol'],
     mayImportTypes: ['protocol'],
-    forbidden: ['node:'],
+    forbidden: ['three'],
     rationale:
-      '★ 浏览器侧**只许 import 契约层**。渲染需要的类型由 protocol 转出，' +
-      '所以这不是限制能力，而是把宿主机与浏览器之间那道缝收在一处。',
+      '★ 适配层（Slow Vale 等外部前端）**只许 import 契约层**，不碰内核实现。' +
+      '要读世界就走注入的函数，不 import state/domain/sim；否则换一个前端就要动内核。' +
+      '与旧 web/ 同一条理由，区别是它跑在 Node 里（所以要 node: 内置模块）。',
   },
   {
     module: 'app',
@@ -195,6 +196,7 @@ export const BOUNDARY_RULES: readonly BoundaryRule[] = [
       'bridge',
       'tools',
       'routes',
+      'adapters',
     ],
     mayImportTypes: [
       'protocol',
@@ -209,6 +211,7 @@ export const BOUNDARY_RULES: readonly BoundaryRule[] = [
       'bridge',
       'tools',
       'routes',
+      'adapters',
     ],
     forbidden: ['three'],
     rationale: '根文件（index/config/state）是组合根：它负责把一切接起来，理所当然认识所有人。',
