@@ -58,8 +58,3 @@ export const DEFAULT_APPEARANCE: Appearance = {
   accessory_style: null,
   accessory_variant: null,
 }
-
-/** 角色的一句话摘要（给日志、诊断、名单用），不参与对话。 */
-export function describeCharacter(character: Character): string {
-  return character.name + '（' + character.pronouns + '）· ' + character.persona.traits.slice(0, 2).join('、')
-}
