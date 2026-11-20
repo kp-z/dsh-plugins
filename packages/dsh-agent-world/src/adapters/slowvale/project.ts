@@ -39,6 +39,9 @@ export function epochOf(world: WorldLike): string {
 export function clockOf(world: WorldLike, startDate: string): {
   paused: boolean
   day_number: number
+  day_of_week: number
+  modern_time: string
+  game_time: Record<string, unknown>
   current_datetime: string
   minute: number
 } {
@@ -55,6 +58,15 @@ export function clockOf(world: WorldLike, startDate: string): {
   return {
     paused: world.paused === true,
     day_number: dayIndex + 1,
+    day_of_week: (dayIndex + 4) % 7,
+    // 前端读的是 clock.game_time.*（HUD 的 gameTime 是它的投影）
+    game_time: {
+      day_number: dayIndex + 1,
+      day_of_week: (dayIndex + 4) % 7,
+      modern_time: hh + ':' + mi,
+      minute_of_day: minuteOfDay,
+    },
+    modern_time: hh + ':' + mi,
     current_datetime: yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + mi + ':00',
     minute: minuteOfDay,
   }
@@ -229,6 +241,12 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
         // HUD 的 role 是 core 经 Mb() 展开的：role.money 与 role.attribute_effects
         // 分别来自 core.money 与 viewer.attributes。少一个就是"金钱必须是有限数字: undefined"。
         money: 128000,
+        cash: 128000,
+        bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 },
+        jobs: [],
+        debt: 0,
+        finance: { loans: [], debt: 0, money: 128000, balance: 128000, transactions: [] },
+        package: { money: 128000, items: [], entries: [] },
         wallet: { balance: 128000, currency: 'CNY' },
         assets: { items: [], entries: [], total: 128000, net_worth: 128000 },
         attributes: { sources: [], totals: {}, rows: [] },
@@ -246,7 +264,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
       attributes: { sources: [], totals: {}, rows: [] },
       attribute_effects: { sources: [], totals: {}, rows: [] },
       package: { money: 128000, items: [], entries: [] },
-      phone: { wallet: { balance: 128000, currency: 'CNY' }, money: 128000 },
+      phone: { wallet: { balance: 128000, currency: 'CNY' }, money: 128000, bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 } },
       housing: {},
       farm: null,
       money: 128000,

@@ -287,3 +287,32 @@ B1+B2 是"复现前端"的边界（所有可见面板能开、能显示空态）
 | effect_source_labels | /config | 角色面板的效果来源标签 |
 | place_type | place_topology | 地点类型未登记直接抛 |
 | attribute_effects.{sources,rows} | viewer.core / attributes | 角色面板两处 |
+
+## B2 巡检结果（手机内的 12 个 App）
+
+| App | 错误 | 需要的契约 |
+| --- | --- | --- |
+| 招聘 | 0 | — |
+| 银行 | 0 | config.phone_bank.{loan_salary_multiplier, loan_min_credit, max_active_loans}；role.finance.{loans, debt} |
+| 找房 | 0 | — |
+| 外卖 | 0 | — |
+| 购物 | 0 | — |
+| 股票 | 0 | — |
+| 生意 | 0 | — |
+| 我是歌手 | 0 | — |
+| 武道大会 | 0 | — |
+| 新闻 | 0 | — |
+| 朋友圈 | 0 | moments 响应要 posts/items 数组 |
+| 扭蛋 | 2 | 仍缺一个价格字段（"金钱必须是有限数字: undefined"） |
+
+**12 个 App 里 11 个 0 错误。**
+
+### 本轮新增的契约
+
+| 契约 | 位置 | 少了会怎样 |
+| --- | --- | --- |
+| phone_bank.{loan_salary_multiplier, loan_min_credit, max_active_loans} | /config | 银行面板算额度得到 NaN |
+| phone_gacha.{card_sets, base_price_by_count, daily_draw_limit, happy_hour} | /config | 扭蛋面板崩 |
+| role.finance.{loans, debt} | viewer.core | 银行面板读 M.value.loans 直接抛 |
+| clock.game_time.{modern_time, day_of_week} | 快照 clock | HUD 的时间/星期是 null |
+| role.package.{money, items} | viewer.core | 卡牌/背包归属计算 |
