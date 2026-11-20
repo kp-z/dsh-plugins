@@ -1,60 +1,65 @@
 
 /**
- * 绑定表的三条不变量。
+ * 绑定表：一个角色同一时刻只有一张嘴。
  *
- * 这些不是"顺便检查"，而是这套设计的核心：
- * 会话是嘴、角色是人——一个会话不能同时是两个人，一个人不能有两张主嘴。
+ * 这些不变量是"人的模型"的直接翻译，不是防御性代码。
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { BindingError, BindingTable } from '../lib/model/binding.js'
 
-test('一个会话只能代表一个人', () => {
+test('一个角色只能有一个活会话', () => {
   const table = new BindingTable()
-  table.bind({ sessionId: 's1', characterId: 'role.lin', role: 'primary', tick: 0 })
+  table.bind({ sessionId: 's1', characterId: 'role.lin', tick: 0 })
   assert.throws(
-    () => table.bind({ sessionId: 's1', characterId: 'role.mei', tick: 1 }),
-    (error) => error instanceof BindingError && /已绑定/.test(error.message),
+    () => table.bind({ sessionId: 's2', characterId: 'role.lin', tick: 1 }),
+    (error) => error instanceof BindingError && /先 archive/.test(error.message),
   )
-  assert.equal(table.characterOf('s1'), 'role.lin')
+  assert.equal(table.current('role.lin')?.sessionId, 's1')
 })
 
-test('一个人可以有多张嘴，但只能有一个 primary', () => {
+test('一个会话只能代表一个人', () => {
   const table = new BindingTable()
-  table.bind({ sessionId: 's1', characterId: 'role.lin', role: 'primary', tick: 0 })
-  table.bind({ sessionId: 's2', characterId: 'role.lin', role: 'secondary', channel: 'work', tick: 0 })
-  assert.equal(table.sessionsOf('role.lin').length, 2)
-  assert.equal(table.primaryOf('role.lin')?.sessionId, 's1')
+  table.bind({ sessionId: 's1', characterId: 'role.lin', tick: 0 })
   assert.throws(
-    () => table.bind({ sessionId: 's3', characterId: 'role.lin', role: 'primary', tick: 1 }),
-    (error) => error instanceof BindingError && /只能有一个主口/.test(error.message),
+    () => table.bind({ sessionId: 's1', characterId: 'role.mei', tick: 1 }),
+    (error) => error instanceof BindingError && /已经是角色/.test(error.message),
   )
+})
+
+test('归档后可以开新的，历史留着', () => {
+  const table = new BindingTable()
+  table.bind({ sessionId: 's1', characterId: 'role.lin', channel: 'work', tick: 0 })
+  assert.equal(table.archive('s1', 10, '换场'), true)
+  assert.equal(table.current('role.lin'), null)
+  table.bind({ sessionId: 's2', characterId: 'role.lin', channel: 'personal', tick: 11 })
+  assert.equal(table.current('role.lin')?.sessionId, 's2')
+  assert.equal(table.sessionsOf('role.lin').length, 2)
+  const archived = table.history()[0]
+  assert.equal(archived?.archivedAtTick, 10)
+  assert.equal(archived?.archivedReason, '换场')
   assert.deepEqual(table.validate(), [])
 })
 
-test('解绑写 unboundAtTick 而不是删行', () => {
+test('归档后的会话不再是任何人的嘴', () => {
   const table = new BindingTable()
-  table.bind({ sessionId: 's1', characterId: 'role.mei', role: 'primary', tick: 5 })
-  assert.equal(table.unbind('s1', 9), true)
+  table.bind({ sessionId: 's1', characterId: 'role.mei', tick: 0 })
+  table.archive('s1', 5)
   assert.equal(table.characterOf('s1'), null)
-  assert.equal(table.history().length, 1, '历史必须留着：绑定变更要能回放')
-  assert.equal(table.history()[0]?.unboundAtTick, 9)
-  table.bind({ sessionId: 's1', characterId: 'role.zhou', role: 'secondary', tick: 10 })
-  assert.equal(table.characterOf('s1'), 'role.zhou')
+  assert.equal(table.archive('s1', 6), false, '重复归档是无操作')
 })
 
-test('observer 不能是主口，也不能看全部', () => {
+test('体检能发现被人为破坏的状态', () => {
   const table = new BindingTable()
-  assert.throws(() => table.bind({ sessionId: 's1', characterId: 'role.lin', role: 'observer', channel: 'all', tick: 0 }))
-  table.bind({ sessionId: 's2', characterId: 'role.lin', role: 'observer', channel: 'work', tick: 0 })
-  assert.equal(table.speakerOf('role.lin'), null, '只有旁观口时，角色没有人能对外发言')
-})
-
-test('对外发言优先 primary，其次 secondary', () => {
-  const table = new BindingTable()
-  table.bind({ sessionId: 's2', characterId: 'role.lin', role: 'secondary', tick: 0 })
-  assert.equal(table.speakerOf('role.lin')?.sessionId, 's2')
-  table.bind({ sessionId: 's1', characterId: 'role.lin', role: 'primary', tick: 1 })
-  assert.equal(table.speakerOf('role.lin')?.sessionId, 's1')
+  table.bind({ sessionId: 's1', characterId: 'role.lin', tick: 0 })
+  assert.deepEqual(table.validate(), [])
+  // 直接改行模拟数据损坏（回放/迁移场景）
+  const row = table.history()[0]
+  assert.ok(row)
+  Object.assign(row, { sessionId: 's1' })
+  const second = table.bind({ sessionId: 's2', characterId: 'role.zhou', tick: 1 })
+  Object.assign(second, { characterId: 'role.lin' })
+  const problems = table.validate()
+  assert.ok(problems.some((item) => /多个活会话/.test(item)))
 })
