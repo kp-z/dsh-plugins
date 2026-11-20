@@ -70,10 +70,13 @@ test('apply 订阅 session/event（S2 的自动播报入口）', () => {
   assert.ok(logs.some((args) => String(args[0]).includes('dsh-broadcast 已加载')))
 })
 
-test('apply 挂上对话框开关的路由（S4 的遥控器）', () => {
+test('apply 挂上对话框开关与音色选择的路由', () => {
   const { ctx, routes } = fakeContext()
   apply(ctx as never, { enabled: false })
-  assert.deepEqual(routes, [{ kind: 'exact', path: '/dsh-broadcast/state' }])
+  assert.deepEqual(routes, [
+    { kind: 'exact', path: '/dsh-broadcast/state' },
+    { kind: 'exact', path: '/dsh-broadcast/voices' },
+  ])
 })
 
 test('定义与示例工具同构：defineTool 产出 name/description/parameters/output/execute', () => {

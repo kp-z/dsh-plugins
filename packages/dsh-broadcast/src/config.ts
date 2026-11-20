@@ -16,6 +16,9 @@ export const BroadcastConfig = z.object({
   /** edge-tts 音色。默认晓晓：温暖、长句稳。 */
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
 
+  /** 离线 say 的音色（音色选择器写这个）。空串 = 按 voice 推导。 */
+  sayVoice: z.string().default(''),
+
   /** 语速增量，如 '+8%'。空串 = 原速。 */
   rate: z.string().default('+8%'),
 
@@ -55,6 +58,7 @@ export function resolveConfig(raw: Partial<BroadcastConfig> = {}): BroadcastConf
     enabled: raw.enabled ?? false,
     engine: raw.engine ?? 'auto',
     voice: raw.voice ?? 'zh-CN-XiaoxiaoNeural',
+    sayVoice: raw.sayVoice ?? '',
     rate: raw.rate ?? '+8%',
     volume: raw.volume ?? 100,
     maxChars: raw.maxChars ?? 80,

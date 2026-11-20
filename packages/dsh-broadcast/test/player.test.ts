@@ -6,7 +6,6 @@ import {
   hasCommand,
   pickPlayer,
   sayArgs,
-  sayVoiceFor,
 } from '../lib/player.js'
 
 test('pickPlayer：macOS 优先 afplay，其次 ffplay，最后 say', () => {
@@ -52,8 +51,4 @@ test('say 参数带音色与语速，文本是最后一个参数', () => {
   assert.deepEqual(sayArgs('你好'), ['-v', 'Tingting', '-r', '190', '你好'])
 })
 
-test('sayVoiceFor：已知音色映射到系统音色，未知音色回落婷婷', () => {
-  assert.equal(sayVoiceFor('zh-CN-XiaoxiaoNeural'), 'Tingting')
-  assert.equal(sayVoiceFor('zh-CN-YunxiNeural'), 'Eddy')
-  assert.equal(sayVoiceFor('en-US-AriaNeural'), 'Tingting')
-})
+

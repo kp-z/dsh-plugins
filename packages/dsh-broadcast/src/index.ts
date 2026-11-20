@@ -10,8 +10,9 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { speak } from './announce.js'
 import { BroadcastConfig, resolveConfig } from './config.js'
 import { registerStateRoute } from './routes.js'
-import { createSwitch } from './state.js'
+import { createStateStore } from './state.js'
 import { summarizeReply, type HostServicesLike } from './summarizer.js'
+import { auditionText, resolveSayVoice } from './voices.js'
 import { createSessionListener, type SummaryInput } from './wiring.js'
 
 export { BroadcastConfig }
@@ -40,12 +41,13 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   const config = resolveConfig(raw)
   const logger = safeLogger(ctx)
 
-  // 开关真值：持久化值优先（重启后保持），其次才是配置里的默认值。
-  const sw = createSwitch({
-    fallback: config.enabled,
-    onPersistError: (error) => logger.warn('开关状态写盘失败：%s', error instanceof Error ? error.message : String(error)),
+  // 开关与音色的真值：持久化值优先（重启后保持），其次才是配置里的默认值。
+  const store = createStateStore({
+    fallback: { enabled: config.enabled, sayVoice: config.sayVoice },
+    onPersistError: (error) => logger.warn('状态写盘失败：%s', error instanceof Error ? error.message : String(error)),
   })
-  config.enabled = sw.isEnabled()
+  config.enabled = store.get().enabled
+  config.sayVoice = store.get().sayVoice
   logger.info('dsh-broadcast 已加载（enabled=%s engine=%s voice=%s useModel=%s）', config.enabled, config.engine, config.voice, config.useModel)
 
   /** 现取宿主服务：服务可能晚于本插件挂上来，宿主重载后旧句柄也不该认死。 */
@@ -154,15 +156,23 @@ export function apply(ctx: Context, raw: Partial<BroadcastConfig> = {}) {
   // 插件 ctx 没有 scope 标签，能收到主会话与各子代理的全部事件。
   ctx.on('session/event', listener)
 
-  // 对话框里的扬声器按钮：读开关、写开关、停掉正在播的那条。
+  // 对话框里的扬声器按钮：读开关、写开关、停掉正在播的那条、换音色并试听。
   registerStateRoute(ctx, {
-    isEnabled: () => sw.isEnabled(),
+    isEnabled: () => store.get().enabled,
     setEnabled: async (next) => {
       config.enabled = next
-      await sw.setEnabled(next)
+      await store.set({ enabled: next })
       logger.info('播报开关 → %s', next ? '开' : '关')
     },
     isSpeaking: () => speaking,
     stop,
+    currentVoice: () => resolveSayVoice(config),
+    setVoice: async (voice) => {
+      config.sayVoice = voice
+      await store.set({ sayVoice: voice })
+      logger.info('播报音色 → %s', voice)
+      // 换完立刻念一句：用户点的是「选择」，耳朵要马上有反馈
+      void enqueue(auditionText(voice))
+    },
   })
 }

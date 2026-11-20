@@ -10,9 +10,13 @@
  */
 import type http from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+import { VOICE_OPTIONS, isKnownVoice, type VoiceOption } from './voices.js'
 
 /** 路由路径（客户端硬编码同一个常量）。 */
 export const STATE_ROUTE = '/dsh-broadcast/state'
+
+/** 音色清单 / 试听的路由。 */
+export const VOICES_ROUTE = '/dsh-broadcast/voices'
 
 /** 请求体上限：只收一两个布尔值，8KB 已经极宽。 */
 const MAX_BODY_BYTES = 8 * 1024
@@ -23,6 +27,10 @@ export interface BroadcastRouteDeps {
   isSpeaking(): boolean
   /** 停掉正在播的那条（没有在播就是空操作）。 */
   stop(): void
+  /** 当前离线音色（`say -v` 的名字）。 */
+  currentVoice(): string
+  /** 换音色，并当场试听一句。 */
+  setVoice(voice: string): Promise<void>
 }
 
 export interface StatePayload {
@@ -30,10 +38,17 @@ export interface StatePayload {
   readonly toggle: true
   readonly enabled: boolean
   readonly speaking: boolean
+  /** 当前音色（选择器用它高亮选中项）。 */
+  readonly voice: string
 }
 
 export function statePayload(deps: BroadcastRouteDeps): StatePayload {
-  return { toggle: true, enabled: deps.isEnabled(), speaking: deps.isSpeaking() }
+  return { toggle: true, enabled: deps.isEnabled(), speaking: deps.isSpeaking(), voice: deps.currentVoice() }
+}
+
+/** 音色清单 + 当前值。 */
+export function voicesPayload(deps: BroadcastRouteDeps): { current: string; voices: readonly VoiceOption[] } {
+  return { current: deps.currentVoice(), voices: VOICE_OPTIONS }
 }
 
 function sendJson(res: http.ServerResponse, status: number, payload: unknown): void {
@@ -110,6 +125,35 @@ export function createStateHandler(deps: BroadcastRouteDeps): (req: http.Incomin
   }
 }
 
+/** 音色路由的处理器（同样与宿主解耦，可单测）。 */
+export function createVoicesHandler(deps: BroadcastRouteDeps): (req: http.IncomingMessage, res: http.ServerResponse) => void {
+  return (req, res) => {
+    const method = (req.method ?? 'GET').toUpperCase()
+    if (method === 'GET' || method === 'HEAD') {
+      sendJson(res, 200, voicesPayload(deps))
+      return
+    }
+    if (method !== 'POST') {
+      res.writeHead(405, { allow: 'GET, HEAD, POST' })
+      res.end()
+      return
+    }
+    readJsonBody(req)
+      .then(async (body) => {
+        const voice = (body as { voice?: unknown } | undefined)?.voice
+        if (typeof voice !== 'string' || !isKnownVoice(voice)) {
+          sendJson(res, 400, { error: 'body must be {"voice": <one of /dsh-broadcast/voices>}' })
+          return
+        }
+        await deps.setVoice(voice)
+        sendJson(res, 200, voicesPayload(deps))
+      })
+      .catch((error: unknown) => {
+        if (!res.headersSent) sendJson(res, 400, { error: String(error) })
+      })
+  }
+}
+
 /** webServer 服务的窄视图（只声明用到的那一个方法）。 */
 interface WebServerLike {
   register(spec: {
@@ -130,8 +174,12 @@ export function registerStateRoute(ctx: Context, deps: BroadcastRouteDeps): void
     ctx.inject(['webServer'], (host) => {
       const webServer = (host as unknown as { webServer?: WebServerLike }).webServer
       if (webServer === undefined || typeof webServer.register !== 'function') return
-      const dispose = webServer.register({ kind: 'exact', path: STATE_ROUTE, handler: createStateHandler(deps) })
-      ctx.effect(() => dispose)
+      const disposeState = webServer.register({ kind: 'exact', path: STATE_ROUTE, handler: createStateHandler(deps) })
+      const disposeVoices = webServer.register({ kind: 'exact', path: VOICES_ROUTE, handler: createVoicesHandler(deps) })
+      ctx.effect(() => () => {
+        disposeState()
+        disposeVoices()
+      })
     })
   } catch {
     // 沙箱拒绝注入 webServer：退化为「只能用配置文件开」，不报错也不影响播报
