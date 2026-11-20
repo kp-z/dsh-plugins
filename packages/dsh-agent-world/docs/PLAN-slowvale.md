@@ -175,3 +175,34 @@ node --test test/ → 794 通过 / 0 失败；tsc --noEmit 干净。
 
 所以 P1 第一件事不是加内容，是把视觉时间线接上：把内核的移动/动作翻译成 visual_timeline 的
 lane packet，或改成发 update 信封。这件事做完，角色才会真的走起来。
+
+## 免登录直达 + 办公室场景（本轮）
+
+### 已做
+
+1. **自动进入**（`slowvale.autoEnter`，默认开）：适配层在返回 index.html 时**运行时注入**一段脚本，
+   沿真实流程点一遍（登录 → AI 数据授权 → 新手引导 → 世界 → 角色 → 世界）。
+   磁盘上的静态产物一个字节没改，sha256 仍对得上（注入只在响应里做）。
+   实测：打开 `/` 直接落到 `/world/w1`，canvas 847×804 就位，无需任何点击。
+2. **场景改成办公室**：`slowvale.place = place:office.tech_company_1`。
+   这个 id 不是猜的——Slow Vale 的场景注册表里 `place:office.tech_company_*` 按规则映射到
+   `assets/maps/company`（也就是办公室那张图）。现在 company 的四件套（objects/collisions/layers/interactions）已在预取。
+
+### 还差一步（像素没出来）
+
+canvas 有了，但 `background.png` 没被请求——**场景挂载**这一步还是缺。
+
+本轮试过三种推送方式，结论如下（都留着记录，省下一次重试）：
+
+| 方式 | 结果 | 结论 |
+| --- | --- | --- |
+| 每秒 resync 全量快照 | canvas 稳定在，地图元数据在取，背景不加载 | 保底方案，**能进游戏但不播帧** |
+| `update` 信封 + `payload_gz: null`（kind=scene_state） | canvas 时有时无 | 前端不会为空 payload 去拉 /game/state/scene，反而抖 |
+| `update` 信封 + gzip 场景载荷 | canvas 直接崩掉 | 载荷形状没对上 applySceneState，别在半懂的情况下发 |
+
+所以下一步不是继续猜信封，而是**先把 applySceneState 的入参对齐**：
+它要的字段（scene / role_presences / actors / place_runtimes）我们都有，差的是"触发它的那一次调用"。
+定位方法：在 GameView 里搜 `scene_state` 的消费分支，看它解出 payload 后调的是哪个函数，
+再用 /game/state/scene 的返回体做对照（两者应当同构）。
+
+这件事和"角色走路"是同一个根：**视觉管道**。做完它，办公室场景和角色会一起出现。

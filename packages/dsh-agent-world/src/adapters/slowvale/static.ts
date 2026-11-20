@@ -7,7 +7,7 @@
  *   当 JS 解析，报错信息离真相极远。
  * - **不许越界**：解析后的路径必须仍在 root 之下。
  */
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
@@ -43,8 +43,19 @@ export function resolveFile(root: string, pathname: string): string | null {
   return null
 }
 
-/** 服务一个静态请求。返回 false 表示没找到（调用方决定要不要兜底）。 */
-export function serveStatic(root: string, req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
+/**
+ * 服务一个静态请求。
+ *
+ * @param transformHtml 只在返回 index.html 时生效。用它做**运行时注入**（自动进入脚本），
+ *   这样磁盘上的构建产物一个字节都不用改，sha256 仍然对得上。
+ */
+export function serveStatic(
+  root: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  transformHtml?: (html: string) => string,
+): boolean {
   let file = resolveFile(root, pathname)
   if (file === null) {
     if (pathname.startsWith('/assets/')) {
@@ -58,6 +69,18 @@ export function serveStatic(root: string, req: IncomingMessage, res: ServerRespo
       res.end('Slow Vale 静态资源没有找到：检查 slowvaleAssetsDir 配置')
       return true
     }
+  }
+  const isHtml = extname(file).toLowerCase() === '.html'
+  if (isHtml && transformHtml !== undefined) {
+    const html = transformHtml(readFileSync(file, 'utf8'))
+    const body = Buffer.from(html, 'utf8')
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': body.byteLength,
+      'cache-control': 'no-cache',
+    })
+    res.end((req.method ?? 'GET').toUpperCase() === 'HEAD' ? undefined : body)
+    return true
   }
   res.writeHead(200, {
     'content-type': MIME[extname(file)] ?? 'application/octet-stream',

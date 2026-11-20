@@ -24,4 +24,4 @@
           enabled: true
           port: 7788
           assetsDir: slowvale-mirror/site
-          place: downtown_street
+          place: 'place:office.tech_company_1'
