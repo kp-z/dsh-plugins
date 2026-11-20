@@ -1,4 +1,4 @@
-# dsh-dev-git-graph
+# @kpeace/dsh-dev-git-graph
 
 A [DeepSeek Harness](https://github.com/DeepSeek-ai/deepseek-harness) (dsh) plugin that adds a **Git Graph panel** to every conversation tab in the DSH Web GUI — a faithful port of [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 1.30.0.
 
@@ -17,7 +17,7 @@ It automatically binds to the **current session's workspace** and renders the co
 ## Install
 
 ```sh
-dsh plugin --profile web add dsh-dev-git-graph
+dsh plugin --profile web add @kpeace/dsh-dev-git-graph
 # restart `dsh web`, then open any conversation — a "Git 树" tab shows the workspace's commit graph
 ```
 
@@ -27,7 +27,7 @@ This plugin's only UI entry is a native **Git Graph** tab inside [`dsh-better-si
 
 ```sh
 # full one-line install (better-sidebar first, then this plugin)
-cd ~/.dsh && dsh plugin --profile web add dsh-better-sidebar && dsh plugin --profile web add dsh-dev-git-graph
+cd ~/.dsh && dsh plugin --profile web add dsh-better-sidebar && dsh plugin --profile web add @kpeace/dsh-dev-git-graph
 ```
 
 ## How it works
@@ -35,17 +35,17 @@ cd ~/.dsh && dsh plugin --profile web add dsh-better-sidebar && dsh plugin --pro
 ```mermaid
 flowchart LR
   subgraph GUI["DSH Web GUI"]
-    TAB["conversation.view tab Git 树"] --> IFRAME["iframe /dsh-dev-git-graph/gg/index.html?repo=cwd"]
+    TAB["conversation.view tab Git 树"] --> IFRAME["iframe /@kpeace/dsh-dev-git-graph/gg/index.html?repo=cwd"]
   end
   subgraph HOST["dsh web host plugin"]
-    R1["GET /dsh-dev-git-graph/gg/* static + inject boot data"] -.-> IFRAME
-    IFRAME -->|postMessage bridge| R2["POST /dsh-dev-git-graph/gg/api ~60 commands"]
+    R1["GET /@kpeace/dsh-dev-git-graph/gg/* static + inject boot data"] -.-> IFRAME
+    IFRAME -->|postMessage bridge| R2["POST /@kpeace/dsh-dev-git-graph/gg/api ~60 commands"]
     R2 --> DS["vendored dataSource.ts child_process.spawn git"] --> REPO[("local git repo = session workspace")]
   end
 ```
 
-- **Static**: `GET /dsh-dev-git-graph/gg/` serves the bundled frontend (`media/`), injecting `window.__DSH_GG_BOOT__` with `{ apiBase, repo, initialState, ... }`.
-- **API**: `POST /dsh-dev-git-graph/gg/api` mirrors the original extension's `gitGraphView.respondToMessage` command set.
+- **Static**: `GET /@kpeace/dsh-dev-git-graph/gg/` serves the bundled frontend (`media/`), injecting `window.__DSH_GG_BOOT__` with `{ apiBase, repo, initialState, ... }`.
+- **API**: `POST /@kpeace/dsh-dev-git-graph/gg/api` mirrors the original extension's `gitGraphView.respondToMessage` command set.
 - **Data**: `vendor/git-graph/dataSource.ts` runs git via `child_process.spawn` with array arguments.
 
 ## Differences from vscode-git-graph
@@ -88,9 +88,9 @@ Known limits (capabilities of better-sidebar 0.19.1, not regressions of this plu
 ## Development
 
 ```sh
-pnpm --filter dsh-dev-git-graph build      # build:web (tsc + pack) -> build:host (tsc) -> cp client.js
-pnpm --filter dsh-dev-git-graph typecheck  # two tsconfigs: host (NodeNext) + web (DOM)
-pnpm --filter dsh-dev-git-graph test       # diff-ref mapping + diff-bridge contract tests
+pnpm --filter @kpeace/dsh-dev-git-graph build      # build:web (tsc + pack) -> build:host (tsc) -> cp client.js
+pnpm --filter @kpeace/dsh-dev-git-graph typecheck  # two tsconfigs: host (NodeNext) + web (DOM)
+pnpm --filter @kpeace/dsh-dev-git-graph test       # diff-ref mapping + diff-bridge contract tests
 ```
 
 ## License

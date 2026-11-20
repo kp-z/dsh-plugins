@@ -1,10 +1,10 @@
-# dsh-tab-split
+# @kpeace/dsh-tab-split
 
 DSH 插件：会话**视图分屏**——把任意视图（对话 / Git 树 / 已入驻视图）拆成左右并排窗格。
 
 ## 与 @syncended/dsh-split-screen 的区别
 
-| | dsh-tab-split（本插件） | @syncended/dsh-split-screen |
+| | @kpeace/dsh-tab-split（本插件） | @syncended/dsh-split-screen |
 |---|---|---|
 | 分屏对象 | **同一会话内的任意视图**（对话 × Git 树等并排） | 多个会话各自的紧凑聊天 |
 | 机制 | 新增一个 `conversation.view` tab，纯增量，不替换官方任何东西 | 接管整个 `conversation` 中栏 |
