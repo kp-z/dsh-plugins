@@ -16,6 +16,7 @@
  */
 import type { Character } from '../model/character.js'
 import type { CharacterSessions } from './character-sessions.js'
+import { Budget } from './guard.js'
 
 export interface Utterance {
   id: string
@@ -32,8 +33,10 @@ export interface ConversationsOptions {
   resolveCharacter(id: string): Character | null
   /** 最多几跳（默认 2：A 说一句、B 回一句）。 */
   maxHop?: number
-  /** 每 tick 最多几次往返（默认 8），防止两个话痨把预算吃光。 */
+  /** 每 tick 最多几次往返（默认 8）；实际扣的是共享的 Budget。 */
   maxPerTick?: number
+  /** 共享预算；给了就用世界的那个，而不是自己造一个。 */
+  budget?: Budget
 }
 
 export interface SayToInput {
@@ -66,16 +69,16 @@ export class Conversations {
   private readonly sessions: CharacterSessions
   private readonly resolveCharacter: (id: string) => Character | null
   private readonly maxHop: number
-  private readonly maxPerTick: number
+  private readonly budget: Budget
   private readonly log: Utterance[] = []
-  private readonly perTick = new Map<number, number>()
   private counter = 0
 
   constructor(options: ConversationsOptions) {
     this.sessions = options.sessions
     this.resolveCharacter = options.resolveCharacter
     this.maxHop = options.maxHop ?? DEFAULT_MAX_HOP
-    this.maxPerTick = options.maxPerTick ?? DEFAULT_MAX_PER_TICK
+    // 预算统一交给 Budget：这里不再自己记一个计数器
+    this.budget = options.budget ?? new Budget({ perTick: options.maxPerTick ?? DEFAULT_MAX_PER_TICK })
   }
 
   /**
@@ -93,15 +96,15 @@ export class Conversations {
     if (hop > this.maxHop) {
       throw new ConversationError('对话太长：已到第 ' + String(hop) + ' 跳（上限 ' + String(this.maxHop) + '）')
     }
-    const used = this.perTick.get(input.tick) ?? 0
-    if (used >= this.maxPerTick) {
-      throw new ConversationError('本轮对话已用完（' + String(this.maxPerTick) + ' 次/ tick）')
+    try {
+      this.budget.spend(input.tick, '对话')
+    } catch (error) {
+      throw new ConversationError(error instanceof Error ? error.message : String(error))
     }
     // 让 B 知道是谁在说话：一个会话只有一个人，所以对方身份必须写进文本。
     const delivered = speaker.name + '对你说：' + input.text
     await this.ensureSession(listener, speaker, input.tick)
     const reply = await this.sessions.say(listener.id, delivered)
-    this.perTick.set(input.tick, used + 1)
     this.counter += 1
     const utterance: Utterance = {
       id: 'u' + String(this.counter),
@@ -117,7 +120,7 @@ export class Conversations {
 
   /** 一个 tick 内已经发生的回合数。 */
   usedInTick(tick: number): number {
-    return this.perTick.get(tick) ?? 0
+    return this.budget.usedIn(tick)
   }
 
   /** 全部回合（回放用）。 */
