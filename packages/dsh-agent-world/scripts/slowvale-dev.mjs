@@ -2,13 +2,16 @@
 /**
  * Slow Vale 适配层的独立开发入口（不启 DSH 宿主）。
  *
- * 用途：只改前端或只改投影时，不必把整个宿主拉起来。它造一个**会走动的假世界**，
- * 其余（HTTP 契约、SSE、静态站）走的是与生产完全相同的代码路径——
- * 所以在这里看到的东西，等于在宿主里看到的东西。
+ * 两个页面：
+ *   /      Slow Vale 正式前端（自动登录直达，HUD 已能进，但场景像素还差一道）
+ *   /show  极简可视化：一个人物在几座主要场景之间自动行走（用同一套地图与角色帧）
  *
- *   node scripts/slowvale-dev.mjs [--port 7788] [--assets <dir>] [--place downtown_street]
+ * 数据只有一份：stage 状态机。世界快照里的位置也取自它，所以两个页面看到的是同一个人。
+ *
+ *   node scripts/slowvale-dev.mjs [--port 7788] [--assets <dir>]
  */
 import { createSlowvaleBridge } from '../lib/adapters/slowvale/server.js'
+import { createStage } from '../lib/adapters/slowvale/stage.js'
 
 const argv = process.argv.slice(2)
 const arg = (name, fallback) => {
@@ -18,50 +21,41 @@ const arg = (name, fallback) => {
 
 const port = Number(arg('port', '7788'))
 const assetsDir = arg('assets', new URL('../../../slowvale-mirror/site', import.meta.url).pathname)
-const place = arg('place', 'place:office.tech_company_1')
 
-/** 假世界：三个人沿着固定巡逻点来回走，tick 决定位置。 */
-const NAMES = ['阿吉', '小满', '老周']
-const agents = NAMES.map((name, i) => ({
-  id: 'agent-' + String(i + 1),
-  name,
-  state: i === 0 ? 'working' : 'idle',
-  station: null,
-  position: { x: 0, z: 0 },
-  facing: 0,
-}))
+const stage = createStage({ assetsDir, name: '阿吉' })
+console.log('舞台场景：' + stage.places().join(' → '))
 
-const world = { id: 'w1', name: '演示小镇', tick: 0, paused: false, agents }
+// 只有一个人：世界快照里的角色就是舞台上的那个人，位置每 tick 同步。
+const agent = { id: 'agent-1', name: '阿吉', state: 'idle', station: null, position: { x: 0, z: 0 }, facing: 0 }
+const world = { id: 'w1', name: '演示小镇', tick: 0, paused: false, agents: [agent] }
 
-setInterval(() => {
-  world.tick += 1
-  for (let i = 0; i < agents.length; i += 1) {
-    const agent = agents[i]
-    const phase = (world.tick * 0.02 + i * 2.1) % (Math.PI * 2)
-    agent.position = { x: 1600 + Math.cos(phase) * 380, z: 1800 + Math.sin(phase) * 260 }
-    agent.facing = phase + Math.PI / 2
-    agent.station = Math.sin(phase) > 0.6 ? place : null
-  }
-}, 100)
-
-// 世界 tick 的推进入口与宿主一致：10Hz 由 runtime 驱动，这里用一个定时器代替。
 const bridge = await createSlowvaleBridge({
   host: '127.0.0.1',
   port,
   assetsDir,
-  opts: { worldId: 'w1', viewerRoleId: 'agent-1', place, startDate: '2026-01-01' },
+  opts: { worldId: 'w1', viewerRoleId: 'agent-1', place: 'place:office.tech_company_1', startDate: '2026-01-01' },
   account: { email: 'demo@slowvale.dev', password: 'slowvale123' },
   getWorld: () => world,
+  getStageFrame: () => stage.frame(),
   pushMs: 1000,
   autoEnter: true,
   log: (line) => console.log(line),
 })
 
-console.log('账号：demo@slowvale.dev / slowvale123')
-console.log('世界：3 个角色在城里绕圈，每 100ms 一个 tick，每秒推一次快照')
+const timer = setInterval(() => {
+  world.tick += 1
+  const frame = stage.tick(100)
+  agent.position = { x: frame.x, z: frame.y }
+  agent.state = frame.moving ? 'moving' : 'idle'
+  agent.station = frame.place
+}, 100)
+
+console.log('正式前端：http://127.0.0.1:' + port + '/   （自动登录，账号 demo@slowvale.dev / slowvale123）')
+console.log('走动视图：http://127.0.0.1:' + port + '/show')
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
+    clearInterval(timer)
     void bridge.close().then(() => process.exit(0))
   })
 }
