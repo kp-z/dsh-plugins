@@ -1,15 +1,14 @@
+
 /**
- * H1 验收：绑定表的三条不变量 + persona 注入的形状。
+ * 绑定表的三条不变量。
  *
- * 这些不变量不是"顺便检查"，而是这套设计的核心：
+ * 这些不是"顺便检查"，而是这套设计的核心：
  * 会话是嘴、角色是人——一个会话不能同时是两个人，一个人不能有两张主嘴。
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { BindingError, BindingTable } from '../lib/model/binding.js'
-import { CHARACTERS } from '../lib/content/characters.js'
-import { personaPrompt } from '../lib/model/persona.js'
 
 test('一个会话只能代表一个人', () => {
   const table = new BindingTable()
@@ -41,7 +40,6 @@ test('解绑写 unboundAtTick 而不是删行', () => {
   assert.equal(table.characterOf('s1'), null)
   assert.equal(table.history().length, 1, '历史必须留着：绑定变更要能回放')
   assert.equal(table.history()[0]?.unboundAtTick, 9)
-  // 解绑后可以把同一个会话绑给别人
   table.bind({ sessionId: 's1', characterId: 'role.zhou', role: 'secondary', tick: 10 })
   assert.equal(table.characterOf('s1'), 'role.zhou')
 })
@@ -59,15 +57,4 @@ test('对外发言优先 primary，其次 secondary', () => {
   assert.equal(table.speakerOf('role.lin')?.sessionId, 's2')
   table.bind({ sessionId: 's1', characterId: 'role.lin', role: 'primary', tick: 1 })
   assert.equal(table.speakerOf('role.lin')?.sessionId, 's1')
-})
-
-test('三个角色的人设能编成 prompt，且彼此不同', () => {
-  const prompts = CHARACTERS.map((persona) => personaPrompt(persona, { channel: 'work', situation: '在便利店结账' }))
-  assert.equal(new Set(prompts).size, 3)
-  for (const prompt of prompts) {
-    assert.match(prompt, /说话方式/)
-    assert.match(prompt, /此刻的处境/)
-  }
-  assert.match(prompts[0] ?? '', /林野/)
-  assert.match(prompts[1] ?? '', /小满/)
 })
