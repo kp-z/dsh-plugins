@@ -58,7 +58,7 @@ test('每 tick 有预算：话痨两个人也不能无限聊', async () => {
   assert.equal(conversations.usedInTick(1), 2)
   await assert.rejects(
     () => conversations.sayTo({ fromId: 'role.lin', toId: 'role.mei', text: 'c', tick: 1 }),
-    (error) => error instanceof ConversationError && /本轮对话已用完/.test(error.message),
+    (error) => error instanceof ConversationError && /预算用完/.test(error.message),
   )
   // 下一个 tick 预算刷新
   await conversations.sayTo({ fromId: 'role.lin', toId: 'role.mei', text: 'd', tick: 2 })
