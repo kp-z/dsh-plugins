@@ -252,3 +252,38 @@
 | B4 | admin 29 + push + widget + auth 其余 | ~35 | 后台与杂项，可用空结构收口 |
 
 B1+B2 是"复现前端"的边界（所有可见面板能开、能显示空态）；B3 开始才是"有内容"。
+
+## 结构层落地状态
+
+### 已做
+
+新增 src/adapters/slowvale/shapes.ts —— **形状表**：路径正则 → 合法空响应。
+路由在兜底前先查它，所以 60+ 个端点从"返回 {}"升级为"返回前端能消费的空态"。
+
+覆盖到的族：日志、手机（短信/联系人/群/订单/生意/歌手/应用）、朋友圈（列表/详情/评论/点赞/照片/活动/档案）、
+市场与财经、音乐、报纸、农场、自定义菜品、角色记忆与变化、关系图、地图 presence、回顾、包裹、
+玩家操作回执、商店、管理台、推送/挂件/问卷/偏好/角色创建删除。
+
+### 巡检结果（7 个码头面板）
+
+| 面板 | 错误 | 备注 |
+| --- | --- | --- |
+| 角色 | 0 | 需要 config.proficiency_exp_thresholds + attribute_effects.rows |
+| 背包 | 0 | 需要 config.item_categories |
+| 手机 | 0 | 需要 config.phone_apps（12 项、顺序硬校验） |
+| 互动 | 0 | conversation 的固定数组字段（含 interactions） |
+| 日志 | 0 | — |
+| 资产 | 2 | 仍报"金钱必须是有限数字: NaN"，金额来源未定位 |
+| 回顾 | 1 | 读某处的 day_number，未定位到具体响应 |
+
+### 这一轮新增的"配置契约"（都是硬校验）
+
+| 键 | 位置 | 少了会怎样 |
+| --- | --- | --- |
+| phone_apps | /config | 整块手机打不开（顺序也会校验） |
+| item_categories | /config | 背包崩 |
+| phone_bank / phone_stocks | /config | 资产面板崩 |
+| proficiency_exp_thresholds | /config | 角色面板崩 |
+| effect_source_labels | /config | 角色面板的效果来源标签 |
+| place_type | place_topology | 地点类型未登记直接抛 |
+| attribute_effects.{sources,rows} | viewer.core / attributes | 角色面板两处 |
