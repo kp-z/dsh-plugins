@@ -12,6 +12,8 @@ import type http from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { VOICE_OPTIONS, isKnownVoice, type VoiceOption } from './voices.js'
 
+export type { VoiceOption }
+
 /** 路由路径（客户端硬编码同一个常量）。 */
 export const STATE_ROUTE = '/dsh-broadcast/state'
 
@@ -27,10 +29,12 @@ export interface BroadcastRouteDeps {
   isSpeaking(): boolean
   /** 停掉正在播的那条（没有在播就是空操作）。 */
   stop(): void
-  /** 当前离线音色（`say -v` 的名字）。 */
+  /** 当前音色 id（'baidu' / 'say:xxx'）。 */
   currentVoice(): string
   /** 换音色，并当场试听一句。 */
-  setVoice(voice: string): Promise<void>
+  setVoice(voiceId: string): Promise<void>
+  /** 最近一次实际出声的引擎（edge / baidu / say），没有则 null。 */
+  lastEngine?(): string | null
 }
 
 export interface StatePayload {
@@ -47,8 +51,13 @@ export function statePayload(deps: BroadcastRouteDeps): StatePayload {
 }
 
 /** 音色清单 + 当前值。 */
-export function voicesPayload(deps: BroadcastRouteDeps): { current: string; voices: readonly VoiceOption[] } {
-  return { current: deps.currentVoice(), voices: VOICE_OPTIONS }
+export function voicesPayload(deps: BroadcastRouteDeps): {
+  current: string
+  voices: readonly VoiceOption[]
+  /** 最近一次实际出声的引擎（诊断「听起来不对」时看这里）。 */
+  lastEngine: string | null
+} {
+  return { current: deps.currentVoice(), voices: VOICE_OPTIONS, lastEngine: deps.lastEngine?.() ?? null }
 }
 
 function sendJson(res: http.ServerResponse, status: number, payload: unknown): void {

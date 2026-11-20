@@ -10,13 +10,16 @@ export const BroadcastConfig = z.object({
   /** 总开关。默认关——装完先试听再开，别半夜被吓一跳。 */
   enabled: z.boolean().default(false),
 
-  /** 引擎：edge-tts（联网、最像人）/ say（macOS 离线）/ auto（先 edge 再 say）。 */
+  /** 引擎：auto（按音质回落）/ edge / baidu（在线）/ say（离线）。一般不用改，选音色就够了。 */
   engine: z.string().default('auto'),
 
   /** edge-tts 音色。默认晓晓：温暖、长句稳。 */
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
 
-  /** 离线 say 的音色（音色选择器写这个）。空串 = 按 voice 推导。 */
+  /** 音色 id（选择器写这个）：'baidu' = 在线女声，'say:Eddy (中文（中国大陆）)' = 本机音色。空串 = 默认在线。 */
+  voiceId: z.string().default(''),
+
+  /** 本机 say 音色（老字段，兼容旧配置；新代码请用 voiceId）。 */
   sayVoice: z.string().default(''),
 
   /** 语速增量，如 '+8%'。空串 = 原速。 */
@@ -58,6 +61,7 @@ export function resolveConfig(raw: Partial<BroadcastConfig> = {}): BroadcastConf
     enabled: raw.enabled ?? false,
     engine: raw.engine ?? 'auto',
     voice: raw.voice ?? 'zh-CN-XiaoxiaoNeural',
+    voiceId: raw.voiceId ?? '',
     sayVoice: raw.sayVoice ?? '',
     rate: raw.rate ?? '+8%',
     volume: raw.volume ?? 100,

@@ -130,27 +130,28 @@ test('GET /voices 返回清单与当前选中项', () => {
   assert.equal(out.status, 200)
   const payload = JSON.parse(out.body)
   assert.equal(payload.current, 'Tingting')
-  assert.deepEqual(payload.voices, VOICE_OPTIONS.map((option) => ({ id: option.id, label: option.label })))
+  assert.equal(payload.lastEngine, null)
+  assert.deepEqual(payload.voices, VOICE_OPTIONS.map((option) => ({ id: option.id, label: option.label, kind: option.kind, ...(option.hint !== undefined ? { hint: option.hint } : {}) })))
 })
 
 test('POST /voices 换音色并试听；清单外的音色 → 400', async () => {
   const d = deps()
   const okRes = fakeRes()
-  createVoicesHandler(d.deps)(fakeReq('POST', JSON.stringify({ voice: 'Meijia' })), okRes.res)
+  createVoicesHandler(d.deps)(fakeReq('POST', JSON.stringify({ voice: 'say:Meijia' })), okRes.res)
   await settle()
-  assert.deepEqual(d.calls, ['voice:Meijia'])
-  assert.equal(JSON.parse(okRes.out.body).current, 'Meijia')
+  assert.deepEqual(d.calls, ['voice:say:Meijia'])
+  assert.equal(JSON.parse(okRes.out.body).current, 'say:Meijia')
 
   const badRes = fakeRes()
   createVoicesHandler(d.deps)(fakeReq('POST', JSON.stringify({ voice: 'Not A Voice' })), badRes.res)
   await settle()
   assert.equal(badRes.out.status, 400)
-  assert.deepEqual(d.calls, ['voice:Meijia'], '不该接受清单外的音色')
+  assert.deepEqual(d.calls, ['voice:say:Meijia'], '不该接受清单外的音色')
 })
 
 test('voicesPayload 与处理器用的是同一份结构', () => {
   const d = deps()
-  assert.deepEqual(voicesPayload(d.deps), { current: 'Tingting', voices: VOICE_OPTIONS })
+  assert.deepEqual(voicesPayload(d.deps), { current: 'Tingting', voices: VOICE_OPTIONS, lastEngine: null })
 })
 
 test('客户端硬编码的路径与字段跟宿主对得上（两边不会各说各话）', () => {
@@ -159,7 +160,7 @@ test('客户端硬编码的路径与字段跟宿主对得上（两边不会各�
   assert.match(source, new RegExp(`VOICES_URL = "${VOICES_ROUTE}"`))
   assert.match(source, /post\(STATE_URL, \{ enabled: next \}\)/)
   assert.match(source, /post\(STATE_URL, \{ stop: true \}\)/)
-  assert.match(source, /post\(VOICES_URL, \{ voice: voice\.id \}\)/)
+  assert.match(source, /post\(VOICES_URL, \{ voice: voiceId \}\)/)
   assert.match(source, /state\.toggle !== true/)
   assert.match(source, /state\.speaking === true/)
   assert.match(source, /conversation\.input\.left/)

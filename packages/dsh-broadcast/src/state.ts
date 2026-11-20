@@ -18,8 +18,8 @@ import { dirname, join } from 'node:path'
 export interface BroadcastState {
   /** 总开关：开=每轮结束自动播报。 */
   enabled: boolean
-  /** 选中的离线音色（`say -v` 的名字）；空串 = 按 config.voice 推导。 */
-  sayVoice: string
+  /** 选中的音色 id（'baidu' / 'say:xxx'）；空串 = 默认在线音色。 */
+  voiceId: string
 }
 
 const STATE_FILE = 'state.json'
@@ -55,10 +55,12 @@ export function readState(file: string | undefined): Partial<BroadcastState> | u
     if (text.length > MAX_STATE_BYTES) return undefined
     const parsed = JSON.parse(text) as unknown
     if (parsed === null || typeof parsed !== 'object') return undefined
-    const record = parsed as { enabled?: unknown; sayVoice?: unknown }
+    const record = parsed as { enabled?: unknown; voiceId?: unknown; sayVoice?: unknown }
     const state: Partial<BroadcastState> = {}
     if (typeof record.enabled === 'boolean') state.enabled = record.enabled
-    if (typeof record.sayVoice === 'string') state.sayVoice = record.sayVoice
+    if (typeof record.voiceId === 'string') state.voiceId = record.voiceId
+    // 老文件里存的是裸的 say 名字，迁移成 'say:xxx'
+    else if (typeof record.sayVoice === 'string' && record.sayVoice !== '') state.voiceId = `say:${record.sayVoice}`
     return Object.keys(state).length === 0 ? undefined : state
   } catch {
     return undefined

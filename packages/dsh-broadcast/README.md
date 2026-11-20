@@ -28,22 +28,29 @@ Raw replies are full of code fences, paths and tables; a path comes out as
    `agentDefaultModel.currentSelection()`) for 2–3 spoken sentences, ≤ 80 chars.
    If the model is missing, slow (6 s), or returns nothing, it falls back to the cleaned
    first paragraph, then to the first sentence of the raw reply.
-4. Synthesises speech with **edge-tts** (`zh-CN-XiaoxiaoNeural` by default) and plays it
-   with `afplay`; if edge-tts fails (403 / offline) it falls back to the system `say`.
+4. Speaks it with the **online neural voice** (Baidu's free TTS endpoint — no key
+   needed), falling back to the macOS system `say` only if the online synthesis fails.
    Audio lands in `os.tmpdir()/dsh-broadcast/` and is deleted right after playback.
 5. Playback is serialised: two sessions ending at once never overlap; a new announcement
    can be stopped from the composer button.
 
-## The switch and the voice picker
+## One chip: switch + voice
 
-A speaker button in `conversation.input.left`. The host owns the value (persisted at
-`$DSH_PROFILE_DIR/broadcast/state.json`, so a page refresh and a restart both keep it);
-the button is only a remote control — optimistic on click, then it adopts whatever the
-host reads back. While speaking, the same button becomes **stop**.
+A single pill in `conversation.input.left`, `[🔊 在线女声 ▾]`. Clicking it opens one menu
+that holds both controls: the **automatic-announce switch** on top, then the voice list.
+Splitting these into two adjacent controls made it unclear what to click, so there is one
+path: chip → menu.
 
-The small caret next to it opens the voice list. Every entry is a voice this machine
-actually has, and clicking one switches to it **and speaks a sample immediately** — you
-hear the choice instead of guessing from a name.
+The host owns both values (persisted at `$DSH_PROFILE_DIR/broadcast/state.json`, so a page
+refresh and a restart keep them); the chip is a remote control — optimistic on click, then
+it adopts whatever the host reads back.
+
+The chip shows the current voice at all times and expresses state without changing width:
+a muted icon when off, pulsing waves plus a tinted fill while speaking.
+
+Every entry in the list is a voice that really exists on this machine, and clicking one
+switches to it **and speaks a sample immediately** — you hear the choice instead of guessing
+from a name. Picking an offline voice really means offline: no hidden substitution.
 
 ## Configuration
 
@@ -54,7 +61,8 @@ hear the choice instead of guessing from a name.
 | `sayVoice` | `''` | The offline voice you actually hear (a `say -v` name). Empty = derive from `voice`. The picker in the composer writes this. |
 | `rate` | `'+8%'` | Speech rate (edge-tts `+N%`; converted to `say -r` on fallback). |
 | `volume` | `100` | Volume 0–100 (SSML prosody). |
-| `engine` | `auto` | `auto` = edge-tts then `say`; `say` = offline only; `edge` = edge only. |
+| `voiceId` | `''` | Which voice to use: `baidu` (online) or `say:<name>` (offline). The picker writes this. |
+| `engine` | `auto` | `auto` follows `voiceId` (online, falling back to `say`); `edge` / `baidu` / `say` force one engine, and a forced engine fails loudly instead of substituting. |
 | `maxChars` | `80` | Spoken-length cap. 80 chars ≈ 16 s — longer is "can't stand it", not "can't finish it". |
 | `minChars` | `30` | Replies shorter than this are not worth a voice. |
 | `announceSubagent` | `false` | Also announce subagent sessions. |
@@ -91,8 +99,11 @@ engine actually produced the sound:
 
 ## Notes and limits
 
-- edge-tts is an unofficial Microsoft endpoint; when it rotates its domain or signature the
-  plugin falls back to `say` and says so in the tool result — never silent.
+- Both online endpoints are unofficial (Baidu's `gettts`, and edge-tts which is currently
+  403 to this machine and therefore not in the automatic chain). When they fail the plugin
+  falls back to `say` and says so in the tool result — never silent.
+- macOS `say` is concatenative synthesis: correct, but flat. That is why the online voice is
+  the default and why the picker labels the offline group as "偏机械".
 - The summary is one extra model call per turn (≤ 80 output tokens).
 - Nothing is recorded: audio is deleted after playing, and the only persisted state is the
   switch.
