@@ -18,7 +18,7 @@ const arg = (name, fallback) => {
 
 const port = Number(arg('port', '7788'))
 const assetsDir = arg('assets', new URL('../../../slowvale-mirror/site', import.meta.url).pathname)
-const place = arg('place', 'downtown_street')
+const place = arg('place', 'place:office.tech_company_1')
 
 /** 假世界：三个人沿着固定巡逻点来回走，tick 决定位置。 */
 const NAMES = ['阿吉', '小满', '老周']
@@ -53,6 +53,7 @@ const bridge = await createSlowvaleBridge({
   account: { email: 'demo@slowvale.dev', password: 'slowvale123' },
   getWorld: () => world,
   pushMs: 1000,
+  autoEnter: true,
   log: (line) => console.log(line),
 })
 

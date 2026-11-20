@@ -183,7 +183,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     market: {},
     actors: actorsOf(world, opts.place),
     visual_timeline: [],
-    scene_place_runtime_states: [],
+    scene_place_runtime_states: [{ place_id: opts.place, furniture: [] }],
     scene_farm_state: null,
   }
 }
@@ -204,7 +204,7 @@ export function projectScene(world: WorldLike, opts: ProjectOptions): Record<str
     role_public_statuses: statuses,
     role_presences: presence,
     actors: actorsOf(world, opts.place),
-    place_runtimes: [],
+    place_runtimes: [{ place_id: opts.place, installed_appliances: [] }],
     place_topology: { places: placesOf(opts.place) },
     clock: clockOf(world, opts.startDate),
     weather: 'clear',

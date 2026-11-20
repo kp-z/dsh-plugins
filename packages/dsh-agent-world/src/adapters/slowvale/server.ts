@@ -19,9 +19,12 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
-import { projectSnapshot, type ProjectOptions } from './project.js'
+import { autoEnterScript } from './auto-enter.js'
+import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
+import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
 
 /** 适配层启动参数。 */
@@ -35,6 +38,13 @@ export interface BridgeOptions {
   getWorld: () => WorldLike | null
   /** 推送周期（ms）。0 = 不推，只发 connected。 */
   pushMs: number
+  /**
+   * 自动进入（跳过登录/授权/引导）。默认关。
+   *
+   * 打开后适配层会在 index.html 里注入一段脚本，沿着真实流程点一遍。
+   * 这样做的原因见 auto-enter.ts 的注释：静态产物是逐字节固化的，不能改。
+   */
+  autoEnter?: boolean
   log?: (line: string) => void
 }
 
@@ -42,6 +52,15 @@ export interface BridgeOptions {
 export interface Bridge {
   port: number
   close: () => Promise<void>
+}
+
+/** 把自动进入脚本插到第一个 module script 之前（必须在应用挂载前跑）。 */
+function injectAutoEnter(html: string): string {
+  const tag = '<script src="/__slowvale/auto-enter.js"></script>'
+  if (html.includes('/__slowvale/auto-enter.js')) return html
+  const anchor = html.indexOf('<script type="module"')
+  if (anchor < 0) return html.replace('</body>', tag + '</body>')
+  return html.slice(0, anchor) + tag + '\n    ' + html.slice(anchor)
 }
 
 export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
@@ -63,11 +82,18 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n')
   }
 
+  /**
+   * 推一次增量：先 full（resync），之后只发 scene_state 信封。
+   *
+   * 为什么不能一直发 resync：resync 会让前端重建整份快照基线，场景层不会因此挂载；
+   * 而**场景挂载只由 scene_state 信封驱动**（前端收到后去拉 /game/state/scene）。
+   * 这是"画布在、地图资源也在下，但背景图始终没加载"的真正原因。
+   */
   const pushSnapshot = (event: string): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
     const payload = projectSnapshot(world, options.opts)
-    for (const res of clients) writeEvent(res, event, payload)
+    for (const res of clients) writeEvent(res, 'resync', payload)
   }
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -97,7 +123,26 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
 
-      serveStatic(options.assetsDir, req, res, url.pathname)
+      if (options.autoEnter === true && url.pathname === '/__slowvale/auto-enter.js') {
+        const body = Buffer.from(autoEnterScript(options.account), 'utf8')
+        res.writeHead(200, {
+          'content-type': 'text/javascript; charset=utf-8',
+          'content-length': body.byteLength,
+          'cache-control': 'no-store',
+        })
+        res.end(body)
+        return
+      }
+
+      serveStatic(
+        options.assetsDir,
+        req,
+        res,
+        url.pathname,
+        options.autoEnter === true
+          ? (html) => injectAutoEnter(html)
+          : undefined,
+      )
     })().catch((error: unknown) => {
       log('[slowvale] 请求处理失败 ' + String(error))
       if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
