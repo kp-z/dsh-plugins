@@ -53,6 +53,12 @@ Every entry in the list is a voice that really exists on this machine, and click
 switches to it **and speaks a sample immediately** — you hear the choice instead of guessing
 from a name. Picking an offline voice really means offline: no hidden substitution.
 
+The offline group is read from `say -v '?'` **at request time** (30 s cache), so a voice you
+download later — e.g. an "Enhanced" (增强) variant in System Settings → Accessibility →
+Spoken Content → Manage Voices — shows up in the menu without touching this plugin. Enhanced
+variants are listed first and marked, because they sound noticeably smoother than the compact
+ones that ship by default.
+
 ## Configuration
 
 | Key | Default | What it does |
@@ -103,6 +109,12 @@ engine actually produced the sound:
 - Both online endpoints are unofficial (Baidu's `gettts`, and edge-tts which is currently
   403 to this machine and therefore not in the automatic chain). When they fail the plugin
   falls back to `say` and says so in the tool result — never silent.
+- **There is only one free online Chinese voice.** Probed 2026-11-20: Baidu `text2audio`
+  refuses `per` 1–5 without an appid ("failed to cluster verify"), Sogou redirects to its
+  homepage, Youdao 500s on Chinese, Google times out, Microsoft's anonymous token endpoint is
+  404 and its translator API now demands credentials, and `person` on the Baidu `gettts`
+  endpoint is ignored (identical audio). More online voices therefore need a key — Azure /
+  讯飞 / an internal gateway with `/v1/audio/speech`.
 - macOS `say` is concatenative synthesis: correct, but flat. That is why the online voice is
   the default and why the picker labels the offline group as "偏机械".
 - **Polyphones are the engine's guess, not ours.** The request is plain text

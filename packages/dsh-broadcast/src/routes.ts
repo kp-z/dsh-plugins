@@ -10,7 +10,7 @@
  */
 import type http from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
-import { VOICE_OPTIONS, isKnownVoice, type VoiceOption } from './voices.js'
+import { isKnownVoice, listVoices, type VoiceOption } from './voices.js'
 
 export type { VoiceOption }
 
@@ -57,7 +57,7 @@ export function voicesPayload(deps: BroadcastRouteDeps): {
   /** 最近一次实际出声的引擎（诊断「听起来不对」时看这里）。 */
   lastEngine: string | null
 } {
-  return { current: deps.currentVoice(), voices: VOICE_OPTIONS, lastEngine: deps.lastEngine?.() ?? null }
+  return { current: deps.currentVoice(), voices: listVoices(), lastEngine: deps.lastEngine?.() ?? null }
 }
 
 function sendJson(res: http.ServerResponse, status: number, payload: unknown): void {
