@@ -34,6 +34,8 @@ export interface MessengerOptions {
   resolveCharacter(id: string): Character | null
   /** 角色此刻方便看手机吗；不给就当"随时方便"。 */
   reachability?(characterId: string): { ready: boolean; reason: string }
+  /** 说话人显示名（写进记忆片段）；缺省用角色 id。 */
+  nameOf?(id: string): string
 }
 
 export interface Receipt {
@@ -57,6 +59,7 @@ export class Messenger {
   private readonly sessions: CharacterSessions
   private readonly resolveCharacter: (id: string) => Character | null
   private readonly reachability: (characterId: string) => { ready: boolean; reason: string }
+  private readonly nameOf: (id: string) => string
   private readonly threads = new Map<string, SmsThread>()
   private readonly pending: SmsMessage[] = []
   private counter = 0
@@ -65,6 +68,7 @@ export class Messenger {
     this.sessions = options.sessions
     this.resolveCharacter = options.resolveCharacter
     this.reachability = options.reachability ?? (() => ({ ready: true, reason: '' }))
+    this.nameOf = options.nameOf ?? ((id: string) => id)
   }
 
   /** 收下一条来自玩家的短信：入队，立刻回执。 */
@@ -152,6 +156,7 @@ export class Messenger {
 
   private async ensureSession(character: Character, tick: number): Promise<void> {
     if (this.sessions.currentOf(character.id) !== null) return
+    // 记忆由 sessions 的 memoryFor 提供，这里不重复拼。
     await this.sessions.open({ character, channel: 'personal', tick, situation: '刚收到一条短信' })
   }
 }
