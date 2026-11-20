@@ -13,6 +13,7 @@
  * 打它得到一句"P0 未实现"，而不是让它掉进静态文件兜底变成一个更费解的错。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { shapeFor } from './shapes.js'
 import type { WorldLike } from './types.js'
 import {
   projectRoleCard,
@@ -164,7 +165,7 @@ export async function handleApi(
   if (path === '/config') {
     // phone_apps 的顺序是前端硬校验的（PxPhoneFrame 里那份 Object.freeze 列表），
     // 少一个、多一个、换顺序都会直接抛"phone_apps 顺序或成员不匹配"，整块手机打不开。
-    sendJson(res, 200, { locale: 'zh', min_client_version: null, phone_apps: PHONE_APPS, item_categories: ITEM_CATEGORIES, scene_by_place: {} })
+    sendJson(res, 200, { locale: 'zh', min_client_version: null, phone_apps: PHONE_APPS, item_categories: ITEM_CATEGORIES, scene_by_place: {}, phone_bank: { products: [], entries: [], balance: 128000, money: 128000 }, phone_stocks: { symbols: [] }, proficiency_exp_thresholds: [0, 100, 300, 700, 1500, 3000] })
     return true
   }
   if (path === '/registry/items' || path === '/registry/recipes') {
@@ -243,6 +244,7 @@ export async function handleApi(
       calls: [],
       sticky_notes: [],
       urgent_messages: [],
+      interactions: [],
       notes: [],
       can_operate: true,
     })
@@ -265,7 +267,10 @@ export async function handleApi(
       basic_info: { role_id: agent.id, name: agent.name, gender: 'male', personality_reset_available: false },
       money: 128000,
       wallet: { balance: 128000, currency: 'CNY' },
+      finance: { money: 128000, balance: 128000, transactions: [] },
+      assets: { items: [], entries: [] },
       attributes: {},
+      attribute_effects: { sources: [], totals: {} },
       titles: [],
       memories: [],
       changes: [],
@@ -287,6 +292,13 @@ export async function handleApi(
   // ── SSE 票据：真正的流在 server 里发起 ──────────────────────────────────
   if (path === '/game/stream-ticket' && method === 'POST') {
     sendJson(res, 200, { ticket: ctx.token() })
+    return true
+  }
+
+  // 结构层：已知形状的端点一律给合法空结构。前端对空态有兜底，对缺字段没有。
+  const shaped = shapeFor(method, path)
+  if (shaped !== null) {
+    sendJson(res, 200, shaped)
     return true
   }
 
