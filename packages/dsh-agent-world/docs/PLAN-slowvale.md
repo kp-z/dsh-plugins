@@ -239,3 +239,39 @@ canvas 有了，但 `background.png` 没被请求——**场景挂载**这一步
 stage 产出的就是"谁在哪、朝哪、在不在走"，正是 HUD 的 presence 需要的形状。
 等 scene_state 管道对齐后，把这个 frame 直接喂给 presence 即可，**不用再写一遍**。
 所以这不是绕路，是把渲染管道从最难的一端（前端协议）换到最确定的一端（自己的画布）先跑通。
+
+## 用后端驱动 HUD（本轮）
+
+### 收获：place id 与 asset 名是两套东西
+
+前端只认 place:office.tech_company_1 这种 id，靠规则表映射到 assets/maps/<asset>。
+之前把 asset 名当 place_id 传，得到的是一连串"一切都 200 但场景起不来"：
+
+| 症状 | 真因 |
+| --- | --- |
+| display-gap place.name 未登记: commercial_street | presence 里塞的是 asset 名，不是 place id |
+| Vue 组件异常 reading 'name' | viewer.core 缺 basic_info（HUD 的 role 是它包出来的） |
+| Vue 组件异常 reading 'map' | presence 缺 titles 数组（同场景列表直接读它） |
+| AssetMissingError portrait_generator | 头像素材不在 app-bundle 里，和服务端要 |
+
+### 现在的进度
+
+后端补齐之后，**HUD 已经能完整渲染**（前端零改动）：
+
+- 自动登录直达 /world/w1；
+- HUD 显示「阿吉 · 观察中 · 在场 2 人 · 现场 · 当前场景」，同场景列表正常；
+- 头像能画（补下 portrait_generator 280 张：Skins 9 / Eyes 7 / Hairstyles 200 / Accessories 64）；
+- 控制台错误 0。
+
+### 还差一处：城市视口
+
+HUD 里的 PhaserCanvas 由 isPhaserSceneActive 控制，而它由**场景运行时提交场景**点亮。
+我们给的是 HTTP 快照（推 resync），没有走 scene_state/visual 管道，所以这个开关不亮。
+
+这一处仍是同一个根：视觉管道。补齐它，城市视口就会出现在 HUD 里，而且**位置数据已经就绪**
+（stage 产出的 place/x/y/facing 就是 presence 需要的形状）。
+
+### 新增的可诊断性
+
+slowvale.debug 打开时，后端会往 index.html 注入一个采集脚本（不碰产物），
+把 console 与未捕获异常收进 window.__svlog。这一轮就是靠它把三个坏字段逐个逼出来的。

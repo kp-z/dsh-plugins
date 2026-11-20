@@ -39,6 +39,7 @@ const bridge = await createSlowvaleBridge({
   getStageFrame: () => stage.frame(),
   pushMs: 1000,
   autoEnter: true,
+  debug: true,
   log: (line) => console.log(line),
 })
 

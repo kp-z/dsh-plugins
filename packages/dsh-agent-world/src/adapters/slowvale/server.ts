@@ -24,6 +24,7 @@ import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { autoEnterScript } from './auto-enter.js'
 import { renderViewerHtml } from './viewer.js'
+import { debugScript } from './debug.js'
 import type { StageFrame } from './stage.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
@@ -47,6 +48,8 @@ export interface BridgeOptions {
    * 这样做的原因见 auto-enter.ts 的注释：静态产物是逐字节固化的，不能改。
    */
   autoEnter?: boolean
+  /** 注入调试采集脚本（不碰前端产物），排查用。 */
+  debug?: boolean
   /** 极简可视化（/show）的状态来源；没给就没有这个页面。 */
   getStageFrame?: () => StageFrame | null
   log?: (line: string) => void
@@ -56,6 +59,15 @@ export interface BridgeOptions {
 export interface Bridge {
   port: number
   close: () => Promise<void>
+}
+
+/** 调试脚本：必须最先执行，否则早期日志抓不到。 */
+function injectDebug(html: string, enabled: boolean): string {
+  if (!enabled || html.includes('/__slowvale/debug.js')) return html
+  const tag = '<script src="/__slowvale/debug.js"></script>'
+  const anchor = html.indexOf('<script')
+  if (anchor < 0) return html.replace('</head>', tag + '</head>')
+  return html.slice(0, anchor) + tag + '\n    ' + html.slice(anchor)
 }
 
 /** 把自动进入脚本插到第一个 module script 之前（必须在应用挂载前跑）。 */
@@ -145,6 +157,12 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res.end(body)
         return
       }
+      if (options.debug === true && url.pathname === '/__slowvale/debug.js') {
+        const body = Buffer.from(debugScript(), 'utf8')
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'content-length': body.byteLength, 'cache-control': 'no-store' })
+        res.end(body)
+        return
+      }
       if (options.autoEnter === true && url.pathname === '/__slowvale/auto-enter.js') {
         const body = Buffer.from(autoEnterScript(options.account), 'utf8')
         res.writeHead(200, {
@@ -162,8 +180,10 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res,
         url.pathname,
         options.autoEnter === true
-          ? (html) => injectAutoEnter(html)
-          : undefined,
+          ? (html) => injectDebug(injectAutoEnter(html), options.debug === true)
+          : options.debug === true
+            ? (html) => injectDebug(html, true)
+            : undefined,
       )
     })().catch((error: unknown) => {
       log('[slowvale] 请求处理失败 ' + String(error))

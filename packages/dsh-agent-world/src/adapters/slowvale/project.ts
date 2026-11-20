@@ -18,6 +18,7 @@
  * - clock 必须带 day_number 与 current_datetime（前端拿它推日期）。
  */
 import type { WorldAgentLike, WorldLike } from './types.js'
+import { DEFAULT_CIRCUIT } from './stage.js'
 import { MINUTES_PER_DAY, SLOWVALE_PROTOCOL_VERSION, TICKS_PER_GAME_MINUTE } from './types.js'
 
 /** 投影参数（世界 id / 玩家角色 / 默认地点 / 起始日历）。 */
@@ -71,10 +72,18 @@ function facingOf(radians: number | undefined): string {
 /** 角色在城里的落点。没有 station 的人先放在默认地点。 */
 function presenceOf(agent: WorldAgentLike, place: string): Record<string, unknown> {
   const position = agent.position ?? {}
+  const placeId = typeof agent.station === 'string' && agent.station !== '' ? agent.station : place
+  // HUD 的同场景列表直接读 presence 上的 name/gender/appearance/titles，
+  // 少任何一个都会在渲染时抛（"reading 'map'" 就是 titles 缺失）。
   return {
     role_id: agent.id,
+    name: agent.name,
+    gender: 'nonbinary',
+    appearance: DEFAULT_APPEARANCE,
+    titles: [],
+    scene: placeId,
     location: {
-      place_id: typeof agent.station === 'string' && agent.station !== '' ? agent.station : place,
+      place_id: placeId,
       x: typeof position.x === 'number' ? position.x : 0,
       y: typeof position.z === 'number' ? position.z : 0,
       facing: facingOf(agent.facing),
@@ -88,13 +97,24 @@ function publicStatusOf(agent: WorldAgentLike): Record<string, unknown> {
   return { status: agent.state === 'working' || agent.state === 'moving' ? 'online' : 'offline' }
 }
 
-/** 地点拓扑。P0 只登记三张图：默认街景 + 家 + 世界地图。 */
+/**
+ * 地点拓扑。
+ *
+ * 前端拿 place_id 去场景规则表里查资源；查不到会走兜底（画占位房间）并报
+ * "place.name 未登记"。所以这里必须用规则表命中得了的 id，并且给出人看的名字。
+ */
 export function placesOf(place: string): Record<string, Record<string, unknown>> {
-  return {
-    [place]: { place_id: place, scene: place, name: place },
+  const places: Record<string, Record<string, unknown>> = {
     home_public: { place_id: 'home_public', scene: 'home_public', name: '家' },
     world_map: { place_id: 'world_map', scene: 'world_map', name: '城市地图' },
   }
+  for (const spec of DEFAULT_CIRCUIT) {
+    places[spec.id] = { place_id: spec.id, scene: spec.id, name: spec.label, asset: spec.asset }
+  }
+  if (places[place] === undefined) {
+    places[place] = { place_id: place, scene: place, name: place }
+  }
+  return places
 }
 
 /** 默认外观：前端要求八件套齐全，缺一个就画不出人。 */
@@ -145,7 +165,24 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     statuses[agent.id] = publicStatusOf(agent)
   }
   const viewerAgent = world.agents.find((a) => a.id === opts.viewerRoleId) ?? world.agents[0]
+  const viewerId = viewerAgent?.id ?? opts.viewerRoleId
+  const viewerName = viewerAgent?.name ?? '访客'
   return {
+    // gameState.role：HUD 的几乎所有组件都从这里取名字与外观
+    // （缺了就是 "Cannot read properties of undefined (reading 'name')"，且整块 HUD 挂不出来）
+    role: {
+      role_id: viewerId,
+      basic_info: {
+        role_id: viewerId,
+        name: viewerName,
+        gender: 'nonbinary',
+        appearance: DEFAULT_APPEARANCE,
+        personality_reset_available: false,
+      },
+      attributes: {},
+      player_declutter: null,
+    },
+    scene: opts.place,
     world_id: opts.worldId,
     protocol_version: SLOWVALE_PROTOCOL_VERSION,
     cursor: { epoch: epochOf(world), seq: world.tick },
@@ -159,6 +196,15 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
       core: {
         role_id: viewerAgent?.id ?? opts.viewerRoleId,
         name: viewerAgent?.name ?? '访客',
+        // HUD 的 role 是 viewer.core 经 Mb() 包装出来的，所以 basic_info 必须在这儿，
+        // 放在快照根上的 role 只是备胎。
+        basic_info: {
+          role_id: viewerAgent?.id ?? opts.viewerRoleId,
+          name: viewerAgent?.name ?? '访客',
+          gender: 'nonbinary',
+          appearance: DEFAULT_APPEARANCE,
+          personality_reset_available: false,
+        },
         appearance: {
           skin: 1,
           eyes: 1,
