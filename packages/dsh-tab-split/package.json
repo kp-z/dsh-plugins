@@ -1,5 +1,5 @@
 {
-  "name": "dsh-tab-split",
+  "name": "@kpeace/dsh-tab-split",
   "version": "0.1.0",
   "description": "DSH 插件：会话视图分屏——新增「分屏」视图 tab，把已入驻的视图（Git 树/轨迹等）拆成并排窗格。默认保持官方单视图，点分屏按钮才激活。",
   "license": "MIT",

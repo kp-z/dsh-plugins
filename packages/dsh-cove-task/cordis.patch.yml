@@ -9,5 +9,5 @@
 #   - agents / sessionController（dsh-web-app，仅「开工」用到，缺失时降级报错）
 - insert:
     - id: cove-task
-      name: dsh-cove-task
+      name: "@kpeace/dsh-cove-task"
       config: {}

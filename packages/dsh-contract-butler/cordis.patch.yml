@@ -7,4 +7,4 @@
 #   - @deepseek-ai/dsh-host-webserver HTTP 路由与 SSE（web 组合已挂）
 - insert:
     - id: contract-butler
-      name: dsh-contract-butler
+      name: "@kpeace/dsh-contract-butler"
