@@ -32,3 +32,5 @@ export { DEFAULT_MEMORY_CHARS, DEFAULT_MEMORY_LIMIT, mentionsAny, memoryFromThre
 export type { MemoryOptions } from './runtime/memory.js'
 export { ConversationError, Conversations } from './runtime/conversations.js'
 export type { Utterance, ConversationsOptions, SayToInput, SayToResult } from './runtime/conversations.js'
+export { PresenceView } from './view/presence.js'
+export type { PresenceEntry, Track } from './view/presence.js'
