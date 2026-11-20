@@ -36,13 +36,29 @@ console.log('✓ 源码：workspaceContextOf 从 scope 读出项目上下文')
 /* 总览面板的宿主能力位：面板在宿主页面里，开不了 iframe 那套 postMessage，
    「打开会话」直接走 uiWorkspace —— 这条接线断了按钮就是死的，所以钉在源码层。 */
 const clientSrc = await readFile(new URL('../src/client/client.js', import.meta.url), 'utf8')
-assert.match(clientSrc, /createOverviewPanel\(\{[^}]*\bhost\b/, '总览面板要拿到 host 能力位')
 assert.match(clientSrc, /host\.__ctx = ctx/, 'apply 时要把 ctx 晚绑定给 host（factory 里没有 ctx）')
 assert.match(clientSrc, /openSession\(sessionId/, 'host 要提供 openSession')
 assert.match(clientSrc, /canOpenSession\(\)/, 'host 要能回答「当前宿主支不支持打开会话」')
 assert.match(clientSrc, /openFeishuTab\(sessionId\)/, 'host 要能自动打开右侧Cove Task 页签')
 assert.match(clientSrc, /betterSidebar[^]*openTab/, '打开右侧栏要调 betterSidebar.openTab')
 console.log('✓ 源码：总览面板的 host 能力位（openSession / canOpenSession）已接线')
+
+/* 视图的唯一来源：宿主半体**不内联**组件树，运行时 import 插件自己的 /tasks/src/ui.js；
+   独立页 import 同一个文件。这条接线断了就退回「两份代码各自跑」——
+   「浏览器里改了、DSH 里没变化」正是这么来的，所以钉在源码层。 */
+assert.match(clientSrc, /UI_MODULE_URL = '\/dsh-cove-task\/tasks\/src\/ui\.js'/, '宿主半体要从插件路由取视图装配模块')
+assert.match(clientSrc, /import\(url\)/, '装配模块必须动态 import（静态 import 会被内联成第二份视图）')
+assert.equal(/from '\.\/OverviewPanel\.js'/.test(clientSrc), false, '客户端半体不该再静态 import 视图')
+assert.equal(/from '\.\/styles\.js'/.test(clientSrc), false, '样式表随装配模块走，不在宿主半体里内联')
+const tasksBootSrc = await readFile(new URL('../tasksBoot.js', import.meta.url), 'utf8')
+assert.match(tasksBootSrc, /from '\.\/src\/ui\.js'/, '独立页要 import 同一个装配模块')
+assert.equal(/new Function\('exports'/.test(tasksBootSrc), false, 'React Flow 的启动收在 ui.js，不在独立页重复一份')
+const uiSrc = await readFile(new URL('../src/client/ui.js', import.meta.url), 'utf8')
+const overviewSrc = await readFile(new URL('../src/client/browserOpen.js', import.meta.url), 'utf8')
+assert.match(uiSrc, /export function createUi/, '装配模块要导出 createUi')
+assert.match(uiSrc, /export function injectUiStyles/, '样式随装配模块注入')
+assert.match(uiSrc, /createOverviewPanel\(\{[^}]*\bhost\b/, '总览面板要拿到 host 能力位')
+console.log('✓ 单一来源：宿主半体与独立页都从 src/client/ui.js 取视图')
 
 const captured = []
 const slotRegistrations = []
@@ -149,8 +165,27 @@ const sandbox = {
   clearTimeout,
 }
 sandbox.globalThis = sandbox
+/* 宿主半体在运行时 import 装配模块。vm 里的动态 import 要有人接：这里给一个
+   data: 模块当替身，顺便验证「交给装配模块的依赖是不是宿主的那一套」。 */
+const uiCalls = []
+const uiStub = await import('data:text/javascript,' + encodeURIComponent([
+  'globalThis.__coveUiCalls = globalThis.__coveUiCalls || []',
+  'export function createUi(deps) {',
+  '  globalThis.__coveUiCalls.push(deps)',
+  '  return { OverviewPanel: function OverviewPanel() { return null }, TaskCreateDock: function TaskCreateDock() { return null }, api: {}, styleIds: [] }',
+  '}',
+  'export function removeUiStyles() {}',
+].join('\n')))
 vm.createContext(sandbox)
-vm.runInContext(source, sandbox, { filename: 'client.iife.js' })
+/* 动态 import 的钩子挂在 Script 上（挂在 context 上对 runInContext 不生效）。 */
+const bundleScript = new vm.Script(source, {
+  filename: 'client.iife.js',
+  importModuleDynamically: (specifier) => {
+    uiCalls.push(specifier)
+    return uiStub
+  },
+})
+bundleScript.runInContext(sandbox)
 
 assert.ok(loaded, '模块没有通过 __ModuleLoader__.load 注册')
 assert.equal(loaded.id, 'dsh-cove-task')
@@ -198,18 +233,40 @@ assert.equal(taskDock.options.order, 40)
 assert.ok(typeof taskDock.options.label === 'undefined', 'dock 不需要 label（不是导航项）')
 console.log(`✓ 新会话任务条：conversation.input.dock id=${taskDock.options.id} → React 组件`)
 
-/* 样式：宿主页面里只注入样式表，不再有 iframe 传递主题。 */
+/* 视图装配：宿主半体在 apply 时就去取 /tasks/src/ui.js，并把宿主那一套依赖交进去。
+   vm 里的动态 import 要 node --experimental-vm-modules；没带这个 flag 的跑法只少这一层校验，
+   其余契约（注册、页签、样式、桥）照旧。 */
+if (uiCalls.length === 0) {
+  console.log('· vm 动态 import 未启用（node --experimental-vm-modules），跳过装配依赖断言')
+} else {
+  assert.deepEqual(uiCalls, ['/dsh-cove-task/tasks/src/ui.js'], `取装配模块的地址不对：${JSON.stringify(uiCalls)}`)
+  const createUiCalls = globalThis.__coveUiCalls || []
+  assert.equal(createUiCalls.length, 1, `装配模块调用次数不对：${createUiCalls.length}`)
+  const assembled = createUiCalls[0] || {}
+  assert.equal(assembled.React, ReactStub, '装配模块要用宿主提供的 React（同一份，不能自带一套）')
+  assert.equal(typeof (assembled.host && assembled.host.openSession), 'function', '装配时要把 host 能力位交进去')
+  assert.equal(typeof (assembled.store && assembled.store.get), 'function', '装配时要把视图偏好 store 交进去')
+  assert.equal(assembled.standalone, false, '宿主内的面板不是独立页')
+  console.log('✓ 视图装配：apply 时取 /dsh-cove-task/tasks/src/ui.js，并交入宿主 React / host / store')
+}
+
+/* 样式：宿主半体自己不再内联面板调色板；面板样式随装配模块注入一次。 */
 const styleIds = appendedStyles.map((node) => node.id)
-assert.ok(styleIds.includes('dsh-cove-task-style'), `缺少容器样式表：${styleIds.join(',')}`)
+assert.ok(styleIds.includes('dsh-cove-task-style'), `缺少页签容器样式表：${styleIds.join(',')}`)
+assert.ok(!styleIds.includes('dsh-cove-task-overview-style'), '总览样式不该内联在宿主半体里（应随 ui.js 注入）')
 console.log(`✓ 样式注入：${styleIds.filter(Boolean).join(', ')}`)
 
 /* 「打开任务页」：客户端只请宿主打开**独立任务页**（/dsh-cove-task/tasks），
    不自己拼地址、也不再请求落点标记（那一套随「跳转到 DSH」一起删掉了）。 */
-assert.ok(source.includes('/dsh-cove-task/api/open-panel'), '要能请宿主打开任务页')
+/* 「打开任务页」的请求随视图走（OverviewPanel → browserOpen.js），不再内联在宿主半体里。 */
+assert.ok(uiSrc.includes('createOverviewPanel'), '视图装配模块要接上总览面板')
+assert.ok(overviewSrc.includes('/dsh-cove-task/api/open-panel'), '要能请宿主打开任务页')
 assert.equal(source.includes('/api/panel-focus'), false, '落点标记已随旧方案删除')
 assert.equal(/selectPanel/.test(source), false, '客户端不再需要切 DSH 主面板')
-/* 客户端的源码里不该出现任务页地址：地址由宿主拼（桌面端 Host 是 dsh-app://，拼了就是错的） */
-assert.equal(source.includes('/dsh-cove-task/tasks'), false, '客户端不许自己拼任务页地址')
+/* 客户端不许自己拼任务页**地址**（桌面端 Host 是 dsh-app://，拼绝对地址必错）；
+   取视图模块用的是同源**路径**（/dsh-cove-task/tasks/src/…），两种宿主下都解析得到。 */
+assert.equal(/https?:\/\/[^'"\s]*\/dsh-cove-task\/tasks/.test(source), false, '客户端不许自己拼任务页绝对地址')
+assert.ok(source.includes('/dsh-cove-task/tasks/src/ui.js'), '视图装配模块走同源路径')
 console.log('✓ 打开任务页：POST /api/open-panel（地址由宿主拼成独立任务页）')
 
 /* 服务缺席时不能抛（否则会把宿主打成错误页）。 */
