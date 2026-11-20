@@ -8,6 +8,15 @@ test('系统提示把「怎么说人话」的约束写全了', () => {
   }
 })
 
+test('系统提示要求避开多音字与中英混排（合成器只吃纯文本，只能靠换词消除歧义）', () => {
+  assert.match(SYSTEM_PROMPT, /多音字/)
+  assert.match(SYSTEM_PROMPT, /换一个不含歧义的词/)
+  assert.match(SYSTEM_PROMPT, /逐字母/) // 说明为什么英文要换中文
+  for (const word of ['行', '长', '重', '还']) {
+    assert.ok(SYSTEM_PROMPT.includes(word), `应覆盖 ${word} 这类多音字`)
+  }
+})
+
 test('user 里带正文，并把工具名去重、限条数', () => {
   const { user, system } = buildPrompt({
     text: '我把接口改好了。',

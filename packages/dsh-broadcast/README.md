@@ -105,6 +105,13 @@ engine actually produced the sound:
   falls back to `say` and says so in the tool result — never silent.
 - macOS `say` is concatenative synthesis: correct, but flat. That is why the online voice is
   the default and why the picker labels the offline group as "偏机械".
+- **Polyphones are the engine's guess, not ours.** The request is plain text
+  (`lan/text/spd/source`) — there is no phoneme or SSML channel (sending SSML just gets read as
+  text, and `hang` gets spelled out letter by letter). So 行/长/重 are decided entirely by the
+  TTS's own statistical model, and the summary is deliberately terse, which is exactly the
+  context that model needs. Two mitigations: the prompt now tells the model to rephrase around
+  ambiguous words, and a stronger engine (edge-tts, when its endpoint works again) has a better
+  polyphone model.
 - The summary is one extra model call per turn (≤ 80 output tokens).
 - Nothing is recorded: audio is deleted after playing, and the only persisted state is the
   switch.
