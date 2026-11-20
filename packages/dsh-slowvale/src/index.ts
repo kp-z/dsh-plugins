@@ -28,3 +28,5 @@ export { DEFAULT_STEP_PIXELS, facingFor, stepToward, ticksToReach } from './rule
 export type { Facing, MoveState, Point } from './rules/movement.js'
 export { Messenger } from './runtime/messenger.js'
 export type { SmsMessage, SmsThread, MessengerOptions, Receipt, DeliveredReply } from './runtime/messenger.js'
+export { DEFAULT_MEMORY_CHARS, DEFAULT_MEMORY_LIMIT, mentionsAny, memoryFromThread, memoriesFor } from './runtime/memory.js'
+export type { MemoryOptions } from './runtime/memory.js'

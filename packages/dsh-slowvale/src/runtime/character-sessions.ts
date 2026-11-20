@@ -38,6 +38,8 @@ export interface CharacterSessionsOptions {
   /** 从 id 取角色；不存在要抛，不许造一个空壳。 */
   resolveCharacter: (id: string) => Character | null
   bindings?: BindingTable
+  /** 记忆从哪来：世界提供。不给就当作没有记忆。 */
+  memoryFor?(characterId: string): readonly string[]
 }
 
 export class CharacterSessions {
@@ -45,11 +47,13 @@ export class CharacterSessions {
   private readonly resolveCharacter: (id: string) => Character | null
   private readonly bindings: BindingTable
   private readonly sessionIds = new Set<string>()
+  private readonly memoryFor: ((characterId: string) => readonly string[]) | undefined
 
   constructor(options: CharacterSessionsOptions) {
     this.port = options.port
     this.resolveCharacter = options.resolveCharacter
     this.bindings = options.bindings ?? new BindingTable()
+    this.memoryFor = options.memoryFor
   }
 
   /** 只读地看一眼绑定现状（面板/诊断用）。 */
@@ -118,12 +122,13 @@ export class CharacterSessions {
   }
 
   private async spawn(input: OpenCharacterInput): Promise<{ sessionId: string; contextText: string }> {
+    const memories = input.memories ?? this.memoryFor?.(input.character.id)
     const contextInput: ContextInput = {
       character: input.character,
       channel: input.channel ?? 'all',
       tick: input.tick,
       ...(input.situation === undefined ? {} : { situation: input.situation }),
-      ...(input.memories === undefined ? {} : { memories: input.memories }),
+      ...(memories === undefined ? {} : { memories }),
     }
     const bundle = buildContext(contextInput, input.providers)
     const opened = await this.port.open({
