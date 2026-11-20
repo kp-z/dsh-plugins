@@ -42,24 +42,18 @@ window.__ModuleLoader__.load({
     var CSS = [
       "@keyframes dbc-pulse{0%,100%{opacity:1}50%{opacity:.45}}",
 
-      /* 胶囊：与它右边的权限 chip 同高同圆角，但靠"有无边框"区分可交互性 */
-      ".dbc-chip{height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;",
-      "border-radius:999px;border:1px solid var(--dsw-alias-border-secondary,rgba(0,0,0,.12));",
-      "background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none;",
-      "font-size:12.5px;font-weight:500;line-height:1;white-space:nowrap;letter-spacing:.01em;",
-      "transition:background-color .12s,color .12s,border-color .12s}",
-      ".dbc-chip>span{display:block;line-height:1;position:relative;top:-.5px}",  /* 中文字形下沉，微调半个像素 */
+      /* 只有一个圆形图标按钮：与 composer 里其它图标按钮同尺寸（28px），不额外占宽度。
+         当前音色与开关状态都在菜单里看，这里只留最必要的 28px。 */
+      ".dbc-chip{corner-shape:round;width:28px;height:28px;flex:none;display:grid;place-items:center;",
+      "padding:0;border:none;border-radius:999px;background:transparent;cursor:pointer;",
+      "color:var(--dsw-alias-label-secondary);transition:background-color .12s,color .12s}",
       ".dbc-chip:hover{background:var(--dsw-alias-interactive-bg-hover-solid);",
       "color:var(--dsw-alias-label-primary)}",
       ".dbc-chip:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}",
-      /* 开：完全回归中性灰；关：整体压暗，一眼能分辨 */
-      ".dbc-chip[data-off='true']{opacity:.55}",
-      /* 播报中：填充 + 蓝字，三种状态一眼可分 */
+      ".dbc-chip[data-off='true']{opacity:.5}",
+      /* 播报中：底色点一下品牌色 + 波形脉冲，仍不改变尺寸 */
       ".dbc-chip[data-speaking='true']{color:var(--dsw-alias-state-business-primary);",
-      "border-color:var(--dsw-alias-state-business-primary);",
       "background:var(--dsw-alias-state-business-tertiary,rgba(47,107,255,.1))}",
-      ".dbc-chip svg{flex:none}",
-      ".dbc-chip .dbc-caret{opacity:.5;margin-left:1px}",
       ".dbc-chip[data-speaking='true'] .dbc-wave{animation:dbc-pulse 1.05s ease-in-out infinite}",
       ".dbc-chip[data-speaking='true'] .dbc-wave-2{animation-delay:.16s}",
 
@@ -130,14 +124,6 @@ window.__ModuleLoader__.load({
         width: 15, height: 15, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor",
         strokeWidth: 1.35, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true",
       }, children);
-    }
-
-    function CaretIcon() {
-      return h("svg", {
-        className: "dbc-caret", width: 8, height: 8, viewBox: "0 0 10 10", fill: "none",
-        stroke: "currentColor", strokeWidth: 1.2, strokeLinecap: "round", strokeLinejoin: "round",
-        "aria-hidden": "true",
-      }, h("path", { d: "M2.2 4.1L5 6.9l2.8-2.8" }));
     }
 
     function CheckIcon() {
@@ -351,12 +337,12 @@ window.__ModuleLoader__.load({
       var speaking = state.speaking === true;
       var current = state.voice || (voicesData && voicesData.current) || "";
       var voices = (voicesData && voicesData.voices) || [];
-      var currentLabel = "";
+      // 按钮上不再显示文字（要尽可能短），音色名只用于 aria-label 与 tooltip
+      var voiceLabel = "";
       for (var i = 0; i < voices.length; i += 1) {
-        if (voices[i].id === current) currentLabel = voices[i].label;
+        if (voices[i].id === current) voiceLabel = voices[i].label;
       }
-      // 文案始终是音色名：状态变化时文字宽度不跳，靠图标（斜杠/脉冲）与底色表达开与关
-      if (currentLabel === "") currentLabel = "播报";
+      if (voiceLabel === "") voiceLabel = "播报";
 
       function applyState(value, revert) {
         setState(function (prev) {
@@ -383,10 +369,10 @@ window.__ModuleLoader__.load({
       }
 
       var label = speaking
-        ? "正在播报这一轮的收尾 · " + currentLabel
+        ? "正在播报这一轮的收尾 · " + voiceLabel
         : enabled
-          ? "语音播报已开启 · " + currentLabel
-          : "语音播报已关闭 · " + currentLabel;
+          ? "语音播报已开启 · " + voiceLabel
+          : "语音播报已关闭 · " + voiceLabel;
 
       var chipProps = {
         type: "button",
@@ -401,10 +387,7 @@ window.__ModuleLoader__.load({
         title: label,
         onClick: function () { setOpen(!open); },
       };
-      var chip = h("button", chipProps,
-        h(SpeakerIcon, { on: enabled, speaking: speaking }),
-        h("span", null, currentLabel),
-        h(CaretIcon));
+      var chip = h("button", chipProps, h(SpeakerIcon, { on: enabled, speaking: speaking }));
 
       var menu = null;
       if (open && voices.length > 0) {

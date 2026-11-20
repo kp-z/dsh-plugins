@@ -36,17 +36,18 @@ Raw replies are full of code fences, paths and tables; a path comes out as
 
 ## One chip: switch + voice
 
-A single pill in `conversation.input.left`, `[🔊 在线女声 ▾]`. Clicking it opens one menu
-that holds both controls: the **automatic-announce switch** on top, then the voice list.
-Splitting these into two adjacent controls made it unclear what to click, so there is one
-path: chip → menu.
+A single 28 px round button in `conversation.input.left` — the same size as the composer's
+own icon buttons, so it costs no extra width. Clicking it opens one menu that holds both
+controls: the **automatic-announce switch** on top, then the voice list.
+
+One button instead of a label + caret: the label was the widest thing in the tool row and
+said something the menu can say better. State is carried by the icon alone — slashed and
+dimmed when off, waves pulsing with a tinted background while speaking — so the button
+never changes size. The current voice is in the tooltip and, of course, in the menu.
 
 The host owns both values (persisted at `$DSH_PROFILE_DIR/broadcast/state.json`, so a page
-refresh and a restart keep them); the chip is a remote control — optimistic on click, then
+refresh and a restart keep them); the button is a remote control — optimistic on click, then
 it adopts whatever the host reads back.
-
-The chip shows the current voice at all times and expresses state without changing width:
-a muted icon when off, pulsing waves plus a tinted fill while speaking.
 
 Every entry in the list is a voice that really exists on this machine, and clicking one
 switches to it **and speaks a sample immediately** — you hear the choice instead of guessing
