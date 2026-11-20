@@ -34,12 +34,16 @@ Raw replies are full of code fences, paths and tables; a path comes out as
 5. Playback is serialised: two sessions ending at once never overlap; a new announcement
    can be stopped from the composer button.
 
-## The switch
+## The switch and the voice picker
 
 A speaker button in `conversation.input.left`. The host owns the value (persisted at
 `$DSH_PROFILE_DIR/broadcast/state.json`, so a page refresh and a restart both keep it);
 the button is only a remote control — optimistic on click, then it adopts whatever the
 host reads back. While speaking, the same button becomes **stop**.
+
+The small caret next to it opens the voice list. Every entry is a voice this machine
+actually has, and clicking one switches to it **and speaks a sample immediately** — you
+hear the choice instead of guessing from a name.
 
 ## Configuration
 
@@ -47,6 +51,7 @@ host reads back. While speaking, the same button becomes **stop**.
 | --- | --- | --- |
 | `enabled` | `false` | Master switch. Off by default: install quietly, listen once, then turn it on. |
 | `voice` | `zh-CN-XiaoxiaoNeural` | edge-tts voice. Any of its Chinese voices works. |
+| `sayVoice` | `''` | The offline voice you actually hear (a `say -v` name). Empty = derive from `voice`. The picker in the composer writes this. |
 | `rate` | `'+8%'` | Speech rate (edge-tts `+N%`; converted to `say -r` on fallback). |
 | `volume` | `100` | Volume 0–100 (SSML prosody). |
 | `engine` | `auto` | `auto` = edge-tts then `say`; `say` = offline only; `edge` = edge only. |

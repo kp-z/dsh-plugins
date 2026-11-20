@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs'
 import { Readable } from 'node:stream'
 import type http from 'node:http'
 import { test } from 'node:test'
-import { STATE_ROUTE, createStateHandler, statePayload } from '../lib/routes.js'
+import { STATE_ROUTE, VOICES_ROUTE, createStateHandler, createVoicesHandler, statePayload, voicesPayload } from '../lib/routes.js'
+import { VOICE_OPTIONS } from '../lib/voices.js'
 
-/** 假的 IncomingMessage：只要能被 `for on('data')` 读就行。 */
+/** 假的 IncomingMessage：只要能被 `on('data')` 读就行（真机给的是 Buffer）。 */
 function fakeReq(method: string, body?: string): http.IncomingMessage {
   const stream = Readable.from(body === undefined ? [] : [Buffer.from(body, 'utf8')])
   return Object.assign(stream, { method }) as unknown as http.IncomingMessage
@@ -36,6 +37,7 @@ function deps(overrides: Partial<Parameters<typeof createStateHandler>[0]> = {})
   const calls: string[] = []
   let enabled = false
   let speaking = false
+  let voice = 'Tingting'
   const base = {
     isEnabled: () => enabled,
     setEnabled: async (next: boolean) => {
@@ -46,6 +48,11 @@ function deps(overrides: Partial<Parameters<typeof createStateHandler>[0]> = {})
     stop: () => {
       calls.push('stop')
       speaking = false
+    },
+    currentVoice: () => voice,
+    setVoice: async (next: string) => {
+      calls.push(`voice:${next}`)
+      voice = next
     },
     ...overrides,
   }
@@ -58,18 +65,19 @@ function deps(overrides: Partial<Parameters<typeof createStateHandler>[0]> = {})
 
 const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
-test('路由路径是客户端硬编码的那个', () => {
+test('路由路径是客户端硬编码的那两个', () => {
   assert.equal(STATE_ROUTE, '/dsh-broadcast/state')
+  assert.equal(VOICES_ROUTE, '/dsh-broadcast/voices')
 })
 
-test('GET 返回开关与「正在播报」状态', async () => {
+test('GET 返回开关、播报中状态与当前音色', async () => {
   const d = deps()
   d.setSpeaking(true)
   const { res, out } = fakeRes()
   createStateHandler(d.deps)(fakeReq('GET'), res)
   assert.equal(out.status, 200)
   assert.match(out.headers['content-type'] ?? '', /application\/json/)
-  assert.deepEqual(JSON.parse(out.body), { toggle: true, enabled: false, speaking: true })
+  assert.deepEqual(JSON.parse(out.body), { toggle: true, enabled: false, speaking: true, voice: 'Tingting' })
 })
 
 test('POST {enabled:true} 写入并回读真值', async () => {
@@ -78,7 +86,7 @@ test('POST {enabled:true} 写入并回读真值', async () => {
   createStateHandler(d.deps)(fakeReq('POST', JSON.stringify({ enabled: true })), res)
   await settle()
   assert.deepEqual(d.calls, ['set:true'])
-  assert.deepEqual(JSON.parse(out.body), { toggle: true, enabled: true, speaking: false })
+  assert.equal(JSON.parse(out.body).enabled, true)
 })
 
 test('POST {stop:true} 停掉正在播的那条', async () => {
@@ -112,14 +120,46 @@ test('其它方法 → 405 且带 Allow', () => {
 
 test('statePayload 与处理器用的是同一份结构', () => {
   const d = deps()
-  assert.deepEqual(statePayload(d.deps), { toggle: true, enabled: false, speaking: false })
+  assert.deepEqual(statePayload(d.deps), { toggle: true, enabled: false, speaking: false, voice: 'Tingting' })
+})
+
+test('GET /voices 返回清单与当前选中项', () => {
+  const d = deps()
+  const { res, out } = fakeRes()
+  createVoicesHandler(d.deps)(fakeReq('GET'), res)
+  assert.equal(out.status, 200)
+  const payload = JSON.parse(out.body)
+  assert.equal(payload.current, 'Tingting')
+  assert.deepEqual(payload.voices, VOICE_OPTIONS.map((option) => ({ id: option.id, label: option.label })))
+})
+
+test('POST /voices 换音色并试听；清单外的音色 → 400', async () => {
+  const d = deps()
+  const okRes = fakeRes()
+  createVoicesHandler(d.deps)(fakeReq('POST', JSON.stringify({ voice: 'Meijia' })), okRes.res)
+  await settle()
+  assert.deepEqual(d.calls, ['voice:Meijia'])
+  assert.equal(JSON.parse(okRes.out.body).current, 'Meijia')
+
+  const badRes = fakeRes()
+  createVoicesHandler(d.deps)(fakeReq('POST', JSON.stringify({ voice: 'Not A Voice' })), badRes.res)
+  await settle()
+  assert.equal(badRes.out.status, 400)
+  assert.deepEqual(d.calls, ['voice:Meijia'], '不该接受清单外的音色')
+})
+
+test('voicesPayload 与处理器用的是同一份结构', () => {
+  const d = deps()
+  assert.deepEqual(voicesPayload(d.deps), { current: 'Tingting', voices: VOICE_OPTIONS })
 })
 
 test('客户端硬编码的路径与字段跟宿主对得上（两边不会各说各话）', () => {
   const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(source, new RegExp(`STATE_URL = "${STATE_ROUTE}"`))
-  assert.match(source, /post\(\{ enabled: next \}\)/)
-  assert.match(source, /post\(\{ stop: true \}\)/)
+  assert.match(source, new RegExp(`VOICES_URL = "${VOICES_ROUTE}"`))
+  assert.match(source, /post\(STATE_URL, \{ enabled: next \}\)/)
+  assert.match(source, /post\(STATE_URL, \{ stop: true \}\)/)
+  assert.match(source, /post\(VOICES_URL, \{ voice: voice\.id \}\)/)
   assert.match(source, /state\.toggle !== true/)
   assert.match(source, /state\.speaking === true/)
   assert.match(source, /conversation\.input\.left/)

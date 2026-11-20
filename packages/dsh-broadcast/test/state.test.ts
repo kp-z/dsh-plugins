@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
-  createSwitch,
+  createStateStore,
   readState,
   resolveStateDir,
   stateFilePath,
@@ -23,16 +23,17 @@ test('目录优先级：profile → DSH_HOME → ~/.dsh', () => {
   assert.equal(stateFilePath({}), undefined)
 })
 
-test('写读往返：重启后还认得', async () => {
+test('写读往返：开关与音色都能重启后恢复', async () => {
   const dir = tempDir()
   const file = join(dir, 'state.json')
   try {
-    await writeState(file, { enabled: true })
-    assert.deepEqual(readState(file), { enabled: true })
+    await writeState(file, { enabled: true, sayVoice: 'Meijia' })
+    assert.deepEqual(readState(file), { enabled: true, sayVoice: 'Meijia' })
     assert.match(readFileSync(file, 'utf8'), /"enabled":\s*true/)
+    assert.match(readFileSync(file, 'utf8'), /"sayVoice":\s*"Meijia"/)
 
-    await writeState(file, { enabled: false })
-    assert.deepEqual(readState(file), { enabled: false })
+    await writeState(file, { enabled: false, sayVoice: '' })
+    assert.deepEqual(readState(file), { enabled: false, sayVoice: '' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -48,9 +49,6 @@ test('坏文件 / 缺文件 / 空目录：一律当作没存过，不抛', () =>
     writeFileSync(file, '{ not json')
     assert.equal(readState(file), undefined)
 
-    writeFileSync(file, JSON.stringify({ enabled: 'yes' }))
-    assert.equal(readState(file), undefined)
-
     writeFileSync(file, JSON.stringify([1, 2, 3]))
     assert.equal(readState(file), undefined)
   } finally {
@@ -58,41 +56,63 @@ test('坏文件 / 缺文件 / 空目录：一律当作没存过，不抛', () =>
   }
 })
 
-test('createSwitch：持久化值优先于配置默认值', async () => {
+test('老格式（只有 enabled）仍能读出来，新字段给默认', () => {
   const dir = tempDir()
   const file = join(dir, 'state.json')
   try {
-    await writeState(file, { enabled: true })
-    const fromDisk = createSwitch({ fallback: false, file })
-    assert.equal(fromDisk.isEnabled(), true, '磁盘上的值说了算')
+    writeFileSync(file, JSON.stringify({ enabled: true, updatedAt: 'x' }))
+    assert.deepEqual(readState(file), { enabled: true })
 
-    const missing = createSwitch({ fallback: true, file: join(dir, 'missing.json') })
-    assert.equal(missing.isEnabled(), true, '没存过就用配置默认值')
+    writeFileSync(file, JSON.stringify({ enabled: 'yes', sayVoice: 'Flo (中文（中国大陆）)' }))
+    assert.deepEqual(readState(file), { sayVoice: 'Flo (中文（中国大陆）)' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('createSwitch：写入立刻生效，并把值落盘', async () => {
+test('createStateStore：持久化值优先于配置默认值', () => {
+  const dir = tempDir()
+  const file = join(dir, 'state.json')
+  try {
+    writeFileSync(file, JSON.stringify({ enabled: true, sayVoice: 'Reed (中文（中国大陆）)' }))
+    const store = createStateStore({ fallback: { enabled: false, sayVoice: '' }, file })
+    assert.deepEqual(store.get(), { enabled: true, sayVoice: 'Reed (中文（中国大陆）)' })
+
+    const missing = createStateStore({ fallback: { enabled: true, sayVoice: 'Tingting' }, file: join(dir, 'missing.json') })
+    assert.deepEqual(missing.get(), { enabled: true, sayVoice: 'Tingting' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('createStateStore：合并写，立刻生效并落盘', async () => {
   const dir = tempDir()
   const file = join(dir, 'state.json')
   try {
     const errors: unknown[] = []
-    const sw = createSwitch({ fallback: false, file, onPersistError: (error) => errors.push(error) })
-    await sw.setEnabled(true)
-    assert.equal(sw.isEnabled(), true)
-    assert.deepEqual(readState(file), { enabled: true })
+    const store = createStateStore({ fallback: { enabled: false, sayVoice: '' }, file, onPersistError: (e) => errors.push(e) })
+
+    await store.set({ enabled: true })
+    assert.deepEqual(store.get(), { enabled: true, sayVoice: '' })
+    assert.deepEqual(readState(file), { enabled: true, sayVoice: '' })
+
+    await store.set({ sayVoice: 'Meijia' })
+    assert.deepEqual(store.get(), { enabled: true, sayVoice: 'Meijia' })
+    assert.deepEqual(readState(file), { enabled: true, sayVoice: 'Meijia' })
     assert.deepEqual(errors, [])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('createSwitch：落盘失败只在回调里报，进程内状态照样生效', async () => {
+test('createStateStore：落盘失败只在回调里报，进程内状态照样生效', async () => {
   const errors: unknown[] = []
-  // 指向一个不存在的父目录下的不可写路径：写一定会失败
-  const sw = createSwitch({ fallback: false, file: '/dev/null/nope/state.json', onPersistError: (error) => errors.push(error) })
-  await sw.setEnabled(true)
-  assert.equal(sw.isEnabled(), true)
+  const store = createStateStore({
+    fallback: { enabled: false, sayVoice: '' },
+    file: '/dev/null/nope/state.json',
+    onPersistError: (error) => errors.push(error),
+  })
+  await store.set({ enabled: true })
+  assert.equal(store.get().enabled, true)
   assert.equal(errors.length, 1)
 })

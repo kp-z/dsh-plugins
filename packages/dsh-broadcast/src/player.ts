@@ -43,22 +43,6 @@ export function pickPlayer(options: { platform?: NodeJS.Platform; has?: (command
   return 'none'
 }
 
-/** edge-tts 音色 → macOS say 音色（只在回落时用）。 */
-const SAY_VOICES: Record<string, string> = {
-  'zh-CN-XiaoxiaoNeural': 'Tingting',
-  'zh-CN-XiaoyiNeural': 'Tingting',
-  'zh-CN-YunjianNeural': 'Eddy',
-  'zh-CN-YunxiNeural': 'Eddy',
-  'zh-CN-YunyangNeural': 'Reed',
-  'zh-CN-liaoning-XiaobeiNeural': 'Meijia',
-  'zh-TW-HsiaoChenNeural': 'Meijia',
-}
-
-/** 未知音色统一用婷婷（zh_CN，系统自带）。 */
-export function sayVoiceFor(voice: string): string {
-  return SAY_VOICES[voice] ?? 'Tingting'
-}
-
 /** afplay 参数（放完整文件，不循环）。 */
 export function afplayArgs(file: string): string[] {
   return [file]

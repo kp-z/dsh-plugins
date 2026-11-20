@@ -13,7 +13,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BroadcastConfig } from './config.js'
 import { synthesize } from './edge-tts.js'
-import { pickPlayer, playFile, sayOffline, sayVoiceFor } from './player.js'
+import { pickPlayer, playFile, sayOffline } from './player.js'
+import { resolveSayVoice } from './voices.js'
 import { normalizeRate, sayRateFromPercent, volumeToProsody } from './prosody.js'
 
 /** 临时音频目录：os.tmpdir()/dsh-broadcast/。 */
@@ -88,7 +89,7 @@ export async function speak(text: string, config: BroadcastConfig, deps: SpeakDe
   if (!spoken) throw new Error('没有可播报的文字')
 
   const say = deps.say ?? ((value, options) => sayOffline(value, deps.signal ? { ...options, signal: deps.signal } : options))
-  const sayOptions = { voice: sayVoiceFor(config.voice), rate: sayRateFromPercent(config.rate) }
+  const sayOptions = { voice: resolveSayVoice(config), rate: sayRateFromPercent(config.rate) }
 
   if (config.engine === 'say') {
     await say(spoken, sayOptions)
