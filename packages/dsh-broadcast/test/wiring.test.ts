@@ -26,6 +26,16 @@ function assistantEvent(turn: number, text: string, tools: string[] = []) {
   }
 }
 
+/** 用户发的话（真实形状：data.content[].text + data.source.kind）。 */
+function userEvent(turn: number, text: string, source = 'user') {
+  return { type: 'user/message', seq: 0, time: 0, data: { turn, content: [{ type: 'text', text }], source: { kind: source }, role: 'user' } }
+}
+
+/** 一次工具结果（isError 决定成没成）。 */
+function toolResultEvent(callId: string | number, ok: boolean) {
+  return { type: 'tool/result', seq: 0, time: 0, data: { message: { role: 'tool', toolCallId: String(callId), isError: !ok } } }
+}
+
 function turnEndEvent(turn: number, kind: string, errorMessage?: string) {
   return {
     type: 'turn/end',
@@ -143,9 +153,9 @@ test('总开关关闭：一条都不播', async () => {
   assert.deepEqual(spoken, [])
 })
 
-test('文案生成器拿到这一轮的正文、工具名和收尾方式', async () => {
+test('文案生成器拿到三样原料：用户原话、正文、做过的事', async () => {
   clock = 10_000
-  const inputs: { text: string; tools: readonly string[]; kind: string }[] = []
+  const inputs: any[] = []
   const spoken: string[] = []
   const listener = createSessionListener({
     config: resolveConfig({ enabled: true }),
@@ -156,14 +166,36 @@ test('文案生成器拿到这一轮的正文、工具名和收尾方式', async
     },
     now: () => clock,
   })
+  listener(session('s9'), userEvent(1, '把接口的返回值改一下，顺便跑测试'))
   listener(session('s9'), assistantEvent(1, LONG, ['read', 'edit']))
   listener(session('s9'), turnEndEvent(1, 'completed'))
   await settle()
+
   assert.equal(inputs.length, 1)
-  assert.match(inputs[0]?.text ?? '', /这一轮把接口改好了/)
-  assert.deepEqual(inputs[0]?.tools, ['read', 'edit'])
-  assert.equal(inputs[0]?.kind, 'completed')
+  const input = inputs[0]
+  assert.equal(input.ask, '把接口的返回值改一下，顺便跑测试', '用户的要什么必须传到')
+  assert.match(input.text, /这一轮把接口改好了/)
+  assert.deepEqual(input.tools, ['read', 'edit'])
+  assert.equal(input.actions.length, 2)
+  assert.equal(input.actions[0].name, 'read')
+  assert.equal(input.kind, 'completed')
   assert.deepEqual(spoken, ['模型写的一句话。'])
+})
+
+test('审批策略那类 user/message 不算「用户说的话」', async () => {
+  clock = 10_000
+  const inputs: any[] = []
+  const listener = createSessionListener({
+    config: resolveConfig({ enabled: true }),
+    speak: async () => {},
+    summarize: async (input) => { inputs.push(input); return { text: '好' } },
+    now: () => clock,
+  })
+  listener(session('s9b'), userEvent(1, '审批策略已改为不询问', 'user-approval'))
+  listener(session('s9b'), assistantEvent(1, LONG))
+  listener(session('s9b'), turnEndEvent(1, 'completed'))
+  await settle()
+  assert.equal(inputs[0]?.ask, '', '审批变更不该被当成需求')
 })
 
 test('同一轮的 turn/end 重复到达：只播一次', async () => {

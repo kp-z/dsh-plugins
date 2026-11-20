@@ -26,6 +26,11 @@ Raw replies are full of code fences, paths and tables; a path comes out as
    Error / aborted / blocked turns get one short sentence instead of the summary.
 3. Asks the **host's own model** (`ctx.get('llm').stream()`, route from
    `agentDefaultModel.currentSelection()`) for 2–3 spoken sentences, ≤ 80 chars.
+   The prompt gets **three pieces of raw material**, because a transcript of the reply alone
+   can only be re-narrated: *what the user asked* (the human's own words — injected runtime
+   context, skill catalogs and approval notices are filtered out by their `source.kind`),
+   *what was actually done* (up to 8 tool actions with their file/command), and *the
+   conclusion* (the last reply, capped).
    If the model is missing, slow (6 s), or returns nothing, it falls back to the cleaned
    first paragraph, then to the first sentence of the raw reply.
 4. Speaks it with the **online neural voice** (Baidu's free TTS endpoint — no key

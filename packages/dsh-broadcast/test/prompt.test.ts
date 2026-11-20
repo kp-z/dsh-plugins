@@ -1,34 +1,67 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { MAX_INPUT_CHARS, SYSTEM_PROMPT, buildPrompt, clipInput } from '../lib/prompt.js'
+import {
+  MAX_ACTIONS,
+  MAX_ASK_CHARS,
+  MAX_REPLY_CHARS,
+  SYSTEM_PROMPT,
+  buildPrompt,
+  clipInput,
+  describeActions,
+} from '../lib/prompt.js'
 
-test('系统提示把「怎么说人话」的约束写全了', () => {
-  for (const must of ['普通话口语', '2 到 3 句', '80 字', '先说结论', '拍板', '不要念代码', '路径', '数字说成中文', '不要开场白', 'Markdown']) {
+test('系统提示要求「汇报」而不是「复述」', () => {
+  for (const must of [
+    '普通话口语', '2 到 3 句', '80 字',
+    '他让你做的事，做到哪了',   // 第一句必须是结论
+    '不要复述原文',
+    '拍板',
+    '用「我」说',                // 不要「本轮/该会话」
+    '不要念工具名',
+    '数字说成中文',
+    '多音字',
+    '逐字母',
+  ]) {
     assert.ok(SYSTEM_PROMPT.includes(must), `system 提示缺了「${must}」`)
   }
 })
 
-test('系统提示要求避开多音字与中英混排（合成器只吃纯文本，只能靠换词消除歧义）', () => {
-  assert.match(SYSTEM_PROMPT, /多音字/)
-  assert.match(SYSTEM_PROMPT, /换一个不含歧义的词/)
-  assert.match(SYSTEM_PROMPT, /逐字母/) // 说明为什么英文要换中文
-  for (const word of ['行', '长', '重', '还']) {
-    assert.ok(SYSTEM_PROMPT.includes(word), `应覆盖 ${word} 这类多音字`)
-  }
+test('user 三段齐全：用户原话 → 最后回复 → 做过的事（含报错步数）', () => {
+  const { user } = buildPrompt({
+    ask: '把播报的菜单缩短一点',
+    text: '改成了 28px 图标按钮，测试都过了。',
+    actions: [
+      { name: 'read', detail: 'src/client.js' },
+      { name: 'edit', detail: 'src/client.js' },
+      { name: 'bash', detail: 'node --test' },
+    ],
+    kind: 'completed',
+  })
+  assert.match(user, /用户这一轮的原话：\n把播报的菜单缩短一点/)
+  assert.match(user, /我最后的回复（结论在这里）：\n改成了 28px 图标按钮/)
+  assert.match(user, /读了 src\/client\.js/)
+  assert.match(user, /改了 src\/client\.js/)
+  assert.match(user, /运行了 node --test/)
+  assert.ok(user.indexOf('原话') < user.indexOf('最后的回复'), '先给需求，再给结论')
 })
 
-test('user 里带正文，并把工具名去重、限条数', () => {
-  const { user, system } = buildPrompt({
-    text: '我把接口改好了。',
-    tools: ['read', 'read', 'edit', 'bash', 'grep', 'write', 'glob', 'grep', 'task', 'todo_write', 'read', 'edit', 'x', 'y'],
-  })
-  assert.equal(system, SYSTEM_PROMPT)
-  assert.match(user, /这一轮的收尾记录：\n我把接口改好了。/)
-  assert.match(user, /工具（只作参考，不要念出来）：/)
-  const toolLine = user.split('\n').find((line) => line.includes('工具（只作参考')) ?? ''
-  const names = toolLine.split('：')[1]?.split('、') ?? []
-  assert.ok(names.length <= 12, '工具名最多带 12 个')
-  assert.equal(new Set(names).size, names.length, '工具名去重')
+test('没有用户原话时不出空段；没有动作时不出动作段', () => {
+  const { user } = buildPrompt({ text: '只有回复。' })
+  assert.equal(user.includes('用户这一轮的原话'), false)
+  assert.equal(user.includes('实际做过的事'), false)
+  assert.match(user, /只有回复。/)
+})
+
+test('动作最多 MAX_ACTIONS 条，其余折成一句', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ name: 'read', detail: `f${i}.ts` }))
+  const lines = describeActions(many)
+  assert.equal(lines.length, MAX_ACTIONS + 1)
+  assert.match(lines.at(-1) ?? '', /另外还有 4 步/)
+})
+
+test('认不出的工具名说「做了」，不瞎猜动词', () => {
+  assert.deepEqual(describeActions([{ name: 'some_new_tool', detail: 'x' }]), ['- 做了 x'])
+  assert.deepEqual(describeActions([{ name: 'read', detail: undefined }]), ['- 读了'])
 })
 
 test('异常收尾时把 kind 告诉模型，正常完成时不说废话', () => {
@@ -36,10 +69,9 @@ test('异常收尾时把 kind 告诉模型，正常完成时不说废话', () =>
   assert.equal(buildPrompt({ text: 'x', kind: 'completed' }).user.includes('不是正常完成'), false)
 })
 
-test('长正文按行边界截到上限', () => {
-  const long = Array.from({ length: 400 }, (_, i) => `第 ${i} 行，这里有一些内容。`).join('\n')
-  const clipped = clipInput(long)
-  assert.ok(clipped.length <= MAX_INPUT_CHARS)
-  assert.ok(clipped.endsWith('。'), '不该把一句话切两半')
-  assert.equal(clipInput('短文本'), '短文本')
+test('长原料按行边界截断（需求与回复各自有上限）', () => {
+  const long = Array.from({ length: 400 }, (_, i) => `第 ${i} 行。`).join('\n')
+  assert.ok(clipInput(long, MAX_ASK_CHARS).length <= MAX_ASK_CHARS)
+  assert.ok(clipInput(long, MAX_REPLY_CHARS).length <= MAX_REPLY_CHARS)
+  assert.equal(clipInput('短文本', 100), '短文本')
 })
