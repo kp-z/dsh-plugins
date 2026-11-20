@@ -78,7 +78,7 @@ function presenceOf(agent: WorldAgentLike, place: string): Record<string, unknow
   return {
     role_id: agent.id,
     name: agent.name,
-    gender: 'nonbinary',
+    gender: 'male',
     appearance: DEFAULT_APPEARANCE,
     titles: [],
     scene: placeId,
@@ -105,14 +105,31 @@ function publicStatusOf(agent: WorldAgentLike): Record<string, unknown> {
  */
 export function placesOf(place: string): Record<string, Record<string, unknown>> {
   const places: Record<string, Record<string, unknown>> = {
-    home_public: { place_id: 'home_public', scene: 'home_public', name: '家' },
-    world_map: { place_id: 'world_map', scene: 'world_map', name: '城市地图' },
+    home_public: { place_id: 'home_public', scene: 'home_public', name: '家', place_type: 'compound', parent_id: null },
+    world_map: { place_id: 'world_map', scene: 'world_map', name: '城市地图', place_type: 'compound', parent_id: null },
+  }
+  // place_type 是前端硬校验的（未登记的类型会直接抛错），
+  // 合法值：self / venue / building / courtyard / unit / bedroom / compound。
+  const kinds: Record<string, string> = {
+    'place:office.tech_company_1': 'building',
+    'place:residential.apartment_1': 'unit',
+    'place:residential.mini_market': 'venue',
+    'place:commercial.city_restaurant': 'venue',
+    'place:downtown.city_gym': 'venue',
+    'place:outdoor.sunset_beach': 'venue',
   }
   for (const spec of DEFAULT_CIRCUIT) {
-    places[spec.id] = { place_id: spec.id, scene: spec.id, name: spec.label, asset: spec.asset }
+    places[spec.id] = {
+      place_id: spec.id,
+      scene: spec.id,
+      name: spec.label,
+      asset: spec.asset,
+      place_type: kinds[spec.id] ?? 'venue',
+      parent_id: null,
+    }
   }
   if (places[place] === undefined) {
-    places[place] = { place_id: place, scene: place, name: place }
+    places[place] = { place_id: place, scene: place, name: place, place_type: 'venue', parent_id: null }
   }
   return places
 }
@@ -146,6 +163,7 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
       role_id: agent.id,
       actorKind: 'role',
       name: agent.name,
+      display_name: agent.name,
       appearance: DEFAULT_APPEARANCE,
       place_id: placeId,
       location: { place_id: placeId, x: typeof position.x === 'number' ? position.x : 0, y: typeof position.z === 'number' ? position.z : 0 },
@@ -175,12 +193,15 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
       basic_info: {
         role_id: viewerId,
         name: viewerName,
-        gender: 'nonbinary',
+        gender: 'male',
         appearance: DEFAULT_APPEARANCE,
         personality_reset_available: false,
       },
       attributes: {},
+      attribute_effects: { sources: [], totals: {} },
       player_declutter: null,
+      money: 128000,
+      wallet: { balance: 128000, currency: 'CNY' },
     },
     scene: opts.place,
     world_id: opts.worldId,
@@ -201,7 +222,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
         basic_info: {
           role_id: viewerAgent?.id ?? opts.viewerRoleId,
           name: viewerAgent?.name ?? '访客',
-          gender: 'nonbinary',
+          gender: 'male',
           appearance: DEFAULT_APPEARANCE,
           personality_reset_available: false,
         },
@@ -217,16 +238,19 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
         },
       },
       attributes: {},
-      package: {},
-      phone: {},
+      attribute_effects: { sources: [], totals: {} },
+      package: { money: 128000, items: [], entries: [] },
+      phone: { wallet: { balance: 128000, currency: 'CNY' }, money: 128000 },
       housing: {},
       farm: null,
+      money: 128000,
+      wallet: { balance: 128000, currency: 'CNY' },
     },
     clock,
     weather: 'clear',
     story_flags: {},
     can_operate: true,
-    market: {},
+    market: { balance: 128000, money: 128000, holdings: [] },
     actors: actorsOf(world, opts.place),
     visual_timeline: [],
     scene_place_runtime_states: [{ place_id: opts.place, furniture: [] }],
@@ -255,7 +279,7 @@ export function projectScene(world: WorldLike, opts: ProjectOptions): Record<str
     clock: clockOf(world, opts.startDate),
     weather: 'clear',
     story_flags: {},
-    market: {},
+    market: { balance: 128000, money: 128000, holdings: [] },
     can_operate: true,
     logs: [],
     events: [],

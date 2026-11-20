@@ -62,6 +62,33 @@ function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   })
 }
 
+/** 物品分类（背包面板的筛选用）。先给一份通用集合，够面板打开。 */
+const ITEM_CATEGORIES = [
+  { id: 'food', name: '食物' },
+  { id: 'drink', name: '饮品' },
+  { id: 'medicine', name: '药品' },
+  { id: 'material', name: '材料' },
+  { id: 'tool', name: '工具' },
+  { id: 'gift', name: '礼物' },
+  { id: 'collectible', name: '收藏' },
+] as const
+
+/** 手机桌面：id 顺序必须与前端 PxPhoneFrame 的硬编码列表一致。 */
+const PHONE_APPS = [
+  { id: 'jobs', title: '工作', icon: '💼' },
+  { id: 'bank', title: '银行', icon: '🏦' },
+  { id: 'housing', title: '住房', icon: '🏠' },
+  { id: 'delivery', title: '外卖', icon: '🛵' },
+  { id: 'shopping', title: '购物', icon: '🛒' },
+  { id: 'stocks', title: '股票', icon: '📈' },
+  { id: 'gacha', title: '抽卡', icon: '🎴' },
+  { id: 'my_business', title: '我的生意', icon: '🏪' },
+  { id: 'singer', title: '唱歌', icon: '🎤' },
+  { id: 'martial', title: '武术', icon: '🥋' },
+  { id: 'news', title: '新闻', icon: '📰' },
+  { id: 'moments', title: '朋友圈', icon: '🖼' },
+] as const
+
 /** P0 已知但未实现：列出来是为了让 404 有意义。 */
 const NOT_IMPLEMENTED = new Set([
   '/game/phone/sms/threads',
@@ -135,7 +162,9 @@ export async function handleApi(
     return true
   }
   if (path === '/config') {
-    sendJson(res, 200, { locale: 'zh', min_client_version: null })
+    // phone_apps 的顺序是前端硬校验的（PxPhoneFrame 里那份 Object.freeze 列表），
+    // 少一个、多一个、换顺序都会直接抛"phone_apps 顺序或成员不匹配"，整块手机打不开。
+    sendJson(res, 200, { locale: 'zh', min_client_version: null, phone_apps: PHONE_APPS, item_categories: ITEM_CATEGORIES, scene_by_place: {} })
     return true
   }
   if (path === '/registry/items' || path === '/registry/recipes') {
@@ -199,6 +228,55 @@ export async function handleApi(
       return true
     }
     sendJson(res, 200, projectScene(world, ctx.opts))
+    return true
+  }
+  if (path === '/game/player/conversation') {
+    // 互动面板要 messages 数组；缺了直接抛 "missing array"
+    // 这个响应有一组**固定数组字段**，少一个就抛 "missing array: xxx"。
+    // 一次补齐比逐个试快。来源：GameView 里的 player_conversation_response 校验。
+    sendJson(res, 200, {
+      messages: [],
+      suggestions: [],
+      topics: [],
+      pending_gifts: [],
+      declutter_requests: [],
+      calls: [],
+      sticky_notes: [],
+      urgent_messages: [],
+      notes: [],
+      can_operate: true,
+    })
+    return true
+  }
+  if (path === '/game/role-profile') {
+    // 角色档案：前端读 response.role.* 与 response.attribute_effects.sources。
+    // 这两个键少一个，整个角色面板都渲染不出来。
+    const agent = world === null ? null : (world.agents.find((a) => a.id === ctx.opts.viewerRoleId) ?? world.agents[0] ?? null)
+    const profile = agent === null ? {} : {
+      role_id: agent.id,
+      name: agent.name,
+      display_name: agent.name,
+      gender: 'male',
+      status: 'online',
+      appearance: {
+        skin: 1, eyes: 1, outfit_style: 1, outfit_variant: 1,
+        hair_style: 1, hair_variant: 1, accessory_style: null, accessory_variant: null,
+      },
+      basic_info: { role_id: agent.id, name: agent.name, gender: 'male', personality_reset_available: false },
+      money: 128000,
+      wallet: { balance: 128000, currency: 'CNY' },
+      attributes: {},
+      titles: [],
+      memories: [],
+      changes: [],
+    }
+    sendJson(res, 200, {
+      role: profile,
+      attribute_effects: { sources: [], totals: {} },
+      memories: [],
+      changes: [],
+      relationship: { friends: [], blocked: [] },
+    })
     return true
   }
   if (path === '/game/blocks') {
