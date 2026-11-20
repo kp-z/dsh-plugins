@@ -1,0 +1,234 @@
+/**
+ * Slow Vale 的 HTTP 契约（P0 最小必需集）。
+ *
+ * ## 只做能进游戏的那几条
+ *
+ * 前端有 129 个端点，但"能看见世界"只需要十条左右。其余一律回空对象——
+ * 前端对那些面板有兜底（会显示"面板出错了"），不会把整页拖垮。
+ * **给假数据比给空数据更糟**：它会让"这个面板到底通没通"变得无法判断。
+ *
+ * ## 未实现的端点为什么要显式列出来
+ *
+ * 出问题时第一个问题是"这个端点做没做"。所以这里有一张 KNOWN 表，
+ * 打它得到一句"P0 未实现"，而不是让它掉进静态文件兜底变成一个更费解的错。
+ */
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { WorldLike } from './types.js'
+import {
+  projectRoleCard,
+  projectScene,
+  projectSnapshot,
+  projectWorldCard,
+  type ProjectOptions,
+} from './project.js'
+
+/** 路由上下文：一律靠注入，方便单测不启服务。 */
+export interface RouteContext {
+  opts: ProjectOptions
+  account: { email: string; password: string }
+  getWorld: () => WorldLike | null
+  token: () => string
+  log?: (line: string) => void
+  /** SSE 通道的当前连接数（给诊断端点用）。 */
+  streamClients?: () => number
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  const text = JSON.stringify(body)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(text),
+    'cache-control': 'no-store',
+  })
+  res.end(text)
+}
+
+function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    let raw = ''
+    req.on('data', (chunk: Buffer) => {
+      raw += chunk.toString('utf8')
+      if (raw.length > 1_000_000) raw = raw.slice(0, 1_000_000)
+    })
+    req.on('end', () => {
+      try {
+        const parsed: unknown = raw === '' ? {} : JSON.parse(raw)
+        resolve(typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {})
+      } catch {
+        resolve({})
+      }
+    })
+    req.on('error', () => resolve({}))
+  })
+}
+
+/** P0 已知但未实现：列出来是为了让 404 有意义。 */
+const NOT_IMPLEMENTED = new Set([
+  '/game/phone/sms/threads',
+  '/game/phone/thread',
+  '/game/phone/contacts',
+  '/game/logs/recent',
+  '/game/logs/catch-up',
+  '/game/moments',
+  '/game/market',
+  '/game/market/bars',
+  '/game/finance/transactions',
+  '/game/newspaper/issues',
+  '/game/relationship-map',
+  '/game/recap',
+  '/shop/entries',
+  '/shop/overview',
+])
+
+/**
+ * 处理一个 /api 请求。返回是否已处理（false 时交给静态层）。
+ */
+export async function handleApi(
+  ctx: RouteContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<boolean> {
+  const path = url.pathname.startsWith('/api') ? url.pathname.slice(4) || '/' : url.pathname
+  if (!url.pathname.startsWith('/api')) return false
+  const method = (req.method ?? 'GET').toUpperCase()
+  const world = ctx.getWorld()
+
+  if (path === '/__slowvale/health') {
+    sendJson(res, 200, {
+      ok: true,
+      world: world === null ? null : { id: world.id, tick: world.tick, agents: world.agents.length },
+      streamClients: ctx.streamClients?.() ?? 0,
+    })
+    return true
+  }
+
+  // ── 身份：本地单机，账号是配置里的固定值，token 只是占位 ──────────────
+  if (path === '/auth/login' && method === 'POST') {
+    const body = await readBody(req)
+    if (body['email'] !== ctx.account.email || body['password'] !== ctx.account.password) {
+      sendJson(res, 401, { detail: { code: 'invalid_credentials', message: '邮箱或密码错误' } })
+      return true
+    }
+    sendJson(res, 200, sessionBody(ctx))
+    return true
+  }
+  if (path === '/auth/refresh') {
+    sendJson(res, 200, sessionBody(ctx))
+    return true
+  }
+  if (path === '/auth/me') {
+    sendJson(res, 200, {
+      user_id: 'u-local',
+      email: ctx.account.email,
+      is_admin: true,
+      locale: 'zh',
+      display_name: 'Local',
+      created_at: ctx.opts.startDate + 'T00:00:00Z',
+      preferences: { locale: 'zh' },
+    })
+    return true
+  }
+  if (path === '/auth/select-role' && method === 'POST') {
+    const body = await readBody(req)
+    sendJson(res, 200, { world_id: ctx.opts.worldId, role_id: String(body['role_id'] ?? ctx.opts.viewerRoleId) })
+    return true
+  }
+  if (path === '/config') {
+    sendJson(res, 200, { locale: 'zh', min_client_version: null })
+    return true
+  }
+  if (path === '/registry/items' || path === '/registry/recipes') {
+    sendJson(res, 200, { entries: [], version: 1 })
+    return true
+  }
+  if (path === '/admission-invites/check') {
+    sendJson(res, 200, { allowed: true })
+    return true
+  }
+  if (path === '/survey/current') {
+    sendJson(res, 200, { id: null, submitted: true, questions: [] })
+    return true
+  }
+
+  // ── 世界与角色 ──────────────────────────────────────────────────────────
+  if (path === '/world/list') {
+    sendJson(res, 200, { worlds: world === null ? [] : [projectWorldCard(world, ctx.opts)] })
+    return true
+  }
+  if (path.startsWith('/world/') && path.endsWith('/info')) {
+    // 角色页真正读的是这里的 roles（不是 /role/list）——少了它页面会显示"尚无可进入的角色"，
+    // 而网络面板一片 200，极难看出问题。
+    const card = world === null ? {} : projectWorldCard(world, ctx.opts)
+    sendJson(res, 200, {
+      ...card,
+      roles: world === null ? [] : world.agents.map((agent) => projectRoleCard(world, agent, ctx.opts)),
+    })
+    return true
+  }
+  if (path.startsWith('/world/') && path.endsWith('/bulletins')) {
+    sendJson(res, 200, { bulletins: [], campaigns: [], fishing_contest: null })
+    return true
+  }
+  // 世界内角色列表：角色页真正读的是这条（/role/list 只是全局兜底）
+  if (path.startsWith('/role/world/') && path.endsWith('/characters')) {
+    sendJson(res, 200, {
+      roles: world === null ? [] : world.agents.map((agent) => projectRoleCard(world, agent, ctx.opts)),
+    })
+    return true
+  }
+  if (path === '/role/list') {
+    sendJson(res, 200, {
+      roles: world === null ? [] : world.agents.map((agent) => projectRoleCard(world, agent, ctx.opts)),
+    })
+    return true
+  }
+
+  // ── 世界状态：进游戏的两条命脉 ──────────────────────────────────────────
+  if (path === '/game/state/world') {
+    if (world === null) {
+      sendJson(res, 503, { detail: { code: 'no_world', message: '世界还没起来' } })
+      return true
+    }
+    sendJson(res, 200, projectSnapshot(world, ctx.opts))
+    return true
+  }
+  if (path === '/game/state/scene') {
+    if (world === null) {
+      sendJson(res, 503, { detail: { code: 'no_world', message: '世界还没起来' } })
+      return true
+    }
+    sendJson(res, 200, projectScene(world, ctx.opts))
+    return true
+  }
+  if (path === '/game/blocks') {
+    sendJson(res, 200, { blocked_role_ids: [] })
+    return true
+  }
+
+  // ── SSE 票据：真正的流在 server 里发起 ──────────────────────────────────
+  if (path === '/game/stream-ticket' && method === 'POST') {
+    sendJson(res, 200, { ticket: ctx.token() })
+    return true
+  }
+
+  if (NOT_IMPLEMENTED.has(path)) {
+    ctx.log?.('[slowvale] 未实现端点被请求：' + path)
+    sendJson(res, 501, { detail: { code: 'not_implemented', message: 'P0 未实现：' + path } })
+    return true
+  }
+
+  // 其余一律空对象：前端对空结构的容忍度远高于对 404 的容忍度。
+  sendJson(res, 200, {})
+  return true
+}
+
+function sessionBody(ctx: RouteContext): Record<string, unknown> {
+  return {
+    access_token: ctx.token(),
+    refresh_token: ctx.token(),
+    user_id: 'u-local',
+    is_admin: true,
+    locale: 'zh',
+  }
+}
