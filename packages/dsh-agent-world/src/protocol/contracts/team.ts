@@ -16,7 +16,7 @@ export const TEAM_CONTRACTS: readonly ContractMeta[] = [
     kind: "behavior",
     owner: "team",
     summary: "成员/任务来自官方 `agentTeam` projection，不轮询、不解析 tool call",
-    verify: "test/client-plugin.test.js",
+    verify: "test/team-projection.test.js",
   },
   {
     id: "team.member",

@@ -16,7 +16,6 @@ import { createPluginState } from '../lib/state.js'
 import { createEventHub, createRuntime } from '../lib/runtime/index.js'
 import { createHandler } from '../lib/routes/index.js'
 import { HttpError, createHttpHandler, matchPath, readJsonBody } from '../lib/routes/router.js'
-import { resolveStaticPath } from '../lib/routes/panel.js'
 import { buildSnapshot, applyCommand } from '../lib/routes/api.js'
 
 const PREFIX = '/agent-world'
@@ -79,50 +78,6 @@ test('matchPath：末尾的 `*` 匹配剩余全部段（R15 补的，否则静�
 })
 
 // ── 静态路径安全 ────────────────────────────────────────────────────────────
-
-test('resolveStaticPath：路径穿越必须被挡住（这是最容易写漏的一条）', () => {
-  const root = '/srv/panel'
-  assert.equal(resolveStaticPath(root, '/app.js'), '/srv/panel/app.js')
-  assert.equal(resolveStaticPath(root, '/sub/x.css'), '/srv/panel/sub/x.css')
-
-  for (const bad of [
-    '/../secret.txt',
-    '/../../etc/passwd',
-    '/sub/../../secret.txt',
-    // 编码过的穿越：只用 `includes('..')` 的实现在这里会漏。
-    '/%2e%2e/secret.txt',
-    '/%2e%2e%2fsecret.txt',
-  ]) {
-    assert.throws(() => resolveStaticPath(root, bad), /越界|文件类型/, `${bad} 必须被拒`)
-  }
-
-  assert.throws(() => resolveStaticPath(root, '/x\0.js'), /空字节/)
-  assert.throws(() => resolveStaticPath(root, '/a%ZZ'), /URL 编码/)
-})
-
-test('resolveStaticPath：只服务白名单里的类型，其余一律 404', () => {
-  const root = '/srv/panel'
-  for (const good of ['/index.html', '/app.js', '/style.css', '/logo.svg']) {
-    assert.ok(resolveStaticPath(root, good).startsWith(root))
-  }
-  for (const bad of ['/secret.env', '/db.sqlite', '/no-extension', '/archive.tar.gz']) {
-    assert.throws(() => resolveStaticPath(root, bad), (e) => e instanceof HttpError && e.status === 404, `${bad} 不该被服务`)
-  }
-  // json 在白名单里（API 快照就是它），所以这条**不该**抛。
-  assert.equal(resolveStaticPath(root, '/data.json'), '/srv/panel/data.json')
-})
-
-test('resolveStaticPath：白名单报错要列出允许的类型（否则用户不知道能放什么）', () => {
-  try {
-    resolveStaticPath('/srv/panel', '/x.env')
-    assert.fail('应当抛')
-  } catch (error) {
-    assert.match(error.message, /\.html/)
-    assert.match(error.message, /\.js/)
-  }
-})
-
-// ── 前缀边界 ────────────────────────────────────────────────────────────────
 
 test('前缀要按整段匹配：/agent-world-x 不该被本插件吞掉', async () => {
   const { handler } = makeDeps()
@@ -340,73 +295,9 @@ test('POST /api/command：超大的请求体被拒（不用读进内存）', asy
 
 // ── 静态面板 ────────────────────────────────────────────────────────────────
 
-test('GET /agent-world/ 吐出面板 HTML，且引用的资源都取得到（M3-5 的验收）', async () => {
-  const { handler } = makeDeps()
-  await withServer(handler, async (base) => {
-    const res = await fetch(`${base}${PREFIX}/`)
-    assert.equal(res.status, 200)
-    assert.match(res.headers.get('content-type'), /text\/html/)
-    const html = await res.text()
-    assert.match(html, /<canvas id="town">/, '面板的核心是那张俯视图')
 
-    // HTML 里引用的每个本地资源都要真的能取到——否则用户看到一个白屏。
-    const refs = [...html.matchAll(/(?:href|src)="\.\/([^"]+)"/g)].map((m) => m[1])
-    assert.ok(refs.length >= 2, `应当引用了 css 与 js，实际 ${refs.length} 个`)
-    for (const ref of refs) {
-      const asset = await fetch(`${base}${PREFIX}/${ref}`)
-      assert.equal(asset.status, 200, `面板引用的 ${ref} 取不到`)
-    }
-  })
-})
 
-test('GET /agent-world/main.js 的正确 MIME 与 no-store', async () => {
-  const { handler } = makeDeps()
-  await withServer(handler, async (base) => {
-    // R32 重组把入口从 `app.js` 改成了 `main.js`（web/ 分了 core/net/scene/ui/styles 子目录）。
-    // 这条测的是"静态服务对 .js 的 MIME 与缓存头"，跟着入口走即可。
-    const res = await fetch(`${base}${PREFIX}/main.js`)
-    assert.equal(res.status, 200)
-    assert.match(res.headers.get('content-type'), /javascript/)
-    assert.equal(res.headers.get('cache-control'), 'no-store')
-  })
-})
 
-test('静态服务：穿越与非白名单类型在真实服务器上也要被拒', async () => {
-  const { handler } = makeDeps()
-  await withServer(handler, async (base) => {
-    for (const bad of [`${PREFIX}/../package.json`, `${PREFIX}/%2e%2e/package.json`]) {
-      const res = await fetch(`${base}${bad}`)
-      assert.ok(res.status === 403 || res.status === 404, `${bad} 得到 ${res.status}`)
-    }
-    // GET /:file 只匹配单段，所以多段的路径是"没有匹配的路由"（404）。
-    const deep = await fetch(`${base}${PREFIX}/a/b/c.txt`)
-    assert.equal(deep.status, 404)
-  })
-})
-
-test('静态服务：**嵌套目录**里的资源能取到（R15 修的真缺陷：原来只匹配单段路径）', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'agent-world-web-'))
-  tempDirs.push(dir)
-  await mkdir(join(dir, 'sub', 'deep'), { recursive: true })
-  await writeFile(join(dir, 'index.html'), '<canvas id="town"></canvas>', 'utf8')
-  await writeFile(join(dir, 'sub', 'deep', 'x.css'), 'body{}', 'utf8')
-
-  const deps = makeDeps()
-  const handler = createHandler(PREFIX, { ...deps, webRoot: dir })
-
-  await withServer(handler, async (base) => {
-    const nested = await fetch(`${base}${PREFIX}/sub/deep/x.css`)
-    assert.equal(nested.status, 200, '嵌套资源必须能取到——vendor 进来的 three 就在子目录里')
-    assert.match(nested.headers.get('content-type'), /text\/css/)
-
-    // 白名单与穿越防护在嵌套路径上**照样生效**（通配不该开后门）。
-    await writeFile(join(dir, 'secret.env'), 'KEY=1', 'utf8')
-    assert.equal((await fetch(`${base}${PREFIX}/secret.env`)).status, 404, 'MIME 白名单不能因为进了子目录就失效')
-    const escape = await fetch(`${base}${PREFIX}/sub/deep/%2e%2e%2f%2e%2e%2f..%2fpackage.json`)
-    // 403（越界）或 404（找不到）都算挡住——两者都不给文件内容。
-    assert.ok([403, 404].includes(escape.status), `编码过的上跳必须被挡，实际 ${escape.status}`)
-  })
-})
 
 // ── 装配：apply 真的把面板挂上去了吗 ────────────────────────────────────────
 
@@ -488,7 +379,7 @@ test('apply：没有 webServer 时**不注册也不报错**（软依赖的真实
   assert.ok(logs.info.some((m) => m.includes('已就绪')), '世界本身应当照常就绪')
 })
 
-test('端到端：apply 注册的处理器挂到真服务器上，页面与 API 都能取到', async () => {
+test('端到端：apply 注册的处理器挂到真服务器上，API 能取到（页面已交给 Slow Vale 适配层）', async () => {
   const { apply } = await import('../lib/index.js')
 
   let route = null
@@ -507,13 +398,8 @@ test('端到端：apply 注册的处理器挂到真服务器上，页面与 API 
   assert.ok(route)
 
   await withServer(route.handler, async (base) => {
-    const page = await fetch(`${base}/agent-world/`)
-    assert.equal(page.status, 200)
-    assert.match(await page.text(), /<canvas id="town">/)
-
-    const snap = await (await fetch(`${base}/agent-world/api/world`)).json()
-    assert.equal(snap.type, 'snapshot')
-    assert.ok(snap.world.stations.length === 10)
+    const snap = await (await fetch(base + '/agent-world/api/world')).json()
+    assert.equal(snap.type, 'snapshot', 'API 必须可达：旧面板删了，API 不能跟着没')
   })
 })
 
