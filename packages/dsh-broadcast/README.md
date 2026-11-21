@@ -87,7 +87,7 @@ ones that ship by default.
 ## Install
 
 ```bash
-dsh plugin --profile web add file:packages/dsh-broadcast
+dsh plugin --profile web add @kpeace/dsh-broadcast
 # then restart dsh
 ```
 

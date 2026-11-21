@@ -13,7 +13,7 @@
 | 包 | 做什么 | 安装参数 | npm | 文档 |
 | --- | --- | --- | --- | --- |
 | `dsh-agent-world`<br>`0.1.0` | 把多智能体协作搬进一座可视化 **3D 小镇**：每个真实 subagent 是一个会走动的角色，每件任务是一张可被拾取的工单，每次调度是一次空间上的移动与协作。内容库层、模块协议与模拟内核已就位；当前能看见的是 2D 俯视调试视图，**3D 场景还没接上**。 | `file:packages/dsh-agent-world` | 未发布（`private`） | [README](packages/dsh-agent-world/README.md) |
-| `dsh-broadcast`<br>`0.1.0` | **会话结束语音播报**：每轮干完，让宿主自己的模型把这一轮说成 2–3 句普通话（≤ 80 字），再从宿主用 edge-tts 念出来（失败回落系统 `say`）。对话输入框里的扬声器按钮开关它，正在播报时同一个按钮就是「停止」。 | `file:packages/dsh-broadcast` | 未发布 | [README](packages/dsh-broadcast/README.zh.md) |
+| `@kpeace/dsh-broadcast`<br>`0.1.0` | **会话结束语音播报**：每轮干完，让宿主自己的模型把这一轮说成 2–3 句普通话（≤ 80 字），再从宿主用 edge-tts 念出来（失败回落系统 `say`）。对话输入框里的扬声器按钮开关它，正在播报时同一个按钮就是「停止」。 | `file:packages/dsh-broadcast` | 未发布 | [README](packages/dsh-broadcast/README.zh.md) |
 | `@kpeace/dsh-contract-butler`<br>`0.1.0` | 协议管家：从代码里反向抽出边界契约（输入输出的形状），盯着它随版本演化，再拿运行时的真实载荷去对照声明——让「AI 写实现、人管约定」有一个可被人审阅的单一出处。 | `file:packages/dsh-contract-butler` | 未发布 | [README](packages/dsh-contract-butler/README.md) |
 | `@kpeace/dsh-daily`<br>`0.10.4` | **日报**插件：每日主动推荐多类型新闻，可用自然语言调教推荐偏好，索引网页与 YouTube / 哔哩哔哩视频，在右侧栏以常驻网页呈现——点一条就到了。 | `@kpeace/dsh-daily` | 0.10.4 | [README](packages/dsh-daily/README.md) |
 | `@kpeace/dsh-dev-git-graph`<br>`0.1.4` | 会话页里的 **Git Graph 面板**：源码级移植 [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 1.30.0，自动绑定当前会话工作区，渲染提交图（分支彩线、提交信息、日期、作者、refs），右键可执行原扩展的全部 git 操作。 | `@kpeace/dsh-dev-git-graph` | 0.1.3（本仓 0.1.4 未发） | [README](packages/dsh-dev-git-graph/README.md) |

@@ -1,5 +1,5 @@
 {
-  "name": "dsh-broadcast",
+  "name": "@kpeace/dsh-broadcast",
   "version": "0.1.0",
   "description": "会话结束语音播报：把这一轮干了什么整理成 2–3 句能听懂的普通话，用接近真人的音色自动播出来。对话框里的开关控制。",
   "license": "MIT",
