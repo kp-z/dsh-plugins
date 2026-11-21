@@ -63,12 +63,12 @@ function moments(): Json {
 
 /** 市场族。 */
 function market(): Json {
-  return { symbols: [], bars: [], snapshot: null, balance: 0, holdings: [], freshness: null }
+  return { symbols: [], bars: [], items: [], entries: [], listings: [], snapshot: null, balance: 0, holdings: [], freshness: null }
 }
 
 /** 关系图。 */
 function relationshipMap(): Json {
-  return { nodes: [], edges: [], viewer_role_id: null }
+  return { roles: [], communities: [], edges: [], nodes: [], viewer_role_id: null }
 }
 
 /** 角色相关：记忆 / 变化。 */
@@ -144,7 +144,7 @@ export const SHAPES: readonly ShapeRule[] = [
   { method: 'GET', pattern: /^\/game\/role-changes$/, body: roleChanges },
   { method: 'GET', pattern: /^\/game\/relationship-map$/, body: relationshipMap },
   { method: 'GET', pattern: /^\/game\/map\/presences$/, body: () => ({ presences: [] }) },
-  { method: 'GET', pattern: /^\/game\/recap$/, body: () => ({ timeline: [], children: [], days: [], sections: [], summary: null, anchor_kind: null, day_number: 1, current_datetime: '2026-01-01T08:00:00', current_day: 1 }) },
+  { method: 'GET', pattern: /^\/game\/recap$/, body: () => ({ role_id: 'agent-1', anchor_kind: 'since_leave', anchor_game_time: { day_number: 1, day_of_week: 4, modern_time: '08:00', minute_of_day: 480, current_datetime: '2026-01-01T08:00:00' }, now_game_time: { day_number: 1, day_of_week: 4, modern_time: '08:00', minute_of_day: 480, current_datetime: '2026-01-01T08:00:00' }, current_datetime: '2026-01-01T08:00:00', day_number: 1, current_day: 1, timeline: [], days: [], sections: [], summary: null }) },
   { method: 'GET', pattern: /^\/game\/package$/, body: () => ({ items: [], version: 1, money: 0 }) },
   { method: 'GET', pattern: /^\/game\/player\/(calls|stance)$/, body: () => ({ calls: [], stance: null }) },
   { method: 'GET', pattern: /^\/game\/player\/(declutter-quota|interaction-quota)$/, body: quota },
