@@ -105,6 +105,35 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
    * 而**场景挂载只由 scene_state 信封驱动**（前端收到后去拉 /game/state/scene）。
    * 这是"画布在、地图资源也在下，但背景图始终没加载"的真正原因。
    */
+  /**
+   * 发一个 scene_state 信号。
+   *
+   * 前端只由这个信封驱动场景挂载：收到后它去拉 /game/state/scene 并启动 Phaser。
+   * 只发 resync 的话，快照会一直重建，场景却永远不挂——这正是「画布在、背景图不请求」的原因。
+   *
+   * 形状有硬校验：payload 只能有 world_id 与 scene 两个键；route.scenes 必须恰好等于 [scene]。
+   */
+  const pushSceneState = (): void => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0) return
+    const scene = projectSnapshot(world, options.opts).scene
+    if (typeof scene !== 'string' || scene === '') return
+    const tickMarker = 'tick-' + String(world.tick)
+    const cursor = { epoch: 'epoch-' + world.id, seq: world.tick }
+    const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: world.id, scene }))).toString('base64')
+    // 信封是**单条**的：kind / route / payload_gz 都在顶层（前端 Fx() 逐字段校验）。
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      tick_marker: tickMarker,
+      kind: 'scene_state',
+      // broadcast=false 表示「定向」：scenes 必须非空；scene_state 要求恰好一个场景。
+      route: { world_id: world.id, broadcast: false, role_ids: [], scenes: [scene] },
+      payload_gz: payloadGz,
+    }
+    for (const res of clients) writeEvent(res, 'update', envelope)
+  }
+
   const pushSnapshot = (event: string): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
@@ -127,7 +156,10 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res.write(': connected\n\n')
         clients.add(res)
         const world = options.getWorld()
-        if (world !== null) writeEvent(res, 'connected', projectSnapshot(world, options.opts))
+        if (world !== null) {
+          writeEvent(res, 'connected', projectSnapshot(world, options.opts))
+          pushSceneState()
+        }
         req.on('close', () => {
           clients.delete(res)
         })
@@ -197,6 +229,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       if (closed) return
       try {
         pushSnapshot('resync')
+        pushSceneState()
       } catch (error: unknown) {
         log('[slowvale] 推送失败 ' + String(error))
       }
