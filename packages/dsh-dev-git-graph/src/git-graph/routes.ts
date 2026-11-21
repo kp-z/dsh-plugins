@@ -452,7 +452,13 @@ export interface GgRouteContext {
 	}): () => void;
 }
 
-export function registerGgRoutes(webServer: GgRouteContext): Array<() => void> {
+/**
+ * 宿主信任栅栏：connection.requestRejection 的窄接口。
+ * 返回 401/403 时拒绝，undefined 时放行。
+ */
+export type RouteFence = (req: http.IncomingMessage) => 401 | 403 | undefined;
+
+export function registerGgRoutes(webServer: GgRouteContext, fence: RouteFence): Array<() => void> {
 	const disposers: Array<() => void> = [];
 
 	// 前端入口/静态资源（真实 webServer 前缀规则：path 不带尾斜杠，/dsh-dev-git-graph/gg 同时匹配自身与 /dsh-dev-git-graph/gg/...）
@@ -461,6 +467,13 @@ export function registerGgRoutes(webServer: GgRouteContext): Array<() => void> {
 			kind: 'prefix',
 			path: '/dsh-dev-git-graph/gg',
 			handler: (req, res) => {
+				// 静态页同样是受信内容（含 per-repo boot 与仓库路径），先过栅栏。
+				const rejection = fence(req);
+				if (rejection !== undefined) {
+					res.writeHead(rejection, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+					res.end(rejection === 401 ? 'unauthorized' : 'forbidden');
+					return;
+				}
 				const url = new URL(req.url ?? '/', 'http://x');
 				const repo = url.searchParams.get('repo');
 				const sub = url.pathname.slice('/dsh-dev-git-graph/gg'.length).replace(/^\//, '');
@@ -483,6 +496,12 @@ export function registerGgRoutes(webServer: GgRouteContext): Array<() => void> {
 			kind: 'exact',
 			path: '/dsh-dev-git-graph/gg/api',
 			handler: (req, res) => {
+				// 未鉴权的调用方不得触达命令集（含 reset/clean/push 等写操作），JSON 返回。
+				const rejection = fence(req);
+				if (rejection !== undefined) {
+					sendJson(res, rejection, { error: rejection === 401 ? 'unauthorized' : 'forbidden' });
+					return;
+				}
 				if (req.method !== 'POST') {
 					res.writeHead(405, { allow: 'POST' });
 					res.end();

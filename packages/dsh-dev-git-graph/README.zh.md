@@ -55,6 +55,13 @@ host 路由 (src/git-graph/routes.ts)
 - 右键「View Diff with Working File」按该文件**当前工作区改动**展示（原生只能表达「工作区改动」
   或「整提交 patch」，无法表达「提交 vs 工作文件」）。
 
+## 安全
+
+- **每条 `/gg` 请求先过宿主的信任栅栏**（`connection.requestRejection`：Host/Origin 检查 + 浏览器登录凭据）。未鉴权的调用方拿 401/403，触达不到命令集 —— 包括 `/gg/api` 里的破坏性 git 操作。宿主没有 `connection` 服务时本插件不注册路由（fail closed）。0.1.5 起生效（issue #1）。
+- git 一律用**数组参数**执行（不走 shell），仓库路径/ref 无法做 shell 注入。
+- 静态文件按白名单过滤文件名。
+- API 按命令里的 `repo` 路径执行（通常就是启动时注入的会话 cwd）。准入靠上面的栅栏而不是路径来源：已登录调用方能触达宿主进程权限内的仓库，所以 Web UI 的登录必须保持开启。
+
 ## 构建与安装
 
 ```bash

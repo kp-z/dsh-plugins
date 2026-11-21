@@ -81,9 +81,10 @@ Known limits (capabilities of better-sidebar 0.19.1, not regressions of this plu
 
 ## Security
 
+- **Every `/gg` request passes the host's trust fence first** (`connection.requestRejection`: the Host/Origin check plus browser login / API credentials). Unauthenticated callers get 401/403 and never reach the command set — including `/gg/api`'s destructive git operations. If the `connection` service is absent the plugin registers no routes at all (fail closed). Fixed in 0.1.5 (issue #1).
 - Git is executed with **array arguments** (no shell), so repo paths / refs can't be used for shell injection.
 - Static file serving sanitizes filenames against a whitelist.
-- The API only acts on the repo path supplied by the host's own boot payload (the session cwd).
+- The API runs against the `repo` path in each command payload (normally the session cwd injected into the boot payload). Admission is the fence above, not the path: anything the host process can reach is reachable by an authenticated caller, so keep the Web UI behind its login.
 
 ## Development
 
