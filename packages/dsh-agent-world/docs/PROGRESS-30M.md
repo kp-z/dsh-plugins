@@ -1,31 +1,27 @@
 # PROGRESS
 
-## 2026-11-21 19:00 · 第 13 个半小时（Phaser 只自动启动第一个场景）
+## 2026-11-21 19:30 · 第 14 个半小时（**真配置一上，preload 就跑起来了**）
 
-**读到的 Phaser 内部逻辑**：
-```js
-for (p = 0; p < f.length; p++) this._pending.push({ key: "default", scene: f[p], autoStart: p === 0 });
-...
-(d.autoStart || b.sys.settings.active) && this._start.push(f)
-```
-**只有第一个场景会 autoStart**；其余必须显式 `scene.start()`。
+**做了一件一直该做的事**：从线上服务端把 `/api/config` 原样取下来，存成
+`src/adapters/slowvale/data/config.ts`，`/config` 直接返回它。
 
-**推论**：既然我们的第一个场景是 `company`（committedScene 命中了 `initialSceneKey`），
-它应该被自动启动、执行 preload、请求 `/assets/maps/company/background.png`。
-但实际一次请求都没有 → **preload 在执行到 `load.image(...)` 之前就中断了**。
+**结果（决定性变化）**：
+- 之前：**任何**素材都不请求；
+- 现在：`/assets/ui/bubbles_32x32.png`、`/assets/sprites/pickup_items.png`、
+  `/assets/characters/char_01.png`、`/assets/ui/badges/*.png` 全都被请求了。
 
-**preload 的开头是**：
-```js
-preload() {
-  this.preloadCommonAssets(), i9(this),
-  g === "farm" && (B_(this), tO(this), nO(this)),
-  this.textures.exists(...) || this.load.image(..., ni(`${this.mapBase}/background.png`))
-  ...
-}
-```
-所以中断点在 `preloadCommonAssets()` 或 `i9(this)`——**在加载地图贴图之前**。
+这些正是 `preloadCommonAssets()` 里排的文件——**说明场景 preload 真的在跑了**。
 
-**下一轮（19:00）**：读 `preloadCommonAssets` 与 `i9`，看它们依赖什么。
-这两个函数很可能要求"通用素材"（角色帧、气泡、UI 图集）先注册，
-缺一个就抛，导致整个 preload 中断——这与我们在 HUD 里遇到过的
-`character_generator` / `portrait_generator` 缺失是同一类问题。
+**真配置的规模**：29 个键，其中 `scene_by_place` 14 条、`phone_apps` 12 项（有顺序）。
+自己拼不可能拼对；而且它顺便告诉我们：我们自造的 place id（`place:office.tech_company_1`、
+`place:downtown.city_gym`…）**在规则表里是合法的**（`A1` 的 numbered_prefix/exact 规则能匹配）。
+
+**新卡点（很具体）**：
+preload 跑了 `preloadCommonAssets`（UI/徽章/角色表都加载了），
+但**没有走到 `load.image(bg, …/background.png)` 那一行**。
+中间只剩两段：`i9(this)` 与 `g === "farm"` 分支。而 `i9` 需要
+`/assets/maps/<scene>/furniture.json` —— 我们镜像是 **404**（文件不存在）。
+
+**下一轮（19:30）**：给 `/assets/maps/*/furniture.json` 一个合法的空对象
+（由适配层补，不写产物），看 preload 能否继续到 bg；
+如果不能，就把 `preloadCommonAssets` 的整段读完，找它后面的中断点。

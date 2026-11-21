@@ -13,6 +13,7 @@
  * 打它得到一句"P0 未实现"，而不是让它掉进静态文件兜底变成一个更费解的错。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { REAL_CONFIG } from './data/config.js'
 import { sceneByPlace } from './scene-key.js'
 import { shapeFor } from './shapes.js'
 import type { WorldLike } from './types.js'
@@ -164,9 +165,8 @@ export async function handleApi(
     return true
   }
   if (path === '/config') {
-    // phone_apps 的顺序是前端硬校验的（PxPhoneFrame 里那份 Object.freeze 列表），
-    // 少一个、多一个、换顺序都会直接抛"phone_apps 顺序或成员不匹配"，整块手机打不开。
-    sendJson(res, 200, { locale: 'zh', min_client_version: null, phone_apps: PHONE_APPS, item_categories: ITEM_CATEGORIES, scene_by_place: sceneByPlace, phone_bank: { products: [], entries: [], balance: 128000, money: 128000, loan_salary_multiplier: 6, loan_min_credit: 5000, max_active_loans: 2 }, phone_stocks: { symbols: [] }, phone_gacha: { card_sets: [], tickets: 0, pity: 0, cost: 100, daily_draw_limit: 10, base_price_by_count: { '1': 100, '10': 900 }, happy_hour: { active_weekdays: [0, 1, 2, 3, 4, 5, 6], start_minute: 0, end_minute: 0 } }, proficiency_exp_thresholds: [0, 100, 300, 700, 1500, 3000] })
+    // 线上真实配置原样返回：这些键前端硬校验，自己拼总会漏（scene_by_place 曾经是 {}）
+    sendJson(res, 200, REAL_CONFIG)
     return true
   }
   if (path === '/registry/items' || path === '/registry/recipes') {
