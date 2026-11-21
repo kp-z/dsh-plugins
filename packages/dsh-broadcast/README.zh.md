@@ -73,7 +73,7 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add file:packages/dsh-broadcast
+dsh plugin --profile web add @kpeace/dsh-broadcast
 # 然后重启 dsh
 ```
 
