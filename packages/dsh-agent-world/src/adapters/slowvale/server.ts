@@ -50,6 +50,8 @@ export interface BridgeOptions {
   autoEnter?: boolean
   /** 注入调试采集脚本（不碰前端产物），排查用。 */
   debug?: boolean
+  /** 本机调试用：把后台/无头窗口当成可见（前端不可见时不建 Phaser 游戏）。 */
+  forceVisible?: boolean
   /** 极简可视化（/show）的状态来源；没给就没有这个页面。 */
   getStageFrame?: () => StageFrame | null
   log?: (line: string) => void
@@ -196,7 +198,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
       if (options.debug === true && url.pathname === '/__slowvale/debug.js') {
-        const body = Buffer.from(debugScript(), 'utf8')
+        const body = Buffer.from(debugScript(options.forceVisible === true), 'utf8')
         res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'content-length': body.byteLength, 'cache-control': 'no-store' })
         res.end(body)
         return

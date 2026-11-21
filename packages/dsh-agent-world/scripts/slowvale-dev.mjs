@@ -64,6 +64,7 @@ const bridge = await createSlowvaleBridge({
   pushMs: Number(process.env.SLOWVALE_PUSH_MS ?? '1000'),
   autoEnter: true,
   debug: true,
+  forceVisible: process.env.SLOWVALE_FORCE_VISIBLE === '1',
   log: (line) => console.log(line),
 })
 

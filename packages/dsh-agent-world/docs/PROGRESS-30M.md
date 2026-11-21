@@ -1,27 +1,29 @@
 # PROGRESS
 
-## 2026-11-21 13:58 · 第 3 个半小时（找到真凶：页面不可见）
+## 2026-11-21 14:28 · 第 4 个半小时（scene 键对齐 + 可见性开关）
 
-**结论（决定性）**：`document.visibilityState === 'hidden'` 时，前端**不会创建 Phaser 游戏**。
-把 visibilityState 覆写成 visible 并派发 visibilitychange 之后，立刻出现：
+**这一小时做**：
+1. `debug.ts` 加 `forceVisible`（仅本机调试；后台窗口里前端不建游戏）；
+2. **scene id 统一成「场景资源键」**——这是真 bug。
 
-- `canvas 2050x1608`（之前只有 38x38/24x24 的头像）
-- `.phaser-canvas` 的子节点从 0 变成 1
-- 控制台出现 `Texture key already in use: ...`（说明场景纹理在被注册）
+**关键发现**：前端有两套 id，我们一直混用：
+- `presence.location.place_id` = `place:*`（世界语义）
+- `snapshot.scene` / `presence.scene` / `place_topology.places[].scene` / `scene_state.payload.scene`
+  = **地图资源键**（company、home_public…），前端拿它去 `/assets/maps/<key>/` 找图，
+  也拿它当 Phaser 的初始场景键。
 
-**这意味着**：十几次「时好时坏、画布不挂」不是协议问题，是**浏览器窗口没在前台**。
-之前那几次能看到 canvas，都是窗口恰好可见的时候。
+混用的后果非常具体：画布建了，但**一张地图贴图都不请求**。
 
-**已修但不足够**：scene_state / cursor 链 / 场景快照覆盖 / installed_appliances——
-这些让前端不再报错（有价值），但都不是画布不起来的根因。
+**现在的状态**：
+- 画布 2050×1608 ✅（forceVisible 后稳定复现）
+- 前端认了 `scene=company` ✅（之前报的是 `scene=place:office.tech_company_1`）
+- 但开始报 `[phaser_asset_load] 场景资源加载无进展: scene=company`，
+  且 `/assets/maps/**/*.png` 请求数仍是 0——加载器启动了但没有任何文件进来。
 
-**当前卡点（下一个 30 分钟）**：
-画布起来了，但 `background.png` 仍是 0 次请求、`character_generator` 也是 0。
-说明场景实例创建了但**没进入 preload 的地图加载**，或场景键没命中。
+**下一轮（14:30）**：查"加载器启动但没文件"的原因。
 候选：
-1. `initialSceneKey` 没给对（place → scene 的映射）；
-2. 场景 preload 依赖 `visual` 包提示；
-3. 我们注入的 auto-enter 与 visibility 覆写互相干扰，产生了两个 game 实例（纹理重复注册的证据）。
+1. 场景的 preload 里文件列表为空（依赖 objects.json 里的清单，我们给的 objects.json 是真实文件，应该能读出清单）；
+2. 贴图 URL 拼法与我们静态服务不匹配（但文件确实在磁盘上）；
+3. Phaser 的 loader 因为没有 `load.start()` 而空转，超时后报"无进展"。
 
-**纪律提醒**：后续所有"画布没起来"的验证，都必须先确认 `document.visibilityState === 'visible'`，
-否则测的是浏览器行为，不是我们的代码。
+方法：hook `XMLHttpRequest` 与 `Image` 的 src 赋值，记录所有 `/assets/maps/` 请求与状态。

@@ -5,7 +5,7 @@
  * 把 console 与未捕获错误收进 window.__svlog。排查"画布在但场景没起来"这类问题时，
  * 第一手信息就是前端自己的日志——而它的 bundle 是压缩混淆的，只能靠运行时抓。
  */
-export function debugScript(): string {
+export function debugScript(forceVisible = false): string {
   return [
     '(function(){',
     'var log = window.__svlog = [];',
@@ -28,6 +28,13 @@ export function debugScript(): string {
     'window.addEventListener("unhandledrejection", function (e) { push("rejection", [String(e.reason && (e.reason.message || e.reason))]) });',
     // 画布探针：回答"到底有没有人试图建 canvas / 谁在什么时候插进来的"。
     // 只在 debug 打开时下发，不进入正式产物。
+    // 仅用于本机调试：无头/后台窗口里 visibilityState 是 hidden，
+    // 前端就不建 Phaser 游戏。这个开关只是把"看不见的窗口"当成"看得见"，不改任何前端代码。
+    ...(forceVisible ? [
+      'Object.defineProperty(document, "visibilityState", { configurable: true, get: function () { return "visible" } });',
+      'Object.defineProperty(document, "hidden", { configurable: true, get: function () { return false } });',
+      'push("visibility", ["forced visible"]);',
+    ] : []),
     'var created = 0;',
     'var originalCreate = document.createElement.bind(document);',
     'document.createElement = function (tag) {',

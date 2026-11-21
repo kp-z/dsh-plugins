@@ -133,7 +133,8 @@ export function placesOf(place: string): Record<string, Record<string, unknown>>
   for (const spec of DEFAULT_CIRCUIT) {
     places[spec.id] = {
       place_id: spec.id,
-      scene: spec.id,
+      // 拓扑里的 scene 是**场景资源键**（前端用它找地图），不是 place id
+      scene: sceneKeyOf(spec.id),
       name: spec.label,
       asset: spec.asset,
       place_type: kinds[spec.id] ?? 'venue',
@@ -188,7 +189,7 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */
 export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<string, unknown> {
   // 世界快照永远用配置里的默认场景；请求级的场景切换由 projectScene 处理
-  const scene = opts.place
+  const scene = sceneKeyOf(opts.place)
   const clock = clockOf(world, opts.startDate)
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
@@ -199,6 +200,11 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
   const viewerAgent = world.agents.find((a) => a.id === opts.viewerRoleId) ?? world.agents[0]
   const viewerId = viewerAgent?.id ?? opts.viewerRoleId
   const viewerName = viewerAgent?.name ?? '访客'
+  // presence.scene 必须与 snapshot.scene 同一套 id（场景资源键），
+  // 否则前端认为「这个场景里没这个人」，场景就不会启动。
+  for (const entry of Object.values(presence)) {
+    (entry as { scene?: string }).scene = scene
+  }
   return {
     // gameState.role：HUD 的几乎所有组件都从这里取名字与外观
     // （缺了就是 "Cannot read properties of undefined (reading 'name')"，且整块 HUD 挂不出来）
@@ -217,14 +223,14 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
       money: 128000,
       wallet: { balance: 128000, currency: 'CNY' },
     },
-    scene: opts.place,
+    scene,
     world_id: opts.worldId,
     protocol_version: SLOWVALE_PROTOCOL_VERSION,
     cursor: { epoch: epochOf(world), seq: world.tick },
     viewer_role_id: viewerAgent?.id ?? opts.viewerRoleId,
     feed_head_record_entry_id: 0,
     role_public_statuses: statuses,
-    role_presences: presence,
+role_presences: presence,
     place_topology: { places: placesOf(scene) },
     place_counts: { place_counts: {} },
     viewer: {
@@ -293,7 +299,7 @@ export function projectScene(
   // 前端会问 "给我 scene=X 的快照"，并要求三件事一致：
   // response.scene === X、cursor 覆盖请求的 seq、**viewer 的 presence.scene === X**。
   // 所以这里的场景用请求里的值，而不是配置里那个固定值。
-  const scene = opts.scene ?? opts.place
+  const scene = sceneKeyOf(opts.scene ?? opts.place)
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
   for (const agent of world.agents) {
@@ -355,4 +361,5 @@ export function projectRoleCard(world: WorldLike, agent: WorldAgentLike, opts: P
     last_active_at: opts.startDate + 'T00:00:00Z',
     month_card_expires_at: null,
   }
-}
+}import { sceneKeyOf } from './scene-key.js'
+
