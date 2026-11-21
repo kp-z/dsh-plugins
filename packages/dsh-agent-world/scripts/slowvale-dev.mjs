@@ -57,7 +57,14 @@ const bridge = await createSlowvaleBridge({
   host: '127.0.0.1',
   port,
   assetsDir,
-  opts: { worldId: 'w1', viewerRoleId: viewerId, place: CAST[0].work.placeId, startDate: '2026-01-01' },
+  opts: {
+    worldId: 'w1',
+    viewerRoleId: viewerId,
+    place: CAST[0].work.placeId,
+    startDate: '2026-01-01',
+    // 单场景调试：只暴露一个地点，且人不走动，排除多场景互相干扰
+    ...(process.env.SLOWVALE_SINGLE_SCENE === '1' ? { singlePlace: true } : {}),
+  },
   account: { email: 'demo@slowvale.dev', password: 'slowvale123' },
   getWorld: () => world,
   getStageFrame: () => viewerWalker.stage.frame(),
@@ -71,6 +78,7 @@ const bridge = await createSlowvaleBridge({
 const timer = setInterval(() => {
   world.tick += 1
   for (const walker of walkers) {
+    if (process.env.SLOWVALE_SINGLE_SCENE === '1') continue
     const frame = walker.stage.tick(100)
     const agent = agents.find((item) => item.id === AGENT_IDS[walker.character.id])
     if (agent === undefined) continue

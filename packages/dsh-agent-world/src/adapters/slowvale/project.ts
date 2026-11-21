@@ -28,6 +28,8 @@ export interface ProjectOptions {
   place: string
   /** 世界第 0 tick 对应的游戏日期（YYYY-MM-DD）。 */
   startDate: string
+  /** 只暴露一个地点（调试用：排除多场景互相干扰）。 */
+  singlePlace?: boolean
 }
 
 /** 一 epoch 的含义：世界重启一次换一个。 */
@@ -115,7 +117,7 @@ function publicStatusOf(agent: WorldAgentLike): Record<string, unknown> {
  * 前端拿 place_id 去场景规则表里查资源；查不到会走兜底（画占位房间）并报
  * "place.name 未登记"。所以这里必须用规则表命中得了的 id，并且给出人看的名字。
  */
-export function placesOf(place: string): Record<string, Record<string, unknown>> {
+export function placesOf(place: string, single = false): Record<string, Record<string, unknown>> {
   const places: Record<string, Record<string, unknown>> = {
     home_public: { place_id: 'home_public', scene: 'home_public', name: '家', place_type: 'compound', parent_id: null },
     world_map: { place_id: 'world_map', scene: 'world_map', name: '城市地图', place_type: 'compound', parent_id: null },
@@ -139,6 +141,11 @@ export function placesOf(place: string): Record<string, Record<string, unknown>>
       asset: spec.asset,
       place_type: kinds[spec.id] ?? 'venue',
       parent_id: null,
+    }
+  }
+  if (single) {
+    return {
+      [place]: places[place] ?? { place_id: place, scene: sceneKeyOf(place), name: place, place_type: 'venue', parent_id: null },
     }
   }
   if (places[place] === undefined) {
@@ -235,7 +242,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     feed_head_record_entry_id: 0,
     role_public_statuses: statuses,
 role_presences: presence,
-    place_topology: { places: placesOf(scene) },
+    place_topology: { places: placesOf(scene, opts.singlePlace === true) },
     place_counts: { place_counts: {} },
     viewer: {
       core: {
@@ -321,7 +328,7 @@ export function projectScene(
     role_presences: presence,
     actors: actorsOf(world, scene),
     place_runtimes: [{ place_id: scene, installed_appliances: [] }],
-    place_topology: { places: placesOf(scene) },
+    place_topology: { places: placesOf(scene, opts.singlePlace === true) },
     clock: clockOf(world, opts.startDate),
     weather: 'clear',
     story_flags: {},
