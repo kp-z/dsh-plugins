@@ -78,6 +78,11 @@ const bridge = await createSlowvaleBridge({
 const timer = setInterval(() => {
   world.tick += 1
   for (const walker of walkers) {
+    if (process.env.SLOWVALE_ONE_SWITCH === '1') {
+      // 只做一次干净切换：让前端执行唯一一次 preload，便于观察它到底发了什么
+      if (world.tick === 40) { const a = agents[0]; a.station = 'place:residential.mini_market' }
+      continue
+    }
     if (process.env.SLOWVALE_SINGLE_SCENE === '1') continue
     const frame = walker.stage.tick(100)
     const agent = agents.find((item) => item.id === AGENT_IDS[walker.character.id])
