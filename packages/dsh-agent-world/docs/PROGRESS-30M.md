@@ -1,23 +1,23 @@
 # PROGRESS
 
-## 2026-11-21 12:55 · 第 1 个半小时（场景 boot 的边界）
+## 2026-11-21 13:30 · 第 2 个半小时（探针 + 地图预载证据）
 
-**这一小时做**：追 Phaser 到底在哪一步停下。
+**这一小时做**：给注入脚本加画布探针（createElement / getContext / MutationObserver），看 Phaser 到底走到哪。
 
-**结论（有证据）**：
-- 前端确实调用了游戏装配函数 `W5({parent: <stage 元素>, ...})` 那条路径的**上游**存在，
-  但页面里 `.fishtank__stage > .phaser-canvas` 始终是空的（只有 `<!---->` 占位）；
-- 没有任何 canvas 被创建，也没有 `phaser-canvas__error` 的 boot 失败块；
-- 连 boot 前必跑的字体现就绪日志都没出现 → 说明**装配函数根本没被调用**，
-  不是"调用后失败"。
+**新证据（重要）**：
+1. `createElement` 的调用栈里出现了 Phaser 的渲染器工厂（`createWebGL` / `create2D`）
+   → **Phaser 确实启动了**，不是"没调用"；
+2. 前端一次性预载了 **31 个场景的地图 JSON（124 个请求）**，全部 200，没有 404；
+3. 但 `<canvas>` 从未被插入 DOM（探针里 inserts 为空），`background.png` 仍是 0 次请求。
 
-**已排除**：
-- 不是 scene_state 形状问题（已接受，无警告）；
-- 不是 cursor 链问题（streamEvents 0）；
-- 不是场景快照覆盖问题（sceneFetches 1，无重同步）；
-- 不是 innerWidth/isWideLayout 导致 fishtank 段不可见（改 innerWidth 无效，段列表没变）。
+**所以卡点从「装配没被调用」修正为**：
+装配跑了，地图也预载完了，**卡在"预载完成 → 场景实例化"这一步之前**。
 
-**下一轮（13:00）**：给页面装一次性探针（注入脚本里加 MutationObserver + 给
-HTMLCanvasElement.prototype.getContext 打日志），看是否有任何 canvas 被创建，
-以及 `.phaser-canvas` 何时被填。若确认"装配函数没被调用"，下一步找它的调用门槛
-（很可能要 place→scene 的映射表，即 `Vh()` 为空导致 scenes 列表里只有 undefined）。
+**已排除**：scene_state / cursor 链 / 场景快照覆盖 / 资源 404 / 布局宽窄。
+
+**下一轮（13:30）**：查预载完成到实例化之间的那一小段——候选：
+- `document.fonts.ready` 的等待（游戏前会等字体）；
+- `initialSceneKey` 与 place→scene 映射不匹配（`company` 在预载列表里，但可能没被选成初始场景）；
+- 父元素尺寸为 0 的守门（`Ed(parent)` 在创建时判定，之后即使尺寸恢复也不会重试）。
+
+方法：给这三个点各打一个探针（字体是否 resolve、初始场景键是什么、父元素创建时尺寸）。
