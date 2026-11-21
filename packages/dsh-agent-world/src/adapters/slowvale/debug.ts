@@ -52,6 +52,19 @@ export function debugScript(): string {
     '    if (record.type === "childList" && record.target && record.target.className === "phaser-canvas") push("canvas", ["phaser-canvas children " + record.target.childElementCount]);',
     '  });',
     '}).observe(document.documentElement, { childList: true, subtree: true });',
+    // 心跳：把"父元素尺寸 / canvas 数 / 字体状态"打成时间线，
+    // 用来判断是不是"创建那一刻父元素尺寸为 0"这种一次性守门。
+    'var beat = 0;',
+    'var timer = setInterval(function () {',
+    '  beat += 1;',
+    '  var stage = document.querySelector(".fishtank__stage");',
+    '  var host = document.querySelector(".phaser-canvas");',
+    '  push("beat", [beat + " canvas=" + document.querySelectorAll("canvas").length +',
+    '    " stage=" + (stage ? stage.clientWidth + "x" + stage.clientHeight : "none") +',
+    '    " hostChildren=" + (host ? host.childElementCount : "none") +',
+    '    " fonts=" + (document.fonts ? document.fonts.status : "?")]);',
+    '  if (beat >= 40) clearInterval(timer);',
+    '}, 500);',
     '})();',
   ].join('')
 }

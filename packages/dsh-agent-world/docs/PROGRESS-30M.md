@@ -1,23 +1,27 @@
 # PROGRESS
 
-## 2026-11-21 13:30 · 第 2 个半小时（探针 + 地图预载证据）
+## 2026-11-21 13:58 · 第 3 个半小时（找到真凶：页面不可见）
 
-**这一小时做**：给注入脚本加画布探针（createElement / getContext / MutationObserver），看 Phaser 到底走到哪。
+**结论（决定性）**：`document.visibilityState === 'hidden'` 时，前端**不会创建 Phaser 游戏**。
+把 visibilityState 覆写成 visible 并派发 visibilitychange 之后，立刻出现：
 
-**新证据（重要）**：
-1. `createElement` 的调用栈里出现了 Phaser 的渲染器工厂（`createWebGL` / `create2D`）
-   → **Phaser 确实启动了**，不是"没调用"；
-2. 前端一次性预载了 **31 个场景的地图 JSON（124 个请求）**，全部 200，没有 404；
-3. 但 `<canvas>` 从未被插入 DOM（探针里 inserts 为空），`background.png` 仍是 0 次请求。
+- `canvas 2050x1608`（之前只有 38x38/24x24 的头像）
+- `.phaser-canvas` 的子节点从 0 变成 1
+- 控制台出现 `Texture key already in use: ...`（说明场景纹理在被注册）
 
-**所以卡点从「装配没被调用」修正为**：
-装配跑了，地图也预载完了，**卡在"预载完成 → 场景实例化"这一步之前**。
+**这意味着**：十几次「时好时坏、画布不挂」不是协议问题，是**浏览器窗口没在前台**。
+之前那几次能看到 canvas，都是窗口恰好可见的时候。
 
-**已排除**：scene_state / cursor 链 / 场景快照覆盖 / 资源 404 / 布局宽窄。
+**已修但不足够**：scene_state / cursor 链 / 场景快照覆盖 / installed_appliances——
+这些让前端不再报错（有价值），但都不是画布不起来的根因。
 
-**下一轮（13:30）**：查预载完成到实例化之间的那一小段——候选：
-- `document.fonts.ready` 的等待（游戏前会等字体）；
-- `initialSceneKey` 与 place→scene 映射不匹配（`company` 在预载列表里，但可能没被选成初始场景）；
-- 父元素尺寸为 0 的守门（`Ed(parent)` 在创建时判定，之后即使尺寸恢复也不会重试）。
+**当前卡点（下一个 30 分钟）**：
+画布起来了，但 `background.png` 仍是 0 次请求、`character_generator` 也是 0。
+说明场景实例创建了但**没进入 preload 的地图加载**，或场景键没命中。
+候选：
+1. `initialSceneKey` 没给对（place → scene 的映射）；
+2. 场景 preload 依赖 `visual` 包提示；
+3. 我们注入的 auto-enter 与 visibility 覆写互相干扰，产生了两个 game 实例（纹理重复注册的证据）。
 
-方法：给这三个点各打一个探针（字体是否 resolve、初始场景键是什么、父元素创建时尺寸）。
+**纪律提醒**：后续所有"画布没起来"的验证，都必须先确认 `document.visibilityState === 'visible'`，
+否则测的是浏览器行为，不是我们的代码。
