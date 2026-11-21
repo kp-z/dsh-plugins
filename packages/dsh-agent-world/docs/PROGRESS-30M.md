@@ -1,24 +1,41 @@
 # PROGRESS
 
-## 2026-11-21 20:00 · 第 15 个半小时（场景 id 最终定为 place id）
+## 2026-11-21 20:30 · 第 16 个半小时（本计划最后一轮）
 
-**这一小时做**：把 `scene` 字段从「资源键」改回「place id」，并加了 furniture.json 兜底。
+**这一小时做**：验证"单次切换后停住"能否让场景把贴图加载完。
 
-**为什么改回 place id**（证据链）：
-1. 真配置里的 `scene_by_place` 只有 14 条，**不包括 `company`/`restaurant`/`gym`**；
-2. 前端 `$1(scene, scene_by_place)` 对不在表里的 scene 做反查 → 查到 0 个 → 抛
-   `场景 company 对应 0 个地点，无法反查`；
-3. 而 `B1(placeId, scene_by_place)` 会先读拓扑 `Tr[placeId].scene` 得到资源键——
-   **说明 scene 该是 place id，资源键只存在于拓扑里**。
+**结果**：没有报错了（说明切换被接受、快照合规），但 `/assets/maps/**/*.png` 仍为 0，
+`background.png` 仍未请求。页面没有错误块。
 
-改完后：反查错误消失、`does not cover` 也消失、`/game/state/scene` 的请求是 place id。
+**这一小时读到的最关键一行**（资源监督器）：
 
-**仍然存在**：`场景资源加载无进展: scene=place:outdoor.sunset_beach`，
-preload 里 `preloadCommonAssets` 跑了（34 个 UI 素材被加载），但地图贴图仍然 0。
+```js
+e(new As("asset_download", `场景资源加载无进展: scene=${m.sys.settings.key}`))
+```
 
-**回归确认**：agent-world 794/795 通过（1 跳过）；前端 2401/2401 逐字节一致。
+`m.sys.settings.key` 打出来是 `place:outdoor.sunset_beach` —— 说明 **Phaser 场景的 key 就是 place id**。
+所以这条链已经全对了：`scene_state` 给 place id → 场景实例 key = place id → 场景启动 → preload 开始。
 
-**下一轮（20:00）**：preload 的第二段只有三行，逐个排除：
-`i9(this)`（Np.has(assetKey) 为假时会跳过）、`g==="farm"` 分支、`textures.exists(bg)`。
-最可疑的是第三行的判定——如果 `assetTextureKey('bg')` 在某些场景下与已存在的纹理同名，
-就会"以为加载过"，直接跳过。
+**剩下的唯一问题**：preload 里 `load.image(bg, …/background.png)` 没被排队。
+
+---
+
+# 16 轮总结（12:30 → 20:30）
+
+**已经立住的（都有证据）**：
+1. 三人进城：林野/小满/老周，名字/性格/家与工作地来自 dsh-slowvale 的角色模型；
+2. 前端零改动：2401 个文件逐字节一致；
+3. `scene_state` 信封形状正确（单条 + broadcast=false + scenes=[scene]）；
+4. cursor 链（逐条 +1 + prev），不再"链断裂"；
+5. `/game/state/scene` 按请求回包，viewer presence 与之一致；
+6. **配置改用线上真实 `/api/config`（29 键）** —— 这是转折点；
+7. `scene` 用 place id、资源键只在拓扑里；
+8. `state` 分片（place_runtime / place_topology）与 `furniture` 信封已实现；
+9. 画布稳定启动（2050×1608），UI/徽章/角色表素材正常加载（34+ 个）。
+
+**唯一未解**：地图贴图（background/objects）不排队。争取下一个计划继续。
+
+**教训**：
+- 用**真数据**（线上 config）比推理快十倍；
+- `visibilityState` 会让画布根本不建——调试前必须先确认窗口可见；
+- `Hs()` 那种"静默兜底"会把错误藏住，两套 id 混用因此拖了很多轮。
