@@ -1,19 +1,31 @@
 # PROGRESS
 
-## 2026-11-21 16:00 · 第 7 个半小时（场景真的开始加载了，但加载器空转）
+## 2026-11-21 16:30 · 第 8 个半小时（读到了 preload 源码）
 
-**新证据**：
-- `/game/state/scene` 这次请求的是 `scene=restaurant`（说明切换后确实又拉了一次）；
-- 报错变成了 `[phaser_asset_load] 场景资源加载无进展: scene=convenience_store`——
-  **场景实例已经被启动了**，它在尝试加载贴图；
-- 但探针记录里 `/assets/maps/**/*.png` 仍然是 0，连 `Image.src` 都没被赋值过。
+**读到的关键代码**（GameView 里场景类的 preload）：
 
-**结论**：不是"没启动场景"，而是**场景 preload 一个文件都没加**。
-Phaser 的 loader 启动了、文件列表为空、于是超时报"无进展"。
+```js
+preload() {
+  const g = this.assetKey
+  this.preloadCommonAssets(), i9(this)
+  if (!this.textures.exists(this.assetTextureKey('bg')))
+    this.load.image(this.assetTextureKey('bg'), ni(`${this.mapBase}/background.png`))
+  ...
+  const x = this.deps.mapData[g]      // ← 用 assetKey 取地图数据
+  for (const A of x.objects) ...      // ← x 未定义就抛，preload 中断
+}
+```
 
-**下一轮（16:00）**：查"preload 为什么加不进文件"。候选：
-1. 场景实例拿到的 mapData 为空（host 用 `createSceneInstance({mapKey, mapData})` 传，mapKey 可能是 `company` 但 mapData 键不同）；
-2. 贴图不是逐张加的，而是从 `layers.json`/`objects.json` 描述的图集（atlas）来——如果图集路径拼法不对，会静默跳过；
-3. `maxParallelDownloads` 或 loader 配置导致队列没启动。
+**由此得到两条判据**：
+1. 只要 preload 真的跑起来，`background.png` 一定在 `load.image` 里被排队 → 必然产生请求；
+2. 现在一次请求都没有 → **preload 根本没执行**（或者在第一行就抛了）。
 
-方法：hook `fetch`/`createImageBitmap`/`Image` 全覆盖，并在场景报错那一刻 dump 最近的 net 探针记录。
+**所以问题不在"文件列表空"，而在这个场景实例的 preload 生命周期没被触发。**
+
+**下一轮（16:30）**有两个方向，按代价排序：
+1. **验证 preload 是否执行**：在 `Image.prototype.src` 的 setter 里加时间戳与调用栈
+   （已有钩子，但需要保留栈），看有没有对象被构造但未赋值 URL；
+2. **缩小变量**：只让世界提供一个场景（拓扑只留 `place:office.tech_company_1`），
+   排除"31 个场景互相干扰"。如果单场景能画出背景，再逐个放回来。
+
+方向 2 更符合"抓主要矛盾"：先把一个场景跑通，再谈多场景。
