@@ -228,7 +228,9 @@ export async function handleApi(
       sendJson(res, 503, { detail: { code: 'no_world', message: '世界还没起来' } })
       return true
     }
-    sendJson(res, 200, projectScene(world, ctx.opts))
+    // 前端请求会带 ?scene=<place_id>；照它回，否则它判「快照没覆盖这次切换」并整体重同步
+    const requested = url.searchParams.get('scene')
+    sendJson(res, 200, projectScene(world, requested === null ? ctx.opts : { ...ctx.opts, scene: requested }))
     return true
   }
   if (path === '/game/player/conversation') {

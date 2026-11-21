@@ -187,6 +187,8 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
 
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */
 export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<string, unknown> {
+  // 世界快照永远用配置里的默认场景；请求级的场景切换由 projectScene 处理
+  const scene = opts.place
   const clock = clockOf(world, opts.startDate)
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
@@ -223,7 +225,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     feed_head_record_entry_id: 0,
     role_public_statuses: statuses,
     role_presences: presence,
-    place_topology: { places: placesOf(opts.place) },
+    place_topology: { places: placesOf(scene) },
     place_counts: { place_counts: {} },
     viewer: {
       core: {
@@ -275,31 +277,41 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     story_flags: {},
     can_operate: true,
     market: { balance: 128000, money: 128000, holdings: [] },
-    actors: actorsOf(world, opts.place),
+    actors: actorsOf(world, scene),
     visual_timeline: [],
-    scene_place_runtime_states: [{ place_id: opts.place, furniture: [] }],
+    // installed_appliances 是前端场景校验器要求的数组（缺了整份场景数据被判无效，画布就不启动）
+    scene_place_runtime_states: [{ place_id: scene, furniture: [], installed_appliances: [] }],
     scene_farm_state: null,
   }
 }
 
 /** 场景快照（/game/state/scene）。比世界快照窄，但校验同样严格。 */
-export function projectScene(world: WorldLike, opts: ProjectOptions): Record<string, unknown> {
+export function projectScene(
+  world: WorldLike,
+  opts: ProjectOptions & { scene?: string },
+): Record<string, unknown> {
+  // 前端会问 "给我 scene=X 的快照"，并要求三件事一致：
+  // response.scene === X、cursor 覆盖请求的 seq、**viewer 的 presence.scene === X**。
+  // 所以这里的场景用请求里的值，而不是配置里那个固定值。
+  const scene = opts.scene ?? opts.place
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
   for (const agent of world.agents) {
-    presence[agent.id] = presenceOf(agent, opts.place)
+    const entry = presenceOf(agent, scene) as { scene?: string }
+    if (agent.id === opts.viewerRoleId) entry.scene = scene
+    presence[agent.id] = entry
     statuses[agent.id] = publicStatusOf(agent)
   }
   return {
     world_id: opts.worldId,
     cursor: { epoch: epochOf(world), seq: world.tick },
     tick_marker: 'tick-' + String(world.tick),
-    scene: opts.place,
+    scene,
     role_public_statuses: statuses,
     role_presences: presence,
-    actors: actorsOf(world, opts.place),
-    place_runtimes: [{ place_id: opts.place, installed_appliances: [] }],
-    place_topology: { places: placesOf(opts.place) },
+    actors: actorsOf(world, scene),
+    place_runtimes: [{ place_id: scene, installed_appliances: [] }],
+    place_topology: { places: placesOf(scene) },
     clock: clockOf(world, opts.startDate),
     weather: 'clear',
     story_flags: {},
