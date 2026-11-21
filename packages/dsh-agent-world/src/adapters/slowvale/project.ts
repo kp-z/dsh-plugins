@@ -19,6 +19,7 @@
  */
 import type { WorldAgentLike, WorldLike } from './types.js'
 import { DEFAULT_CIRCUIT } from './stage.js'
+import { sceneKeyOf } from './scene-key.js'
 import { MINUTES_PER_DAY, SLOWVALE_PROTOCOL_VERSION, TICKS_PER_GAME_MINUTE } from './types.js'
 
 /** 投影参数（世界 id / 玩家角色 / 默认地点 / 起始日历）。 */
@@ -208,7 +209,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
   // 一直给同一个场景就等于永远不触发切换，Phaser 连贴图都不会请求。
   const viewerStation = viewerAgent === undefined || viewerAgent === null ? opts.place : viewerAgent.station
   const livePlace = typeof viewerStation === 'string' ? viewerStation : opts.place
-  const scene = sceneKeyOf(livePlace)
+  const scene = livePlace
   const viewerId = viewerAgent?.id ?? opts.viewerRoleId
   const viewerName = viewerAgent?.name ?? '访客'
   // presence.scene 必须与 snapshot.scene 同一套 id（场景资源键），
@@ -310,7 +311,8 @@ export function projectScene(
   // 前端会问 "给我 scene=X 的快照"，并要求三件事一致：
   // response.scene === X、cursor 覆盖请求的 seq、**viewer 的 presence.scene === X**。
   // 所以这里的场景用请求里的值，而不是配置里那个固定值。
-  const scene = sceneKeyOf(opts.scene ?? opts.place)
+  // 快照里的 scene 用 place id（前端拿它反查地点与命名）；资源键只出现在 place_topology 里
+  const scene = opts.scene ?? opts.place
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
   for (const agent of world.agents) {
@@ -372,5 +374,4 @@ export function projectRoleCard(world: WorldLike, agent: WorldAgentLike, opts: P
     last_active_at: opts.startDate + 'T00:00:00Z',
     month_card_expires_at: null,
   }
-}import { sceneKeyOf } from './scene-key.js'
-
+}

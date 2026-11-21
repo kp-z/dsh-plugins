@@ -1,27 +1,24 @@
 # PROGRESS
 
-## 2026-11-21 19:30 · 第 14 个半小时（**真配置一上，preload 就跑起来了**）
+## 2026-11-21 20:00 · 第 15 个半小时（场景 id 最终定为 place id）
 
-**做了一件一直该做的事**：从线上服务端把 `/api/config` 原样取下来，存成
-`src/adapters/slowvale/data/config.ts`，`/config` 直接返回它。
+**这一小时做**：把 `scene` 字段从「资源键」改回「place id」，并加了 furniture.json 兜底。
 
-**结果（决定性变化）**：
-- 之前：**任何**素材都不请求；
-- 现在：`/assets/ui/bubbles_32x32.png`、`/assets/sprites/pickup_items.png`、
-  `/assets/characters/char_01.png`、`/assets/ui/badges/*.png` 全都被请求了。
+**为什么改回 place id**（证据链）：
+1. 真配置里的 `scene_by_place` 只有 14 条，**不包括 `company`/`restaurant`/`gym`**；
+2. 前端 `$1(scene, scene_by_place)` 对不在表里的 scene 做反查 → 查到 0 个 → 抛
+   `场景 company 对应 0 个地点，无法反查`；
+3. 而 `B1(placeId, scene_by_place)` 会先读拓扑 `Tr[placeId].scene` 得到资源键——
+   **说明 scene 该是 place id，资源键只存在于拓扑里**。
 
-这些正是 `preloadCommonAssets()` 里排的文件——**说明场景 preload 真的在跑了**。
+改完后：反查错误消失、`does not cover` 也消失、`/game/state/scene` 的请求是 place id。
 
-**真配置的规模**：29 个键，其中 `scene_by_place` 14 条、`phone_apps` 12 项（有顺序）。
-自己拼不可能拼对；而且它顺便告诉我们：我们自造的 place id（`place:office.tech_company_1`、
-`place:downtown.city_gym`…）**在规则表里是合法的**（`A1` 的 numbered_prefix/exact 规则能匹配）。
+**仍然存在**：`场景资源加载无进展: scene=place:outdoor.sunset_beach`，
+preload 里 `preloadCommonAssets` 跑了（34 个 UI 素材被加载），但地图贴图仍然 0。
 
-**新卡点（很具体）**：
-preload 跑了 `preloadCommonAssets`（UI/徽章/角色表都加载了），
-但**没有走到 `load.image(bg, …/background.png)` 那一行**。
-中间只剩两段：`i9(this)` 与 `g === "farm"` 分支。而 `i9` 需要
-`/assets/maps/<scene>/furniture.json` —— 我们镜像是 **404**（文件不存在）。
+**回归确认**：agent-world 794/795 通过（1 跳过）；前端 2401/2401 逐字节一致。
 
-**下一轮（19:30）**：给 `/assets/maps/*/furniture.json` 一个合法的空对象
-（由适配层补，不写产物），看 preload 能否继续到 bg；
-如果不能，就把 `preloadCommonAssets` 的整段读完，找它后面的中断点。
+**下一轮（20:00）**：preload 的第二段只有三行，逐个排除：
+`i9(this)`（Np.has(assetKey) 为假时会跳过）、`g==="farm"` 分支、`textures.exists(bg)`。
+最可疑的是第三行的判定——如果 `assetTextureKey('bg')` 在某些场景下与已存在的纹理同名，
+就会"以为加载过"，直接跳过。

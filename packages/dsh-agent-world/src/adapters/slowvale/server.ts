@@ -288,6 +288,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
 
+      // 地图目录下的 furniture.json 官方产物里没有（是按家具动态生成的）。
+      // 场景 preload 里会去 load.json 它，404 就中断后续贴图加载；这里给一个合法空对象。
+      if (/^\/assets\/maps\/[^/]+\/furniture\.json$/.test(url.pathname)) {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        res.end('{"faces":[]}')
+        return
+      }
+
       serveStatic(
         options.assetsDir,
         req,
