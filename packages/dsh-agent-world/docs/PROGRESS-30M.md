@@ -1,31 +1,31 @@
 # PROGRESS
 
-## 2026-11-21 18:30 · 第 12 个半小时（找到场景切换的真入口）
+## 2026-11-21 19:00 · 第 13 个半小时（Phaser 只自动启动第一个场景）
 
-**读到的关键代码**（host 内部的场景切换）：
-
+**读到的 Phaser 内部逻辑**：
 ```js
-function O(scene, ...) {
-  r?.ensureScene(scene)
-  const current = F() || scene
-  return current?.mapKey === scene
-    ? true                                   // 认为"已经在那个场景了"，什么都不做
-    : (Kc(r?.game), f.add(scene),
-       current ? (l.leaveScene(current), current.scene.start(scene, { from: current.mapKey }), true)
-               : r?.game?.scene ? (r.game.scene.start(scene, { from: null }), true) : false)
-}
-function _() { return c.committedScene }     // 场景由 committedScene 决定
+for (p = 0; p < f.length; p++) this._pending.push({ key: "default", scene: f[p], autoStart: p === 0 });
+...
+(d.autoStart || b.sys.settings.active) && this._start.push(f)
 ```
+**只有第一个场景会 autoStart**；其余必须显式 `scene.start()`。
 
-**这就是卡点的形状**：
-`current?.mapKey === scene` 会命中一个**"实例存在但从未 start"**的场景，
-于是 `O()` 直接返回 `true`——**永远不启动 preload**。
+**推论**：既然我们的第一个场景是 `company`（committedScene 命中了 `initialSceneKey`），
+它应该被自动启动、执行 preload、请求 `/assets/maps/company/background.png`。
+但实际一次请求都没有 → **preload 在执行到 `load.image(...)` 之前就中断了**。
 
-而 Phaser 只在 `scene.start()` 之后才跑 preload。
+**preload 的开头是**：
+```js
+preload() {
+  this.preloadCommonAssets(), i9(this),
+  g === "farm" && (B_(this), tO(this), nO(this)),
+  this.textures.exists(...) || this.load.image(..., ni(`${this.mapBase}/background.png`))
+  ...
+}
+```
+所以中断点在 `preloadCommonAssets()` 或 `i9(this)`——**在加载地图贴图之前**。
 
-**为什么之前的切换没救回来**：我们切到 `convenience_store` 时，
-`F()` 仍可能返回一个"当前"实例（例如初始 key），使等值判断命中。
-
-**下一轮（18:30）**：验证这个"假命中"。
-方法：让 `committedScene` 连续切到**两个都没被创建过**的场景（例如 park → beach），
-若仍不 start，就说明 `F()` 总是返回非空；再考虑让初始 `initialSceneKey` 为空。
+**下一轮（19:00）**：读 `preloadCommonAssets` 与 `i9`，看它们依赖什么。
+这两个函数很可能要求"通用素材"（角色帧、气泡、UI 图集）先注册，
+缺一个就抛，导致整个 preload 中断——这与我们在 HUD 里遇到过的
+`character_generator` / `portrait_generator` 缺失是同一类问题。
