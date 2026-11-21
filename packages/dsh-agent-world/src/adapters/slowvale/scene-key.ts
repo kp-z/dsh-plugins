@@ -8,7 +8,7 @@
  *
  * 用错的表现很具体：画布建起来了，但 background.png 一次都不请求。
  */
-const SCENE_KEY: Record<string, string> = {
+export const sceneByPlace: Record<string, string> = {
   'place:office.tech_company_1': 'company',
   'place:residential.apartment_1': 'home_public',
   'place:residential.mini_market': 'convenience_store',
@@ -19,7 +19,7 @@ const SCENE_KEY: Record<string, string> = {
 
 /** 把 place id 换成场景资源键；已经是键就原样返回。 */
 export function sceneKeyOf(placeId: string): string {
-  const mapped = SCENE_KEY[placeId]
+  const mapped = sceneByPlace[placeId]
   if (mapped !== undefined) return mapped
   return placeId.startsWith('place:') ? 'home_public' : placeId
 }

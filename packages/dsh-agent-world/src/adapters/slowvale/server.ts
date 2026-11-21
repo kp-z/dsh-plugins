@@ -148,6 +148,80 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     for (const res of clients) writeEvent(res, 'update', envelope)
   }
 
+
+  /**
+   * 推一个 state 分片（信封 kind='state'）。
+   *
+   * 这是**真正喂数据**的那条路：scene_state 只广播"我在哪个场景"，
+   * 场景内容（家具、安装物件、拓扑）靠 state 分片持续推。
+   *
+   * 形状（前端 Ix() 校验）：{ part, operation: 'replace' | 'remove', key, payload }
+   * - keyed part（place_runtime / place_topology / role_core …）key 必须非空；
+   * - place_runtime 的 payload.place_id 必须等于 key；
+   * - place_topology 的 payload.id 必须等于 key。
+   */
+  const pushStatePart = (part: string, key: string, payload: Record<string, unknown>, scene: string): void => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0) return
+    envelopeSeq += 1
+    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const body = gzipSync(Buffer.from(JSON.stringify({ part, operation: 'replace', key, payload }))).toString('base64')
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      prev: lastCursor,
+      tick_marker: 'tick-' + String(world.tick),
+      kind: 'state',
+      route: { world_id: world.id, broadcast: false, role_ids: [], scenes: [scene] },
+      payload_gz: body,
+    }
+    lastCursor = cursor
+    for (const res of clients) writeEvent(res, 'update', envelope)
+  }
+
+  /** 推一次 furniture 信封（kind=furniture）。 */
+  const pushFurniture = (): void => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0) return
+    const snapshot = projectSnapshot(world, options.opts)
+    const scene = snapshot.scene
+    if (typeof scene !== 'string' || scene === '') return
+    envelopeSeq += 1
+    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const payload = { place_id: options.opts.place, furniture: [] }
+    const body = gzipSync(Buffer.from(JSON.stringify(payload))).toString('base64')
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      prev: lastCursor,
+      tick_marker: 'tick-' + String(world.tick),
+      kind: 'furniture',
+      route: { world_id: world.id, broadcast: false, role_ids: [], scenes: [scene] },
+      payload_gz: body,
+    }
+    lastCursor = cursor
+    for (const res of clients) writeEvent(res, 'update', envelope)
+  }
+
+  /** 把当前场景的内容（runtime + 拓扑）推给前端。 */
+  const pushSceneContent = (): void => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0) return
+    const snapshot = projectSnapshot(world, options.opts)
+    const scene = snapshot.scene
+    if (typeof scene !== 'string' || scene === '') return
+    const place = options.opts.place
+    pushStatePart('place_runtime', place, { place_id: place, furniture: [], installed_appliances: [] }, scene)
+    // furniture 信封：场景家具（这里先空）。前端把它当作场景可交互层的屏障事件。
+    pushFurniture()
+    pushStatePart(
+      'place_topology',
+      place,
+      { id: place, place_id: place, scene, name: String(place), place_type: 'building', parent_id: null },
+      scene,
+    )
+  }
+
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://' + options.host + ':' + String(options.port))
@@ -237,6 +311,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       if (closed) return
       try {
         pushSceneState()
+        pushSceneContent()
       } catch (error: unknown) {
         log('[slowvale] 推送失败 ' + String(error))
       }
