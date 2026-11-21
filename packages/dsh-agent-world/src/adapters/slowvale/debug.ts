@@ -61,6 +61,14 @@ export function debugScript(forceVisible = false): string {
     '}).observe(document.documentElement, { childList: true, subtree: true });',
     // 心跳：把"父元素尺寸 / canvas 数 / 字体状态"打成时间线，
     // 用来判断是不是"创建那一刻父元素尺寸为 0"这种一次性守门。
+    // 网络探针：只记 /assets/maps/ 与 /api/ 的图片/请求，回答「加载器到底发了什么」
+    'var openXhr = XMLHttpRequest.prototype.open;',
+    'var sendXhr = XMLHttpRequest.prototype.send;',
+    'XMLHttpRequest.prototype.open = function (method, url) {' + 
+    '  this.__u = String(url); push("net", [method + " " + this.__u]); return openXhr.apply(this, arguments);' + 
+    '};',
+    'var imageSrc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");',
+    'if (imageSrc && imageSrc.set) { Object.defineProperty(HTMLImageElement.prototype, "src", { configurable: true, get: imageSrc.get, set: function (value) { push("net", ["img " + String(value)]); return imageSrc.set.call(this, value) } }) }',
     'var beat = 0;',
     'var timer = setInterval(function () {',
     '  beat += 1;',

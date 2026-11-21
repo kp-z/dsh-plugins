@@ -189,7 +189,6 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */
 export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<string, unknown> {
   // 世界快照永远用配置里的默认场景；请求级的场景切换由 projectScene 处理
-  const scene = sceneKeyOf(opts.place)
   const clock = clockOf(world, opts.startDate)
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
@@ -198,6 +197,11 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     statuses[agent.id] = publicStatusOf(agent)
   }
   const viewerAgent = world.agents.find((a) => a.id === opts.viewerRoleId) ?? world.agents[0]
+  // 场景必须跟着 viewer 的实际位置走：前端靠 committedScene 的**变化**去启动/切换场景，
+  // 一直给同一个场景就等于永远不触发切换，Phaser 连贴图都不会请求。
+  const viewerStation = viewerAgent === undefined || viewerAgent === null ? opts.place : viewerAgent.station
+  const livePlace = typeof viewerStation === 'string' ? viewerStation : opts.place
+  const scene = sceneKeyOf(livePlace)
   const viewerId = viewerAgent?.id ?? opts.viewerRoleId
   const viewerName = viewerAgent?.name ?? '访客'
   // presence.scene 必须与 snapshot.scene 同一套 id（场景资源键），
