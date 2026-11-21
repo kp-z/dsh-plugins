@@ -1,19 +1,21 @@
 # PROGRESS
 
-## 2026-11-21 17:30 · 第 10 个半小时（一次干净切换 + 启动失败的原因）
+## 2026-11-21 18:00 · 第 11 个半小时（场景注册表是好的）
 
-**实验**：只做**一次**场景切换（office → convenience_store，tick=40 时触发），之后不动。
+**查了什么**：`chrome.fishtank.boot_failed` 的触发链 + 场景注册表。
 
-**结果**：
-- `/game/state/scene?scene=convenience_store` 被请求了 1 次 ✅（切换被前端认了）
-- `Image` 构造函数调用次数 **0** —— 是的，连 Image 对象都没造出来
-- 页面上出现错误块：**「现场画面未能启动，请重新加载」**
-- 控制台没有新的 warn/error（说明这次失败走的是组件内部的失败态，不是抛异常）
+**结论（三条硬事实）**：
+1. `Gd(sceneKey)` 会用 `js[Hs(key)]` 查静态注册表；**`company` 确实在里面**
+   （注册表 32 个键：world_map/home_public/…/company/park/beach），所以场景构造不会抛；
+2. `Hs()` 的归一化规则是：`js[key]` → 直接用；否则把 key 当 **place id** 去 `Tr[key].scene_asset`；
+   所以**两套 id 混用的雷还埋在这儿**——一旦某个值不是注册键，就会被当成 place id 再去查一次；
+3. Image 构造 0 次、`createElement('img')` 0 次，但 `src` setter 被调用 67 次（都是 DOM 里的 <img>）。
 
-**结论**：场景切换路径通了（fetch 成功），但 Phaser 侧**从未进入 preload**——
-连 `load.image(...)` 的执行痕迹都没有。所以不是"加载失败"，是"没开始加载"。
+**所以**：Phaser 的 loader 确实一个文件都没加。场景实例建出来了，但没被"启动"到 preload。
 
-**下一轮（17:30）**：读 boot 失败态的触发源。
-`chrome.fishtank.boot_failed` 这个文案由组件的 `onBootError` 设置；
-要找的是「谁调用了 onBootError」——顺着它在 bundle 里定位，就能知道它认为"什么算失败"。
-这比继续猜 preload 更直接：**它自己说了失败，我们只要问它为什么**。
+**下一轮（18:00）**：查 Phaser **场景启动**这一环。
+前端 `scenes: Ae.map(Gd)` 只是把实例交给 Phaser；Phaser 只自动启动 `active` 的场景。
+如果 host 依赖 `initialSceneKey` 之外的方式启动（例如 transition 里调 `scene.start`），
+那我们要做的就是**让首次 transition 被识别**。
+
+方法：在 bundle 里找 `scene.start(` / `sceneManager.start` 的调用，看它的前置条件。
