@@ -103,3 +103,24 @@ export function independentTimeline(input: {
 export function walkPathOf(agent: { path?: { x: number; z: number }[] }): { x: number; y: number }[] {
   return (agent.path ?? []).map((point) => ({ x: point.x, y: point.z }))
 }
+
+/**
+ * 谁需要发一条 walk：只看「路径从无到有」这一跳。
+ *
+ * 为什么不是每帧都发：beat 是"一次动作"，不是位置流。位置流由快照的 actors 承担；
+ * 每帧发 beat 会让前端反复重启动画。
+ */
+export function pickWalkStarts(
+  previous: Map<string, number>,
+  agents: readonly { id: string; path?: { x: number; z: number }[] }[],
+): { started: { agentId: string; path: { x: number; y: number }[] }[]; next: Map<string, number> } {
+  const next = new Map<string, number>()
+  const started: { agentId: string; path: { x: number; y: number }[] }[] = []
+  for (const agent of agents) {
+    const length = agent.path?.length ?? 0
+    next.set(agent.id, length)
+    const before = previous.get(agent.id) ?? 0
+    if (length > 0 && before === 0) started.push({ agentId: agent.id, path: walkPathOf(agent) })
+  }
+  return { started, next }
+}

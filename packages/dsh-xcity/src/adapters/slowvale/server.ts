@@ -29,7 +29,7 @@ import { debugScript } from './debug.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
-import { independentDialogue } from './visual.js'
+import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat } from './visual.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
 
@@ -157,6 +157,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
    * - payload：只允许 { world_id, scene } 两个键
    */
   let lastPushedScene: string | null = null
+  /** 上一轮每个角色的剩余路径长度：用来判断"这一轮是不是刚开始走"。 */
+  const walkLengths = new Map<string, number>()
 
   const pushSceneState = (): void => {
     const world = options.getWorld()
@@ -234,6 +236,31 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       actorId,
       beat: { text },
     })
+    const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      prev: lastCursor,
+      tick_marker: tickMarker,
+      kind: 'visual',
+      route: { world_id: world.id, broadcast: false, role_ids: [actorId], scenes: [scene] },
+      payload_gz: body,
+    }
+    lastCursor = cursor
+    for (const res of clients) writeEvent(res, 'update', envelope)
+    return true
+  }
+
+  /** 推一个 independent 时间轴（一个角色的若干拍）。 */
+  const pushTimeline = (actorId: string, beats: Record<string, unknown>[]): boolean => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0 || beats.length === 0) return false
+    const scene = projectSnapshot(world, options.opts).scene
+    if (typeof scene !== 'string' || scene === '') return false
+    envelopeSeq += 1
+    const tickMarker = 'tick-' + String(world.tick)
+    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const packet = independentTimeline({ epoch: cursor.epoch, seq: envelopeSeq, tickMarker, actorId, beats: beats as never })
     const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -428,6 +455,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       try {
         pushSceneState()
         pushSceneContent()
+        // 世界侧驱动：谁开始移动，就给谁发一拍 walk（路径点来自内核 sim/pathfind）
+        const world = options.getWorld()
+        if (world !== null && clients.size > 0) {
+          const picked = pickWalkStarts(walkLengths, world.agents)
+          walkLengths.clear()
+          for (const [id, len] of picked.next) walkLengths.set(id, len)
+          for (const item of picked.started) pushTimeline(item.agentId, [walkBeat(item.path) as never])
+        }
       } catch (error: unknown) {
         log('[slowvale] 推送失败 ' + String(error))
       }

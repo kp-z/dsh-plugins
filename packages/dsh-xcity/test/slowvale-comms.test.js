@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SmsStore } from '../lib/adapters/slowvale/sms.js'
 import { loadXcityBindings, characterOfSession } from '../lib/adapters/slowvale/xcity.js'
-import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf } from '../lib/adapters/slowvale/visual.js'
+import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts } from '../lib/adapters/slowvale/visual.js'
 
 test('短信：没有 responder 时也要收下（回执语义）', async () => {
   const store = new SmsStore()
@@ -94,4 +94,21 @@ test('walkPathOf：世界路径 (x,z) 直接映射成 beat 的 (x,y)，不做缩
   const agent = { path: [{ x: 10, z: 20 }, { x: 30, z: 40 }] }
   assert.deepEqual(walkPathOf(agent), [{ x: 10, y: 20 }, { x: 30, y: 40 }])
   assert.deepEqual(walkPathOf({}), [], '没有路径就是空数组，不是 undefined')
+})
+
+test('pickWalkStarts：只在「路径从无到有」时发一次，走路途中不重复发', () => {
+  const path = [{ x: 1, z: 1 }, { x: 2, z: 2 }]
+  let prev = new Map()
+
+  const first = pickWalkStarts(prev, [{ id: 'a', path }])
+  assert.equal(first.started.length, 1)
+  assert.equal(first.started[0].agentId, 'a')
+  assert.deepEqual(first.started[0].path, [{ x: 1, y: 1 }, { x: 2, y: 2 }])
+
+  const second = pickWalkStarts(first.next, [{ id: 'a', path: [{ x: 2, z: 2 }] }])
+  assert.equal(second.started.length, 0, '还在走，不应该再发')
+
+  const third = pickWalkStarts(second.next, [{ id: 'a', path: [] }])
+  assert.equal(third.started.length, 0)
+  assert.equal(third.next.get('a'), 0, '走完后长度归零，下次再出发才会再发')
 })
