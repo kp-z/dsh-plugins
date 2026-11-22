@@ -26,6 +26,7 @@ import { autoEnterScript } from './auto-enter.js'
 import { debugScript } from './debug.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
+import { loadXcityBindings } from './xcity.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
 
@@ -49,6 +50,8 @@ export interface BridgeOptions {
   autoEnter?: boolean
   /** 注入调试采集脚本（不碰前端产物），排查用。 */
   debug?: boolean
+  /** xcity/bindings.json 的绝对路径（谁代表谁）；不配就没有这个投影。 */
+  bindingsFile?: string
   /** 只在场景变化时推 scene_state（默认每秒重发，会让前端反复转场）。 */
   sceneStateOnChangeOnly?: boolean
   /** 本机调试用：把后台/无头窗口当成可见（前端不可见时不建 Phaser 游戏）。 */
@@ -257,6 +260,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
 
+      // 谁代表谁：只读投影工作区里的 xcity/bindings.json（写入走 dsh-slowvale 的绑定表）。
+      if (url.pathname === '/api/xcity/bindings' && req.method === 'GET') {
+        const bindings = loadXcityBindings(options.bindingsFile ?? null)
+        const body = Buffer.from(JSON.stringify({ bindings }), 'utf8')
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.byteLength, 'cache-control': 'no-store' })
+        res.end(body)
+        return
+      }
       if (url.pathname.startsWith('/api/')) {
         await handleApi(ctx, req, res, url)
         return

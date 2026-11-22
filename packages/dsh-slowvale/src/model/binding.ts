@@ -89,6 +89,16 @@ export class BindingTable {
     return row
   }
 
+  /**
+   * 从落盘数据重建一行（迁移/加载时用）。
+   *
+   * **不做冲突检查**：文件里的历史是既成事实，重放时如果还按 bind 的规则校验，
+   * 一旦历史上真有例外（比如手工修过），程序就再也起不来了。
+   */
+  restore(row: SessionBinding): void {
+    this.rows.push(row)
+  }
+
   /** 归档一个会话：写归档时刻与原因，不删行。返回是否真的归档了。 */
   archive(sessionId: string, tick: number, reason = 'manual'): boolean {
     const current = this.active().find((row) => row.sessionId === sessionId)

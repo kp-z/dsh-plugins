@@ -1,0 +1,12 @@
+{
+  "bindings": [
+    {
+      "sessionId": "session-198aef44-ba93-4127-9e8f-b57fe9a278f2",
+      "characterId": "role.lin",
+      "channel": "all",
+      "boundAtTick": 0,
+      "archivedAtTick": null,
+      "archivedReason": null
+    }
+  ]
+}
