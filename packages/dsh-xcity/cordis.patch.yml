@@ -23,5 +23,5 @@
         slowvale:
           enabled: true
           port: 7788
-          assetsDir: slowvale-mirror/site
+          assetsDir: /Users/demo/dsh-plugins/slowvale-mirror/site
           place: 'place:office.tech_company_1'
