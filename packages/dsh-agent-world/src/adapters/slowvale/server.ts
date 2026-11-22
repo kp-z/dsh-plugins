@@ -51,6 +51,19 @@ export interface BridgeOptions {
   autoEnter?: boolean
   /** 注入调试采集脚本（不碰前端产物），排查用。 */
   debug?: boolean
+  /**
+   * 「谁来回这条短信」。返回 null = 这次不回。
+   *
+   * 适配层**不自己编回复**：没有绑定会话就没有回复，这是诚实的默认值。
+   * 接上 DSH 会话后由插件注入这个端口（src/index.ts）。
+   */
+  respondSms?: (input: {
+    threadId: string
+    peerRoleId: string
+    peerName: string
+    content: string
+    tick: number
+  }) => Promise<string | null>
   /** xcity/bindings.json 的绝对路径（谁代表谁）；不配就没有这个投影。 */
   bindingsFile?: string
   /** 只在场景变化时推 scene_state（默认每秒重发，会让前端反复转场）。 */
@@ -92,6 +105,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
 
   // 短信线程挂在世界这一侧：会话可以归档换人，聊天记录不能丢。
   const sms = new SmsStore()
+  sms.useResponder(options.respondSms ?? null)
 
   const ctx: RouteContext = {
     opts: options.opts,
