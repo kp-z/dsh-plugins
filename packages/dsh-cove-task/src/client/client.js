@@ -23,7 +23,26 @@ import { installSessionBridge } from './sessionBridge.js'
 
 /* 视图装配模块在插件自己的路由上（/tasks/src/<file>.js → src/client/<file>.js）。
    用变量接住地址：构建期不能把这个动态 import 当成静态依赖解析掉。 */
-const UI_MODULE_URL = '/dsh-cove-task/tasks/src/ui.js'
+const UI_MODULE_PATH = '/dsh-cove-task/tasks/src/ui.js'
+
+/**
+ * 装配模块的绝对地址。
+ *
+ * 必须按 **document.baseURI** 解析，不能直接 import('/dsh-cove-task/...')：
+ * 桌面外壳的页面 origin 是 dsh-app://app/，直接写路径会把「/dsh-cove-task」当成主机名
+ * 解析成 dsh-app://dsh-cove-task/...（那条协议只服务 app 这个主机，必然 404）。
+ * 相对 baseURI 解析得到 dsh-app://app/dsh-cove-task/...，和 /api/file 那类路由同一条路；
+ * 而 Web 端（http://127.0.0.1:PORT/）解析结果不变。
+ */
+function uiModuleUrl() {
+  try {
+    const base = typeof document !== 'undefined' && document.baseURI ? document.baseURI : undefined
+    if (base) return new URL(UI_MODULE_PATH, base).href
+  } catch (error) {
+    /* 落到下面的裸路径 */
+  }
+  return UI_MODULE_PATH
+}
 
 /* sidebar.panellist 的 id 同时就是 main 面板的 key（DSH 约定），两处必须同源。 */
 const OVERVIEW_KEY = 'cove-task-overview'
@@ -182,7 +201,7 @@ window.__ModuleLoader__.load({
       promise: null,
       load(doc) {
         if (this.promise) return this.promise
-        const url = UI_MODULE_URL
+        const url = uiModuleUrl()
         let loading
         try {
           loading = import(url)
@@ -239,7 +258,7 @@ window.__ModuleLoader__.load({
           loader.load(document).then((created) => {
             if (!live) return
             if (created) setTick((n) => n + 1)
-            else setError('视图模块没加载起来（详见控制台）')
+            else setError('视图模块没加载起来：' + uiModuleUrl() + '（详见控制台）')
           })
           return () => { live = false }
         }, [tick])

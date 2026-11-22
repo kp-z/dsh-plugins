@@ -46,7 +46,10 @@ console.log('✓ 源码：总览面板的 host 能力位（openSession / canOpen
 /* 视图的唯一来源：宿主半体**不内联**组件树，运行时 import 插件自己的 /tasks/src/ui.js；
    独立页 import 同一个文件。这条接线断了就退回「两份代码各自跑」——
    「浏览器里改了、DSH 里没变化」正是这么来的，所以钉在源码层。 */
-assert.match(clientSrc, /UI_MODULE_URL = '\/dsh-cove-task\/tasks\/src\/ui\.js'/, '宿主半体要从插件路由取视图装配模块')
+assert.match(clientSrc, /UI_MODULE_PATH = '\/dsh-cove-task\/tasks\/src\/ui\.js'/, '宿主半体要从插件路由取视图装配模块')
+/* 桌面外壳的页面 origin 是 dsh-app://app/：裸路径会被解析成 dsh-app://dsh-cove-task/…（404），
+   必须按 document.baseURI 解析成 dsh-app://app/dsh-cove-task/… 。 */
+assert.match(clientSrc, /new URL\(UI_MODULE_PATH, base\)/, '装配地址要按 document.baseURI 解析（dsh-app://app/ 才知道插件路由在哪）')
 assert.match(clientSrc, /import\(url\)/, '装配模块必须动态 import（静态 import 会被内联成第二份视图）')
 assert.equal(/from '\.\/OverviewPanel\.js'/.test(clientSrc), false, '客户端半体不该再静态 import 视图')
 assert.equal(/from '\.\/styles\.js'/.test(clientSrc), false, '样式表随装配模块走，不在宿主半体里内联')
