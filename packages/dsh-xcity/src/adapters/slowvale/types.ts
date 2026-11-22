@@ -13,6 +13,8 @@ export interface WorldAgentLike {
   state?: string
   station?: string | null
   position?: { x?: number; z?: number }
+  /** 剩余路径点（内核 sim/movement 用同一套；坐标就是地图像素）。 */
+  path?: { x: number; z: number }[]
   facing?: number
   boundAgentId?: string | null
 }

@@ -92,3 +92,14 @@ export function independentTimeline(input: {
     beats: input.beats,
   }
 }
+
+/**
+ * 把世界里的剩余路径点换成 beat 需要的 {x, y}。
+ *
+ * 坐标**不需要换算**：actorsOf 里就是 x = position.x、y = position.z，
+ * 也就是世界坐标本身就是地图像素（舞台行走一直用这套）。这里只改字段名，
+ * 不引入一个没有依据的缩放系数。
+ */
+export function walkPathOf(agent: { path?: { x: number; z: number }[] }): { x: number; y: number }[] {
+  return (agent.path ?? []).map((point) => ({ x: point.x, y: point.z }))
+}

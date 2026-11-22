@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SmsStore } from '../lib/adapters/slowvale/sms.js'
 import { loadXcityBindings, characterOfSession } from '../lib/adapters/slowvale/xcity.js'
-import { independentDialogue, walkBeat, workBeat, independentTimeline } from '../lib/adapters/slowvale/visual.js'
+import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf } from '../lib/adapters/slowvale/visual.js'
 
 test('短信：没有 responder 时也要收下（回执语义）', async () => {
   const store = new SmsStore()
@@ -88,4 +88,10 @@ test('walk / work beat：body.action 只能是动作表里的值，路径按点�
   assert.equal(packet.kind, 'independent')
   assert.equal(packet.actorId, 'agent-1')
   assert.equal(packet.beats.length, 2)
+})
+
+test('walkPathOf：世界路径 (x,z) 直接映射成 beat 的 (x,y)，不做缩放', () => {
+  const agent = { path: [{ x: 10, z: 20 }, { x: 30, z: 40 }] }
+  assert.deepEqual(walkPathOf(agent), [{ x: 10, y: 20 }, { x: 30, y: 40 }])
+  assert.deepEqual(walkPathOf({}), [], '没有路径就是空数组，不是 undefined')
 })

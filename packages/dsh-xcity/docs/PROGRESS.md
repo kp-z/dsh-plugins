@@ -10265,3 +10265,20 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 **仍未解**：M1 判据（background.png 被请求）在我这个窗口里取不到——我这个浏览器是后台窗口，
 前端在 visibilityState=hidden 时不建 Phaser 画布。需要用户在 xcity tab 里确认地图是否可见才能继续。
+
+## 2026-11-23 00:58 · M2 第二块（路径坐标映射）
+
+**事实（读代码确认，不是推测）**
+
+- 内核 Agent.path 是 Vec2[]（{x, z}），由 sim/pathfind 算出来；
+- 适配层 actorsOf 把位置映射成 location: {x: position.x, y: position.z}；
+- 也就是说**世界坐标本身就是地图像素**，不需要任何缩放系数。
+
+**这一轮做的**
+
+- WorldAgentLike 补 path?: {x,z}[]（内核本来就有，之前只是没在接口里暴露）；
+- visual.ts 增加 walkPathOf(agent)：只做 (x,z) -> (x,y) 的字段改名，不做换算；
+- 测试：映射正确、无路径时返回空数组（6 条通过）。
+
+**下一轮**：用 walkPathOf 生成 walk beat，在角色接到工单开始移动时发出去；
+判据是前端接受该 visual 包（无校验错误）——这是数据层可验证的，不依赖画面。
