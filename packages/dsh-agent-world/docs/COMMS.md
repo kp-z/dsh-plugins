@@ -35,3 +35,28 @@ g.dialogue && this._spawnSpeechBubble(g.dialogue), g.toast && ...
 1. **发 `visual` 包**：把「谁在什么时候说了一句什么」变成一拍的 beat；
 2. 气泡一旦出现，"角色之间在说话"就有了可见证据；
 3. 再把 beat 的来源接到会话（角色 ↔ 会话绑定后，模型说的话就是 beat.dialogue）。
+
+## 四、visual 包（角色开口的唯一出口）
+
+前端只认一种"某人说话了"：**视觉时间轴上的一拍**。
+
+```json
+{
+  "epoch": "epoch-w1",
+  "seq": 7,
+  "tick_marker": "tick-42",
+  "kind": "independent",
+  "actorId": "agent-1",
+  "beats": [{ "dialogue": { "text": "今天风不小。" } }]
+}
+```
+
+两条硬约束（不满足前端直接丢弃）：
+
+1. `payload.tick_marker` 必须与**信封**的 `tick_marker` 完全一致；
+2. 信封 `kind='visual'`，route 用 `role_ids:[actorId]`（不是 broadcast）。
+
+实现：`src/adapters/slowvale/visual.ts` + `POST /api/xcity/say {roleId, text}`。
+实测（7799 测试实例）：包被前端接受、无校验错误；但**气泡是否可见取决于场景是否画出地图**——
+场景没起来时 actor 不存在，气泡会静默丢弃。这就是为什么"先修挂载"仍然挡在前面。
+

@@ -27,6 +27,7 @@ import { debugScript } from './debug.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadXcityBindings } from './xcity.js'
+import { independentDialogue } from './visual.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
 
@@ -191,6 +192,41 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     for (const res of clients) writeEvent(res, 'update', envelope)
   }
 
+  /**
+   * 让某个角色在场景里说一句话（visual 包，一拍 dialogue）。
+   *
+   * 对话在这套前端里不是接口，是视觉时间轴上的一拍；这条是唯一的出口。
+   */
+  const pushSay = (actorId: string, text: string): boolean => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0) return false
+    const scene = projectSnapshot(world, options.opts).scene
+    if (typeof scene !== 'string' || scene === '') return false
+    envelopeSeq += 1
+    const tickMarker = 'tick-' + String(world.tick)
+    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const packet = independentDialogue({
+      epoch: cursor.epoch,
+      seq: envelopeSeq,
+      tickMarker,
+      actorId,
+      beat: { text },
+    })
+    const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      prev: lastCursor,
+      tick_marker: tickMarker,
+      kind: 'visual',
+      route: { world_id: world.id, broadcast: false, role_ids: [actorId], scenes: [scene] },
+      payload_gz: body,
+    }
+    lastCursor = cursor
+    for (const res of clients) writeEvent(res, 'update', envelope)
+    return true
+  }
+
   /** 推一次 furniture 信封（kind=furniture）。 */
   const pushFurniture = (): void => {
     const world = options.getWorld()
@@ -261,6 +297,24 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       }
 
       // 谁代表谁：只读投影工作区里的 xcity/bindings.json（写入走 dsh-slowvale 的绑定表）。
+      // 让某个角色开口：调试用入口，验证「对话 = 视觉时间轴上的一拍」。
+      if (url.pathname === '/api/xcity/say' && req.method === 'POST') {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(chunk as Buffer)
+        let payload: { roleId?: unknown; text?: unknown } = {}
+        try {
+          payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { roleId?: unknown; text?: unknown }
+        } catch {
+          payload = {}
+        }
+        const roleId = typeof payload.roleId === 'string' ? payload.roleId : ''
+        const text = typeof payload.text === 'string' ? payload.text : ''
+        const ok = roleId !== '' && text !== '' && pushSay(roleId, text)
+        const body = Buffer.from(JSON.stringify({ ok }), 'utf8')
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.byteLength })
+        res.end(body)
+        return
+      }
       if (url.pathname === '/api/xcity/bindings' && req.method === 'GET') {
         const bindings = loadXcityBindings(options.bindingsFile ?? null)
         const body = Buffer.from(JSON.stringify({ bindings }), 'utf8')
