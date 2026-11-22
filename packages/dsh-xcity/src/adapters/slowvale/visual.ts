@@ -32,6 +32,8 @@ export interface VisualBeat {
   bubble?: Record<string, unknown>
   body?: Record<string, unknown>
   toast?: Record<string, unknown>
+  /** 这一拍持续多久（ms）；不给就用前端默认。 */
+  duration_ms?: number
 }
 
 /** 构造一个"某角色说了一句话"的 visual 包。 */
@@ -51,5 +53,42 @@ export function independentDialogue(input: {
     kind: 'independent',
     actorId: input.actorId,
     beats: [{ dialogue }],
+  }
+}
+
+/**
+ * 造一拍：前端只认 body.action + 参数（动作表见 docs/DRIVE-MODEL.md）。
+ */
+export function actionBeat(action: string, extra: Record<string, unknown> = {}, durationMs?: number): VisualBeat {
+  const beat: VisualBeat = { body: { action, ...extra } }
+  if (durationMs !== undefined) beat['duration_ms'] = durationMs
+  return beat
+}
+
+/** 走过去：路径点由后端算，前端只按点走。 */
+export function walkBeat(path: { x: number; y: number }[], durationMs?: number): VisualBeat {
+  return actionBeat('walk', { path }, durationMs)
+}
+
+/** 在工位干活。 */
+export function workBeat(durationMs?: number): VisualBeat {
+  return actionBeat('work', {}, durationMs)
+}
+
+/** 若干拍打成一个 independent 时间轴（单个角色）。 */
+export function independentTimeline(input: {
+  epoch: string
+  seq: number
+  tickMarker: string
+  actorId: string
+  beats: VisualBeat[]
+}): Record<string, unknown> {
+  return {
+    epoch: input.epoch,
+    seq: input.seq,
+    tick_marker: input.tickMarker,
+    kind: 'independent',
+    actorId: input.actorId,
+    beats: input.beats,
   }
 }

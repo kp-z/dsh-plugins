@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SmsStore } from '../lib/adapters/slowvale/sms.js'
 import { loadXcityBindings, characterOfSession } from '../lib/adapters/slowvale/xcity.js'
-import { independentDialogue } from '../lib/adapters/slowvale/visual.js'
+import { independentDialogue, walkBeat, workBeat, independentTimeline } from '../lib/adapters/slowvale/visual.js'
 
 test('短信：没有 responder 时也要收下（回执语义）', async () => {
   const store = new SmsStore()
@@ -69,4 +69,23 @@ test('visual：tick_marker 与 cursor 必须一致，且带 actorId', () => {
   assert.equal(packet['actorId'], 'agent-1')
   const beats = packet['beats']
   assert.equal(beats[0]?.dialogue?.text, '今天风不小。')
+})
+
+test('walk / work beat：body.action 只能是动作表里的值，路径按点给', () => {
+  const walk = walkBeat([{ x: 1, y: 2 }, { x: 3, y: 4 }], 2000)
+  assert.deepEqual(walk.body, { action: 'walk', path: [{ x: 1, y: 2 }, { x: 3, y: 4 }] })
+  assert.equal(walk.duration_ms, 2000)
+
+  const work = workBeat()
+  assert.deepEqual(work.body, { action: 'work' })
+  assert.equal(work.duration_ms, undefined, '不给时长就用前端默认')
+
+  const packet = independentTimeline({
+    epoch: 'epoch-w1', seq: 3, tickMarker: 'tick-9', actorId: 'agent-1',
+    beats: [walk, work],
+  })
+  assert.equal(packet.tick_marker, 'tick-9')
+  assert.equal(packet.kind, 'independent')
+  assert.equal(packet.actorId, 'agent-1')
+  assert.equal(packet.beats.length, 2)
 })

@@ -10249,3 +10249,19 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 **下一轮**：在页面里验证这两条（不改前端，用探针读 __svlog 或拦截 Phaser 构造参数），
 而不是继续调服务端字段。判据不变：background.png 被请求。
+
+## 2026-11-22 23:58 · M2 第一块（beat 构造收敛 + 测试）
+
+**只做了一件事**：把 walk / work 这类 beat 的构造收敛到 visual.ts 的三个函数，并补测试。
+
+- actionBeat(action, extra?, durationMs?) —— 统一入口，避免每个调用点各拼一遍 JSON；
+- walkBeat(path, durationMs?) / workBeat(durationMs?) —— 动作表里的两个值；
+- independentTimeline({epoch, seq, tickMarker, actorId, beats}) —— 一个角色的时间轴。
+
+**判据**：单元测试通过（5 条，含 walk/work 的 body.action 与 duration_ms 语义）。
+
+**没做的事（有意）**：没有接自动发游标（谁在动就发 walk）——那需要先把「世界位置 → 路径点」的换算定下来，
+而且取决于 M1 的画布是否真的在渲染。不猜，等观测。
+
+**仍未解**：M1 判据（background.png 被请求）在我这个窗口里取不到——我这个浏览器是后台窗口，
+前端在 visibilityState=hidden 时不建 Phaser 画布。需要用户在 xcity tab 里确认地图是否可见才能继续。
