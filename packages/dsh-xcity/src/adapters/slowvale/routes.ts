@@ -190,7 +190,7 @@ export async function handleApi(
   }
   if (path === '/config') {
     // 线上真实配置原样返回：这些键前端硬校验，自己拼总会漏（scene_by_place 曾经是 {}）
-    sendJson(res, 200, REAL_CONFIG)
+    sendJson(res, 200, { ...REAL_CONFIG, scene_by_place: { ...REAL_CONFIG.scene_by_place, ...sceneByPlace } })
     return true
   }
   if (path === '/registry/items' || path === '/registry/recipes') {
@@ -255,7 +255,9 @@ export async function handleApi(
     }
     // 前端请求会带 ?scene=<place_id>；照它回，否则它判「快照没覆盖这次切换」并整体重同步
     const requested = url.searchParams.get('scene')
-    sendJson(res, 200, projectScene(world, requested === null ? ctx.opts : { ...ctx.opts, scene: requested }))
+    const rawAfter = Number(url.searchParams.get('after_seq') ?? '0')
+    const baseOpts = requested === null ? ctx.opts : { ...ctx.opts, scene: requested }
+    sendJson(res, 200, projectScene(world, { ...baseOpts, afterSeq: Number.isFinite(rawAfter) ? rawAfter : 0 }))
     return true
   }
   // ── 短信：线程 / 详情 / 发送 ─────────────────────────────────────────────

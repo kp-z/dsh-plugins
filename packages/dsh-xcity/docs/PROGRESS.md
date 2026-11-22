@@ -10204,3 +10204,25 @@ R62 我把房间映射成能力时，是按"房间语义"编的（办公室=code
 `walk` 动画与朝向映射是同一套代码路径（前面几轮验过）。另：`extent.half` 真机是 35 不是 37
 （panel 让底图优先所以不影响取景，但这个数应当修一致）。
 
+
+## 2026-11-22 23:00 · M1 第一轮（场景 id 对齐）
+
+**做了什么**
+
+1. 世界快照的 scene 改成资源键（company），place id 只留在 location.place_id 与拓扑里；
+2. /config 的 scene_by_place 合并我们自己的 place→scene 映射（否则前端反查场景会抛「0 个地点」）；
+3. /game/state/scene 的 scene 改成原样回显请求值，cursor.seq 取 max(world.tick, after_seq)。
+
+**证据**
+
+- 改之前：scene snapshot does not cover requested transition 反复出现（20 次），首场景启动不了；
+- 改之后：该警告 0 次，前端请求变成 ?scene=company（资源键），说明它认了这个场景；
+- 但 background.png 仍然 0 次请求，window.__svassets 为空、无错误块。
+
+**结论（可证伪）**
+
+Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO 才是地图场景，
+上一轮「place id 走 vO、资源键走 $d」的推断是错的。资源键这一侧已经验证通过（警告清零）。
+
+剩下的不是「场景键对不对」，而是**场景没有真正启动**：队列为空、连失败都没有。
+下一轮查 Phaser 的启动条件（父元素尺寸守门 Ed(parent)、initialSceneKey 是否命中），不再调 scene 字段。

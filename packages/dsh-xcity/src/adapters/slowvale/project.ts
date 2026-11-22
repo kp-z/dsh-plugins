@@ -31,6 +31,8 @@ export interface ProjectOptions {
   startDate: string
   /** 只暴露一个地点（调试用：排除多场景互相干扰）。 */
   singlePlace?: boolean
+  /** 客户端请求的 after_seq：快照 cursor.seq 不能小于它，否则前端判"没覆盖这次切换"。 */
+  afterSeq?: number
 }
 
 /** 一 epoch 的含义：世界重启一次换一个。 */
@@ -209,7 +211,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
   // 一直给同一个场景就等于永远不触发切换，Phaser 连贴图都不会请求。
   const viewerStation = viewerAgent === undefined || viewerAgent === null ? opts.place : viewerAgent.station
   const livePlace = typeof viewerStation === 'string' ? viewerStation : opts.place
-  const scene = livePlace
+  const scene = sceneKeyOf(livePlace)
   const viewerId = viewerAgent?.id ?? opts.viewerRoleId
   const viewerName = viewerAgent?.name ?? '访客'
   // presence.scene 必须与 snapshot.scene 同一套 id（场景资源键），
@@ -312,6 +314,8 @@ export function projectScene(
   // response.scene === X、cursor 覆盖请求的 seq、**viewer 的 presence.scene === X**。
   // 所以这里的场景用请求里的值，而不是配置里那个固定值。
   // 快照里的 scene 用 place id（前端拿它反查地点与命名）；资源键只出现在 place_topology 里
+  // 这一段必须原样回显：前端校验 response.scene === request.scene；
+  // 在这里做 id 映射会让它永远对不上（映射只发生在世界快照里）。
   const scene = opts.scene ?? opts.place
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
@@ -323,7 +327,9 @@ export function projectScene(
   }
   return {
     world_id: opts.worldId,
-    cursor: { epoch: epochOf(world), seq: world.tick },
+    // cursor.seq 取 max(world.tick, after_seq)：前端只认「seq 覆盖了它请求的位置」，
+    // envelope 的 seq 与 world.tick 是两个计数器，直接给 world.tick 会被判不覆盖。
+    cursor: { epoch: epochOf(world), seq: Math.max(world.tick, opts.afterSeq ?? 0) },
     tick_marker: 'tick-' + String(world.tick),
     scene,
     role_public_statuses: statuses,
