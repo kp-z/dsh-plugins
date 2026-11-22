@@ -55,3 +55,22 @@ export function parseDirective(text: string, places: readonly PlaceLike[]): Dire
   const kind: Directive['kind'] = wantsWork ? 'work' : placeId.includes('apartment') ? 'rest' : 'visit'
   return { kind, placeId, matched }
 }
+
+/**
+ * 把指令翻成世界已经在用的命令。
+ *
+ * 关键点：**世界本来就有这个命令**（protocol 的 agentActivity），它已经会「按能力挑站点 →
+ * findPath → state=walking」。这里不新造动作语义，只做映射，避免出现第二套"怎么去上班"的实现。
+ *
+ * @returns 命令；世界暂时做不到的（比如还没建模的地点）返回 null。
+ */
+export function directiveToCommand(
+  directive: Directive,
+  agentId: string,
+  ticks = 60,
+): { kind: 'agentActivity'; agentId: string; activity: 'work' | 'rest'; ticks: number; skill?: 'code' } | null {
+  if (directive.placeId !== 'place:office.tech_company_1') return null
+  if (directive.kind === 'work') return { kind: 'agentActivity', agentId, activity: 'work', ticks, skill: 'code' }
+  if (directive.kind === 'rest') return { kind: 'agentActivity', agentId, activity: 'rest', ticks }
+  return null
+}

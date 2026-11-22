@@ -10309,3 +10309,16 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 **边界（重要）**：匹配不到就返回 null，调用方必须回一句请对方说得具体点，
 绝不能猜一个最近的地点——那会让角色莫名其妙地走去别处。
+
+## 2026-11-23 03:58 · M3 第二块（指令 → 世界命令）
+
+**关键发现（读代码）**：世界早就有这条命令——protocol 的 agentActivity：
+它自己会按能力挑站点、findPath、把 state 置成 walking（src/sim/step.ts 的 case agentActivity）。
+所以「让角色去上班」不需要在世界里新写一套动作逻辑，只需要把指令映射成这条命令。
+
+**这一轮做的**：directiveToCommand(directive, agentId, ticks) —— work -> {agentActivity, work, skill=code}；
+非办公室地点返回 null（世界目前只建了办公室那一层，健身房/海滩/餐馆没有站点）。
+
+**判据**：6 条测试通过，其中两条是「办公室工作 → 正确命令」「健身房 → null」。
+
+**下一轮**：把这条链接到短信/会话——短信进会话，会话回复经 parseDirective，再 enqueue 命令。
