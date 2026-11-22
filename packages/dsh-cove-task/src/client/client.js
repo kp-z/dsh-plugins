@@ -180,7 +180,7 @@ function makeHostHolder() {
 }
 
 window.__ModuleLoader__.load({
-  id: 'dsh-cove-task',
+  id: '@kpeace/dsh-cove-task',
   factory: (require) => {
     const React = require('react')
     const h = React.createElement

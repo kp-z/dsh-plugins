@@ -137,13 +137,22 @@ check('历史行的状态色口径：运行=蓝 / 阻塞=黄 / 完成=绿（样�
 check('事件行别再复用 absolute 的 .frx-avatar-dot（真机上它把标题挤成 8px、圆点飘到卡片角落）', () => {
   const row = src.slice(src.indexOf("className: 'frx-event'"), src.indexOf("className: 'frx-event'") + 1200)
   assert.equal(row.includes('frx-avatar-dot'), false, '气泡墙的 .frx-avatar-dot 是 absolute，事件行不能再用它')
-  assert.ok(row.includes("'frx-event-kind is-'"), '状态改用胶囊表达')
+  assert.ok(row.includes("'frx-event-dot is-'"), '类型改用色点表达，类型名放 hover')
   const css = readFileSync(new URL('../src/client/runsExactStyles.js', import.meta.url), 'utf8')
   for (const kind of ['created', 'start', 'done', 'suspended']) {
-    assert.ok(css.includes('.frx-event-kind.is-' + kind), kind + ' 要有自己的胶囊配色')
+    assert.ok(css.includes('.frx-event-dot.is-' + kind) || kind === 'created', kind + ' 要有自己的色点')
+    assert.ok(css.includes('.frx-col-seg.is-' + kind), kind + ' 柱段要有配色')
   }
   const rowStart = css.indexOf('.frx-event {')
-  assert.ok(rowStart > 0 && css.slice(rowStart, rowStart + 240).includes('grid-template-columns: 40px'), '事件行是「胶囊 / 标题+次行 / 时间」三列')
+  assert.ok(rowStart > 0 && css.slice(rowStart, rowStart + 240).includes('grid-template-columns: 8px'), '事件行是「色点 / 标题 / 时间」三列')
+})
+
+check('最近动态 / 系统健康不留空白：图和状态格都自己吃剩余高度；运行历史每条是带边框的卡', () => {
+  const css = readFileSync(new URL('../src/client/runsExactStyles.js', import.meta.url), 'utf8')
+  assert.match(css, /\.frx-cols \{[^}]*flex: 1 1 72px/, '柱图要 flex 吃剩余高度')
+  assert.match(css, /\.frx-health-grid \{[^}]*flex: 1 1 auto[^}]*grid-auto-rows: minmax\(48px, 1fr\)/, '状态格要撑满卡片剩余高度')
+  assert.match(css, /\.frx-hist-row \{[^}]*border: 1px solid var\(--frx-border\)/, '运行历史每条要有边框')
+  assert.equal(css.includes('.frx-hist-cols'), false, '每条自己是卡片，不再要表头行')
 })
 
 check('运行页自己是滚动容器（宿主 .fo-feature-host 不滚，页面比一屏高）', () => {
@@ -272,12 +281,21 @@ check('布局：2 行 × 4 列（在跑 2 + 开工 1 + 到期 1 ／ 动态 2 + �
   assert.ok(src.includes('is-span${span}'), 'card() 要把跨度落成 class，容器查询才压得住')
 })
 
-check('图表不是列表：开工用条形、到期用时间轴、动态用柱状、健康用环形', () => {
-  assert.ok(src.includes("className: 'frx-rank-track'"), '开工顺序要有条形')
-  assert.ok(src.includes("className: 'frx-due-bands'"), '快到期要有逾期/未来背景带')
-  assert.ok(src.includes("className: 'frx-due-track'") && src.includes('frx-due-dot'), '快到期要有时间轴点')
+check('图表不是列表：开工用四象限、到期用日历、动态用柱状、健康用状态格', () => {
+  assert.ok(src.includes("'frx-quad-pt'") && src.includes("className: 'frx-quad'"), '开工顺序要有四象限')
+  assert.ok(src.includes("'frx-cal-day'") && src.includes("className: 'frx-cal'"), '快到期要有迷你日历')
   assert.ok(src.includes("className: 'frx-cols'"), '最近动态要有 24 根柱子')
-  assert.ok(src.includes('RING_C') && src.includes('strokeDasharray'), '系统健康要有环形进度')
+  assert.ok(src.includes("className: 'frx-health-grid'") && src.includes("className: 'frx-health-rate-bar'"), '系统健康要有成功率条 + 状态格')
+})
+
+check('溢出兜底：图表区能滚不能被裁；日历行数有上限、格高固定；颜色不回到 Tailwind 原色', () => {
+  assert.match(styles, /\.frx-pv \{[^}]*overflow-y: auto/, '.frx-pv 必须 overflow-y:auto（放不下就滚，不是被 hidden 裁掉）')
+  assert.match(styles, /\.frx-pv \{[^}]*min-height: 0/, '.frx-pv 必须 min-height:0，才能在固定行高的卡里收缩')
+  assert.match(styles, /\.frx-cal-day \{[^}]*height: 26px/, '日历格高必须固定（不能 aspect-ratio：卡片变宽格子就变高，整张卡溢出）')
+  assert.ok(src.includes('CAL_MAX_WEEKS') && src.includes('Math.min(CAL_MAX_WEEKS'), '日历行数要有上限')
+  assert.match(styles, /\.frx-quad \{[^}]*max-height:/, '四象限区要有高度上限')
+  const block = styles.slice(styles.indexOf('开工顺序 / 快到期共用'), styles.indexOf('最近动态：8 根'))
+  assert.equal(/#[0-9a-fA-F]{3,6}\b|rgba?\(/.test(block), false, '开工顺序 / 快到期的色调必须取宿主状态令牌，不写字面量颜色')
 })
 
 check('只有「正在运行」常驻；其余状态到点自动消失（并留墓碑不会闪回）', () => {

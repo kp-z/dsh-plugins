@@ -21,6 +21,7 @@ export const STYLE_ID = 'dsh-cove-task-runs-exact-style'
 export const CSS = `
 /* ---------- 页面骨架（Dashboard.tsx 的 space-y-8 + 4 列网格） ---------- */
 .frx-page {
+  position: relative; /* 悬浮提示层（.frx-tip）按页根定位 */
   container-type: inline-size;
   container-name: frxpage;
   display: flex; flex-direction: column; gap: 24px;
@@ -110,7 +111,7 @@ export const CSS = `
 .frx-icon.is-ok { background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5); color: #22c55e; }
 .frx-icon.is-idle { background: rgba(156, 163, 175, 0.15); border: 1px solid rgba(156, 163, 175, 0.4); color: #9ca3af; }
 .frx-icon.is-brand { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; }
-.frx-card-title { margin: 0; font-size: 15px; font-weight: 700; color: #f9fafb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frx-card-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--frx-text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .frx-card-sub { margin: 0; font-size: 12px; font-weight: 500; }
 .frx-card-sub.is-ok { color: #22c55e; }
 .frx-card-sub.is-idle { color: var(--frx-text-dim); }
@@ -298,146 +299,199 @@ export const CSS = `
   75% { transform: translateY(-10px) translateX(2px); }
 }
 
-/* ---------- 开工顺序：横向条形图（条长 = 等了多久） ---------- */
-.frx-rank { display: flex; flex-direction: column; gap: 9px; }
-.frx-rank-row {
-  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px;
-  font: inherit; color: inherit; width: 100%; text-align: left;
-  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+/* ---------- 开工顺序 / 快到期共用：色调、胶囊、溢出兜底、悬浮提示 ----------
+   色调只取宿主的状态令牌（错误 / 警告 / 品牌 / 次级文字）：亮暗两套自动跟着走，
+   也不再用 Tailwind 的 500 档原色（饱和度高又互相不搭，是「土」的来源）。
+   层次靠同一色相的明度梯度：实色 → 40% 透明渐变，加一道顶部高光。 */
+.frx-page {
+  --frx-t-urgent: var(--dsw-alias-state-error-primary);
+  --frx-t-warn: var(--dsw-alias-state-warn-primary);
+  --frx-t-info: var(--dsw-alias-brand-primary);
+  --frx-t-calm: var(--dsw-alias-label-secondary);
 }
-.frx-rank-p {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 18px; border-radius: 6px; font-size: 9px; font-weight: 700;
-  background: color-mix(in oklab, var(--dsw-alias-label-secondary) 14%, transparent);
-  color: var(--frx-text-dim);
-}
-.frx-rank-p[data-p="P0"] { background: rgba(239, 68, 68, 0.16); color: #fca5a5; }
-.frx-rank-p[data-p="P1"] { background: rgba(245, 158, 11, 0.16); color: #fcd34d; }
-.frx-rank-p[data-p="P2"] { background: rgba(59, 130, 246, 0.16); color: #93c5fd; }
-.frx-rank-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.frx-rank-title { font-size: 12px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-rank-track { height: 5px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
-.frx-rank-track > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, rgba(59, 130, 246, 0.85), rgba(59, 130, 246, 0.28)); }
-.frx-rank-wait { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
-.frx-rank-row:hover .frx-rank-title { color: var(--frx-text-strong); }
+:is(.frx-quad-pt, .frx-cal-day, .frx-chip, .frx-health-tile)[data-tone="urgent"] { --frx-tone: var(--frx-t-urgent); }
+:is(.frx-quad-pt, .frx-cal-day, .frx-chip, .frx-health-tile)[data-tone="warn"] { --frx-tone: var(--frx-t-warn); }
+:is(.frx-quad-pt, .frx-cal-day, .frx-chip, .frx-health-tile)[data-tone="info"] { --frx-tone: var(--frx-t-info); }
+:is(.frx-quad-pt, .frx-cal-day, .frx-chip, .frx-health-tile)[data-tone="calm"] { --frx-tone: var(--frx-t-calm); }
+.frx-health-tile[data-tone="ok"] { --frx-tone: var(--dsw-alias-state-success-primary); }
 
-/* ---------- 快到期：时间轴（逾期区 / 今天 / 未来） ---------- */
-.frx-due { position: relative; display: flex; flex-direction: column; gap: 6px; }
-.frx-due-axis { position: relative; display: flex; justify-content: space-between; height: 12px; font-size: 9px; color: var(--frx-text-faint); }
-.frx-due-axis .frx-due-today { position: absolute; top: 0; transform: translateX(-50%); color: var(--dsw-alias-state-warn-primary); }
-.frx-due-bands { position: relative; height: 3px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
-.frx-due-bands > i { position: absolute; top: 0; bottom: 0; display: block; }
-.frx-due-bands .is-over { left: 0; background: rgba(239, 68, 68, 0.55); }
-.frx-due-bands .is-future { background: rgba(34, 197, 94, 0.45); }
-.frx-due-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 8px;
-  font: inherit; color: inherit; width: 100%; text-align: left;
-  background: none; border: none; padding: 0; margin: 0; cursor: pointer; height: 20px;
+/* 溢出兜底：卡片行高是固定的（--frx-row-h），图表区自己消化高度——
+   能压缩的（队列柱）弹性伸缩，不能压缩的（日历）行数有上限，实在放不下就在卡内滚动，
+   绝不让内容被 overflow:hidden 悄悄裁掉。 */
+.frx-pv {
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 1 1 auto; min-height: 0; padding: 2px 3px 3px; margin: 0 -3px;
+  overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
+  scrollbar-color: var(--frx-scrollbar) transparent;
 }
-.frx-due-title { font-size: 11px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-due-track { position: relative; display: block; height: 8px; }
-.frx-due-bar { position: absolute; top: 3px; height: 2px; border-radius: 999px; background: rgba(148, 163, 184, 0.55); }
-.frx-due-dot { position: absolute; top: 1px; width: 6px; height: 6px; margin-left: -3px; border-radius: 999px; background: #22c55e; }
-.frx-due-row[data-bucket="overdue"] .frx-due-dot { background: #ef4444; }
-.frx-due-row[data-bucket="overdue"] .frx-due-when { color: #fca5a5; }
-.frx-due-row[data-bucket="today"] .frx-due-dot { background: #f59e0b; }
-.frx-due-row[data-bucket="today"] .frx-due-when { color: #fcd34d; }
-.frx-due-when { font-size: 10px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.frx-due-unset { margin: 8px 0 0; font-size: 10px; color: var(--frx-text-faint); display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.frx-due-unset-label { flex: 0 0 auto; }
-.frx-due-unset-chip {
-  max-width: 100%; font: inherit; font-size: 10px; padding: 1px 6px; border-radius: 6px; cursor: pointer;
-  color: var(--frx-text-dim); background: var(--frx-inner); border: 1px solid var(--frx-border);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.frx-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.frx-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px;
+  border-radius: 999px; font: inherit; font-size: 11px; color: color-mix(in oklab, var(--frx-text) 82%, transparent);
+  background: color-mix(in oklab, var(--frx-tone, var(--frx-text-dim)) 10%, var(--frx-inner));
+  border: 1px solid color-mix(in oklab, var(--frx-tone, var(--frx-text-dim)) 26%, transparent);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+.frx-chip > i { width: 7px; height: 7px; border-radius: 50%; background: var(--frx-tone, var(--frx-text-dim)); }
+.frx-chip > b { font-weight: 600; color: var(--frx-text-strong); }
+.frx-due-unset-chip { cursor: pointer; background: none; border-style: dashed; border-color: var(--frx-border); }
 .frx-due-unset-chip:hover { color: var(--frx-text-strong); border-color: var(--frx-border-hover); }
 
-/* ---------- 最近动态：8 根 3 小时柱（按类型堆叠）+ 5 条事件行 ---------- */
-.frx-cols { position: relative; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); align-items: end; gap: 6px; height: 54px; padding: 0 2px; }
-/* 一条基线代替「空桶也画一根浅柱」：8 桶里没事件的时段只留这一条线，不再连成虚线块 */
-.frx-cols::after { content: ''; position: absolute; left: 2px; right: 2px; bottom: 0; height: 1px; background: var(--frx-inner); }
-.frx-col {
-  position: relative; z-index: 1; justify-self: center; width: 100%; max-width: 34px;
-  display: flex; flex-direction: column-reverse;
-  min-width: 0; border-radius: 4px 4px 0 0; overflow: hidden;
+/* 悬浮提示：整页一个节点，绝对定位在页根里（不被卡片 overflow 裁） */
+.frx-tip {
+  position: absolute; z-index: 30; pointer-events: none; max-width: 240px;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px;
+  font-size: 11px; line-height: 1.5; color: var(--frx-tip-meta);
+  background: var(--frx-tip-bg); border: 1px solid var(--frx-border); box-shadow: var(--frx-shadow);
+  transform: translate(-50%, calc(-100% - 8px));
+  animation: frx-tip-in .12s ease-out;
 }
-/* 空桶不画柱子（基线由 .frx-cols::after 统一画），避免整排浅块看起来像数据断了 */
+.frx-tip.is-below { transform: translate(-50%, 8px); }
+.frx-tip > b { font-size: 12px; font-weight: 600; color: var(--frx-tip-fg); overflow-wrap: anywhere; }
+@keyframes frx-tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .frx-tip { animation: none; } }
+
+/* ---------- 开工顺序：四象限（横轴 = 已等多久，纵轴 = 优先级，点内数字 = 开工顺序） ---------- */
+.frx-q { gap: 8px; }
+.frx-quad {
+  position: relative; flex: 1 1 168px; min-height: 120px; max-height: 200px; overflow: hidden;
+  border-radius: 10px; background: var(--frx-inner); border: 1px solid var(--frx-border);
+}
+.frx-quad-hl { position: absolute; left: 50%; right: 0; top: 0; height: 50%; background: color-mix(in oklab, var(--frx-t-urgent) 11%, transparent); }
+.frx-quad-vx { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed var(--frx-border-hover); }
+.frx-quad-hx { position: absolute; top: 50%; left: 0; right: 0; border-top: 1px dashed var(--frx-border-hover); }
+.frx-quad-q { position: absolute; font-size: 11px; line-height: 1; color: var(--frx-text-faint); pointer-events: none; }
+.frx-quad-q.is-tr { right: 8px; top: 7px; color: color-mix(in oklab, var(--frx-t-urgent) 62%, var(--frx-text)); }
+.frx-quad-q.is-tl { left: 8px; top: 7px; }
+.frx-quad-q.is-br { right: 8px; bottom: 7px; }
+.frx-quad-q.is-bl { left: 8px; bottom: 7px; }
+.frx-quad-pt {
+  position: absolute; z-index: 1; width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0;
+  display: grid; place-items: center; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  font-variant-numeric: tabular-nums; border-radius: 50%; border: 0;
+  color: color-mix(in oklab, var(--frx-tone) 58%, var(--frx-text));
+  background: color-mix(in oklab, var(--frx-tone) 24%, var(--frx-inner));
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--frx-tone) 60%, transparent), 0 4px 12px -6px var(--frx-tone);
+  transition: transform .15s ease, background-color .15s ease;
+}
+.frx-quad-pt:hover, .frx-quad-pt:focus-visible { outline: none; transform: scale(1.18); background: color-mix(in oklab, var(--frx-tone) 38%, var(--frx-inner)); }
+.frx-quad-axis { display: flex; justify-content: space-between; padding: 0 2px; font-size: 11px; line-height: 1; color: var(--frx-text-dim); }
+
+/* ---------- 快到期：迷你日历（行数有上限，格高固定，不随卡片宽度变高） ---------- */
+.frx-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.frx-cal-dow { font-size: 11px; line-height: 14px; text-align: center; color: var(--frx-text-dim); }
+.frx-cal-day {
+  display: grid; place-items: center; height: 26px; min-width: 0; padding: 0; margin: 0;
+  font: inherit; font-size: 11px; border: 0; border-radius: 8px;
+  color: var(--frx-text-dim); background: var(--frx-inner); font-variant-numeric: tabular-nums;
+}
+.frx-cal-day.is-past { opacity: .75; }
+.frx-cal-day.is-out { opacity: .3; }
+.frx-cal-day.is-today { outline: 1.5px solid color-mix(in oklab, var(--frx-text) 55%, transparent); outline-offset: 1px; color: var(--frx-text-strong); }
+button.frx-cal-day {
+  cursor: pointer; font-weight: 600; opacity: 1;
+  color: color-mix(in oklab, var(--frx-tone) 58%, var(--frx-text));
+  background: color-mix(in oklab, var(--frx-tone) 20%, var(--frx-inner));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--frx-tone) 34%, transparent);
+  transition: background-color .15s ease;
+}
+button.frx-cal-day:hover, button.frx-cal-day:focus-visible { outline: none; background: color-mix(in oklab, var(--frx-tone) 32%, var(--frx-inner)); }
+
+/* ---------- 最近动态：8 根 3 小时柱（按类型堆叠）+ 3 条事件行 ----------
+   类型色取宿主令牌（完成=成功色、开工=品牌色、挂起=警告色、创建=次级文字色）；
+   柱图 flex:1 吃掉卡片剩余高度（有上下限），下面只留 3 行，所以卡片下半截不会空。 */
+.frx-page {
+  --frx-k-done: var(--dsw-alias-state-success-primary);
+  --frx-k-start: var(--dsw-alias-brand-primary);
+  --frx-k-suspended: var(--dsw-alias-state-warn-primary);
+  --frx-k-created: var(--dsw-alias-label-secondary);
+}
+.frx-cols {
+  position: relative; flex: 1 1 72px; min-height: 72px; max-height: 150px;
+  display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr);
+  align-items: end; gap: 8px; padding: 0 4px; margin-top: 2px;
+  border-bottom: 1px solid var(--frx-border);
+  background: repeating-linear-gradient(to top, transparent 0, transparent 29px, color-mix(in oklab, var(--frx-border) 55%, transparent) 29px, color-mix(in oklab, var(--frx-border) 55%, transparent) 30px);
+}
+.frx-col {
+  justify-self: center; width: 100%; max-width: 34px; min-width: 0;
+  display: flex; flex-direction: column-reverse; border-radius: 6px 6px 0 0; overflow: hidden;
+  transition: filter .15s ease;
+}
+.frx-col:hover, .frx-col:focus-visible { filter: brightness(1.2); outline: none; }
+/* 空桶不画柱子：只留格线，避免整排浅块看起来像数据断了 */
 .frx-col[data-empty="1"] { background: none; }
 .frx-col-seg { display: block; width: 100%; flex: 1 1 0; min-height: 0; }
-.frx-col-seg.is-created { background: rgba(148, 163, 184, 0.5); }
-.frx-col-seg.is-start { background: rgba(59, 130, 246, 0.9); }
-.frx-col-seg.is-done { background: rgba(34, 197, 94, 0.85); }
-.frx-col-seg.is-suspended { background: rgba(245, 158, 11, 0.85); }
-.frx-cols-axis { display: flex; justify-content: space-between; margin-top: 5px; font-size: 9px; color: var(--frx-text-faint); }
-/* 列表吃满卡片剩余高度：这张卡和「系统健康」同排，高度被对方拉到 344px ——
-   只放 3 行时下半截全空，看起来像没加载完。行用 flex:1 均分，最少 26px。 */
-.frx-events { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.frx-col-seg.is-created { background: var(--frx-k-created); }
+.frx-col-seg.is-start { background: var(--frx-k-start); }
+.frx-col-seg.is-done { background: var(--frx-k-done); }
+.frx-col-seg.is-suspended { background: var(--frx-k-suspended); }
+.frx-cols-axis { display: flex; justify-content: space-between; margin-top: 5px; padding: 0 4px; font-size: 11px; color: var(--frx-text-dim); }
+.frx-events { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; flex: 0 0 auto; }
 .frx-event {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 10px;
   font: inherit; color: inherit; width: 100%; text-align: left;
-  background: none; border: 0; border-radius: 8px; padding: 1px 6px; margin: 0; cursor: pointer;
-  /* min-height 只需容下「标题 + 次行」（内容 29px）；给 flex 一点余量，5 行正好铺满 344 的卡 */
-  flex: 1 1 0; min-height: 28px; max-height: 40px;
+  background: none; border: 0; border-radius: 8px; padding: 5px 8px; margin: 0; cursor: pointer;
 }
 .frx-event:hover { background: var(--frx-surface-hover); }
-/* 状态胶囊：创建/开工/完成/挂起 四档视觉权重（原来只有同色的 10px 文字，扫不出重点） */
-.frx-event-kind {
-  font-size: 10px; line-height: 17px; height: 17px; text-align: center; border-radius: 6px;
-  overflow: hidden; white-space: nowrap;
-}
-.frx-event-kind.is-created { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; }
-.frx-event-kind.is-start { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
-.frx-event-kind.is-done { background: rgba(34, 197, 94, 0.16); color: #86efac; }
-.frx-event-kind.is-suspended { background: rgba(245, 158, 11, 0.16); color: #fcd34d; }
-.frx-event-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.frx-event-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--frx-k-created); box-shadow: 0 0 0 3px color-mix(in oklab, var(--frx-k-created) 18%, transparent); }
+.frx-event-dot.is-done { background: var(--frx-k-done); box-shadow: 0 0 0 3px color-mix(in oklab, var(--frx-k-done) 18%, transparent); }
+.frx-event-dot.is-start { background: var(--frx-k-start); box-shadow: 0 0 0 3px color-mix(in oklab, var(--frx-k-start) 18%, transparent); }
+.frx-event-dot.is-suspended { background: var(--frx-k-suspended); box-shadow: 0 0 0 3px color-mix(in oklab, var(--frx-k-suspended) 18%, transparent); }
 .frx-event-title { font-size: 12px; line-height: 1.3; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-event-meta { font-size: 10px; line-height: 1.25; color: var(--frx-text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-event-ago { font-size: 10px; color: var(--frx-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.frx-event-ago { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .frx-event:hover .frx-event-title { color: var(--frx-text-strong); }
 
-/* ---------- 系统健康：环形图 + 状态行 + 计时覆盖 ---------- */
-.frx-health { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
-.frx-health-ring { position: relative; width: 84px; height: 84px; flex: 0 0 auto; }
-.frx-health-ring-text {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: 700; color: var(--frx-text-strong); font-variant-numeric: tabular-nums;
+/* ---------- 系统健康：同步成功率条 + 四个状态格 + 计时覆盖 ----------
+   状态格 flex:1 + grid 1fr：卡片多高它就多高，下面不会再有一块空白。 */
+.frx-health { display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; min-height: 0; }
+.frx-health-rate { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.frx-health-rate-text { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.frx-health-rate-bar { display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden; background: var(--frx-inner); }
+.frx-health-rate-bar > i { display: block; height: 100%; min-width: 4px; }
+.frx-health-rate-bar > .is-ok { background: linear-gradient(to right, color-mix(in oklab, var(--dsw-alias-state-success-primary) 45%, transparent), var(--dsw-alias-state-success-primary)); }
+.frx-health-rate-bar > .is-fail { background: var(--dsw-alias-state-error-primary); }
+.frx-health-grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(48px, 1fr); gap: 8px; }
+.frx-health-tile {
+  display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 12px; border-radius: 12px; cursor: default;
+  background: color-mix(in oklab, var(--frx-tone) 7%, var(--frx-inner));
+  border: 1px solid color-mix(in oklab, var(--frx-tone) 26%, transparent);
 }
-.frx-health-rows { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.frx-health-row { display: grid; grid-template-columns: 8px 64px minmax(0, 1fr); align-items: center; gap: 8px; }
-.frx-health-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--frx-inner); }
-.frx-health-dot.is-ok { background: #22c55e; }
-.frx-health-dot.is-warn { background: #f59e0b; }
-.frx-health-label { font-size: 11px; color: var(--frx-text-dim); }
-.frx-health-value { font-size: 11px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-health-cover { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 4px; }
-.frx-health-cover-text { font-size: 10px; color: var(--frx-text-faint); }
+.frx-health-tile:focus-visible { outline: none; border-color: color-mix(in oklab, var(--frx-tone) 60%, transparent); }
+.frx-health-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--frx-tone); box-shadow: 0 0 0 3px color-mix(in oklab, var(--frx-tone) 18%, transparent); }
+.frx-health-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.frx-health-name { font-size: 13px; font-weight: 600; color: var(--frx-text-strong); }
+.frx-health-value { font-size: 12px; color: color-mix(in oklab, var(--frx-tone) 58%, var(--frx-text)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frx-health-cover { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.frx-health-cover-text { font-size: 11px; color: var(--frx-text-dim); }
 .frx-health-cover-track { height: 4px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
-.frx-health-cover-track > i { display: block; height: 100%; border-radius: 999px; background: rgba(34, 197, 94, 0.7); }
-.frx-health-cover-value { font-size: 10px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
-/* ---------- 运行历史：表格 + 时长微条形 ---------- */
-.frx-hist { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
-.frx-hist-cols, .frx-hist-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) 88px 56px 168px 88px;
-  align-items: center; gap: 12px;
-}
-.frx-hist-cols { padding: 0 8px 4px; font-size: 9px; color: var(--frx-text-faint); }
+.frx-health-cover-track > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, color-mix(in oklab, var(--dsw-alias-state-success-primary) 40%, transparent), var(--dsw-alias-state-success-primary)); }
+.frx-health-cover-value { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+
+/* ---------- 运行历史：每条任务一张带边框的小卡（双列；窄面板单列） ---------- */
+.frx-hist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; min-height: 0; overflow-y: auto; scrollbar-width: thin; padding: 1px; }
 .frx-hist-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 68px 36px 104px 60px; align-items: center; gap: 8px;
   font: inherit; color: inherit; text-align: left; width: 100%;
-  background: none; border: 0; border-radius: 8px; padding: 5px 8px; cursor: pointer;
-  transition: background-color .18s ease;
+  background: var(--frx-inner); border: 1px solid var(--frx-border); border-radius: 10px; padding: 8px 12px; cursor: pointer;
+  transition: background-color .18s ease, border-color .18s ease;
 }
-.frx-hist-row:hover { background: var(--frx-surface-hover); }
+.frx-hist-row:hover { background: var(--frx-surface-hover); border-color: var(--frx-border-hover); }
 .frx-hist-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.frx-hist-no { flex: 0 0 auto; font-size: 10px; color: var(--frx-text-faint); font-variant-numeric: tabular-nums; }
+.frx-hist-no { flex: 0 0 auto; font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
 .frx-hist-title { font-size: 12px; color: var(--frx-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frx-hist-state { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--frx-text-dim); }
+.frx-hist-state { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--frx-text-dim); white-space: nowrap; }
 .frx-hist-state .frx-avatar-dot { position: static; width: 7px; height: 7px; border: 0; flex: 0 0 auto; }
-.frx-hist-turn { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+.frx-hist-turn { font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .frx-hist-elapsed { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.frx-hist-bar { flex: 1 1 auto; height: 4px; border-radius: 999px; background: var(--frx-inner); overflow: hidden; }
-.frx-hist-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, rgba(59, 130, 246, 0.9), rgba(59, 130, 246, 0.35)); }
-.frx-hist-dur { flex: 0 0 auto; min-width: 52px; text-align: right; font-size: 10px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
-.frx-hist-ago { font-size: 10px; color: var(--frx-text-faint); text-align: right; font-variant-numeric: tabular-nums; }
+.frx-hist-bar { flex: 1 1 auto; height: 4px; border-radius: 999px; background: color-mix(in oklab, var(--frx-text) 9%, transparent); overflow: hidden; }
+.frx-hist-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(to right, color-mix(in oklab, var(--dsw-alias-brand-primary) 40%, transparent), var(--dsw-alias-brand-primary)); }
+.frx-hist-dur { flex: 0 0 auto; min-width: 40px; text-align: right; font-size: 11px; color: var(--frx-text-dim); font-variant-numeric: tabular-nums; }
+.frx-hist-ago { font-size: 11px; color: var(--frx-text-dim); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 窄面板：每卡 5 列放不下，改单列 */
+@container frxpage (max-width: 840px) {
+  .frx-hist { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ---------- 键盘焦点 ----------
    卡片里的行都是 button，但取消了默认边框/背景，没有焦点环就完全看不出选到哪。
@@ -458,8 +512,6 @@ export const CSS = `
 @container frxpage (max-width: 980px) {
   .frx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
   .frx-card.is-span4 { grid-column: span 2; }
-  /* 窄面板卡片只有 324px 高：5 条两行式事件放不下，第 5 条会被裁掉半行 —— 只显示 4 条 */
-  .frx-events .frx-event:nth-child(n + 5) { display: none; }
 }
 /* 更窄：单列 */
 @container frxpage (max-width: 640px) {

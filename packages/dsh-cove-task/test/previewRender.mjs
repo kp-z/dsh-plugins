@@ -62,18 +62,28 @@ check('运行页：6 张卡（一卡一问）+ 每行 4 列的跨度', () => {
 
 check('运行页：四张图表都渲出来了（条形 / 时间轴 / 柱状 / 环形）', () => {
   const runs = frameOf('运行')
-  /* 状态徽标只挂在运行中的泡上（用户口径），其余状态一律不画 */
+  /* 徽标口径：运行中的泡挂三点 dots；阻塞是持续态，右上角挂 alert（用户口径：
+     「阻塞状态右上角要有一个和正在运行类似的标识」）；已结束（clock）/完成（check）一律不画。 */
   assert.ok(runs.includes('data-badge="dots"'), '缺运行中的 dots 徽标')
-  for (const badge of ['alert', 'clock', 'check']) {
+  assert.ok(runs.includes('data-badge="alert"'), '阻塞泡要有 alert 徽标')
+  const alertChunks = runs.split('data-badge="alert"')
+  for (let i = 1; i < alertChunks.length; i++) {
+    const prev = alertChunks[i - 1]
+    const anchor = 'data-state="'
+    const at = prev.lastIndexOf(anchor)
+    const state = at >= 0 ? prev.slice(at + anchor.length, prev.indexOf('"', at + anchor.length)) : '(none)'
+    assert.equal(state, 'blocked', `alert 徽标挂在了 ${state} 泡上`)
+  }
+  for (const badge of ['clock', 'check']) {
     assert.equal(runs.includes(`data-badge="${badge}"`), false, `非运行的泡不该有 ${badge} 徽标`)
   }
   /* 状态卡里 4 个 + 新卡片右上各 1 个（就绪 / 逾期 / 24h 事件 / 同步成功） */
   assert.ok((runs.match(/frx-kpi"/g) || []).length >= 4, '状态卡的 4 个 KPI 胶囊要在')
-  assert.ok(runs.includes('frx-rank-row'), '开工顺序要用条形图（不是纯列表）')
-  assert.ok(runs.includes('frx-due-row'), '快到期要用时间轴')
-  assert.ok(runs.includes('frx-due-bands'), '时间轴要有逾期/未来两条背景带')
+  assert.ok(runs.includes('frx-quad-pt'), '开工顺序要用四象限（不是纯列表）')
+  assert.ok(runs.includes('frx-cal-day'), '快到期要用迷你日历')
+  assert.ok(runs.includes('frx-chip'), '快到期 / 开工顺序要有分档计数胶囊')
   assert.equal((runs.match(/class="frx-col"/g) || []).length >= 1, true, '最近动态要有柱状图')
-  assert.ok(runs.includes('frx-health-ring'), '系统健康要有环形图')
+  assert.ok(runs.includes('frx-health-grid'), '系统健康要有状态格')
   assert.ok(runs.includes('frx-health-cover'), '系统健康底部要有计时覆盖细条')
   /* 没有 /api/health 数据时只能写「—」，不许编出「已关闭」这种状态 */
   assert.equal(runs.includes('已关闭'), false, '读不到健康数据时不能假装「自动同步已关闭」')

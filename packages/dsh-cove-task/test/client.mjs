@@ -191,7 +191,9 @@ const bundleScript = new vm.Script(source, {
 bundleScript.runInContext(sandbox)
 
 assert.ok(loaded, '模块没有通过 __ModuleLoader__.load 注册')
-assert.equal(loaded.id, 'dsh-cove-task')
+/* 宿主按 Loader 条目名（= 包名）装配客户端模块图；改名后 id 必须跟着包名走，否则客户端半体静默不生效。 */
+const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+assert.equal(loaded.id, manifest.name, `客户端模块 id 必须等于包名：${loaded.id} !== ${manifest.name}`)
 const { exports } = loaded
 assert.ok(Array.isArray(exports.inject) && exports.inject.includes('slots'), `inject 没声明 slots：${JSON.stringify(exports.inject)}`)
 /* betterSidebar 必须**不进** inject：否则没有右侧栏插件的 profile 里总览也会被门控掉（运行时探测即可）。 */

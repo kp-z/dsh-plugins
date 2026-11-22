@@ -610,7 +610,7 @@ export function buildRuns(snapshot) {
     /** 「开工顺序」：能动手的任务（依赖就绪 + 优先级排序） */
     ready: readyQueue(tasks, now),
     /** 「快到期」：按预期完成分桶（含图表窗口） */
-    due: dueBuckets(tasks, now),
+    due: dueBuckets(tasks, now, 60), /* 日历要看到窗口内每一条，不再只取列表的 8 行 */
     /** 「最近动态」：生命周期事件时间线 + 24h · 8 桶（3h）计数（含已完成/挂起，它们也是事件） */
     timeline: activityTimeline(allTasks, now),
   }

@@ -1,4 +1,4 @@
-# dsh-cove-task
+# @kpeace/dsh-cove-task
 
 把飞书任务、文档和 DSH 会话接起来：在右侧栏查看任务，选对工作区，绑定或开工，再把进展、预期与协作结果写回飞书。
 
@@ -30,7 +30,7 @@
 
 本指南后续按实际面板入口展开。**同步、开工、排期、写评论不是同一种操作**；涉及远端写入、会话运行或模型调用的边界在对应功能下说明。
 
-> 本版面向 `dsh-cove-task 0.25.0`（由 `dsh-feishu` 改名而来，数据目录自动迁移）。本轮已撤下旧全窗截图，重拍十三张功能局部图，均通过本机 OCR 关键文字检查；关系编辑器先前失败的裁切已再次重拍替换。保留图片来自实际 DSH 测试 profile 的真实插件面板，使用明确标注的本地演示数据，不是飞书远端回执。
+> 本版面向 `@kpeace/dsh-cove-task 0.25.0`（由 `dsh-feishu` 改名而来，数据目录自动迁移）。本轮已撤下旧全窗截图，重拍十三张功能局部图，均通过本机 OCR 关键文字检查；关系编辑器先前失败的裁切已再次重拍替换。保留图片来自实际 DSH 测试 profile 的真实插件面板，使用明确标注的本地演示数据，不是飞书远端回执。
 > 复用已有隔离测试 profile `awteam-preview`，通过工作区临时 overlay 挂载本版飞书；DSH `0.2.1-rc.5`、sidebar `0.28.0`。已登录完整 GUI 并在右侧栏添加「Cove Task」，验证当前会话上下文使绑定入口可用。旧 Agent Teams 因版本不兼容保持禁用，不授予版本豁免。
 > 截图展示操作入口和本地状态，不宣称完成真实飞书授权、写回或通知验证。定时、已绑定会话和洞察结果缺少符合用途的图，暂不展示；评论图只展示安全设置，不代表评论历史；没有为了截图运行模型、开工、提交绑定或写入远端。
 
@@ -71,13 +71,13 @@
 
 **入口**：DSH 左侧栏 →「任务」；和右侧栏「Cove Task」页签并存，两边看同一份本地快照。
 
-**它是什么**：一个**宿主页面内的 React 面板**（不是 iframe、不是整页 HTML）。左侧只有**一列** rail，一级菜单三项，顺序即优先级：**运行 → 洞察 → 看板**（打开面板默认落在「运行」）。rail 底部有「打开任务页」按钮：点它在系统浏览器打开**独立的海湾页 `/dsh-cove-task/tasks`**——不是 DSH 本身，也不加载 DSH 外壳。**独立页自己不渲染这个按钮**：已经站在浏览器里了，再点只会开一个自己（`tasksBoot.js` 以 `standalone: true` 挂载面板）。
+**它是什么**：一个**宿主页面内的 React 面板**（不是 iframe、不是整页 HTML）。左侧只有**一列** rail，一级菜单三项，顺序即优先级：**运行 → 洞察 → 看板**（打开面板默认落在「运行」）。rail 底部有「打开任务页」按钮：点它在系统浏览器打开**独立的海湾页 `/@kpeace/dsh-cove-task/tasks`**——不是 DSH 本身，也不加载 DSH 外壳。**独立页自己不渲染这个按钮**：已经站在浏览器里了，再点只会开一个自己（`tasksBoot.js` 以 `standalone: true` 挂载面板）。
 
 **它跑的就是这个面板本身**，不是另写一份页面：独立页 `import` 同一个 `OverviewPanel` 与三个 feature 组件（宿主把 `src/client`、`src/overview` 按原相对路径直出，浏览器自己解析模块树），注入同一份 `styles.js` 的 CSS、同一个 `api.js` 的 `createApi()`，以及一个 localStorage 版 store。React 用官方 UMD（`lib/vendor/react.production.min.js` + `react-dom.production.min.js`，18.3.1，由 `/tasks/vendor/*.js` 直出），页面里 `createRoot` 挂上去就完事 —— 没有任何自研运行时。改面板 = 改独立页，没有第二套布局、也没有第二份渲染代码。
 
-**为什么是独立页**：DSH 的 Web UI 根页面有浏览器鉴权（只认 `?token=`），把用户送进去经常撞上「authentication required」；而插件自己的路由是公开的。独立页因此不需要 token、不需要登录，刷新/收藏都不失效。客户端不自己拼地址（桌面端 Host 是 `dsh-app://app`，拼出来浏览器打不开）：它只 `POST /dsh-cove-task/api/open-panel`，由宿主用 `DSH_WEB_URL` 拼地址并拉起默认浏览器；宿主先探一次，服务不可用就回执「任务页暂时不可用」，按钮显示「打开失败」。
+**为什么是独立页**：DSH 的 Web UI 根页面有浏览器鉴权（只认 `?token=`），把用户送进去经常撞上「authentication required」；而插件自己的路由是公开的。独立页因此不需要 token、不需要登录，刷新/收藏都不失效。客户端不自己拼地址（桌面端 Host 是 `dsh-app://app`，拼出来浏览器打不开）：它只 `POST /@kpeace/dsh-cove-task/api/open-panel`，由宿主用 `DSH_WEB_URL` 拼地址并拉起默认浏览器；宿主先探一次，服务不可用就回执「任务页暂时不可用」，按钮显示「打开失败」。
 
-独立页只消费插件的公开接口，计算直接复用 `src/client/runsView.js` 原文件（由 `/dsh-cove-task/tasks/view.js` 原样直出），样式复用运行页那份 frx 表（`/dsh-cove-task/tasks/style.css`），所以两边口径和外观不会漂。
+独立页只消费插件的公开接口，计算直接复用 `src/client/runsView.js` 原文件（由 `/@kpeace/dsh-cove-task/tasks/view.js` 原样直出），样式复用运行页那份 frx 表（`/@kpeace/dsh-cove-task/tasks/style.css`），所以两边口径和外观不会漂。
 
 ### 运行：一页看清「现在在跑什么」
 
@@ -101,7 +101,7 @@
 | 系统健康（2 列） | 插件还正常吗？ | 环形图（同步成功率）+ 授权/CLI/自动同步 + 计时覆盖细条 |
 | 运行历史（4 列） | 每条任务跑了多久、跑到第几轮？ | 表格 + 行内时长微条形（按最近活动排序） |
 
-独立任务页（`/dsh-cove-task/tasks`）在这些基础上还做了四件事：**跟随系统深浅色**（自己按 `prefers-color-scheme` 给两套令牌）、
+独立任务页（`/@kpeace/dsh-cove-task/tasks`）在这些基础上还做了四件事：**跟随系统深浅色**（自己按 `prefers-color-scheme` 给两套令牌）、
 **30 秒刷新不丢滚动位置与焦点**（快照 revision 没变直接跳过重建）、**运行中的「已跑」每秒走字**（不等轮询）、
 顶部一行摘要（未完成 / 运行中 / 可开工 / 逾期）。窄面板下 4 列自动降成 2 列。
 
@@ -115,7 +115,7 @@
 
 十个面板：关键指标、状态分布、项目分布、关系概览、阻塞榜、最近动态 + 吞吐趋势（14 天柱线图）、
 履约（准时率环 / 逾期 / 平均早或晚几天）、延期原因、质量与周期（提前·准时·延迟、中位数、P85）。
-历史部分走宿主已有的 `GET /dsh-cove-task/api/insight/stats`；旧宿主没有这条接口时**只有快照口径的六张卡 +
+历史部分走宿主已有的 `GET /@kpeace/dsh-cove-task/api/insight/stats`；旧宿主没有这条接口时**只有快照口径的六张卡 +
 页头一行提示**，不会整页空掉。零样本一律显示「—」，不拿 0 冒充数据。
 
 ### 看板：一棵树 + 一张画布
@@ -201,13 +201,22 @@ DSH 官方插件实践要求「插件页面渲染成槽位里的 React 组件；
 宿主主题令牌、明暗切换与 locale，只能自己造一套调色板，宿主换主题就脱窗。所以这个面板是 React 组件，
 样式按页拆在 `src/client/` 下的几份样式表里（类前缀 `fo-` / `fd-` / `fr-` / `frx-`），全部随插件卸载一起移除。
 
-**边界**：面板读 `GET /dsh-cove-task/api/overview`（瘦快照，真实数据约 28KB）与 `GET /dsh-cove-task/api/overview/revision`
-（变了才刷）；写接口是 `POST /dsh-cove-task/api/workspace-groups`（目录组织）、`/api/overview/organize` 系列
-（出建议 / 接受 / 拒绝 / 撤销）；洞察的历史指标走 `GET /dsh-cove-task/api/insight/stats`。同步、开工、排期、写评论
+**边界**：面板读 `GET /@kpeace/dsh-cove-task/api/overview`（瘦快照，真实数据约 28KB）与 `GET /@kpeace/dsh-cove-task/api/overview/revision`
+（变了才刷）；写接口是 `POST /@kpeace/dsh-cove-task/api/workspace-groups`（目录组织）、`/api/overview/organize` 系列
+（出建议 / 接受 / 拒绝 / 撤销）；洞察的历史指标走 `GET /@kpeace/dsh-cove-task/api/insight/stats`。同步、开工、排期、写评论
 仍在右侧栏「Cove Task」页签里做；页面都基于本地快照，先同步任务再打开才有内容。
 
-**开发**：改动 `src/` 后跑 `pnpm run build:client`（tsdown → `lib/client.iife.js`）；`npm test` / `npm run test:offline`
-会自动先构建，再跑客户端契约与数据面测试。
+**开发（一条代码两条入口，改完刷新即可）**：面板的界面只有一份源码，装配点是 `src/client/ui.js`。
+宿主里的客户端半体（`lib/client.iife.js`）在 apply 时**动态 import** 插件自己的
+`/dsh-cove-task/tasks/src/ui.js`，独立页 `/tasks` 静态 import 同一个文件 —— 所以视图、样式、
+运行页那些改动**不需要重新构建**，刷新页面两边一起变（浏览器页与 DSH 里的面板不会再各跑一份）。
+只有宿主接缝（`src/client/client.js`：页签、会话桥、槽位注册）改完要 `pnpm run build:client`
+（tsdown → `lib/client.iife.js`）并重载插件。`npm test` / `npm run test:offline` 会自动先构建，
+再跑客户端契约与数据面测试。
+
+> 为什么这么绕：以前客户端半体静态 import 组件树，构建产物里内联了一份界面快照 ——
+> 改 `src/client/*.js` 之后独立页（直接吃源码）立刻变、DSH 里还是旧包，非重构建加重载不可。
+> 现在两侧吃同一棵树，只有接缝需要构建。
 
 `build:client` 还会跑 `scripts/build-vendor-react.mjs`，把 react / react-dom 18.3.1 的官方 UMD
 拷进 `lib/vendor/`（独立页的 `/tasks/vendor/*.js` 直出这两个文件，缺了就是整页黑屏）。
@@ -555,7 +564,7 @@ AI 相关项记录归因尝试、自动开工、评论投递次数；同步未�
 
 ## 本地数据、维护与安全
 
-数据目录是 `<DSH_HOME>/dsh-cove-task/`，默认 DSH_HOME 为 `~/.dsh`：
+数据目录是 `<DSH_HOME>/@kpeace/dsh-cove-task/`，默认 DSH_HOME 为 `~/.dsh`：
 
 | 文件/存储 | 保存什么 |
 | --- | --- |
@@ -576,7 +585,7 @@ CLI 凭据由各自的 CLI 管理：官方 `lark-cli` 的凭据在它自己的�
 统一命名会写真实任务标题，专用批量入口不联动所有会话名；孤儿清理只归档，不删除会话目录。
 不要用维护按钮来测试个人清单；有权限也不等于有用户执行授权。
 
-HTTP 面板与 API 挂在宿主同域 `/dsh-cove-task` 前缀，未额外增加插件级鉴权；不要当成安全的公共服务暴露。
+HTTP 面板与 API 挂在宿主同域 `/@kpeace/dsh-cove-task` 前缀，未额外增加插件级鉴权；不要当成安全的公共服务暴露。
 本机监听不防范其他本机进程；若宿主允许远端访问，必须由部署层补足访问控制。
 权限不足会降级/报错；任务字段、文档、评论的写权限以及会话运行权限需要分别考虑。
 清单字段常需 `task:custom_field:read` / `task:custom_field:write`，评论读取需 `task:comment:read`；写评论、依赖和文档另按所用接口申请权限。

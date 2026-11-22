@@ -13,7 +13,7 @@
  * 纯计算仍在 `runsView.js`（含「已完成任务不上页」的入口过滤）。
  */
 
-import { buildRuns, formatAgo } from './runsView.js'
+import { buildRuns, formatAgo, startOfDay } from './runsView.js'
 import { injectExactStyles } from './runsExactStyles.js'
 import { iconDrawNodes, normalizeIcon, colorHex, autoIconFor, renderIcon } from './projectIcons.js'
 import { derivePulses, prunePulses, toneColor, subscribeActivity, PULSE_TTL } from './sessionPulse.js'
@@ -37,6 +37,17 @@ const toNum = (value) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
 }
+
+/* 开工顺序 / 快到期共用的语义色调：优先级与到期桶都映射到同一组 tone，
+   颜色由样式表按宿主状态令牌给（亮暗自动跟随），这里只管「属于哪一档」。 */
+const TONE_OF_PRIORITY = { P0: 'urgent', P1: 'warn', P2: 'info' }
+const TONE_OF_BUCKET = { overdue: 'urgent', today: 'warn', week: 'info', later: 'calm' }
+const BUCKET_TEXT = { overdue: '逾期', today: '今天', week: '本周', later: '之后' }
+const BUCKET_ORDER = ['overdue', 'today', 'week', 'later']
+const DOW_TEXT = ['一', '二', '三', '四', '五', '六', '日']
+/* 日历最多 5 周（窗口 = 前 14 天 + 后 7 天，按周一对齐最多占 4 周，留 1 周余量）：
+   行数有上限，卡片高度才有保证（见 .frx-pv 的溢出兜底）。 */
+const CAL_MAX_WEEKS = 5
 
 /** 5 个尾部面板在 cols 列里怎么跨列才能让每排都铺满（与洞察页同一套算法）。 */
 export function spansForTail(count, cols) {
@@ -282,6 +293,22 @@ export function createRunsFeature(deps) {
     ]
   }
 
+  /**
+   * 悬浮提示层：整页只有这一个节点，定位在页根（.frx-page，position: relative）里，
+   * 所以不会被卡片的 overflow:hidden 裁掉。状态放在这个子组件里，hover 时只重渲它自己，
+   * 不会带着整页（气泡墙、活动流结算）一起重算。鼠标与键盘焦点都能触发。
+   */
+  function TipLayer(props) {
+    const pair = useState ? useState(null) : [null, () => {}]
+    const tip = Array.isArray(pair) ? pair[0] : null
+    const setTip = Array.isArray(pair) ? pair[1] : () => {}
+    props.api.current = { show: setTip, hide: () => setTip(null) }
+    if (!tip) return null
+    return h('div', { className: 'frx-tip' + (tip.below ? ' is-below' : ''), role: 'tooltip', style: { left: tip.x + 'px', top: tip.y + 'px' } },
+      h('b', null, tip.title),
+      (tip.lines || []).filter(Boolean).map((line, index) => h('span', { key: index }, line)))
+  }
+
   return function RunsFeature(props) {
     const ctx = props || {}
     ensureStyles()
@@ -325,6 +352,7 @@ export function createRunsFeature(deps) {
     const pulseVersion = Array.isArray(pulseTick) ? pulseTick[0] : pulseTick
     const setPulseVersion = Array.isArray(pulseTick) ? pulseTick[1] : setPulseTick
     const hostRef = useRef ? useRef(null) : null
+    const tipApi = useRef ? useRef(null) : { current: null }
     const [colState, setColState] = useState ? useState(toNum(ctx.columns) || 0) : [toNum(ctx.columns) || 0, () => {}]
     const cols = Array.isArray(colState) ? colState[0] : colState
     const setCols = Array.isArray(colState) ? colState[1] : setColState
@@ -423,6 +451,26 @@ export function createRunsFeature(deps) {
     }
     const openSession = typeof ctx.onOpenSession === 'function' ? ctx.onOpenSession : null
     const select = (id) => { if (typeof ctx.onOpenTask === 'function') ctx.onOpenTask(id) }
+    /* hover / 焦点提示：标题 + 若干行说明。文字不直接铺在卡片上，鼠标移上去才出现。 */
+    const showTip = (event, title, lines) => {
+      const api = tipApi.current
+      const host = hostRef && hostRef.current
+      if (!api || !host || !event || !event.currentTarget) return
+      const rect = event.currentTarget.getBoundingClientRect()
+      const base = host.getBoundingClientRect()
+      const half = 126 /* 提示最宽 240px：两侧各留一半再加边距，别贴边被裁 */
+      const x = Math.max(half, Math.min(host.clientWidth - half, rect.left - base.left + rect.width / 2 + host.scrollLeft))
+      const below = rect.top - base.top < 140 /* 提示最高约 6 行（≈120px）：上方放不下就翻到下面 */
+      api.show({ title, lines, x, y: (below ? rect.bottom : rect.top) - base.top + host.scrollTop, below })
+    }
+    const hideTip = () => { if (tipApi.current) tipApi.current.hide() }
+    const tipProps = (title, lines) => ({
+      onMouseEnter: (event) => showTip(event, title, lines),
+      onFocus: (event) => showTip(event, title, lines),
+      onMouseLeave: hideTip,
+      onBlur: hideTip,
+      'aria-label': [title].concat(lines || []).filter(Boolean).join('，'),
+    })
 
     /* 气泡：只放未完成任务（runsView 已过滤 done）。排在前面的拿参考表里更大的点：
        运行中优先、其次跑得久的 —— 大小天然表达紧迫度。 */
@@ -695,11 +743,24 @@ export function createRunsFeature(deps) {
       kpi ? h('span', { key: 'kpi', className: 'frx-kpi', 'data-tone': 'flat' },
         h('b', null, String(kpi[0])), h('span', { className: 'frx-kpi-label' }, kpi[1])) : null)
 
-    /* ---------- 卡片 2：开工顺序（横向条形图 + 一键过去） ----------
+    /* ---------- 卡片 2：开工顺序（四象限：横轴 = 已等多久，纵轴 = 优先级，点里的数字 = 开工顺序） ----------
        只回答「现在该动哪条」：依赖就绪、未挂起、没在跑；按 P0→P3，再按等得最久。
-       逾期不在这里（那是「快到期」的职责），时长也不在这里（气泡墙已经表达）。 ---------- */
+       右上角（优先级高 + 等得久）= 先做。逾期不在这里（那是「快到期」的职责），时长也不在这里。
+       标题 / 项目 / 等待时长都收进 hover，卡片上只剩图本身。 ---------- */
     const readyRows = view.ready || []
-    const maxWaitDays = readyRows.reduce((max, row) => Math.max(max, row.waitDays), 1)
+    const maxWaitDays = readyRows.reduce((max, row) => Math.max(max, row.waitDays), 6)
+    const prioChips = ['P0', 'P1', 'P2', 'P3', ''].map((p) => ({ p, n: readyRows.filter((row) => (row.priority || '') === p).length })).filter((item) => item.n > 0)
+    /* 点位：x 按等待天数铺在 10%~90%，y 按优先级分档（上半 = P0/P1，下半 = P2/P3/未定）；
+       同一格附近挤了就整体往下错开一个点位，保证每个点都点得到、数字不叠。 */
+    const QUAD_Y = { P0: 20, P1: 38, P2: 62, P3: 78, '': 90 }
+    const quadPlaced = []
+    const quadPoints = readyRows.map((row, index) => {
+      const x = 10 + (row.waitDays / maxWaitDays) * 80
+      let y = QUAD_Y[row.priority || ''] === undefined ? 90 : QUAD_Y[row.priority || '']
+      while (quadPlaced.some((p) => Math.abs(p.x - x) < 10 && Math.abs(p.y - y) < 14) && y < 94) y += 14
+      quadPlaced.push({ x, y })
+      return { row, index, x, y: Math.min(94, y) }
+    })
     const readyCard = card('ready', {
       label: '开工顺序',
       children: [
@@ -707,89 +768,111 @@ export function createRunsFeature(deps) {
           readyRows.length ? '依赖就绪' : '无可开工',
           readyRows.length ? 'is-ok' : 'is-idle', icon('play', 20), [readyRows.length, '就绪']),
         readyRows.length
-          ? h('div', { key: 'rank', className: 'frx-rank' }, readyRows.map((row) => h('button', {
-            key: row.id,
-            type: 'button',
-            className: 'frx-rank-row',
-            title: row.title + (row.waitText ? ' · 已等 ' + row.waitText : ''),
-            onClick: () => {
-              if (row.sessionId && openSession) openSession(row.sessionId, row.title)
-              else select(row.id)
-            },
-          },
-            h('span', { className: 'frx-rank-p', 'data-p': row.priority || 'none' }, row.priority || '—'),
-            h('span', { className: 'frx-rank-main' },
-              h('span', { className: 'frx-rank-title' }, row.title),
-              h('span', { className: 'frx-rank-track' },
-                h('i', { style: { width: Math.max(6, Math.round((row.waitDays / maxWaitDays) * 100)) + '%' } }))),
-            h('span', { className: 'frx-rank-wait' }, row.waitDays > 0 ? row.waitDays + ' 天' : '新'))))
+          ? h('div', { key: 'queue', className: 'frx-pv frx-q' },
+            h('div', { key: 'quad', className: 'frx-quad', role: 'list' },
+              h('i', { key: 'hl', className: 'frx-quad-hl', 'aria-hidden': 'true' }),
+              h('i', { key: 'vx', className: 'frx-quad-vx', 'aria-hidden': 'true' }),
+              h('i', { key: 'hx', className: 'frx-quad-hx', 'aria-hidden': 'true' }),
+              [['先做', 'is-tr'], ['尽快', 'is-tl'], ['别忘了', 'is-br'], ['之后', 'is-bl']].map((item) => h('span', {
+                key: item[1],
+                className: 'frx-quad-q ' + item[1],
+                'aria-hidden': 'true',
+              }, item[0])),
+              quadPoints.map((pt) => h('button', Object.assign({
+                key: pt.row.id,
+                type: 'button',
+                role: 'listitem',
+                className: 'frx-quad-pt',
+                'data-tone': TONE_OF_PRIORITY[pt.row.priority] || 'calm',
+                style: { left: pt.x + '%', top: pt.y + '%' },
+                onClick: () => {
+                  if (pt.row.sessionId && openSession) openSession(pt.row.sessionId, pt.row.title)
+                  else select(pt.row.id)
+                },
+              }, tipProps('第 ' + (pt.index + 1) + ' · ' + pt.row.title, [
+                pt.row.workspaceTitle + ' · ' + (pt.row.priority || '未定优先级'),
+                pt.row.waitText ? '已等 ' + pt.row.waitText : '刚创建',
+                pt.row.sessionId && openSession ? '点击进入会话' : '点击查看任务',
+              ])), String(pt.index + 1)))),
+            h('div', { key: 'axis', className: 'frx-quad-axis', 'aria-hidden': 'true' }, h('span', null, '新'), h('span', null, '等得久 →')),
+            h('div', { key: 'legend', className: 'frx-chips' }, prioChips.map((item) => h('span', {
+              key: item.p || 'none',
+              className: 'frx-chip',
+              'data-tone': TONE_OF_PRIORITY[item.p] || 'calm',
+            }, h('i', null), item.p || '未定', ' ', h('b', null, String(item.n))))))
           : h('p', { key: 'empty', className: 'frx-subtitle' }, '都被前置挡住了'),
       ],
     })
 
-    /* ---------- 卡片 3：快到期（时间轴图：逾期区 / 今天 / 未来） ----------
-       只回答「什么时候必须交」：按预期完成分桶，越靠上越紧迫；不看依赖、不排优先级。 ---------- */
+    /* ---------- 卡片 3：快到期（迷你日历：前 14 天 → 后 7 天，格内数字 = 当天到期条数） ----------
+       只回答「什么时候必须交」：按预期完成分桶，格子颜色 = 当天最紧迫的那一档；
+       不看依赖、不排优先级。任务标题 / 日期 / 逾期多久都收进 hover。 ---------- */
     const due = view.due || { buckets: {}, items: [], total: 0, unset: 0, windowStart: 0, windowEnd: 1 }
     const dueBucketsCount = due.buckets || {}
-    const dueSpan = Math.max(1, due.windowEnd - due.windowStart)
-    const duePct = (t) => Math.max(0, Math.min(1, (t - due.windowStart) / dueSpan)) * 100
-    const todayPct = duePct(view.now)
+    const dueToday = startOfDay(view.now)
+    const calFirst = new Date(startOfDay(due.windowStart))
+    calFirst.setDate(calFirst.getDate() - ((calFirst.getDay() + 6) % 7)) /* 对齐到周一 */
+    const calWeeks = Math.min(CAL_MAX_WEEKS, Math.max(1, Math.ceil((due.windowEnd - calFirst.getTime()) / 86400000 / 7)))
+    const calDays = []
+    for (let i = 0; i < calWeeks * 7; i += 1) {
+      const day = new Date(calFirst)
+      day.setDate(calFirst.getDate() + i)
+      const from = day.getTime()
+      const next = new Date(day)
+      next.setDate(day.getDate() + 1)
+      const items = due.items.filter((row) => row.expectedAt >= from && row.expectedAt < next.getTime())
+      const worst = BUCKET_ORDER.find((key) => items.some((row) => row.bucket === key))
+      calDays.push({ key: String(from), from, date: day, items, tone: worst ? TONE_OF_BUCKET[worst] : '',
+        today: from === dueToday, out: from < startOfDay(due.windowStart) || from >= due.windowEnd })
+    }
+    const bucketTip = (key) => due.items.filter((row) => row.bucket === key).slice(0, 6).map((row) => row.title + ' · ' + row.dueText)
     const dueCard = card('due', {
       label: '快到期',
       children: [
         cardHead('head', '快到期',
           due.total ? '按预期完成排序' : '暂无预期完成时间',
           dueBucketsCount.overdue ? 'is-warn' : 'is-idle', icon('clock', 20), [dueBucketsCount.overdue || 0, '逾期']),
-        due.items.length
-          ? h('div', { key: 'board', className: 'frx-due' },
-            h('div', { key: 'axis', className: 'frx-due-axis', 'aria-hidden': 'true' },
-              h('span', null, '14 天前'),
-              h('span', { className: 'frx-due-today', style: { left: todayPct + '%' } }, '今天'),
-              h('span', null, '7 天后')),
-            h('div', { key: 'bands', className: 'frx-due-bands', 'aria-hidden': 'true' },
-              h('i', { className: 'is-over', style: { width: todayPct + '%' } }),
-              h('i', { className: 'is-future', style: { left: todayPct + '%', width: Math.max(0, 100 - todayPct) + '%' } })),
-            due.items.map((row) => h('button', {
-              key: row.id,
-              type: 'button',
-              className: 'frx-due-row',
-              'data-bucket': row.bucket,
-              title: row.title + ' · ' + row.dueText,
-              onClick: () => select(row.id),
-            },
-              h('span', { className: 'frx-due-title' }, row.title),
-              h('span', { className: 'frx-due-track' },
-                h('i', { className: 'frx-due-bar', style: {
-                  left: Math.min(todayPct, duePct(row.expectedAt)) + '%',
-                  width: Math.abs(duePct(row.expectedAt) - todayPct) + '%',
-                } }),
-                h('b', { className: 'frx-due-dot', style: { left: duePct(row.expectedAt) + '%' } })),
-              h('span', { className: 'frx-due-when' }, row.dueText))))
-          : h('p', { key: 'empty', className: 'frx-subtitle' }, '填「预期完成」后按时间轴排开'),
-        /* 空白处列出来：只报一个数字没法动手，点一下就能去补预期完成 */
-        (due.unsetItems || []).length
-          ? h('div', { key: 'unset', className: 'frx-due-unset' },
-            h('span', { className: 'frx-due-unset-label' }, due.unset + ' 条还没设预期完成：'),
-            due.unsetItems.map((row) => h('button', {
-              key: row.id,
-              type: 'button',
-              className: 'frx-due-unset-chip',
-              title: '去这条任务里设置「预期完成」',
-              onClick: () => select(row.id),
-            }, row.title)))
-          : (due.unset ? h('p', { key: 'unset', className: 'frx-due-unset' }, due.unset + ' 条还没设预期完成') : null),
+        h('div', { key: 'body', className: 'frx-pv' },
+          due.items.length
+            ? h('div', { key: 'cal', className: 'frx-cal', role: 'grid' },
+              DOW_TEXT.map((text) => h('span', { key: 'dow-' + text, className: 'frx-cal-dow', 'aria-hidden': 'true' }, text)),
+              calDays.map((day) => {
+                const cls = 'frx-cal-day' + (day.today ? ' is-today' : '') + (day.out ? ' is-out' : '') + (!day.items.length && day.from < dueToday ? ' is-past' : '')
+                if (!day.items.length) return h('span', { key: day.key, className: cls }, String(day.date.getDate()))
+                return h('button', Object.assign({
+                  key: day.key,
+                  type: 'button',
+                  className: cls,
+                  'data-tone': day.tone,
+                  onClick: () => select(day.items[0].id),
+                }, tipProps((day.date.getMonth() + 1) + '/' + day.date.getDate() + ' · ' + day.items.length + ' 项到期',
+                  day.items.slice(0, 5).map((row) => row.title + ' · ' + row.dueText))), String(day.items.length))
+              }))
+            : h('p', { key: 'empty', className: 'frx-subtitle' }, '填「预期完成」后按日历排开'),
+          h('div', { key: 'chips', className: 'frx-chips' },
+            BUCKET_ORDER.filter((key) => dueBucketsCount[key] > 0).map((key) => h('span', Object.assign({
+              key,
+              className: 'frx-chip',
+              tabIndex: 0,
+              'data-tone': TONE_OF_BUCKET[key],
+            }, tipProps(BUCKET_TEXT[key] + ' · ' + dueBucketsCount[key] + ' 项', bucketTip(key))),
+              h('i', null), BUCKET_TEXT[key], ' ', h('b', null, String(dueBucketsCount[key])))),
+            /* 空白处要能动手：点一下去补第一条的预期完成，其余标题在 hover 里 */
+            (due.unsetItems || []).length
+              ? h('button', Object.assign({
+                key: 'unset',
+                type: 'button',
+                className: 'frx-chip frx-due-unset-chip',
+                onClick: () => select(due.unsetItems[0].id),
+              }, tipProps('还没设预期完成 · ' + due.unset + ' 条', due.unsetItems.map((row) => row.title).concat('点击去设置第一条'))),
+                '未设预期 ', h('b', null, String(due.unset)))
+              : null)),
       ],
     })
 
-    /* ---------- 卡片 4：最近动态（8 根 3 小时柱 + 5 条事件） ----------
-       只回答「刚才发生了什么」：生命周期事件的时间线，不是任务列表。
-       一版优化（2026-11-17）：
-         - 事件行 = 状态胶囊 + 标题 + 「项目 · 上下文」次行 + 时间（原来的 8px 圆点+单行标题
-           在实机里被 absolute 定位的点挤成 8px，标题整行看不见）；
-         - 列表 3 → 5 行并吃满卡片剩余高度（同排的健康卡把这一行拉到 344px，原来卡片下半截全空）；
-         - 柱状图 24 根 → 8 根（3h 一桶）并按事件类型堆叠（创建/开工/完成/挂起），
-           实机 24 根里 18 根是空的，看着像数据断了；
-         - 副标题从时间窗换成分布（完成 19 · 创建 11），时间窗已经在右上角的事件数里。 ---------- */
+    /* ---------- 卡片 4：最近动态（8 根 3 小时柱 + 3 条事件行） ----------
+       只回答「刚才发生了什么」：上面一张 24 小时分布图（图自己吃掉卡片剩余高度，不留空白），
+       下面只留最近 3 条事件：色点（类型）+ 标题 + 时间。项目 / 详情 / 类型名放 hover。 ---------- */
     const timeline = view.timeline || { events: [], buckets: [], counts: {}, last24h: 0 }
     const maxBucket = (timeline.buckets || []).reduce((max, row) => Math.max(max, row.count), 1)
     /* 行的读法顺序 = 事件的分量顺序：完成 > 开工 > 挂起 > 创建。
@@ -803,10 +886,15 @@ export function createRunsFeature(deps) {
       .map((kind) => KIND_TEXT[kind] + ' ' + counts[kind])
       .join(' · ')
     const hasWindow = timeline.last24h > 0
-    const bucketTitle = (row) => {
+    const hm = (ms) => {
+      const d = new Date(ms)
+      /* 不是今天的时刻加「昨」，否则「17:20 – 20:20」会被读成未来 */
+      return (d.getDate() === new Date(view.now).getDate() ? '' : '昨 ') + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+    }
+    const colTip = (row) => {
       const parts = KIND_ORDER.filter((kind) => row.byKind && row.byKind[kind] > 0)
         .map((kind) => KIND_TEXT[kind] + ' ' + row.byKind[kind])
-      return row.count ? row.count + ' 件（' + parts.join(' · ') + '）' : '无事件'
+      return tipProps(row.count ? row.count + ' 件' : '无事件', [parts.join(' · '), hm(row.start) + ' – ' + hm(row.start + 3 * 3600000)])
     }
     const timelineCard = card('timeline', {
       span: 2,
@@ -818,14 +906,14 @@ export function createRunsFeature(deps) {
           hasWindow ? 'is-brand' : 'is-idle', icon('activity', 20), [timeline.last24h, '事件']),
         /* 没有事件时不要画 8 根空柱（像数据断了）；给一句「最近一次在什么时候」。 */
         hasWindow
-          ? h('div', { key: 'cols', className: 'frx-cols', role: 'img', 'aria-label': '过去 24 小时事件分布（按类型堆叠）' },
-            timeline.buckets.map((row, index) => h('i', {
+          ? h('div', { key: 'cols', className: 'frx-cols', role: 'group', 'aria-label': '过去 24 小时事件分布（按类型堆叠）' },
+            timeline.buckets.map((row, index) => h('i', Object.assign({
               key: String(index),
               className: 'frx-col',
+              tabIndex: row.count ? 0 : undefined,
               'data-empty': row.count ? '0' : '1',
               style: { height: row.count ? Math.max(8, Math.round((row.count / maxBucket) * 100)) + '%' : '0px' },
-              title: bucketTitle(row),
-            }, SEG_ORDER.filter((kind) => row.byKind && row.byKind[kind] > 0).map((kind) => h('b', {
+            }, colTip(row)), SEG_ORDER.filter((kind) => row.byKind && row.byKind[kind] > 0).map((kind) => h('b', {
               key: kind,
               className: 'frx-col-seg is-' + kind,
               style: { flexGrow: row.byKind[kind] },
@@ -836,37 +924,33 @@ export function createRunsFeature(deps) {
             h('span', null, '24 小时前'), h('span', null, '12 小时前'), h('span', null, '现在'))
           : null,
         timeline.events.length
-          ? h('div', { key: 'events', className: 'frx-events' }, timeline.events.slice(0, 5).map((event) => {
-            const meta = [event.workspace, event.detail].filter(Boolean).join(' · ')
-            return h('button', {
-              key: event.id,
-              type: 'button',
-              className: 'frx-event',
-              'data-kind': event.kind,
-              title: event.title + (meta ? '（' + meta + '）' : '') + ' · ' + event.agoText,
-              onClick: () => select(event.taskId),
-            },
-              h('span', { className: 'frx-event-kind is-' + event.kind }, KIND_TEXT[event.kind] || event.kind),
-              h('span', { className: 'frx-event-main' },
-                h('span', { className: 'frx-event-title' }, event.title),
-                meta ? h('span', { className: 'frx-event-meta' }, meta) : null),
-              h('span', { className: 'frx-event-ago' }, event.agoText))
-          }))
+          ? h('div', { key: 'events', className: 'frx-events' }, timeline.events.slice(0, 3).map((event) => h('button', Object.assign({
+            key: event.id,
+            type: 'button',
+            className: 'frx-event',
+            'data-kind': event.kind,
+            onClick: () => select(event.taskId),
+          }, tipProps(event.title, [KIND_TEXT[event.kind] + (event.detail ? ' · ' + event.detail : ''), event.workspace, event.agoText])),
+            h('i', { className: 'frx-event-dot is-' + event.kind, 'aria-hidden': 'true' }),
+            h('span', { className: 'frx-event-title' }, event.title),
+            h('span', { className: 'frx-event-ago' }, event.agoText))))
           : h('p', { key: 'empty', className: 'frx-subtitle' }, '最近没有事件'),
       ],
     })
 
-    /* ---------- 卡片 5：系统健康（环形图 + 三条状态 + 计时覆盖细条） ----------
-       只回答「插件还正常吗」：同步 / 授权 / CLI；不列任何任务。 ---------- */
+    /* ---------- 卡片 5：系统健康（同步成功率条 + 四个状态格 + 计时覆盖细条） ----------
+       只回答「飞书同步还正常吗」：同步 / 授权 / CLI / 自动同步；不列任何任务。
+       四个状态格自己吃掉卡片剩余高度（grid 1fr），不再在下面留一块空白；
+       每格写一句人话说明它是干嘛的，放 hover。 ---------- */
     const syncHealth = health && health.sync ? health.sync : null
     const authHealth = health && health.auth ? health.auth : null
     const cliHealth = health && health.cli ? health.cli : null
-    const recentTotal = syncHealth ? (Number(syncHealth.recentOk) || 0) + (Number(syncHealth.recentFail) || 0) : 0
+    const recentOkCount = syncHealth ? Number(syncHealth.recentOk) || 0 : 0
+    const recentFailCount = syncHealth ? Number(syncHealth.recentFail) || 0 : 0
+    const recentTotal = recentOkCount + recentFailCount
     const okPct = recentTotal
-      ? Math.round(((Number(syncHealth.recentOk) || 0) / recentTotal) * 100)
+      ? Math.round((recentOkCount / recentTotal) * 100)
       : (syncHealth && syncHealth.lastStatus === 'success' ? 100 : 0)
-    const RING_R = 30
-    const RING_C = 2 * Math.PI * RING_R
     const minutesToNext = syncHealth && syncHealth.nextAt > 0 ? Math.max(0, Math.round((syncHealth.nextAt - view.now) / 60000)) : 0
     const coverageTotal = Math.max(1, (Number(view.timedCount) || 0) + (Number(view.untimedCount) || 0))
     /* 四项检查里没通过的条数：[同步没出错, 授权有效, CLI 已装, 自动同步开着] */
@@ -874,59 +958,66 @@ export function createRunsFeature(deps) {
       ? [syncHealth.lastStatus === 'success' && !syncHealth.lastErrorCount, authHealth.ok === true, cliHealth.found === true, syncHealth.autoSync === true]
         .filter((ok) => ok !== true).length
       : 0
+    /* 状态格：tone = ok（绿）/ warn（黄）/ calm（读不到或没开，不报警） */
+    const healthTiles = [
+      {
+        key: 'sync', name: '同步',
+        tone: !syncHealth ? 'calm' : (syncHealth.lastStatus === 'success' ? 'ok' : 'warn'),
+        value: !syncHealth ? '—' : (syncHealth.lastAt
+          ? formatAgo(view.now - syncHealth.lastAt) + (syncHealth.lastErrorCount ? ' · ' + syncHealth.lastErrorCount + ' 个错误' : '')
+          : '还没同步过'),
+        tip: '定时把飞书任务拉到本地，决定这里的数据新不新',
+      },
+      {
+        key: 'auth', name: '授权',
+        tone: !authHealth ? 'calm' : (authHealth.ok ? 'ok' : 'warn'),
+        value: authHealth ? (authHealth.ok ? '有效' : (authHealth.detail || '需要重新授权')) : '未知',
+        tip: '飞书登录是否有效；失效后同步会失败',
+      },
+      {
+        key: 'cli', name: 'CLI',
+        tone: !cliHealth ? 'calm' : (cliHealth.found ? 'ok' : 'warn'),
+        value: cliHealth ? (cliHealth.found ? (cliHealth.backend || '已安装') : '未安装') : '未知',
+        tip: '同步时调用的飞书命令行工具',
+      },
+      {
+        key: 'auto', name: '自动同步',
+        tone: syncHealth && syncHealth.autoSync ? 'ok' : 'calm',
+        value: !syncHealth ? '—' : (syncHealth.autoSync
+          ? (minutesToNext > 0 ? minutesToNext + ' 分钟后' : '每 ' + syncHealth.intervalMinutes + ' 分钟')
+          : '已关闭'),
+        tip: '按设定的间隔自动同步，不用手动点',
+      },
+    ]
     const healthCard = card('health', {
       span: 2,
       label: '系统健康',
       children: [
         cardHead('head', '系统健康',
-          /* 副标题只报结论（几项待处理），细节在下面四行里 —— 别再罗列「同步 / 授权 / CLI」 */
+          /* 副标题只报结论（几项待处理），细节在下面四格里 —— 别再罗列「同步 / 授权 / CLI」 */
           !health ? '读取中…'
             : (health.unavailable ? '宿主无健康接口'
               : (healthBad > 0 ? healthBad + ' 项待处理' : '全部正常')),
           syncHealth && authHealth && authHealth.ok && cliHealth && cliHealth.found ? 'is-ok' : 'is-warn',
           icon('shield', 20), recentTotal ? [okPct + '%', '成功'] : null),
         h('div', { key: 'body', className: 'frx-health' },
-          h('div', { key: 'ring', className: 'frx-health-ring' },
-            h('svg', { width: 84, height: 84, viewBox: '0 0 84 84', 'aria-hidden': 'true' },
-              h('circle', { cx: 42, cy: 42, r: RING_R, fill: 'none', stroke: 'var(--frx-inner)', strokeWidth: 8 }),
-              h('circle', {
-                cx: 42, cy: 42, r: RING_R, fill: 'none',
-                /* 还没有数据时不要染成红色（那是「有失败」的意思），用中性轨道色 */
-                stroke: !health
-                  ? 'var(--frx-inner)'
-                  : (okPct >= 80 ? 'rgba(34, 197, 94, 0.9)' : (okPct >= 50 ? 'rgba(245, 158, 11, 0.9)' : 'rgba(239, 68, 68, 0.9)')),
-                strokeWidth: 8, strokeLinecap: 'round',
-                strokeDasharray: ((okPct / 100) * RING_C).toFixed(1) + ' ' + RING_C.toFixed(1),
-                transform: 'rotate(-90 42 42)',
-              })),
-            h('span', { className: 'frx-health-ring-text' }, recentTotal ? okPct + '%' : '—')),
-          h('div', { key: 'rows', className: 'frx-health-rows' },
-            h('div', { className: 'frx-health-row' },
-              h('i', { className: 'frx-health-dot ' + (syncHealth ? (syncHealth.lastStatus === 'success' ? 'is-ok' : 'is-warn') : 'is-idle'), 'aria-hidden': 'true' }),
-              h('span', { className: 'frx-health-label' }, '同步'),
-              h('span', { className: 'frx-health-value' },
-                !syncHealth
-                  ? '—'
-                  : (syncHealth.lastAt
-                    ? formatAgo(view.now - syncHealth.lastAt) + (syncHealth.lastErrorCount ? ' · ' + syncHealth.lastErrorCount + ' 个错误' : '')
-                    : '还没同步过'))),
-            h('div', { className: 'frx-health-row' },
-              h('i', { className: 'frx-health-dot ' + (authHealth ? (authHealth.ok ? 'is-ok' : 'is-warn') : 'is-idle'), 'aria-hidden': 'true' }),
-              h('span', { className: 'frx-health-label' }, '授权'),
-              h('span', { className: 'frx-health-value' }, authHealth ? (authHealth.ok ? '有效' : (authHealth.detail || '需要重新授权')) : '未知')),
-            h('div', { className: 'frx-health-row' },
-              h('i', { className: 'frx-health-dot ' + (cliHealth ? (cliHealth.found ? 'is-ok' : 'is-warn') : 'is-idle'), 'aria-hidden': 'true' }),
-              h('span', { className: 'frx-health-label' }, 'CLI'),
-              h('span', { className: 'frx-health-value' }, cliHealth ? (cliHealth.found ? (cliHealth.backend || '已安装') : '未安装') : '未知')),
-            h('div', { className: 'frx-health-row' },
-              h('i', { className: 'frx-health-dot ' + (syncHealth && syncHealth.autoSync ? 'is-ok' : 'is-idle'), 'aria-hidden': 'true' }),
-              h('span', { className: 'frx-health-label' }, '自动同步'),
-              h('span', { className: 'frx-health-value' },
-                !syncHealth
-                  ? '—'
-                  : (syncHealth.autoSync
-                    ? (minutesToNext > 0 ? minutesToNext + ' 分钟后' : '每 ' + syncHealth.intervalMinutes + ' 分钟')
-                    : '已关闭')))),
+          h('div', Object.assign({ key: 'rate', className: 'frx-health-rate', tabIndex: recentTotal ? 0 : undefined },
+            recentTotal ? tipProps('最近 ' + recentTotal + ' 次同步', ['成功 ' + recentOkCount + ' · 失败 ' + recentFailCount]) : {}),
+            h('span', { className: 'frx-health-rate-text' }, recentTotal ? '近 ' + recentTotal + ' 次同步' : '同步成功率'),
+            h('span', { className: 'frx-health-rate-bar', 'aria-hidden': 'true' },
+              recentOkCount ? h('i', { key: 'ok', className: 'is-ok', style: { flexGrow: recentOkCount } }) : null,
+              recentFailCount ? h('i', { key: 'fail', className: 'is-fail', style: { flexGrow: recentFailCount } }) : null),
+            h('span', { className: 'frx-health-rate-text' }, recentTotal ? recentOkCount + ' / ' + recentTotal : '—')),
+          h('div', { key: 'grid', className: 'frx-health-grid' }, healthTiles.map((tile) => h('div', Object.assign({
+            key: tile.key,
+            className: 'frx-health-tile',
+            tabIndex: 0,
+            'data-tone': tile.tone,
+          }, tipProps(tile.name, [tile.tip, tile.value])),
+            h('i', { className: 'frx-health-dot', 'aria-hidden': 'true' }),
+            h('span', { className: 'frx-health-col' },
+              h('span', { className: 'frx-health-name' }, tile.name),
+              h('span', { className: 'frx-health-value' }, tile.value))))),
           h('div', { key: 'cover', className: 'frx-health-cover' },
             h('span', { className: 'frx-health-cover-text' }, '计时覆盖'),
             h('span', { className: 'frx-health-cover-track' },
@@ -936,7 +1027,7 @@ export function createRunsFeature(deps) {
       ],
     })
 
-    /* ---------- 卡片 6：运行历史（表格 + 时长微条形） ----------
+    /* ---------- 卡片 6：运行历史（每条一张带边框的小卡，双列；卡内：任务 / 状态 / 轮次 / 时长条 / 最近活动） ----------
        只回答「每条任务跑了多久、跑到第几轮」：按最近活动排序，行内嵌一条时长比例条，
        不是把任务再列一遍（状态与原因已经在上面四张卡里）。 ---------- */
     const historyRows = view.history || []
@@ -947,8 +1038,6 @@ export function createRunsFeature(deps) {
         cardHead('head', '运行历史', '按最近活动排序', 'is-brand', icon('terminal', 20), [historyRows.length, '条']),
         historyRows.length
           ? h('div', { key: 'table', className: 'frx-hist' },
-            h('div', { key: 'cols', className: 'frx-hist-cols', 'aria-hidden': 'true' },
-              h('span', null, '任务'), h('span', null, '状态'), h('span', null, '轮次'), h('span', null, '已跑'), h('span', null, '最近活动')),
             historyRows.slice(0, 10).map((row) => h('button', {
               key: row.id,
               type: 'button',
@@ -988,6 +1077,7 @@ export function createRunsFeature(deps) {
         statusCard, readyCard, dueCard,
         timelineCard, healthCard,
         historyCard),
+      h(TipLayer, { key: 'tip', api: tipApi }),
     )
   }
 }
