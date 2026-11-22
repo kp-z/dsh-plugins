@@ -43,7 +43,7 @@ export const DEFAULT_CIRCUIT: readonly PlaceSpec[] = [
 
 export type Facing = 'down' | 'up' | 'left' | 'right'
 
-/** 一帧舞台状态：前端（HUD 或 /show）完全由它决定画面。 */
+/** 一帧舞台状态（位置/朝向/场景）。 */
 export interface StageFrame {
   name: string
   /** 地点 id（喂给前端 place_id）。 */

@@ -51,7 +51,6 @@ const world = { id: 'w1', name: '演示小镇', tick: 0, paused: false, agents }
 
 // 观察者 = 林野（前端左下角那条流、角色面板里看到的是他）
 const viewerId = AGENT_IDS[CAST[0].id] ?? CAST[0].id
-const viewerWalker = walkers[0]
 
 const bridge = await createSlowvaleBridge({
   host: '127.0.0.1',
@@ -67,7 +66,6 @@ const bridge = await createSlowvaleBridge({
   },
   account: { email: 'demo@slowvale.dev', password: 'slowvale123' },
   getWorld: () => world,
-  getStageFrame: () => viewerWalker.stage.frame(),
   pushMs: Number(process.env.SLOWVALE_PUSH_MS ?? '1000'),
   autoEnter: true,
   debug: true,
@@ -94,7 +92,6 @@ const timer = setInterval(() => {
 }, 100)
 
 console.log('正式前端：http://127.0.0.1:' + port + '/   （自动登录，账号 demo@slowvale.dev / slowvale123）')
-console.log('走动视图：http://127.0.0.1:' + port + '/show')
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {

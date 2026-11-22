@@ -23,9 +23,7 @@ import { gzipSync } from 'node:zlib'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { autoEnterScript } from './auto-enter.js'
-import { renderViewerHtml } from './viewer.js'
 import { debugScript } from './debug.js'
-import type { StageFrame } from './stage.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
@@ -52,8 +50,6 @@ export interface BridgeOptions {
   debug?: boolean
   /** 本机调试用：把后台/无头窗口当成可见（前端不可见时不建 Phaser 游戏）。 */
   forceVisible?: boolean
-  /** 极简可视化（/show）的状态来源；没给就没有这个页面。 */
-  getStageFrame?: () => StageFrame | null
   log?: (line: string) => void
 }
 
@@ -248,29 +244,11 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
 
-      if (url.pathname === '/api/show/state') {
-        const frame = options.getStageFrame?.() ?? null
-        if (frame === null) {
-          res.writeHead(503, { 'content-type': 'application/json; charset=utf-8' })
-          res.end('{"detail":"舞台还没起来"}')
-          return
-        }
-        const body = Buffer.from(JSON.stringify(frame), 'utf8')
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.byteLength, 'cache-control': 'no-store' })
-        res.end(body)
-        return
-      }
       if (url.pathname.startsWith('/api/')) {
         await handleApi(ctx, req, res, url)
         return
       }
 
-      if (url.pathname === '/show') {
-        const body = Buffer.from(renderViewerHtml(), 'utf8')
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': body.byteLength })
-        res.end(body)
-        return
-      }
       if (options.debug === true && url.pathname === '/__slowvale/debug.js') {
         const body = Buffer.from(debugScript(options.forceVisible === true), 'utf8')
         res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'content-length': body.byteLength, 'cache-control': 'no-store' })
