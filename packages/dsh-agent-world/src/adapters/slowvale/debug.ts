@@ -14,7 +14,7 @@ export function debugScript(forceVisible = false): string {
     '    log.push(kind + ": " + Array.prototype.map.call(args, function (a) {',
     '      if (typeof a === "string") return a;',
     '      if (a instanceof Error) return (a.name + ": " + a.message + " | " + String(a.stack || "").slice(0, 700));',
-    '      if (a && a.message) return String(a.name || "Error") + ": " + a.message + " | " + String(a.stack || "").slice(0, 700);',
+    '      if (a && a.message) return String(a.name || "Error") + ": " + a.message + " | " + (a.sceneAssets ? ("ASSETS=" + JSON.stringify(a.sceneAssets).slice(0, 600)) : "") + " | " + String(a.stack || "").slice(0, 500);',
     '      try { return JSON.stringify(a) } catch (e) { return String(a) }',
     '    }).join(" ").slice(0, 500));',
     '    if (log.length > 800) log.shift();',
@@ -35,6 +35,16 @@ export function debugScript(forceVisible = false): string {
       'Object.defineProperty(document, "hidden", { configurable: true, get: function () { return false } });',
       'push("visibility", ["forced visible"]);',
     ] : []),
+    // 关键探针：资源监督器会 Object.assign(error, { sceneAssets }) 记录队列，
+    // 包一层就能拿到「这个场景到底排了哪些文件」（空队列 = preload 本地图那行没走到）。
+    'var originalAssign = Object.assign;',
+    'Object.assign = function (target) {' + 
+    '  for (var k = 1; k < arguments.length; k += 1) {' + 
+    '    var src = arguments[k];',
+    '    if (src && src.sceneAssets) { window.__svassets = src.sceneAssets; push("queued", [JSON.stringify(src.sceneAssets).slice(0, 300)]); }' + 
+    '  }' + 
+    '  return originalAssign.apply(Object, arguments);' + 
+    '};',
     'var created = 0;',
     'var originalCreate = document.createElement.bind(document);',
     'document.createElement = function (tag) {',
