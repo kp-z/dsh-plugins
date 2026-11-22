@@ -43,7 +43,7 @@ const agents = CAST.map((character) => ({
   id: AGENT_IDS[character.id] ?? character.id,
   name: character.name,
   state: 'idle',
-  station: null,
+  station: process.env.SLOWVALE_START_PLACE || null,
   position: { x: 0, z: 0 },
   facing: 0,
 }))
@@ -59,7 +59,7 @@ const bridge = await createSlowvaleBridge({
   opts: {
     worldId: 'w1',
     viewerRoleId: viewerId,
-    place: CAST[0].work.placeId,
+    place: process.env.SLOWVALE_START_PLACE || CAST[0].work.placeId,
     startDate: '2026-01-01',
     // 单场景调试：只暴露一个地点，且人不走动，排除多场景互相干扰
     ...(process.env.SLOWVALE_SINGLE_SCENE === '1' ? { singlePlace: true } : {}),

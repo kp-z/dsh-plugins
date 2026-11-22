@@ -48,6 +48,8 @@ export interface BridgeOptions {
   autoEnter?: boolean
   /** 注入调试采集脚本（不碰前端产物），排查用。 */
   debug?: boolean
+  /** 只在场景变化时推 scene_state（默认每秒重发，会让前端反复转场）。 */
+  sceneStateOnChangeOnly?: boolean
   /** 本机调试用：把后台/无头窗口当成可见（前端不可见时不建 Phaser 游戏）。 */
   forceVisible?: boolean
   log?: (line: string) => void
@@ -123,11 +125,17 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
    * - route：broadcast=false 时 scenes 必须非空，且 scene_state 要求恰好一个场景
    * - payload：只允许 { world_id, scene } 两个键
    */
+  let lastPushedScene: string | null = null
+
   const pushSceneState = (): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
     const scene = projectSnapshot(world, options.opts).scene
     if (typeof scene !== 'string' || scene === '') return
+    // 只在场景**变化**时推：每秒重发同一场景会让前端反复转场，
+    // 每次转场都会打断上一个场景的 loader.start() → 报「资源加载无进展」。
+    if (options.sceneStateOnChangeOnly === true && scene === lastPushedScene) return
+    lastPushedScene = scene
     envelopeSeq += 1
     const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
     const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: world.id, scene }))).toString('base64')
