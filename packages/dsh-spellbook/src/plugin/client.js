@@ -1,16 +1,16 @@
 window.__ModuleLoader__.load({
-  id: "dsh-spellbook",
+  id: "@kpeace/dsh-spellbook",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
     var React = require("react");
 
-    // ============ dsh-spellbook client：咒语书 ============
+    // ============ dsh-spellbook client：「长这样」 ============
     // 渲染入口：dsh-better-sidebar 右侧栏原生 tab。
     // 内容：宿主路由 /dsh-spellbook/ 下的静态站（构建产物），用 iframe 载入。
     //
     // 为什么是 iframe 而不是把站点重写成 React 组件：
-    // 咒语书自己已经是一套完整的站点，而它的每个条目都带一个**真在跑**的预览
+    // 「长这样」自己已经是一套完整的站点，而它的每个条目都带一个**真在跑**的预览
     // （独立文档，靠 sandbox iframe 隔离）。把站点塞进宿主组件树要重写渲染与预览两套
     // 东西，还会让那 332 个预览跟宿主页共享文档 —— 那正是它们必须隔离的原因。
     // 这里只做桥：给 iframe 挂上主题与尺寸，别的一概不插手。
@@ -226,7 +226,7 @@ window.__ModuleLoader__.load({
           ref: frameRef,
           className: "dsh-spellbook-frame",
           src: urlRef.current,
-          title: "咒语书",
+          title: "Spellbook",
           // 这里**故意不加** sandbox 属性。
           //
           // 嵌套 iframe 的 sandbox 标记是往下取并集的：外层若写了 allow-same-origin，
@@ -263,7 +263,7 @@ window.__ModuleLoader__.load({
       try {
         var disposeTab = betterSidebar.registerTab({
           id: "spellbook",
-          title: function () { return "咒语书"; },
+          title: function () { return "Spellbook"; },
           icon: function (size) {
             // 一本摊开的书：左页 + 右页 + 书脊
             return React.createElement(
@@ -286,12 +286,12 @@ window.__ModuleLoader__.load({
         if (ctx.effect) ctx.effect(function () { return disposeTab; });
       } catch (e) { /* 注册失败时静默：本插件没有别的入口 */ }
 
-      // 也让咒语书能进 dsh-tab-split 的窗格（分屏看时比侧边栏宽得多）
+      // 也让「长这样」能进 dsh-tab-split 的窗格（分屏看时比侧边栏宽得多）
       var slots = ctx.slots || (ctx.get ? ctx.get("slots") : undefined);
       if (slots && slots.inject && slots.register) {
         slots.inject("tabsplit.pane", function () {
           return slots.register(
-            { name: "tabsplit.pane", id: "spellbook-pane", order: 21, label: function () { return "咒语书"; } },
+            { name: "tabsplit.pane", id: "spellbook-pane", order: 21, label: function () { return "Spellbook"; } },
             function () { return React.createElement(SpellbookView, null); }
           );
         });

@@ -17,7 +17,7 @@
  * portal 到 document.body 就绕开了这个包含块。
  */
 window.__ModuleLoader__.load({
-  id: "dsh-broadcast",
+  id: "@kpeace/dsh-broadcast",
   factory: (require) => {
     var module = { exports: {} };
     var React = require("react");

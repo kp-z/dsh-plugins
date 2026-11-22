@@ -16,7 +16,7 @@
  * 弹出的编辑页是盖在面板内部的 absolute 层，不碰 document.body。
  */
 window.__ModuleLoader__.load({
-  id: "dsh-prompt-notes",
+  id: "@kpeace/dsh-prompt-notes",
   factory: function (require) {
     var React = require("react");
     var h = React.createElement;

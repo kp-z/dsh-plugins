@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: "dsh-dev-git-graph",
+  id: "@kpeace/dsh-dev-git-graph",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;

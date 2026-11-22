@@ -18,7 +18,7 @@
  * that does nothing.
  */
 window.__ModuleLoader__.load({
-  id: "dsh-mermaid-comm",
+  id: "@kpeace/dsh-mermaid-comm",
   factory: (require) => {
     var module = { exports: {} };
     var React = require("react");
