@@ -41,6 +41,8 @@ import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
+import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
+import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
 import { createPersonaStore } from './persona/store.js'
 import { registerDispatchTool } from './tools/dispatch.js'
@@ -1105,6 +1107,18 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
                 },
               },
             })
+          },
+          // 玩家给角色发短信：这句话本身就是指令时直接落到世界（不等模型回话）。
+          applyDirective: (roleId: string, text: string) => {
+            const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
+            const agentId = Object.entries(agents).find(([, character]) => character === roleId)?.[0]
+            if (agentId === undefined) return false
+            const directive = parseDirective(text, DEFAULT_CIRCUIT)
+            if (directive === null) return false
+            const command = directiveToCommand(directive, agentId)
+            if (command === null) return false
+            runtime.enqueue(command)
+            return true
           },
           respondSms: async (input: { peerRoleId: string; content: string }) => {
             const file = join(homedir(), '.dsh', 'xcity', 'bindings.json')

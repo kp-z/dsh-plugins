@@ -35,6 +35,7 @@ export interface RouteContext {
   log?: (line: string) => void
   /** 短信线程存储（世界侧，线程不属于会话）。 */
   sms: SmsStore
+  applyDirective?: ((roleId: string, text: string) => boolean) | null
   /** SSE 通道的当前连接数（给诊断端点用）。 */
   streamClients?: () => number
 }
@@ -313,6 +314,9 @@ export async function handleApi(
       sentAt: new Date().toISOString(),
       tick: world.tick,
     })
+    // 玩家这句话如果是指令（去办公室工作），直接落到世界；不依赖模型回什么。
+    const threadRoleId = threadId.startsWith('thread:') ? threadId.slice(7) : ''
+    if (threadRoleId !== '') ctx.applyDirective?.(threadRoleId, content)
     const thread = ctx.sms.get(threadId)
     sendJson(res, 200, { ok: true, messages: (thread?.messages ?? []).map(messageOf) })
     return true

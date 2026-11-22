@@ -66,6 +66,8 @@ export interface BridgeOptions {
     content: string
     tick: number
   }) => Promise<string | null>
+  /** 玩家给角色发短信时，把这句话直接翻成世界动作（不依赖模型回话）。 */
+  applyDirective?: ((roleId: string, text: string) => boolean) | null
   /**
    * 给角色开一条属于 xcity 工作区的会话（照 cove-task 的做法）。
    *

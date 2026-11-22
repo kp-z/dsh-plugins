@@ -10322,3 +10322,19 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 **判据**：6 条测试通过，其中两条是「办公室工作 → 正确命令」「健身房 → null」。
 
 **下一轮**：把这条链接到短信/会话——短信进会话，会话回复经 parseDirective，再 enqueue 命令。
+
+## 2026-11-23 04:58 · M3 第三块（短信 → 世界动作，接上）
+
+**接线（四段都是已有的东西）**
+
+    POST /game/player/message
+      → ctx.applyDirective(roleId, content)          [新：routes.ts 调一个端口]
+      → parseDirective(text, DEFAULT_CIRCUIT)        [M3-1]
+      → directiveToCommand(directive, agentId)       [M3-2]
+      → runtime.enqueue(agentActivity...)            [世界已有]
+
+**为什么不让模型的回话驱动**：模型可能只回一句「好的」，人就不该傻站着。
+玩家的原话本身就是指令时，直接落世界；会话仍然照常收到这条短信（respondSms 不变）。
+
+**判据**：编译通过。端到端判据（发短信→该 agent 的 state 变 walking）要等正式桥跑新代码，
+已标注在文档里，不要求反复重启。
