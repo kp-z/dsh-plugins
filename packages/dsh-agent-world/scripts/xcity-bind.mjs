@@ -17,6 +17,7 @@ import { BindingTable, FileBindingStore } from '../../dsh-slowvale/lib/index.js'
 // 工作区按 cove 的做法放在 ~/.dsh/<name>：DSH 的工作区注册表指向那里。
 const file = process.env.XCITY_BINDINGS ?? homedir() + '/.dsh/xcity/bindings.json'
 const store = new FileBindingStore(file)
+const agentMapFile = file.replace(/bindings\.json$/, 'agents.json')
 const table = store.load()
 
 const [command, ...rest] = process.argv.slice(2)
@@ -35,13 +36,19 @@ function print() {
 if (command === 'list') {
   print()
 } else if (command === 'bind') {
-  const [characterId, sessionId] = rest
+  const [characterId, sessionId, agentId] = rest
   if (!characterId || !sessionId) {
     console.error('用法：bind <characterId> <sessionId>')
     process.exit(2)
   }
   const row = table.bind({ characterId, sessionId, tick: 0 })
   store.save(table)
+  // 可选：把世界里的插槽（agent-N）指到这个人身上
+  if (agentId) {
+    const map = existsSync(agentMapFile) ? JSON.parse(readFileSync(agentMapFile, 'utf8')) : {}
+    map[agentId] = characterId
+    writeFileSync(agentMapFile, JSON.stringify(map, null, 2) + '\n', 'utf8')
+  }
   console.log('已绑定：' + row.characterId + ' ← ' + row.sessionId)
   print()
 } else if (command === 'unbind') {

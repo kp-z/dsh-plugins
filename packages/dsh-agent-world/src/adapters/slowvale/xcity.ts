@@ -54,3 +54,23 @@ export function loadXcityBindings(path: string | null): XcityBinding[] {
 export function characterOfSession(bindings: XcityBinding[], sessionId: string): string | null {
   return bindings.find((row) => row.sessionId === sessionId)?.characterId ?? null
 }
+
+/**
+ * 世界里 agent-N 和角色 id（role.lin）的对应表。
+ *
+ * 为什么需要它：绑定表按**角色**记账（那是人的身份），而世界里的 agentId 是插槽。
+ * 两个 id 空间不该混用，但必须有一处显式对应，否则"谁代表谁"无从落地。
+ */
+export function loadAgentMap(path: string): Record<string, string> {
+  if (!existsSync(path)) return {}
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    const out: Record<string, string> = {}
+    for (const [agentId, characterId] of Object.entries(raw)) {
+      if (typeof characterId === 'string') out[agentId] = characterId
+    }
+    return out
+  } catch {
+    return {}
+  }
+}

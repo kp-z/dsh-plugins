@@ -12,6 +12,7 @@
  * 会话这一侧：目前还没有真 DSH 会话（宿主 ctx 才拿得到 sessionController），
  * 所以人物的"脑子"尚未接上；这里先让**人在城里是对的**。
  */
+import { homedir } from 'node:os'
 import { createSlowvaleBridge } from '../lib/adapters/slowvale/server.js'
 import { createStage } from '../lib/adapters/slowvale/stage.js'
 import { CHARACTERS } from '../../dsh-slowvale/lib/index.js'
@@ -70,6 +71,8 @@ const bridge = await createSlowvaleBridge({
   autoEnter: true,
   debug: true,
   forceVisible: process.env.SLOWVALE_FORCE_VISIBLE === '1',
+  // 谁代表谁：读 DSH 工作区里的绑定表（跟 cove 一样放在 ~/.dsh 下）
+  bindingsFile: process.env.XCITY_BINDINGS ?? homedir() + '/.dsh/xcity/bindings.json',
   log: (line) => console.log(line),
 })
 

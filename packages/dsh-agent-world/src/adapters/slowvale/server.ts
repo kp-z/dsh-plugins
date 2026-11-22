@@ -19,6 +19,8 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
@@ -26,7 +28,7 @@ import { autoEnterScript } from './auto-enter.js'
 import { debugScript } from './debug.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
-import { loadXcityBindings } from './xcity.js'
+import { loadAgentMap, loadXcityBindings } from './xcity.js'
 import { independentDialogue } from './visual.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
@@ -330,8 +332,17 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
       if (url.pathname === '/api/xcity/bindings' && req.method === 'GET') {
-        const bindings = loadXcityBindings(options.bindingsFile ?? null)
-        const body = Buffer.from(JSON.stringify({ bindings }), 'utf8')
+        // 默认就去 DSH 的工作区约定位置找（跟 cove 一样放在 ~/.dsh 下）。
+        const file = options.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json')
+        const bindings = loadXcityBindings(file)
+        // 把角色绑定摊到世界里的 agentId 上：谁（agent-N）现在代表哪个人、用哪个会话。
+        const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
+        const resolved = Object.entries(agents).map(([agentId, characterId]) => ({
+          agentId,
+          characterId,
+          sessionId: bindings.find((row) => row.characterId === characterId)?.sessionId ?? null,
+        }))
+        const body = Buffer.from(JSON.stringify({ bindings, agents: resolved }), 'utf8')
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.byteLength, 'cache-control': 'no-store' })
         res.end(body)
         return
