@@ -413,7 +413,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   // **默认激活一个会话**：没有激活会话时，世界不会推进（tick 不动、工单永远没人接）。
   // 现象很迷惑：派了活、花名册也在，但所有人一直"待命"，看着像派单坏了。
   // 用 captain 会话兜底——它是这个插件自己创建的，不占用用户的会话。
-  if (resolved.autoStart && state.activeSessionId === null && resolved.captainSessionId !== '') {
+  if (resolved.autoActivate && state.activeSessionId === null && resolved.captainSessionId !== '') {
     try {
       state.activateSession(resolved.captainSessionId)
       runtime.start()

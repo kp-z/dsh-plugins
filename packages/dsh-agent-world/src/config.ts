@@ -64,6 +64,14 @@ export const AgentWorldConfig = z.object({
 
   /** 插件加载后是否自动推进模拟。关掉时世界静止，便于调试布局。 */
   autoStart: z.boolean().default(true),
+  /**
+   * 启动时自动激活一个会话（默认船长会话）。
+   *
+   * 为什么需要它：**没有激活会话时世界不推进**（tick 不动、工单永远没人接），
+   * 而现象是"派了活却没人动"，看着像派单坏了。
+   * 默认关：它会改变"用哪份内容建世界"的行为，不该悄悄开。
+   */
+  autoActivate: z.boolean().default(false),
 
   /**
    * 待命的人是否做"张望 / 踱步 / 歇息"这些自主动作。
@@ -186,6 +194,7 @@ export function resolveConfig(config: Partial<AgentWorldConfig> = {}): AgentWorl
     stateDir: config.stateDir ?? '.agent-world',
     tickMs: config.tickMs && config.tickMs > 0 ? config.tickMs : 100,
     autoStart: config.autoStart ?? true,
+    autoActivate: config.autoActivate ?? false,
     idleActionsEnabled: config.idleActionsEnabled ?? false,
     gameMode: config.gameMode ?? true,
     persistEveryTicks: config.persistEveryTicks ?? 100,
