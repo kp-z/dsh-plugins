@@ -16,39 +16,9 @@
 export const TASK_CARD_SCOPE = 'tc-scope'
 
 export const TASK_CARD_STYLES = `
-/* ============ 令牌映射（唯一一处） ============
-   以前每条规则都写成 var(--tc-x, var(--p-x))，两头兜底。但 --p-* 是 panel.html 那个老页面的
-   调色板，整个 React 面板里没有任何地方定义它 —— 兜底永远解析不到，只剩 150+ 处死引用。
-   现在映射收在这里：任何宿主（画布节点 / 卡片菜单 / 新建任务 dock）只要带 .tc-scope，
-   颜色就齐全；宿主主题一变，卡片跟着变。
-   亮色注意：bg-layer-2 是纯白、border-l1 只有 ~2.6% 黑，所以「次级面/描边」走 label 透明度
-   与 border-l2，否则亮色下卡片没有边、chip 没有底。 */
-.tc-scope {
-  --tc-bg: var(--dsw-alias-bg-base);
-  --tc-card: var(--dsw-alias-bg-layer-1);
-  --tc-text: var(--dsw-alias-label-primary);
-  --tc-text-1: var(--dsw-alias-label-primary);
-  --tc-text-2: var(--dsw-alias-label-secondary);
-  --tc-text-3: var(--dsw-alias-label-secondary);
-  --tc-sub: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent);
-  --tc-line: color-mix(in oklab, var(--dsw-alias-border-l2) 55%, transparent);
-  --tc-line-hover: var(--dsw-alias-border-l2);
-  --tc-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
-  --tc-select: color-mix(in oklab, var(--dsw-alias-brand-primary) 12%, transparent);
-  --tc-accent: var(--dsw-alias-brand-primary);
-  --tc-accent-text: var(--dsw-alias-brand-primary);
-  --tc-accent-weak: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
-  --tc-accent-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 32%, transparent);
-  --tc-ok: var(--dsw-alias-state-success-primary);
-  --tc-ok-weak: color-mix(in oklab, var(--dsw-alias-state-success-primary) 14%, transparent);
-  --tc-ok-line: color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, transparent);
-  --tc-warn: var(--dsw-alias-state-warn-primary);
-  --tc-warn-weak: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 14%, transparent);
-  --tc-warn-line: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 32%, transparent);
-  --tc-danger: var(--dsw-alias-state-error-primary);
-  --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
-  --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
-}
+/* 令牌（--tc-*）由宿主提供：React 面板在 src/client/styles.js 的
+   .fo-node-dom / .fo-menu-scope 上映射；右侧栏老面板 panel.html 用它自己的 .tc-scope 映射。
+   这里只消费，不定义，也不写 --p-* 兜底（那是死代码）。 */
 .tc-scope .task-body > .task-card-comments { flex: 1 0 100%; min-width: 0; }
 .tc-scope .task-card-comments { border-top: 1px solid var(--tc-line); padding-top: 8px; }
 .tc-scope .task-card-comments[hidden], .tc-scope .task-card-comments button[hidden] { display: none; }

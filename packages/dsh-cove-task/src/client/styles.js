@@ -965,13 +965,45 @@ export const CSS = `
 /* ============ 节点卡片：foreignObject 里的面板卡 ============
    卡片本体（描边/圆角/间距）由 src/card/taskCardStyles.js 提供；这里只画「画布这一层」的
    状态：悬停、选中、阻塞/挂起提示、ghost 虚线框、聚焦降透明度。 */
-/* 卡片本体的令牌映射在 src/card/taskCardStyles.js 的 .tc-scope 里（唯一一处），
-   这里只负责画布这一层的盒子尺寸与裁切。 */
+
+/* ============ 卡片令牌映射（React 侧唯一一处） ============
+   共享卡片样式（src/card/taskCardStyles.js）只消费 --tc-*，不在自己表里定义 ——
+   右侧栏老面板 panel.html 也引同一份卡片样式，但它有自己的 .tc-scope 映射（--p-* 调色板）。
+   映射一旦写进共享样式表，就会覆盖面板的映射（后注入者赢），面板卡片会整片变黑白。
+   所以映射只在这里：画布节点（.fo-node-dom）、卡片菜单（.fo-menu-scope）、新建任务 dock（.ftc-prio）。 */
+.fo-node-dom, .fo-menu-scope, .ftc-prio {
+  --tc-bg: var(--dsw-alias-bg-base);
+  --tc-card: var(--dsw-alias-bg-layer-1);
+  --tc-text: var(--dsw-alias-label-primary);
+  --tc-text-1: var(--dsw-alias-label-primary);
+  --tc-text-2: var(--dsw-alias-label-secondary);
+  --tc-text-3: var(--dsw-alias-label-secondary);
+  /* 亮色注意：bg-layer-2 是纯白、border-l1 只有 ~2.6% 黑 —— 次级面走 label 透明度、描边走 border-l2 */
+  --tc-sub: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent);
+  --tc-line: color-mix(in oklab, var(--dsw-alias-border-l2) 55%, transparent);
+  --tc-line-hover: var(--dsw-alias-border-l2);
+  --tc-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
+  --tc-select: color-mix(in oklab, var(--dsw-alias-brand-primary) 12%, transparent);
+  --tc-accent: var(--dsw-alias-brand-primary);
+  --tc-accent-text: var(--dsw-alias-brand-primary);
+  --tc-accent-weak: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
+  --tc-accent-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 32%, transparent);
+  --tc-ok: var(--dsw-alias-state-success-primary);
+  --tc-ok-weak: color-mix(in oklab, var(--dsw-alias-state-success-primary) 14%, transparent);
+  --tc-ok-line: color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, transparent);
+  --tc-warn: var(--dsw-alias-state-warn-primary);
+  --tc-warn-weak: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 14%, transparent);
+  --tc-warn-line: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 32%, transparent);
+  --tc-danger: var(--dsw-alias-state-error-primary);
+  --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
+  --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
+}
+/* 画布这一层只负责盒子尺寸与裁切 */
 .fo-node-dom {
   width: 100%; height: 100%; border-radius: 12px; overflow: hidden; overflow: clip; box-sizing: border-box;
 }
 /* .fo-menu-scope 的令牌映射已删：卡片/菜单统一由 src/card/taskCardStyles.js 的
-   .tc-scope 提供（菜单根现在直接带 tc-scope，不再需要一层同名作用域）。 */}
+   .tc-scope 提供（菜单根现在直接带 tc-scope，不再需要一层同名作用域）。 */
 .fo-node-dom > * { height: 100%; box-sizing: border-box; }
 .fo-node:hover .fo-node-dom { box-shadow: inset 0 0 0 1px ${g(T.label1, 18)}; }
 /* 选中态不要用 SVG filter：foreignObject 上的 drop-shadow 在 Chromium 合成层里会留下竖条纹残影。

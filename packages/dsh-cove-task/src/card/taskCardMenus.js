@@ -48,9 +48,9 @@ function viewportOf(deps) {
 export function mountCardMenu(menu, anchor, deps) {
   const doc = resolveDoc(deps)
   const body = (deps && deps.body) || doc.body
-  /* 菜单挂在 body 上，不在卡片的 .fo-node-dom 里；补一个 .tc-scope，复用卡片那唯一一处
-     令牌映射（src/card/taskCardStyles.js 的 .tc-scope 块）。 */
-  if (menu.classList && !menu.classList.contains('tc-scope')) menu.classList.add('tc-scope')
+  /* 菜单挂在 body 上，不在卡片的 .fo-node-dom 里；补一个 .fo-menu-scope 拿卡片的 --tc-*
+     映射（映射在 src/client/styles.js，共享卡片样式表里不定义，免得覆盖右侧栏老面板的配色）。 */
+  if (menu.classList && !menu.classList.contains('fo-menu-scope')) menu.classList.add('fo-menu-scope')
   body.appendChild(menu)
 
   const rect = anchor && typeof anchor.getBoundingClientRect === 'function'

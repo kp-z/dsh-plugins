@@ -8,6 +8,7 @@
  */
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { TASK_CARD_STYLES, TASK_CARD_SCOPE, TASK_MENU_STYLES, TASK_CARD_STYLE_ID, taskCardStyles, taskMenuStyles, ensureTaskCardStyles } from '../src/card/taskCardStyles.js'
 
 let passed = 0
@@ -60,20 +61,23 @@ check('关键类都在', () => {
     assert.ok(css.includes('.' + cls), cls)
   }
 })
-check('颜色只走 --tc-*：映射集中在 .tc-scope 一处，且没有 --p-* 死引用', () => {
+check('颜色只走 --tc-*，且共享样式表里不定义映射（否则会盖掉右侧栏面板的配色）', () => {
   /* 旧写法是 var(--tc-x, var(--p-x))：但 --p-* 是 panel.html 那套调色板，React 面板里从来没定义过，
-     兜底永远解析不到 —— 那 150+ 处是死代码，已删。现在映射只写在 .tc-scope 块里。 */
-  /* 判定只看代码，不看注释（映射块的注释里会提到旧的 --p-* 写法）。 */
+     兜底永远解析不到 —— 那 150+ 处是死代码，已删。 */
   const code = css.replace(/\/\*[\s\S]*?\*\//g, '')
   assert.equal(code.includes('--p-'), false, '不许再出现 --p-*（旧面板调色板）')
-  const mapStart = code.indexOf('.tc-scope {')
-  assert.ok(mapStart >= 0, '.tc-scope 里要有令牌映射块')
-  const map = code.slice(mapStart, code.indexOf('}', mapStart))
+  /* 回归点：panel.html 也引这份样式表，但它有自己的 .tc-scope 映射（--p-* 调色板）。
+     映射写进这里 = 后注入者赢 = 面板卡片整片变黑白（2026-11-22 踩过）。 */
+  assert.equal(/\.tc-scope\s*\{/.test(code), false, '共享卡片样式表里不许定义 --tc-* 映射')
+
+  const panel = readFileSync(new URL('../src/client/styles.js', import.meta.url), 'utf8')
+  const panelCss = panel.slice(panel.indexOf('export const CSS'))
+  const defined = new Set([...panelCss.matchAll(/(--tc-[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
   const used = [...new Set([...code.matchAll(/var\((--tc-[a-z0-9-]+)\)/g)].map((m) => m[1]))]
-  const defined = new Set([...map.matchAll(/(--tc-[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
   const missing = used.filter((token) => !defined.has(token))
-  /* 这条才是真正防回退的：卡片用到的每个 --tc-* 都必须在映射里定义，否则就是透明/继承色。 */
-  assert.deepEqual(missing, [], '这些 --tc-* 没有在 .tc-scope 映射里定义：' + missing.join(', '))
+  /* 卡片消费的每个 --tc-*，React 侧（styles.js 的 .fo-node-dom / .fo-menu-scope / .ftc-prio）都要定义，
+     否则就是透明/继承色。 */
+  assert.deepEqual(missing, [], '这些 --tc-* 在 React 侧映射里没有定义：' + missing.join(', '))
   assert.ok(used.length >= 12, '用到的令牌太少（' + used.length + '），映射是不是被删了？')
 })
 check('动画 keyframes 保留（当前对话 / 呼吸灯 / 优先级）', () => {
