@@ -41,6 +41,7 @@ import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
+import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
 import { createPersonaStore } from './persona/store.js'
 import { registerDispatchTool } from './tools/dispatch.js'
 import { registerReportTool } from './tools/report.js'
@@ -123,6 +124,13 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     | { prompt?(request: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>
     inspect?(sessionId: string, signal?: AbortSignal): Promise<{ events?: readonly { type?: string; time?: number; data?: Record<string, unknown> }[] }> }
     | undefined
+  // 建会话 / 挂工作区：cove-task 用的就是这两个服务（agents.create + workspaceRegistry）。
+  // 都是软依赖——没有它们，世界照跑，只是不能自己开会话。
+  let workspaceRegistryService: { resolveByPath?: (path: string) => Promise<unknown> } | null = null
+  ctx.inject(['workspaceRegistry'], (host) => {
+    workspaceRegistryService = (host as { workspaceRegistry?: typeof workspaceRegistryService }).workspaceRegistry ?? null
+  })
+
   ctx.inject(['sessionController'], (host) => {
     sessionControllerService = (host as unknown as {
       sessionController?: { prompt?(request: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>
@@ -1050,6 +1058,54 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
            * 这里**返回 null 是诚实的**：短信是异步的（收下即回执），
            * "他回一句"发生在会话里，不是在这个请求里凑一句假回复。
            */
+          /**
+           * 自己开一条会话给角色（照 cove-task 的三步：create -> attachSession -> prompt）。
+           *
+           * 三步缺一不可：只 create 的话，会话不归任何工作区，面板里只能出现在归档。
+           */
+          spawnSession: async (input: { characterId: string; characterName: string }) => {
+            const cwd = join(homedir(), '.dsh', 'xcity')
+            return spawnCharacterSession({
+              characterId: input.characterId,
+              characterName: input.characterName,
+              cwd,
+              now: Date.now(),
+              ports: {
+                createAgent: async (args) => {
+                  // 宿主给的是 AgentHandle 版签名；这里只用到 sessionId + meta.cwd 两个字段。
+                  const creator = (agentsService as unknown as {
+                    create?: (input: Record<string, unknown>) => Promise<unknown>
+                  })?.create
+                  if (typeof creator !== 'function') throw new Error('宿主没有 agents 服务')
+                  await creator.call(agentsService, { sessionId: args.sessionId, meta: { cwd: args.cwd } })
+                },
+                attachToWorkspace: async (sessionId, path) => {
+                  const registry = workspaceRegistryService
+                  if (registry === null || typeof registry?.resolveByPath !== 'function') return false
+                  const workspace = (await registry.resolveByPath(path)) as
+                    | { sessionIds?: string[]; attachSession?: (id: string) => Promise<unknown> }
+                    | undefined
+                  if (workspace === undefined) return false
+                  if (!Array.isArray(workspace.sessionIds) || !workspace.sessionIds.includes(sessionId)) {
+                    await workspace.attachSession?.(sessionId)
+                  }
+                  return true
+                },
+                prompt: async (sessionId, text) => {
+                  if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
+                  await sessionControllerService.prompt(
+                    {
+                      requestId: 'xcity:' + sessionId,
+                      sessionId,
+                      mode: 'queue',
+                      content: [{ type: 'text', text }],
+                    } as never,
+                    new AbortController().signal,
+                  )
+                },
+              },
+            })
+          },
           respondSms: async (input: { peerRoleId: string; content: string }) => {
             const file = join(homedir(), '.dsh', 'xcity', 'bindings.json')
             const agentsFile = join(homedir(), '.dsh', 'xcity', 'agents.json')

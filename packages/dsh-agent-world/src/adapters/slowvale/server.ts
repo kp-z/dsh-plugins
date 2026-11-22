@@ -66,6 +66,12 @@ export interface BridgeOptions {
     content: string
     tick: number
   }) => Promise<string | null>
+  /**
+   * 给角色开一条属于 xcity 工作区的会话（照 cove-task 的做法）。
+   *
+   * 没接这个端口 = 不会自己建会话（默认），此时只能绑用户已经有的会话。
+   */
+  spawnSession?: (input: { characterId: string; characterName: string }) => Promise<{ ok: boolean; sessionId?: string; reason?: string }>
   /** xcity/bindings.json 的绝对路径（谁代表谁）；不配就没有这个投影。 */
   bindingsFile?: string
   /** 只在场景变化时推 scene_state（默认每秒重发，会让前端反复转场）。 */
@@ -327,6 +333,27 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         const text = typeof payload.text === 'string' ? payload.text : ''
         const ok = roleId !== '' && text !== '' && pushSay(roleId, text)
         const body = Buffer.from(JSON.stringify({ ok }), 'utf8')
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.byteLength })
+        res.end(body)
+        return
+      }
+      // 让插件自己开一条会话给某个角色（cwd = xcity 工作区）。
+      if (url.pathname === '/api/xcity/spawn' && req.method === 'POST') {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(chunk as Buffer)
+        let payload: { characterId?: unknown; characterName?: unknown } = {}
+        try {
+          payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { characterId?: unknown; characterName?: unknown }
+        } catch {
+          payload = {}
+        }
+        const characterId = typeof payload.characterId === 'string' ? payload.characterId : ''
+        const characterName = typeof payload.characterName === 'string' ? payload.characterName : characterId
+        const result =
+          characterId === '' || options.spawnSession === undefined
+            ? { ok: false, reason: '没有接建会话端口，或缺少 characterId' }
+            : await options.spawnSession({ characterId, characterName })
+        const body = Buffer.from(JSON.stringify(result), 'utf8')
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.byteLength })
         res.end(body)
         return
