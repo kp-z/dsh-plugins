@@ -10226,3 +10226,26 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 剩下的不是「场景键对不对」，而是**场景没有真正启动**：队列为空、连失败都没有。
 下一轮查 Phaser 的启动条件（父元素尺寸守门 Ed(parent)、initialSceneKey 是否命中），不再调 scene 字段。
+
+## 2026-11-22 23:05 · M1 第二轮（读 W5 启动路径）
+
+**读到的事实（W5 的 boot 代码）**
+
+    const d = new kn.Game({
+      parent: g, width: 1, height: 1, pixelArt: true,
+      scale: { mode: Scale.NONE },
+      scene: [...r, new v_()],          // r[0] 是 initialSceneKey 命中的那个，只有它 autoStart
+      callbacks: { preBoot: (_) => { i = J4(_.textures, onError, onReady) } },
+    })
+
+- r = a ? [a, ...其余场景] : [...全部场景]，a = m.scenes.find(_ => _.mapKey === initialSceneKey)；
+- u = Ed(parent)（父元素尺寸为 0）只影响 skipRender，不影响 preload；
+- preBoot 里有一次 J4(textures, onError, onReady) 的纹理就绪闸门。
+
+**推论（待验）**
+
+场景能自动启动的条件只剩两条：initialSceneKey 命中某个实例的 mapKey，以及 J4 那道闸门放行。
+两者任一不成立，表现都一样：没有 preload、没有请求、也没有错误——与观察到的现象完全一致。
+
+**下一轮**：在页面里验证这两条（不改前端，用探针读 __svlog 或拦截 Phaser 构造参数），
+而不是继续调服务端字段。判据不变：background.png 被请求。
