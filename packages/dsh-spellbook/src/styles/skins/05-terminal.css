@@ -1,0 +1,47 @@
+/* 终端 —— 纯黑的屏幕、磷光绿、等宽字体、扫描线，连标题都是打字机 */
+:root {
+  --ground: #050805;
+  --ground-2: #0a120a;
+  --text: #c8ffc0;
+  --text-dim: #5f9a5a;
+  --gilt: #37ff6b;
+  --gilt-bright: #8dffa8;
+  --rubric: #ffb000;
+  --rule: #16351a;
+  --accent: #37ff6b;
+  --accent-ink: #041004;
+  --surface: #0a120a;
+  --surface-hover: #10200f;
+  --line: #1d4220;
+  --line-strong: #2f6a33;
+  --shadow: 0 0 0 1px #1d4220, 0 0 18px -6px rgb(55 255 107 / 0.5);
+  --glow: radial-gradient(70% 55% at 50% 0%, rgb(55 255 107 / 0.10), transparent 70%);
+  --font-ui: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --font-display: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --radius: 0px;
+  --radius-sm: 0px;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 50; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.28) 0 1px, transparent 1px 3px);
+  opacity: 0.5;
+}
+.topbar { background: #050805; border-bottom: 1px solid var(--line-strong); }
+.logo { background: none; color: var(--accent); border: 1px solid var(--accent); border-radius: 0; box-shadow: none; }
+.brand-name { text-transform: lowercase; letter-spacing: 0.14em; }
+.brand-name::after { content: '_'; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.search-field { border-radius: 0; background: #071007; border-color: var(--line-strong); }
+.search-field:focus-within { box-shadow: 0 0 0 1px var(--accent); }
+.chip { border-radius: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.hero-title { font-size: clamp(24px, 3.4vw, 34px); letter-spacing: 0; }
+.hero-title::before { content: '> '; color: var(--accent); }
+.hero-title em { background: none; -webkit-text-fill-color: var(--accent); color: var(--accent); }
+.group-head { text-transform: uppercase; font-size: 13px; letter-spacing: 0.18em; color: var(--accent); }
+.group-head::before { content: '## '; }
+.group-head::after { display: none; }
+.card { background: #071007; border-color: var(--line); }
+.card:hover { border-color: var(--accent); box-shadow: 0 0 24px -10px var(--accent); }
+.card-title { font-size: 15px; }
+.card-title::before { content: './'; color: var(--text-dim); }

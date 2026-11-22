@@ -1,0 +1,41 @@
+/* 瑞士国际主义 —— 黑白 + 一个红，网格、粗线、超大字距，零圆角 */
+:root {
+  --ground: #ffffff;
+  --ground-2: #f4f4f4;
+  --text: #0a0a0a;
+  --text-dim: #5c5c5c;
+  --gilt: #e30613;
+  --gilt-bright: #c00510;
+  --rubric: #e30613;
+  --rule: #d6d6d6;
+  --accent: #e30613;
+  --accent-ink: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f1f1f1;
+  --line: #d6d6d6;
+  --line-strong: #0a0a0a;
+  --shadow: none;
+  --glow: none;
+  --font-ui: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', sans-serif;
+  --font-display: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', sans-serif;
+  --radius: 0px;
+  --radius-sm: 0px;
+}
+.topbar { border-bottom: 2px solid #0a0a0a; background: #fff; }
+.brand-name { font-weight: 700; text-transform: uppercase; letter-spacing: -0.01em; font-size: 22px; }
+.logo { background: #0a0a0a; color: #fff; border-radius: 0; box-shadow: none; }
+.search-field { border-radius: 0; border-color: #0a0a0a; }
+.search-field:focus-within { box-shadow: none; border-width: 2px; }
+.chips { border-bottom: 1px solid #0a0a0a; }
+.chip { border-radius: 0; border: 0; border-right: 1px solid var(--line); height: 40px; font-weight: 500; letter-spacing: 0.02em; }
+.chip[aria-pressed="true"] { background: #0a0a0a; }
+.hero-title { font-weight: 700; letter-spacing: -0.03em; line-height: 0.98; }
+.hero-title em { background: none; color: var(--accent); -webkit-text-fill-color: currentColor; }
+.hero-stats b { font-family: var(--font-ui); font-weight: 700; }
+.group-head { text-transform: uppercase; letter-spacing: 0.14em; font-size: 15px; font-weight: 700; border-bottom: 2px solid #0a0a0a; padding-bottom: 8px; }
+.group-head::after { display: none; }
+.card { border-radius: 0; border: 0; border-top: 2px solid #0a0a0a; background: #fff; }
+.card:hover { transform: none; box-shadow: none; border-color: #0a0a0a; }
+.card-thumb { border-bottom: 1px solid var(--line); }
+.card.is-wide .card-title { font-size: 22px; letter-spacing: -0.02em; }
+.card-badge { color: var(--accent); }

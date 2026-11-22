@@ -1,0 +1,37 @@
+/* 霓虹赛博 —— 深空黑、青与洋红的描边发光，像一块 HUD */
+:root {
+  --ground: #05060f;
+  --ground-2: #0b0d1c;
+  --text: #e8f6ff;
+  --text-dim: #7d8bb3;
+  --gilt: #ff2fd0;
+  --gilt-bright: #ff7ce4;
+  --rubric: #ffb020;
+  --rule: #1b2140;
+  --accent: #00e5ff;
+  --accent-ink: #04101a;
+  --surface: rgb(11 13 28 / 0.72);
+  --surface-hover: rgb(20 24 48 / 0.9);
+  --line: rgb(0 229 255 / 0.18);
+  --line-strong: rgb(0 229 255 / 0.38);
+  --shadow: 0 0 0 1px rgb(0 229 255 / 0.18), 0 0 40px -18px rgb(0 229 255 / 0.7);
+  --glow: radial-gradient(50% 45% at 15% 0%, rgb(255 47 208 / 0.16), transparent 70%),
+          radial-gradient(50% 45% at 88% 4%, rgb(0 229 255 / 0.16), transparent 70%);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+.topbar { border-bottom: 1px solid var(--line-strong); background: rgb(5 6 15 / 0.75); }
+.logo { background: linear-gradient(140deg, var(--accent), var(--gilt)); color: #04101a; box-shadow: 0 0 24px -4px var(--accent); }
+.brand-name { letter-spacing: 0.2em; text-transform: uppercase; font-size: 18px; }
+.search-field { border-radius: 10px; border-color: var(--line-strong); background: rgb(11 13 28 / 0.8); }
+.search-field:focus-within { box-shadow: 0 0 0 2px rgb(0 229 255 / 0.35), 0 0 30px -10px var(--accent); }
+.chip { border-radius: 8px; border-color: var(--line); color: var(--text-dim); }
+.chip[aria-pressed="true"] { background: rgb(0 229 255 / 0.14); color: var(--accent); border-color: var(--line-strong); box-shadow: 0 0 20px -8px var(--accent); }
+.hero-title em { background: linear-gradient(100deg, var(--accent), var(--gilt)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-stats b { color: var(--accent); }
+.group-head { text-transform: uppercase; letter-spacing: 0.2em; font-size: 14px; color: var(--accent); }
+.group-head::after { background: linear-gradient(90deg, var(--line-strong), transparent); }
+.card { border-color: var(--line); background: var(--surface); box-shadow: 0 0 0 1px rgb(0 229 255 / 0.12), 0 0 34px -24px var(--accent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.card:hover { transform: translateY(-4px); border-color: var(--line-strong); box-shadow: 0 0 0 1px rgb(0 229 255 / 0.4), 0 0 50px -18px var(--accent); }
+.card-badge { color: var(--gilt); }
+.btn.is-primary { box-shadow: 0 0 24px -6px var(--accent); }

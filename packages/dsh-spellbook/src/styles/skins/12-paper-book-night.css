@@ -1,0 +1,87 @@
+/* 装帧书 · 夜读 —— 同一本书，熄了灯：深棕黑的书页、烫金标题、暖白墨。
+ * 结构与 01 完全一致（@import），只换颜色；纸纹换成「屏幕光下的旧纸」，
+ * 噪点用柔光混合，不然深色纸会被乘得发死。 */
+@import url("./01-paper-book.css");
+
+:root {
+  --ground: #1f1a14;
+  --ground-2: #362f25;
+  --text: #ecdfc6;
+  --text-dim: #a3937a;
+  --gilt: #e0bd76;
+  --gilt-bright: #f3d99a;
+  --rubric: #e0745a;
+  --rule: #453b2e;
+  --accent: #e0745a;
+  --accent-ink: #241f19;
+  --surface: #362f25;
+  --surface-hover: #443b30;
+  --line: #43392c;
+  --line-strong: #6a5a44;
+}
+
+body {
+  border-left-color: #120e0a;
+  background-color: var(--ground);
+  background-image:
+    var(--paper-noise),
+    radial-gradient(38% 26% at 78% 22%, rgb(200 160 90 / 0.07), transparent 70%),
+    radial-gradient(130% 80% at 46% -10%, rgb(255 224 170 / 0.10), transparent 62%),
+    radial-gradient(150% 110% at 50% 118%, rgb(0 0 0 / 0.5), transparent 62%),
+    linear-gradient(174deg, #272119 0%, #1f1a14 46%, #17130e 100%);
+  background-blend-mode: soft-light, normal, normal, multiply, normal;
+  box-shadow: inset 0 0 140px rgb(0 0 0 / 0.55);
+}
+body::before {
+  background:
+    repeating-linear-gradient(180deg,
+      rgb(255 220 150 / 0.14) 0 1px,
+      rgb(255 220 150 / 0.04) 1px 5px,
+      rgb(0 0 0 / 0.6) 5px 7px,
+      transparent 7px 9px,
+      transparent 9px 128px) left top / 30px 100% no-repeat,
+    linear-gradient(90deg, #070504 0%, #170f09 20%, #2a1d11 46%, #332416 58%, #1a1109 80%, #080503 100%) left top / 30px 100% no-repeat,
+    linear-gradient(90deg, rgb(0 0 0 / 0.72) 0, rgb(0 0 0 / 0.4) 14px, rgb(0 0 0 / 0.14) 40px, transparent 96px) left top / 120px 100% no-repeat;
+}
+body::after { background: repeating-linear-gradient(90deg, #3a3128 0 1px, #574934 1px 3px, #2c251d 3px 4px); }
+.topbar {
+  background: linear-gradient(180deg, #2f2821, #241f19 60%, #1d1812);
+  border-bottom-color: #6a5a44;
+  box-shadow: 0 10px 24px -20px #000, inset 0 1px 0 rgb(255 224 170 / 0.12);
+}
+.brand-name { color: #f2e3c4; text-shadow: 0 1px 0 rgb(0 0 0 / 0.8), 0 0 18px rgb(226 189 118 / 0.35); }
+.topbar::before { background: repeating-linear-gradient(115deg, #6d1f12 0 5px, #c9a24d 5px 7px, #3d2c1b 7px 12px); }
+.logo { box-shadow: inset 0 1px 1px rgb(255 240 200 / 0.6), inset 0 -2px 3px rgb(40 24 8 / 0.8), 0 0 22px -6px rgb(226 189 118 / 0.8); }
+.search-field { background: #1d1813; border-color: #5b4c38; box-shadow: inset 0 2px 5px rgb(0 0 0 / 0.55); }
+.search-kbd { background: #2a231b; border-color: #5b4c38; }
+.card {
+  border-color: #4a3f31;
+  background-color: #362f25;
+  background-image: var(--paper-noise), linear-gradient(178deg, #3b332a, #302a21);
+  background-blend-mode: soft-light, normal;
+  box-shadow: inset 0 0 0 1px rgb(255 226 170 / 0.05), 0 2px 0 -1px #191510, 0 14px 26px -18px #000;
+}
+.card::after { border-color: rgb(226 189 118 / 0.16); }
+.card:hover { border-color: #7a6446; }
+.card-title a { color: #f2e3c4; }
+.card-when { color: #a3937a; }
+.card-thumb { background: #1a150f; }
+.card-thumb::after {
+  box-shadow:
+    inset 0 0 0 7px #2b251d,
+    inset 0 0 0 8px #4a3f31,
+    inset 0 0 0 9px rgb(255 226 170 / 0.08),
+    inset 0 0 18px rgb(0 0 0 / 0.6);
+}
+.chip { background: linear-gradient(180deg, #322b22, #241f18); color: #b9a98d; border-color: #5b4c38; }
+.chip:hover { color: #ecdfc6; }
+.chip[aria-pressed="true"] { background: linear-gradient(180deg, #4a3623, #2b1f14); color: #f0e0be; border-color: #7a6446; }
+.hero-title { color: #f3e6c9; text-shadow: 0 0 30px rgb(226 189 118 / 0.25); }
+.hero-title em { color: var(--gilt-bright); }
+.group-head { color: #e8d8b6; }
+.group-head::after { background: linear-gradient(90deg, #6a5a44, transparent); }
+.code-block { background: #1a1510; border-color: #4a3f31; box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.5); }
+.code-head { background: linear-gradient(180deg, #2a231b, #201a14); border-bottom-color: #4a3f31; }
+.btn { background: linear-gradient(180deg, #362e24, #282219); color: #e8d8b6; border-color: #5b4c38; }
+.btn.is-primary { background: linear-gradient(180deg, #a8492f, #7d3320); color: #fbeed2; border-color: #5e2213; }
+.mech, mark { background: rgb(224 116 90 / 0.14); color: #f0a48f; }

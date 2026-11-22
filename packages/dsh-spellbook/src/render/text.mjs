@@ -1,5 +1,5 @@
 /**
- * 渲染用的文本工具：转义、行内标记、罗马数字、抄录文本。
+ * 渲染用的文本工具：转义、行内标记、抄录文本。
  *
  * 两条硬规则：
  *  1. 内容里的一切先进 escapeHtml，再处理标记 —— 顺手写反了就是 XSS。
@@ -47,39 +47,6 @@ export function renderParagraphs(text) {
     .filter(Boolean)
     .map((para) => `<p>${renderInline(para)}</p>`)
     .join('\n')
-}
-
-const ROMAN = [
-  [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
-  [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
-  [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
-]
-
-export function roman(number) {
-  let n = Math.max(1, Math.floor(number))
-  let out = ''
-  for (const [value, glyph] of ROMAN) {
-    while (n >= value) {
-      out += glyph
-      n -= value
-    }
-  }
-  return out
-}
-
-const CN_DIGITS = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九']
-
-/**
- * 章节用的中文数字。条目用罗马数字（I、II），章节用中文数字（第一章）——
- * 两套记号不同，层级一眼可辨。超过 99 章就不再硬凑，老老实实写回阿拉伯数字。
- */
-export function chineseNumeral(number) {
-  const n = Math.floor(number)
-  if (!Number.isFinite(n) || n < 1 || n > 99) return String(number)
-  if (n < 10) return CN_DIGITS[n]
-  const tens = Math.floor(n / 10)
-  const ones = n % 10
-  return (tens === 1 ? '十' : CN_DIGITS[tens] + '十') + (ones ? CN_DIGITS[ones] : '')
 }
 
 const MARKER_PATTERNS = [

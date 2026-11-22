@@ -1,8 +1,8 @@
-# dsh-mermaid-comm
+# @kpeace/dsh-mermaid-comm
 
 让 AI 在开发交流中**默认、优先用 Mermaid 图**表达。渲染由 [`dsh-mermaid`](https://github.com/MrmoLabs/dsh-mermaid) 负责，本插件专注于提示词、校验和输出安全闸。
 
-[![npm](https://img.shields.io/npm/v/dsh-mermaid-comm)](https://www.npmjs.com/package/dsh-mermaid-comm)
+[![npm](https://img.shields.io/npm/v/@kpeace/dsh-mermaid-comm)](https://www.npmjs.com/package/dsh-mermaid-comm)
 
 ## 功能
 
@@ -68,14 +68,14 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-mermaid-comm dsh-mermaid
+dsh plugin --profile web add @kpeace/dsh-mermaid-comm dsh-mermaid
 ```
 
 **一条命令装两个包。** 两个包各有分工，缺一不可：
 
 | 包 | 管什么 | 为什么必须单独装 |
 |---|---|---|
-| `dsh-mermaid-comm` | prompt 注入、`mermaid_validate`、图库、输出闸 | 就是本插件 |
+| `@kpeace/dsh-mermaid-comm` | prompt 注入、`mermaid_validate`、图库、输出闸 | 就是本插件 |
 | `dsh-mermaid` | 把对话流里的 mermaid 围栏渲染成图 | **必须进 `dsh.profile.bundles` 才会被挂载** |
 
 `dsh-mermaid` 也已声明为本插件的普通依赖，所以只装本插件它也会被 pnpm 装上（代码在 `node_modules` 里）；但「装上」不等于「挂载」——dsh 只应用 `dsh.profile.bundles` 里各包的 `cordis.patch.yml`，不在名册里的包不会被挂载，图表也就不会渲染。所以要把它一并加进名册。
@@ -118,8 +118,8 @@ dsh plugin --profile web add dsh-mermaid-comm dsh-mermaid
 
 ```sh
 pnpm install
-pnpm --filter dsh-mermaid-comm build
-pnpm --filter dsh-mermaid-comm typecheck
+pnpm --filter @kpeace/dsh-mermaid-comm build
+pnpm --filter @kpeace/dsh-mermaid-comm typecheck
 ```
 
 从 checkout 安装：

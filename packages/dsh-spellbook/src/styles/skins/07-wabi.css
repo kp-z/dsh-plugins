@@ -1,0 +1,39 @@
+/* 日式侘寂 —— 米白、墨、极细线、大留白，安静；唯一的重色是朱印 */
+:root {
+  --ground: #efece5;
+  --ground-2: #f6f3ee;
+  --text: #35322c;
+  --text-dim: #8b857a;
+  --gilt: #7d6b53;
+  --gilt-bright: #655543;
+  --rubric: #a33b2c;
+  --rule: #dedad1;
+  --accent: #7d6b53;
+  --accent-ink: #f6f3ee;
+  --surface: #f6f3ee;
+  --surface-hover: #f1ede6;
+  --line: #e0dcd3;
+  --line-strong: #cfc9bd;
+  --shadow: none;
+  --glow: none;
+  --font-ui: 'Songti SC', 'Noto Serif SC', 'Hiragino Mincho ProN', serif;
+  --font-display: 'Songti SC', 'Noto Serif SC', 'Hiragino Mincho ProN', serif;
+  --radius: 2px;
+  --radius-sm: 2px;
+}
+.topbar { background: color-mix(in oklab, var(--ground) 92%, transparent); border-bottom: 1px solid var(--line); }
+.brand-name { letter-spacing: 0.3em; font-weight: 400; font-size: 19px; }
+.logo { background: var(--rubric); color: var(--ground); border-radius: 2px; box-shadow: none; width: 22px; height: 22px; }
+.logo svg { width: 12px; height: 12px; }
+.search-field { border-radius: 2px; background: transparent; border-color: var(--line-strong); }
+.hero { padding: 56px 0 44px; }
+.hero-title { font-weight: 300; letter-spacing: 0.06em; font-size: clamp(26px, 3.6vw, 38px); }
+.hero-title em { background: none; -webkit-text-fill-color: var(--text); color: var(--text); border-bottom: 1px solid var(--rubric); }
+.chip { border-radius: 2px; border-color: transparent; background: transparent; color: var(--text-dim); }
+.chip[aria-pressed="true"] { background: transparent; color: var(--text); border-color: var(--line-strong); }
+.card { border-radius: 2px; border-color: var(--line); background: var(--surface); }
+.card:hover { transform: translateY(-2px); box-shadow: none; border-color: var(--line-strong); }
+.card-thumb { border-bottom: 1px solid var(--line); }
+.group-head { font-weight: 400; letter-spacing: 0.24em; font-size: 15px; color: var(--text-dim); }
+.group-head::after { background: linear-gradient(90deg, var(--line-strong), transparent); }
+.card-title { font-weight: 400; letter-spacing: 0.04em; }

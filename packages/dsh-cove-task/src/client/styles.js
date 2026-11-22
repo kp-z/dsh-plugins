@@ -47,10 +47,13 @@ const T = {
 }
 
 /** 玻璃三件套：卡片面 / 次级面 / 描边，加一个悬停描边与投影。 */
+/* 亮色主题里 bg-layer-1/2/3 全是纯白：靠「提亮一层」做出来的次级面、悬停面在亮色下等于不存在。
+   所以「表面变化」一律用 label 的透明度（亮色=黑、暗色=白）—— 这就是 cove 的 bg-white/5，
+   换成宿主令牌后两个主题都成立。描边抬到 border-l2：border-l1 在亮色只有 ~2.6% 黑，卡边看不见。 */
 const GLASS = {
   card: g(T.bgLayer1, 92),
-  sub: g(T.bgLayer2, 88),
-  line: g(T.border1, 65),
+  sub: g(T.label1, 6),
+  line: g(T.border2, 55),
   lineHover: g(T.border2, 82),
   shadow: `0 8px 24px ${g(T.label1, 10)}`,
   wash: `linear-gradient(135deg, ${g(T.brand, 6)}, transparent 72%)`,
@@ -80,8 +83,24 @@ export const CSS = `
   --fo-glass-line: ${GLASS.line};
   --fo-glass-line-hover: ${GLASS.lineHover};
   --fo-glass-shadow: ${GLASS.shadow};
+  /* 卡片投影：亮色=黑（真正的阴影），暗色=白（只剩贴边的一圈高光）。
+     必须用紧阴影：blur 一大，暗色里就会变成发光。 */
+  --fo-card-shadow: 0 1px 2px ${g(T.label1, 7)}, 0 8px 24px -14px ${g(T.label1, 12)};
   --fo-glass-wash: ${GLASS.wash};
   --fo-glass-blur: blur(12px);
+  /* ============ 刻度（唯一来源） ============
+     圆角 / 页边距 / 卡间距 / 字号只在这里定义，组件一律 var(--fo-*)，不许再写数字。
+     以前三页各写一套（页边距 10 / 12 / 16-20-28、圆角 14 / 14 / 16、字号 8~20 十档），
+     并排看就是三个产品 —— 这是「看起来乱」的首要原因。 */
+  /* 头三档（控件 8 / 项 12 / 胶囊 999）先不立变量：等真正改到那些组件时再收，
+     免得挂一堆没人用、也没人知道该用在哪的空令牌。 */
+  --fo-radius-card: 20px;     /* 主内容卡（cove 是 24，窄面板收一档）——三页共用同一档 */
+  /* 页边距 / 卡间距 / 卡内边距：窄面板一档，宽了由容器查询抬到 cove 的 24（见 @container fopanel） */
+  --fo-gutter: 14px;
+  --fo-gap: 16px;
+  --fo-card-pad: 16px;
+  /* 表面：正文 = bg-base、rail = layer-1（用户早前定的「三块表面同层」）。
+     cove 的 rail 比正文更暗，那属于主题色范畴，改不改留待确认，这轮不动。 */
   /* 侧栏宽度：与 cove 完全一致 —— 展开 192px、收起 80px。 */
   --fo-rail-w: 192px;
   /* 全局 Header 高度（= 品牌栏高度，两栏共用）与右侧建议栏宽度 */
@@ -91,15 +110,17 @@ export const CSS = `
      以后只调这里，两者不可能再不一致（用户反复踩到的就是「改一处、另一处没跟上」）。 */
   --fo-rail-item: 44px;
   --fo-rail-line: ${g(T.border1, 40)};
-  --fo-row-hover-bg: ${g(T.bgLayer2, 55)};
-  --fo-selected-bg: ${g(T.brand, 20)};
-  --fo-selected-line: ${g(T.brand, 30)};
+  --fo-row-hover-bg: ${g(T.label1, 5)};
+  /* 选中态：品牌色 12% 底 / 24% 描边。品牌色在亮色下是近黑、暗色下是近白，所以 12% 是
+     「一块很淡的底」——加重到 20~30% 在亮色里会变成灰块（optics 上像 disabled）。 */
+  --fo-selected-bg: ${g(T.brand, 12)};
+  --fo-selected-line: ${g(T.brand, 24)};
   /* 画布：40px 网格 + 品牌调渐变底（参考站 WorkflowEditor 同款） */
   /* 优先级：画布左侧 3px 色条，颜色与面板任务卡（data-priority）的 border-left 一一对应。 */
   --fo-grid-size: 40px;
   --fo-grid-line: ${g(T.border1, 12)};
   --fo-canvas-bg: linear-gradient(135deg, ${g(T.bgBase, 55)}, ${g(T.bgLayer1, 35)});
-  --fo-canvas-line: ${g(T.border1, 35)};
+  --fo-canvas-line: ${g(T.border2, 45)};
   --fo-ease: cubic-bezier(.2, .8, .2, 1);
   --fo-dur: 300ms;
 
@@ -140,9 +161,8 @@ export const CSS = `
   /* 拖动把手是绝对定位的，需要一个定位上下文 */
   position: relative;
   border-right: 1px solid var(--fo-glass-line);
-  /* 表面口径与 DSH 一致：左侧栏 = layer-1，中间 = bg-base，右栏 = layer-1。
-     以前这里多叠了一层品牌色径向光晕 + 96% 底色，和中间、右栏对不上（用户看到的就是
-     「左边发蓝、另两块发灰」）。DSH 的品牌色本身是黑白，这层光晕只会把整块染脏。 */
+  /* 表面口径与 DSH 一致：左侧栏 = layer-1，中间 = bg-base，右栏 = layer-1（用户早前定的
+     「三块表面同层」）。cove 的 rail 比正文更暗，那属于主题色范畴，要不要改留待确认。 */
   background: ${T.bgLayer1};
 }
 /* 右边缘拖动把手：6px 命中带，hover 时显一条品牌色细线（不占布局） */
@@ -161,7 +181,7 @@ export const CSS = `
 .fo-brand {
   display: flex; align-items: center; gap: 12px;
   min-height: 48px; height: 48px; padding: 0 16px;
-  border-bottom: 1px solid color-mix(in oklab, ${T.brand} 20%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, ${T.brand} 14%, transparent);
 }
 /* cove 的 logo 是 28px 裸标（无底板、无描边） */
 .fo-brand-logo {
@@ -171,9 +191,9 @@ export const CSS = `
   background: none; border: 0; padding: 0;
 }
 .fo-brand-mark { width: 28px; height: 28px; display: block; object-fit: contain; }
-.fo-brand-text { display: flex; flex-direction: column; min-width: 0; gap: 0; }
-.fo-brand-title { font-size: 14px; font-weight: 500; color: ${T.label1}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fo-brand-sub { font-size: 12px; color: ${T.label2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* cove 的品牌区是「logo + 一行名字」：不再叠第二行副标题（视觉重心是 logo，不是两行字）。 */
+.fo-brand-text { display: flex; flex-direction: column; justify-content: center; min-width: 0; gap: 0; }
+.fo-brand-title { font-size: 14px; font-weight: 600; color: ${T.label1}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 导航容器：p-4 + gap-2 */
 .fo-featnav {
   flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 16px;
@@ -197,10 +217,12 @@ export const CSS = `
   background: color-mix(in oklab, ${T.label1} 5%, transparent);
   border-color: transparent; color: ${T.label1};
 }
-/* 激活：bg-blue-600/30 + border-blue-500/50 + text-blue-300 */
+/* 激活：与 rail 行选中态共用同一组令牌（cove 的 bg-blue-600/30 换成宿主品牌色 14%）。
+   不要把品牌色加到 30%：DSH 的品牌色是黑白（亮=bluish-1000 近黑 / 暗=bluish-50 近白），
+   30% 在亮色下就是一块 30% 黑的灰块 —— 又重又脏。 */
 .fo-featnav-item[data-active="1"] {
-  background: color-mix(in oklab, ${T.brand} 30%, transparent);
-  border-color: color-mix(in oklab, ${T.brand} 50%, transparent);
+  background: var(--fo-selected-bg);
+  border-color: var(--fo-selected-line);
   color: color-mix(in oklab, ${T.brand} 60%, ${T.label1}); font-weight: 500;
 }
 /* 有二级菜单的一级项只是分组：当前页属于它时只留一层很轻的底，
@@ -419,7 +441,8 @@ export const CSS = `
 .fo-logo-input {
   width: 100%; height: 34px; padding: 0 10px; border-radius: 9px; font: inherit; font-size: 12px;
   color: var(--dsw-alias-label-primary);
-  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 70%, transparent);
+  /* 输入框：亮色下 layer-2 是纯白，等于没有底 —— 改用 label 透明度（亮=黑/暗=白） */
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent);
   border: 1px solid var(--fo-glass-line);
 }
 .fo-logo-input::placeholder { color: var(--dsw-alias-label-secondary); }
@@ -452,7 +475,7 @@ export const CSS = `
   display: flex; align-items: center; justify-content: center;
   height: 40px; border-radius: 10px; cursor: pointer;
   color: var(--dsw-alias-label-secondary);
-  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 60%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 4%, transparent);
   border: 1px solid transparent;
   transition: background-color var(--fo-dur) var(--fo-ease), color var(--fo-dur) var(--fo-ease), border-color var(--fo-dur) var(--fo-ease);
 }
@@ -565,12 +588,16 @@ export const CSS = `
    现在：底色 = brand 62% + bg-base 38%，文字 = label-primary，实测
    暗色 6.85:1、浅色 4.33:1（原方案 4.97 / 3.51），两个主题都过 AA 大字号线。 */
 .fo-btn[data-variant="primary"] {
-  background: color-mix(in oklab, ${T.brand} 62%, ${T.bgBase});
-  border-color: color-mix(in oklab, ${T.brand} 78%, ${T.bgBase});
-  color: ${T.label1};
+  /* DSH 的品牌色就是「底色的反色」：亮=bluish-1000（近黑）/ 暗=bluish-50（近白）。所以「实心品牌底 + bg-base 文字」
+     才是唯一在两个主题都高对比的组合（亮 ≈19:1、暗 ≈15:1）。
+     旧的「品牌 62% + 底色 38%」在亮色下 = 中灰底压近黑字（≈2.8:1），正是亮色最糊的一块。 */
+  background: ${T.brand};
+  border-color: ${T.brand};
+  color: ${T.bgBase};
 }
 .fo-btn[data-variant="primary"]:hover:not(:disabled) {
-  background: color-mix(in oklab, ${T.brand} 74%, ${T.bgBase});
+  background: color-mix(in oklab, ${T.brand} 88%, ${T.bgBase});
+  border-color: color-mix(in oklab, ${T.brand} 88%, ${T.bgBase});
 }
 .fo-btn[data-variant="ghost"] { background: transparent; border-color: transparent; color: ${T.label2}; }
 .fo-btn[data-variant="ghost"]:hover:not(:disabled) { background: var(--fo-glass-sub); color: ${T.label1}; border-color: var(--fo-glass-line); }
@@ -752,7 +779,11 @@ export const CSS = `
 .fo-menu-sub { position: fixed; z-index: 61; }
 
 /* ============ 中栏：功能页骨架（骨架不认识具体功能） ============ */
-.fo-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: ${T.bgBase}; }
+/* 正文表面 + 页面刻度：gutter/gap 定义在这里（.fo-main 是容器 .fo-root 的后代，
+   容器查询才能改写它们 —— 容器不能改自己的变量）。窄面板 14/16，宽了抬到 cove 的 24。 */
+.fo-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: ${T.bgBase}; --fo-gutter: 14px; --fo-gap: 16px; --fo-card-pad: 16px; }
+@container fopanel (min-width: 900px) { .fo-main { --fo-gutter: 20px; --fo-gap: 18px; --fo-card-pad: 18px; } }
+@container fopanel (min-width: 1200px) { .fo-main { --fo-gutter: 24px; --fo-gap: 24px; --fo-card-pad: 20px; } }
 .fo-feature-host { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .fo-feature { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 /* 旧版顶部工具条（.fo-feature-bar）与画布浮动卡片（.fo-canvas-card）都已删：
@@ -763,7 +794,8 @@ export const CSS = `
   position: relative;
   flex: 1 1 auto; min-width: 0; min-height: 0;
   overflow: hidden;
-  padding: 10px; display: flex; flex-direction: column;
+  /* 页边距走刻度：以前是 10px（比洞察 12、运行 16-20-28 又不一样） */
+  padding: var(--fo-gutter); display: flex; flex-direction: column;
 }
 /* 画布舞台：图列表（每张卡片自己是独立的玻璃卡）。 */
 .fo-canvas-stage {
@@ -801,15 +833,17 @@ export const CSS = `
 .fo-banner .fo-btn { margin-left: auto; }
 
 /* 画布列表：整个功能页的滚动容器。每张图按内容高度排下去，不再用 flex 均分把画布压扁。 */
-.fo-graphs { display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; min-height: 0; overflow: auto; }
-/* 一张图 = 一块画布容器：16px 圆角 + border-l1 35% 描边 + 品牌调渐变底。
+.fo-graphs { display: flex; flex-direction: column; gap: var(--fo-gap); flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* 一张图 = 一块画布容器：卡片圆角（与洞察/运行的卡同一档）+ border-l1 35% 描边 + 品牌调渐变底。
    task-18：画布高度**跟随内容**（紧凑打包后每张图 300~900px），不再把 5 张图平均压成
    220px 的迷你窗口再各自内部滚动 —— 那会裁掉卡片，正是「关系图全是散点」的观感来源。 */
 .fo-graph {
   flex: 0 0 auto; min-height: 0;
   display: flex; flex-direction: column;
-  border: 1px solid var(--fo-canvas-line); border-radius: 16px;
+  border: 1px solid var(--fo-canvas-line); border-radius: var(--fo-radius-card);
   background: var(--fo-canvas-bg);
+  /* 同洞察/运行的卡：描边 + 紧投影，亮色下才看得出这是一块卡 */
+  box-shadow: var(--fo-card-shadow);
   overflow: hidden;
   transition: border-color var(--fo-dur) var(--fo-ease);
 }
@@ -931,62 +965,13 @@ export const CSS = `
 /* ============ 节点卡片：foreignObject 里的面板卡 ============
    卡片本体（描边/圆角/间距）由 src/card/taskCardStyles.js 提供；这里只画「画布这一层」的
    状态：悬停、选中、阻塞/挂起提示、ghost 虚线框、聚焦降透明度。 */
+/* 卡片本体的令牌映射在 src/card/taskCardStyles.js 的 .tc-scope 里（唯一一处），
+   这里只负责画布这一层的盒子尺寸与裁切。 */
 .fo-node-dom {
   width: 100%; height: 100%; border-radius: 12px; overflow: hidden; overflow: clip; box-sizing: border-box;
-  /* 共享卡片（.tc-scope）在画布上的令牌映射：宿主主题一变，卡片跟着变，不另造调色板。 */
-  --tc-bg: var(--dsw-alias-bg-base);
-  --tc-card: var(--dsw-alias-bg-layer-1);
-  --tc-text: var(--dsw-alias-label-primary);
-  --tc-text-2: var(--dsw-alias-label-secondary);
-  --tc-text-3: var(--dsw-alias-label-secondary);
-  /* 注意：--tc-sub 在卡片里当“浅色底”用（chip 背景），不能直接映射成文字色，
-     否则就是浅灰字压浅灰底——整排 chip 看起来像占位条。 */
-  /* 与面板同一个语义：面板的 sub 就是宿主 bg-layer-2。 */
-  --tc-sub: var(--dsw-alias-bg-layer-2);
-  --tc-line: var(--dsw-alias-border-l1);
-  --tc-line-hover: var(--dsw-alias-border-l2);
-  --tc-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
-  --tc-select: color-mix(in oklab, var(--dsw-alias-brand-primary) 8%, transparent);
-  --tc-accent: var(--dsw-alias-brand-primary);
-  --tc-accent-text: var(--dsw-alias-brand-primary);
-  --tc-accent-weak: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
-  --tc-accent-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 32%, transparent);
-  --tc-ok: var(--dsw-alias-state-success-primary);
-  --tc-ok-weak: color-mix(in oklab, var(--dsw-alias-state-success-primary) 14%, transparent);
-  --tc-ok-line: color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, transparent);
-  --tc-warn: var(--dsw-alias-state-warn-primary);
-  --tc-warn-weak: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 14%, transparent);
-  --tc-warn-line: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 32%, transparent);
-  --tc-danger: var(--dsw-alias-state-error-primary);
-  --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
-  --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
 }
-.fo-menu-scope {
-  --tc-bg: var(--dsw-alias-bg-base);
-  --tc-card: var(--dsw-alias-bg-layer-1);
-  --tc-text: var(--dsw-alias-label-primary);
-  --tc-text-1: var(--dsw-alias-label-primary);
-  --tc-text-2: var(--dsw-alias-label-secondary);
-  --tc-text-3: var(--dsw-alias-label-secondary);
-  --tc-sub: var(--dsw-alias-bg-layer-2);
-  --tc-line: var(--dsw-alias-border-l1);
-  --tc-line-hover: var(--dsw-alias-border-l2);
-  --tc-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
-  --tc-select: color-mix(in oklab, var(--dsw-alias-brand-primary) 8%, transparent);
-  --tc-accent: var(--dsw-alias-brand-primary);
-  --tc-accent-text: var(--dsw-alias-brand-primary);
-  --tc-accent-weak: color-mix(in oklab, var(--dsw-alias-brand-primary) 14%, transparent);
-  --tc-accent-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 32%, transparent);
-  --tc-ok: var(--dsw-alias-state-success-primary);
-  --tc-ok-weak: color-mix(in oklab, var(--dsw-alias-state-success-primary) 14%, transparent);
-  --tc-ok-line: color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, transparent);
-  --tc-warn: var(--dsw-alias-state-warn-primary);
-  --tc-warn-weak: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 14%, transparent);
-  --tc-warn-line: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 32%, transparent);
-  --tc-danger: var(--dsw-alias-state-error-primary);
-  --tc-danger-weak: color-mix(in oklab, var(--dsw-alias-state-error-primary) 14%, transparent);
-  --tc-danger-line: color-mix(in oklab, var(--dsw-alias-state-error-primary) 32%, transparent);
-}
+/* .fo-menu-scope 的令牌映射已删：卡片/菜单统一由 src/card/taskCardStyles.js 的
+   .tc-scope 提供（菜单根现在直接带 tc-scope，不再需要一层同名作用域）。 */}
 .fo-node-dom > * { height: 100%; box-sizing: border-box; }
 .fo-node:hover .fo-node-dom { box-shadow: inset 0 0 0 1px ${g(T.label1, 18)}; }
 /* 选中态不要用 SVG filter：foreignObject 上的 drop-shadow 在 Chromium 合成层里会留下竖条纹残影。
@@ -1014,7 +999,7 @@ export const CSS = `
 .fo-fieldedit-close { width: 24px; height: 24px; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 18px; cursor: pointer; }
 .fo-fieldedit-close:hover { background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); color: var(--dsw-alias-label-primary); }
 .fo-fieldedit-task { font-size: 11px; color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fo-fieldedit-input { width: 100%; height: 32px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid var(--fo-glass-line); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; }
+.fo-fieldedit-input { width: 100%; height: 32px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid var(--fo-glass-line); background: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; }
 .fo-fieldedit-label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
 .fo-fieldedit-choices { display: flex; flex-wrap: wrap; gap: 5px; }
 .fo-fieldedit-choice { height: 28px; min-width: 38px; border-radius: 7px; border: 1px solid var(--fo-glass-line); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11px; cursor: pointer; }
@@ -1130,7 +1115,7 @@ export const CSS = `
 .fo-select {
   min-width: 0; height: 26px; padding: 0 6px;
   border-radius: 8px; font: inherit; font-size: 11.5px;
-  color: ${T.label1}; background: ${T.bgLayer2};
+  color: ${T.label1}; background: ${g(T.label1, 5)};
   border: 1px solid var(--fo-glass-line);
 }
 .fo-select[data-role="rel-target"] { flex: 1 1 120px; }
@@ -1237,7 +1222,6 @@ export const CSS = `
 }
 .fo-filter-chip:hover { border-color: var(--fo-glass-line-hover); }
 .fo-org-title { flex: 0 0 auto; font-size: 13px; font-weight: 600; }
-.fo-org-counts { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: ${T.label2}; font-variant-numeric: tabular-nums; }
 /* 建议栏自己不滚动，只有列表滚（头和底固定） */
 .fo-organize { overflow: hidden; }
 /* 时间轴：只有列表滚，头和底固定；底栏 sticky，永远点得到「接受以上」。 */
@@ -1269,7 +1253,7 @@ export const CSS = `
   background: transparent; color: ${T.label2}; cursor: pointer;
   transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
-.fo-org-composer-square:hover:not(:disabled) { color: ${T.label1}; border-color: ${g(T.label1, 22)}; background: ${g(T.bgLayer2, 70)}; }
+.fo-org-composer-square:hover:not(:disabled) { color: ${T.label1}; border-color: ${g(T.label1, 22)}; background: ${g(T.label1, 8)}; }
 .fo-org-composer-square[data-accent="brand"] { color: ${T.brand}; border-color: ${g(T.brand, 45)}; }
 .fo-org-composer-square[data-accent="idle"] { color: ${T.idle}; border-color: ${g(T.idle, 45)}; }
 .fo-org-composer-square[data-accent="success"] { color: ${T.success}; border-color: ${g(T.success, 45)}; }
@@ -1297,13 +1281,35 @@ export const CSS = `
 .fo-org-composer-menu-item[data-accent="success"] .fo-org-composer-menu-icon { color: ${T.success}; }
 .fo-org-composer-menu-label { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 500; line-height: 1.3; }
 .fo-org-composer-menu-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 999px; background: currentColor; color: ${T.brand}; }
+.fo-org-composer-menu-empty { padding: 7px 9px; font-size: 12px; color: ${T.label2}; }
+
+/* @ 选中的项目：输入框上方一枚范围胶囊（项目名 + 清除）。不选就不显示 = 全部任务。 */
+.fo-org-composer-scope { display: flex; align-items: center; gap: 4px; margin: 0 0 6px; min-width: 0; }
+.fo-org-composer-scope-tag {
+  display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 2px 8px;
+  border: 1px solid ${g(T.brand, 42)}; border-radius: 999px;
+  background: ${g(T.brand, 10)}; color: ${T.brand}; font-size: 11px; line-height: 18px;
+}
+.fo-org-composer-scope-at { opacity: .72; }
+.fo-org-composer-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fo-org-composer-scope-clear {
+  flex: 0 0 auto; width: 20px; height: 20px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 999px; background: transparent; color: ${T.label2}; cursor: pointer;
+}
+.fo-org-composer-scope-clear:hover:not(:disabled) { color: ${T.label1}; background: ${g(T.label1, 8)}; }
+.fo-org-composer-scope-clear:disabled { opacity: .5; cursor: not-allowed; }
+
+/* 输入框容器：@ 菜单相对它定位，宽度跟着输入框走。 */
+.fo-org-composer-field { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+.fo-org-mention-menu { left: 0; right: 0; min-width: 0; max-height: 240px; overflow: auto; }
 
 /* 文本域：34px 单行；展开到多行。滚动条隐藏（cove 同款），靠高度表达内容多少 */
 .fo-org-composer-input {
   flex: 1 1 auto; min-width: 0; height: 34px; box-sizing: border-box;
   padding: 6px 10px; resize: none; overflow: auto;
   border: 1px solid var(--fo-glass-line); border-radius: 10px;
-  background: ${g(T.bgLayer2, 55)}; color: ${T.label1};
+  background: ${g(T.label1, 5)}; color: ${T.label1};
   font: inherit; font-size: 12px; line-height: 20px;
   transition: border-color .15s ease;
   scrollbar-width: none;
@@ -1446,7 +1452,7 @@ export const CSS = `
 .fo-skeleton { display: flex; flex-direction: column; gap: 12px; }
 .fo-skeleton-row {
   height: 64px; border-radius: 12px;
-  background: linear-gradient(90deg, var(--fo-glass-sub) 0%, ${g(T.bgLayer2, 40)} 50%, var(--fo-glass-sub) 100%);
+  background: linear-gradient(90deg, var(--fo-glass-sub) 0%, ${g(T.label1, 8)} 50%, var(--fo-glass-sub) 100%);
   background-size: 200% 100%;
   animation: fo-shimmer 1.4s var(--fo-ease) infinite;
 }
@@ -1548,7 +1554,7 @@ export const CSS = `
   position: relative; display: flex; flex-direction: column; gap: 7px;
   padding: 12px 14px; border-radius: 12px;
   border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 9%, transparent);
-  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 80%, var(--dsw-alias-bg-base));
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base));
 }
 .fo-okr-kr::before { content: ''; position: absolute; left: -32px; top: 21px; width: 24px; height: 2px; background: linear-gradient(to right, color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent), transparent); filter: hue-rotate(42deg) saturate(1.18); pointer-events: none; }
 .fo-okr-kr::after { content: ''; position: absolute; left: -32px; top: -4px; bottom: -4px; width: 2px; background: linear-gradient(to bottom, color-mix(in oklab, var(--dsw-alias-brand-primary) 30%, transparent), color-mix(in oklab, var(--dsw-alias-brand-primary) 55%, transparent)); filter: hue-rotate(42deg) saturate(1.18); pointer-events: none; }

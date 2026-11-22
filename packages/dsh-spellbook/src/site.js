@@ -1,313 +1,339 @@
 /**
- * 咒语书 —— 页面行为
+ * 长这样 —— 页面行为
  *
- * 六件事，每件都尽量小：
- *   1. 明暗切换（记住选择）
- *   2. 章目导航：滚动时高亮当前章
- *   3. 图版：参数 → iframe，重播
- *   4. 机制联动：描述里的机制短语 ↔ 代码里的机制行
- *   5. 抄录代码
- *   6. 应用到 DSH 对话（只在这页被侧边栏嵌进来时才有）
+ * 目录页：检索 + 分类 + 标签 + 版式，全部作用在同一批卡片上；缩略图按需挂载。
+ * 条目页：图版参数、机制联动、复制、应用到对话、上一条 / 下一条。
+ *
+ * 加载的纪律（这个版本重写的主要原因）：
+ *   首屏 HTML 里没有任何 iframe。缩略图是占位 div，接近视口才挂（一次几个、分帧挂），
+ *   远离视口就卸。检索索引 1MB，等首屏画完、浏览器空闲再取；用户一碰搜索框就立刻取。
  */
 
-const html = document.documentElement
-
 import { paramValues } from './param.mjs'
+
+const html = document.documentElement
+const $ = (sel, root = document) => root.querySelector(sel)
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)]
+const store = {
+  get(key) { try { return localStorage.getItem('spellbook:' + key) } catch { return null } },
+  set(key, value) { try { localStorage.setItem('spellbook:' + key, value) } catch { /* 隐私模式写不了，不影响使用 */ } },
+}
+
+function escapeHtml(text) {
+  return String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+function escapeRegExp(text) { return text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&') }
+
+/* ------------------------------------------------------------ 提示条 */
+
+let toastTimer = 0
+function toast(text) {
+  const el = $('[data-toast]')
+  if (!el) return
+  el.textContent = text
+  el.classList.add('is-on')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => el.classList.remove('is-on'), 1800)
+}
 
 /* ------------------------------------------------------------ 明暗 */
 
 function initTheme() {
-  const toggle = document.querySelector('[data-theme-toggle]')
+  const toggle = $('[data-theme-toggle]')
   if (!toggle) return
-
-  const label = toggle.querySelector('[data-theme-label]')
-
-  // 默认就是「夜」。这本书本来就该在夜里读，所以不跟随系统偏好——
-  // 系统是亮的不代表你想要一本白天的魔法书。只有明确选过「昼」才变亮。
-  const current = () => html.dataset.theme || 'dark'
-
-  const paint = () => {
-    if (label) label.textContent = current() === 'dark' ? '明' : '暗'
-  }
-
   toggle.addEventListener('click', () => {
-    const next = current() === 'dark' ? 'light' : 'dark'
+    const next = (html.dataset.theme || 'light') === 'light' ? 'dark' : 'light'
     html.dataset.theme = next
-    try {
-      localStorage.setItem('spellbook:theme', next)
-    } catch {
-      /* 隐私模式下写不了，不影响使用 */
-    }
-    paint()
+    store.set('theme', next)
   })
-
-  paint()
 }
 
-/* ------------------------------------------------------ 条列 / 卡片 */
+/* ------------------------------------------------ 嵌入：只跟明暗，不跟配色 */
 
-/**
- * 目录的两种排法。
- *
- *   条列（默认）—— 一行一条，缩略图是「页码」，钉在右边距上，配一条引导线走到底。
- *   卡片        —— 一行四张上下叠的小牌，缩略图放大成主角，扫一眼能看很多条。
- *
- * 两种都留着，因为找东西有两种动作：**认出**（在卡片里瞥见那个效果）和
- * **读到**（在条列里顺着 `when` 那句读完再决定）。缩略图越大越靠「认出」，
- * 文字越宽越靠「读到」，没有一种排法能同时做到底。
- *
- * 开关状态和明暗一样存 localStorage —— 这不是临时筛选，是「我怎么读这本书」。
- */
-function initView() {
-  const toggle = document.querySelector('[data-view-toggle]')
-  if (!toggle) return
-
-  const label = toggle.querySelector('[data-view-label]')
-
-  const current = () => html.dataset.view || 'list'
-
-  const paint = () => {
-    // 标签写的是**按下去会得到什么**，和明暗开关同一套规矩：
-    // 现在是条列，就写着「卡」，按下去变成卡片。
-    if (label) label.textContent = current() === 'list' ? '卡' : '列'
-  }
-
-  toggle.addEventListener('click', () => {
-    const next = current() === 'list' ? 'card' : 'list'
-    html.dataset.view = next
-    try {
-      localStorage.setItem('spellbook:view', next)
-    } catch {
-      /* 隐私模式下写不了，不影响使用 */
-    }
-    paint()
-    // 缩略图是 iframe，切排法时它们的尺寸会变。浏览器会自己重排，
-    // 但滚动位置常常落在一张已经换了位置的卡片上 —— 把锚点交还给浏览器。
-    requestAnimationFrame(() => {
-      const focused = document.activeElement
-      if (focused && focused !== document.body && focused.scrollIntoView) {
-        focused.scrollIntoView({ block: 'nearest' })
-      }
-    })
-  })
-
-  paint()
-}
-
-/* -------------------------------------------------------- 按标签筛 */
-
-/**
- * `?tag=玻璃` —— 只看带这个标签的咒语。
- *
- * 为什么不复用查词口：那是**全文检索**，查「玻璃」会把正文里提了一句玻璃的
- * 条目也捞进来（实测 14 条命中，而真正带 `玻璃` 标签的是 8 条）。全文检索适合
- * 「我想找那个大概跟玻璃有关的东西」，标签筛选回答的是另一个问题 ——
- * 「带这个标签的都有哪些」。两个都要，所以两个都留着。
- *
- * 标签是受控词表里的枚举值，所以这里是**精确匹配整个标签**，不是子串包含：
- * 点「标签」不该把「标签页」也带出来。
- *
- * 筛选在客户端做（每一行都带着自己的 data-tags），不走检索、不请求任何东西 ——
- * 于是「点标签 → 看到结果」是零延迟的。
- */
-function initTagFilter() {
-  const bar = document.querySelector('[data-tag-filter]')
-  if (!bar) return
-
-  const rows = [...document.querySelectorAll('.row')]
-  if (!rows.length) return
-
-  // 每个标签都是完整的词，用空格分隔；精确比较，不做子串匹配
-  const tagOf = (row) => (row.dataset.tags || '').split(' ').filter(Boolean)
-
-  const apply = (tag) => {
-    if (!tag) return
-    let shown = 0
-    for (const row of rows) {
-      const hit = tagOf(row).includes(tag)
-      row.hidden = !hit
-      if (hit) shown++
-    }
-    // 一条都没有的分类不该留着一个空的章标题
-    for (const chapter of document.querySelectorAll('.chapter')) {
-      chapter.hidden = !chapter.querySelector('.row:not([hidden])')
-    }
-    // 章目导航与「第 N 章」都是按分类数的，筛完就对不上了 —— 整条收起
-    const nav = document.querySelector('.chapter-nav')
-    if (nav) nav.hidden = true
-
-    const name = bar.querySelector('[data-tag-filter-name]')
-    const count = bar.querySelector('[data-tag-filter-count]')
-    if (name) name.textContent = tag
-    if (count) count.textContent = `${shown} 条`
-    bar.hidden = false
-    document.title = `${tag} · ${document.title}`
-  }
-
-  apply(new URLSearchParams(location.search).get('tag'))
-}
-
-/* ---------------------------------------------------------- 嵌进侧边栏 */
-
-/**
- * 被 DSH 侧边栏以 iframe 嵌进来时，跟着宿主的明暗走。
- *
- * 首屏那次已经由 pages.mjs 里的内联脚本按 ?theme= 定好了（早于渲染，不闪）。
- * 这里管的是**之后**：用户在 DSH 里切换明暗，宿主 postMessage 过来，书要当场
- * 跟着变，而不是等他刷新侧边栏。所以是「首屏用参数、后续用消息」两条路，都要有。
+/*
+ * 刻意**不**去读宿主的 --dsw-* 令牌：这一版是「新粗野」，力量全在「黑框压在浅底上」。
+ * 把底色换成宿主的深色，那圈 3px 黑框就沉进背景里，整套语言当场失效。
+ * 所以只跟明暗（宿主切主题时给 data-theme），颜色始终是这本书自己的。
  */
 function initEmbed() {
-  if (!document.documentElement.dataset.embed) return
-
+  if (!html.dataset.embed) return
   window.addEventListener('message', (event) => {
     const data = event.data
     if (!data || data.type !== 'dsh-spellbook-theme') return
-    const theme = data.theme === 'light' ? 'light' : 'dark'
-    document.documentElement.dataset.theme = theme
-    // 宿主是权威：顺手记下来，下次即使没带参数也不会闪回默认
-    try {
-      localStorage.setItem('spellbook:theme', theme)
-    } catch {
-      /* 隐私模式下 localStorage 会抛，忽略即可 */
-    }
+    html.dataset.theme = data.theme === 'light' ? 'light' : 'dark'
+    store.set('theme', html.dataset.theme)
   })
 }
 
-/* ---------------------------------------------------------- 章目高亮 */
+/* --------------------------------------------------------- 顶栏高度 */
+
+function syncTopbar() {
+  const bar = $('.topbar')
+  if (!bar) return
+  const set = () => html.style.setProperty('--topbar-h', Math.round(bar.getBoundingClientRect().height) + 'px')
+  set()
+  new ResizeObserver(set).observe(bar)
+}
+
+/* ------------------------------------------------------------ 检索 */
+
+let ranker = null
+let indexPromise = null
+function loadSearch() {
+  if (indexPromise) return indexPromise
+  indexPromise = Promise.all([
+    import('./rank.mjs'),
+    fetch('./search-index.json', { cache: 'force-cache' }).then((r) => {
+      if (!r.ok) throw new Error('索引取不到（' + r.status + '）')
+      return r.json()
+    }),
+  ]).then(([mod, data]) => {
+    ranker = { mod, index: mod.buildIndex(data.docs) }
+    return ranker
+  })
+  indexPromise.catch(() => { indexPromise = null })
+  return indexPromise
+}
+
+/** 首屏画完、浏览器空闲时悄悄取索引；用户碰搜索框则立即取。 */
+function warmSearchWhenIdle() {
+  const go = () => loadSearch().catch(() => {})
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200))
+  const start = () => idle(go, { timeout: 4000 })
+  if (document.readyState === 'complete') start()
+  else window.addEventListener('load', start, { once: true })
+}
+
+function markTerms(text, terms) {
+  let out = escapeHtml(text)
+  for (const term of [...terms].sort((a, b) => b.length - a.length)) {
+    if (!term) continue
+    out = out.replace(new RegExp('(' + escapeRegExp(escapeHtml(term)) + ')', 'gi'), '<mark>$1</mark>')
+  }
+  return out
+}
+
+/* 目录状态：分类 + 标签 + 查询 三个条件合取，同步到地址栏 */
+function initCatalog() {
+  const grid = $('[data-grid]')
+  if (!grid) return
+
+  const input = $('.search-input')
+  const clear = $('[data-search-clear]')
+  const pop = $('[data-search-pop]')
+  const bar = $('[data-filterbar]')
+  const status = $('[data-status]', bar)
+  const tagBadge = $('[data-active-tag]', bar)
+  const reset = $('[data-reset]', bar)
+  const empty = $('[data-empty]')
+  const hero = $('[data-hero]')
+  const chips = $$('.chip')
+  const cards = $$('.card', grid)
+  const heads = $$('.group-head', grid)
+
+  const params = new URLSearchParams(location.search)
+  const state = { q: params.get('q') || '', cat: params.get('cat') || '', tag: params.get('tag') || '' }
+  input.value = state.q
+
+  let renderToken = 0
+
+  const writeUrl = () => {
+    const next = new URLSearchParams()
+    for (const key of ['q', 'cat', 'tag']) if (state[key]) next.set(key, state[key])
+    const qs = next.toString()
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''))
+  }
+
+  const recent = () => { try { return JSON.parse(store.get('recent') || '[]') } catch { return [] } }
+  const remember = (q) => {
+    if (!q || q.length < 2) return
+    store.set('recent', JSON.stringify([q, ...recent().filter((x) => x !== q)].slice(0, 6)))
+  }
+  const paintRecent = () => {
+    const list = recent()
+    $('[data-recent]', pop).hidden = !list.length
+    $('[data-recent-list]', pop).innerHTML = list.map((q) => '<button class="pill" type="button" data-q="' + escapeHtml(q) + '">' + escapeHtml(q) + '</button>').join('')
+  }
+
+  const apply = () => {
+    const token = ++renderToken
+    clear.hidden = !state.q
+    for (const chip of chips) chip.setAttribute('aria-pressed', String((chip.dataset.cat || '') === state.cat))
+
+    const searching = state.q.trim().length > 0
+    if (searching && !ranker) {
+      status.textContent = '…'
+      bar.hidden = false
+      loadSearch().then(() => token === renderToken && apply()).catch(() => { status.textContent = '搜索不可用' })
+      return
+    }
+
+    let terms = []
+    let hitMap = null
+    if (searching) {
+      const hits = ranker.mod.rank(ranker.index, state.q.trim(), { limit: 80 })
+      terms = ranker.mod.units ? ranker.mod.units(state.q.trim()).map((u) => u.join('')) : []
+      hitMap = new Map(hits.map((hit, i) => [hit.slug, { rank: i, why: hit.why }]))
+    }
+
+    const filtering = searching || !!state.tag
+    let shown = 0
+    for (const card of cards) {
+      let ok = !state.cat || card.dataset.cat === state.cat
+      if (ok && state.tag) ok = card.dataset.tags.split(' ').includes(state.tag)
+      if (ok && searching) ok = hitMap.has(card.dataset.slug)
+      card.hidden = !ok
+
+      const why = $('.card-why', card)
+      const title = $('.card-title a', card)
+      const when = $('.card-when', card)
+      // 标题与场合的原文放在 data-raw 里：描红每次都从原文来，不会越描越叠
+      title.dataset.raw ??= title.textContent
+      when.dataset.raw ??= when.textContent
+      if (ok && searching) {
+        const hit = hitMap.get(card.dataset.slug)
+        card.style.order = String(hit.rank + 1)
+        title.innerHTML = markTerms(title.dataset.raw, terms)
+        when.innerHTML = markTerms(when.dataset.raw, terms)
+        if (hit.why) { why.innerHTML = '<b>' + escapeHtml(hit.why.label) + '</b>' + markTerms(hit.why.text, terms); why.hidden = false } else why.hidden = true
+      } else {
+        card.style.order = ''
+        title.textContent = title.dataset.raw
+        when.textContent = when.dataset.raw
+        why.hidden = true
+      }
+      if (ok) shown++
+    }
+    // 章标题：只在「没有检索 / 标签筛选」时出现；选了某一章就只留那一章的
+    for (const head of heads) head.hidden = filtering || (!!state.cat && head.dataset.cat !== state.cat)
+
+    const active = !!(state.q || state.cat || state.tag)
+    // 检索 / 标签筛选时卡片按相关度排，两倍宽的「精选」就不该再占位；首页的介绍也让位
+    grid.toggleAttribute('data-filtering', filtering)
+    if (hero) hero.hidden = active
+    bar.hidden = !active
+    if (active) {
+      status.textContent = shown + ' 条'
+      tagBadge.hidden = !state.tag
+      tagBadge.textContent = state.tag
+      reset.hidden = false
+    }
+    empty.hidden = shown > 0
+    grid.hidden = shown === 0
+    writeUrl()
+    document.dispatchEvent(new Event('spellbook:layout'))
+  }
+
+  const firstCard = () => $('.card:not([hidden]) .card-link', grid)
+
+  let timer = 0
+  input.addEventListener('input', () => {
+    state.q = input.value
+    pop.hidden = !!input.value
+    clearTimeout(timer)
+    timer = setTimeout(apply, 70)
+  })
+  input.addEventListener('focus', () => { loadSearch().catch(() => {}); if (!input.value) { paintRecent(); pop.hidden = false } })
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { remember(input.value.trim()); pop.hidden = true; firstCard()?.focus() }
+    else if (e.key === 'Escape') {
+      if (input.value) { input.value = ''; state.q = ''; apply(); paintRecent(); pop.hidden = false } else { input.blur(); pop.hidden = true }
+    } else if (e.key === 'ArrowDown') { e.preventDefault(); pop.hidden = true; firstCard()?.focus() }
+  })
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.search')) pop.hidden = true })
+
+  clear.addEventListener('click', () => { input.value = ''; state.q = ''; apply(); input.focus() })
+
+  // 弹层里的词与标签、卡片上的标签：点一下就筛
+  document.addEventListener('click', (e) => {
+    const q = e.target.closest('[data-q]')
+    const tag = e.target.closest('[data-tag]')
+    if (q) { input.value = state.q = q.dataset.q; remember(state.q); pop.hidden = true; apply(); window.scrollTo({ top: 0 }) }
+    else if (tag) { state.tag = tag.dataset.tag; pop.hidden = true; apply(); window.scrollTo({ top: 0 }) }
+  })
+  for (const chip of chips) chip.addEventListener('click', () => { state.cat = chip.dataset.cat || ''; apply(); window.scrollTo({ top: 0 }) })
+  reset.addEventListener('click', () => { input.value = ''; Object.assign(state, { q: '', cat: '', tag: '' }); apply() })
+
+  // 版式
+  const layoutBtns = $$('[data-layout]')
+  const paintLayout = () => {
+    const cur = html.dataset.layout || 'grid'
+    for (const b of layoutBtns) b.setAttribute('aria-pressed', String(b.dataset.layout === cur))
+  }
+  for (const b of layoutBtns) b.addEventListener('click', () => {
+    html.dataset.layout = b.dataset.layout
+    store.set('layout', b.dataset.layout)
+    paintLayout()
+    document.dispatchEvent(new Event('spellbook:layout'))
+  })
+  paintLayout()
+
+  if (state.q || state.cat || state.tag) apply()
+  initThumbs(grid)
+}
+
+/* --------------------------------------------------- 缩略图：按需挂载 */
 
 /**
- * 章目导航是跳转，不是筛选 —— 全书始终完整可读。
- * 判定线取视口顶部往下 130px：标题一旦越过这条线，就算进入了这一章。
+ * 首屏里没有任何 iframe。缩略图是占位，接近视口才挂、远离就卸；一次最多挂几个、分帧挂，
+ * 不让主线程被一口气 N 个文档解析卡住。
+ *
+ * 不用 IntersectionObserver：侧边栏里这页是嵌在 iframe 里的，隐式根算的是宿主窗口的视口，
+ * 不是侧边栏那块滚动区（实测只剩贴着视口的三四个有预览）。所以直接按 innerHeight 算。
  */
-function initChapterNav() {
-  const links = [...document.querySelectorAll('.chapter-nav-link')]
-  if (!links.length) return
+function initThumbs(grid) {
+  const thumbs = $$('.card-thumb', grid)
+  const NEAR = 1.2      // 视口上下各多留 1.2 屏：滚到跟前时早就画好了
+  const FAR = 3         // 离开 3 屏以外才卸，避免来回滚动反复挂卸
+  const PER_TICK = 3    // 每一拍最多新挂几个
+  let scheduled = false
 
-  const entries = links
-    .map((link) => {
-      const id = (link.getAttribute('href') ?? '').slice(1)
-      const section = id ? document.getElementById(id) : null
-      return section ? { link, section } : null
-    })
-    .filter(Boolean)
+  const mount = (thumb) => {
+    const frame = document.createElement('iframe')
+    frame.setAttribute('sandbox', 'allow-scripts')
+    frame.tabIndex = -1
+    frame.title = ''
+    frame.addEventListener('load', () => thumb.classList.add('is-ready'), { once: true })
+    frame.src = 'spell/' + encodeURIComponent(thumb.parentElement.dataset.slug) + '/demo.html'
+    thumb.appendChild(frame)
+  }
+  const unmount = (thumb) => {
+    thumb.replaceChildren()
+    thumb.classList.remove('is-ready')
+  }
 
-  if (!entries.length) return
-
-  let queued = false
-
-  const paint = () => {
-    queued = false
-
-    const doc = document.documentElement
-    // 视口比整页还高时（大竖屏、整页截图）根本滚不动，
-    // 不加这个前提，触底判定会一直成立，最后一章从头到尾都是高亮的。
-    const scrollable = doc.scrollHeight - window.innerHeight > 40
-    const scrolledToEnd = scrollable && window.innerHeight + window.scrollY >= doc.scrollHeight - 4
-
-    let current = entries[0]
-    if (scrolledToEnd) {
-      current = entries[entries.length - 1]
-    } else {
-      const line = 130
-      for (const item of entries) {
-        if (item.section.getBoundingClientRect().top <= line) current = item
-      }
+  const sync = () => {
+    scheduled = false
+    const h = window.innerHeight || 1
+    const wanted = []
+    for (const thumb of thumbs) {
+      const has = thumb.firstElementChild
+      if (thumb.parentElement.hidden || !thumb.offsetWidth) { if (has) unmount(thumb); continue }
+      const r = thumb.getBoundingClientRect()
+      const dist = r.bottom < 0 ? -r.bottom : r.top > h ? r.top - h : 0
+      if (has) { if (dist > h * FAR) unmount(thumb) } else if (dist <= h * NEAR) wanted.push([dist, thumb])
     }
-
-    for (const item of entries) item.link.classList.toggle('is-current', item === current)
+    wanted.sort((a, b) => a[0] - b[0])
+    wanted.slice(0, PER_TICK).forEach(([, thumb]) => mount(thumb))
+    if (wanted.length > PER_TICK) schedule(90)
+  }
+  const schedule = (delay = 0) => {
+    if (scheduled) return
+    scheduled = true
+    // 不用 rAF：标签页在后台时 rAF 不跑，缩略图就永远不挂；定时器照常
+    setTimeout(sync, delay || 16)
   }
 
-  const schedule = () => {
-    if (queued) return
-    queued = true
-    window.requestAnimationFrame(paint)
+  // 缩放比跟着各自缩略图的宽度走：400×250 的真预览按比例缩进框里（两倍宽的精选卡比别的宽）
+  const onLayout = () => {
+    for (const t of thumbs) if (t.offsetWidth) t.style.setProperty('--s', String(t.offsetWidth / 400))
+    schedule()
   }
-
-  window.addEventListener('scroll', schedule, { passive: true })
-  window.addEventListener('resize', schedule, { passive: true })
-  paint()
-}
-
-/* ------------------------------------------------------------ 图版 */
-
-function initPlate() {
-  const plate = document.querySelector('.plate')
-  if (!plate) return
-
-  const doc = plate.querySelector('.plate-doc')
-  if (!doc) return
-
-  const inputs = [...plate.querySelectorAll('[data-param]')]
-  let ready = false
-
-  // 参数元数据从 DOM 读回来，单位规则与构建时用的是同一份 shared/param.mjs
-  const params = inputs.map((input) => ({
-    name: input.dataset.param,
-    type: input.type === 'range' ? 'range' : 'text',
-    unit: input.dataset.unit || undefined,
-  }))
-
-  const values = () => {
-    const raw = {}
-    for (const input of inputs) {
-      raw[input.dataset.param] = input.type === 'range' ? Number(input.value) : input.value
-    }
-    return paramValues(params, raw)
-  }
-
-  const post = (message) => {
-    if (!doc.contentWindow) return
-    doc.contentWindow.postMessage(message, '*')
-  }
-
-  const push = () => post({ type: 'spellbook:params', values: values() })
-
-  const paintValue = (input) => {
-    const output = input.parentElement?.querySelector('.control-value')
-    if (output) output.textContent = `${input.value}${input.dataset.unit ?? ''}`
-  }
-
-  for (const input of inputs) {
-    paintValue(input)
-    input.addEventListener('input', () => {
-      paintValue(input)
-      push()
-    })
-  }
-
-  // iframe 还没加载完就发消息会丢，所以等 load 之后再推一次
-  doc.addEventListener('load', () => {
-    ready = true
-    push()
-  })
-  if (doc.contentDocument?.readyState === 'complete') {
-    ready = true
-    push()
-  }
-
-  const replay = plate.querySelector('[data-replay]')
-  replay?.addEventListener('click', () => {
-    post({ type: 'spellbook:replay' })
-    if (ready) window.setTimeout(push, 60)
-  })
-}
-
-/* -------------------------------------------------------- 机制联动 */
-
-function initMechanismLink() {
-  const marks = [...document.querySelectorAll('[data-mech]')]
-  if (marks.length < 2) return
-
-  const light = (on) => {
-    for (const mark of marks) mark.classList.toggle('is-lit', on)
-  }
-
-  for (const mark of marks) {
-    mark.addEventListener('mouseenter', () => light(true))
-    mark.addEventListener('mouseleave', () => light(false))
-    mark.addEventListener('focus', () => light(true))
-    mark.addEventListener('blur', () => light(false))
-  }
+  addEventListener('scroll', () => schedule(), { passive: true })
+  addEventListener('resize', onLayout, { passive: true })
+  document.addEventListener('spellbook:layout', onLayout)
+  new ResizeObserver(onLayout).observe(grid)
+  onLayout()
 }
 
 /* ------------------------------------------------------------ 抄录 */
@@ -317,12 +343,10 @@ async function copyText(text) {
     await navigator.clipboard.writeText(text)
     return true
   } catch {
-    // 非安全上下文或没权限时退回到老办法
     const area = document.createElement('textarea')
     area.value = text
     area.setAttribute('readonly', '')
-    area.style.position = 'fixed'
-    area.style.opacity = '0'
+    area.style.cssText = 'position:fixed;opacity:0'
     document.body.appendChild(area)
     area.select()
     const ok = document.execCommand('copy')
@@ -331,391 +355,87 @@ async function copyText(text) {
   }
 }
 
+/** 复制代码块：每行一个 .line，用换行拼回原文，不带行号。 */
 function initCopy() {
-  for (const button of document.querySelectorAll('[data-copy]')) {
-    const block = button.closest('.code-block')
-    const code = block?.querySelector('.code-body code')
-
+  for (const button of $$('[data-copy]')) {
+    const code = button.closest('.code-block')?.querySelector('.code-body code')
     button.addEventListener('click', async () => {
       if (!code) return
-      // 每行一个 .line，用换行重新拼回原文，避免复制时带上行号或丢换行
-      const lines = [...code.querySelectorAll('.line')]
-      const text = (lines.length ? lines.map((line) => line.textContent) : [code.textContent]).join('\n')
-
-      const done = await copyText(text)
-      button.textContent = done ? '已抄录' : '没抄成'
+      const lines = $$('.line', code)
+      const done = await copyText((lines.length ? lines.map((l) => l.textContent) : [code.textContent]).join('\n'))
+      const label = $('span', button)
+      const idle = label.textContent
+      label.textContent = done ? '已复制' : '失败'
       button.classList.toggle('is-done', done)
-      window.setTimeout(() => {
-        button.textContent = '抄录'
-        button.classList.remove('is-done')
-      }, 1400)
+      setTimeout(() => { label.textContent = idle; button.classList.remove('is-done') }, 1400)
     })
   }
 }
 
-/* ------------------------------------------------------------ 检索 */
-
-/**
- * 检索为什么放在浏览器里：
- *   这是静态站，没有后端。索引是构建期生成的一个 JSON（244KB，gzip 后小得多），
- *   排序用的是 shared/rank.mjs —— 与库里 FTS5 同一套分词与列权重。
- *   索引与排序模块都**按需加载**：不碰搜索框的人不必为它付流量。
- */
-let ranker = null
-let indexPromise = null
-
-function loadSearch() {
-  if (indexPromise) return indexPromise
-  indexPromise = Promise.all([
-    import('./rank.mjs'),
-    fetch('./search-index.json', { cache: 'force-cache' }).then((r) => {
-      if (!r.ok) throw new Error(`索引取不到（${r.status}）`)
-      return r.json()
-    }),
-  ]).then(([mod, data]) => {
-    ranker = { mod, index: mod.buildIndex(data.docs), docs: data.docs }
-    return ranker
-  })
-  return indexPromise
-}
-
-/** 命中词描红。用 <mark> 而不是自己画样式 —— 深浅两色下都交给 CSS 的 mark 规则。 */
-function markTerms(text, query, terms) {
-  const safe = escapeHtml(text)
-  if (!terms.length) return safe
-  // 长的先替换，避免「玻璃」被「玻」先吃掉一半
-  const ordered = [...terms].sort((a, b) => b.length - a.length)
-  let out = safe
-  for (const term of ordered) {
-    if (term.length < 1) continue
-    const pattern = new RegExp(`(${escapeRegExp(escapeHtml(term))})`, 'gi')
-    out = out.replace(pattern, '<mark>$1</mark>')
-  }
-  return out
-}
-
-function escapeHtml(text) {
-  return String(text ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function initSearch() {
-  const input = document.querySelector('.concordance-input')
-  const status = document.querySelector('[data-search-status]')
-  const results = document.querySelector('[data-search-results]')
-  const browse = document.querySelector('[data-browse]')
-  const clear = document.querySelector('[data-search-clear]')
-  if (!input || !results || !browse) return
-
-  let terms = []
-  let current = []
-  let selected = -1
-  // 上一轮是不是在检索。只用来认「刚进入检索」这个瞬间。
-  let wasSearching = false
-
-  const setStatus = (text) => {
-    if (status) status.textContent = text
-  }
-
-  const render = () => {
-    const query = input.value.trim()
-
-    if (!query) {
-      results.hidden = true
-      results.replaceChildren()
-      browse.hidden = false
-      if (clear) clear.hidden = true
-      current = []
-      selected = -1
-      wasSearching = false
-      // 不查的时候状态行空着。它只在检索时报事（取索引 / 命中数 / 出错），
-      // 「共 N 条」那句是常驻说明，首屏不需要第二行字。
-      setStatus('')
-      return
-    }
-
-    if (clear) clear.hidden = false
-
-    if (!ranker) {
-      setStatus('正在取索引…')
-      loadSearch()
-        .then(() => render())
-        .catch((error) => setStatus(`搜索不可用：${error.message}`))
-      return
-    }
-
-    const hits = ranker.mod.rank(ranker.index, query, { limit: 40 })
-    terms = ranker.mod.units ? ranker.mod.units(query).map((u) => u.join('')) : []
-    current = hits
-    selected = -1
-
-    browse.hidden = true
-    results.hidden = false
-
-    if (!hits.length) {
-      results.innerHTML = `<p class="search-empty">没有匹配的咒语。</p>
-        <p class="search-empty-hint">试试换个说法，或者只留一个关键词。比如「跟随」「玻璃」「条纹」「绕排」。</p>`
-      setStatus('0 条命中')
-      return
-    }
-
-    results.innerHTML = `<ol class="hits">${hits.map(renderHit).join('')}</ol>`
-    setStatus(`${hits.length} 条命中${hits.length >= 40 ? '，只显示前 40 条' : ''}`)
-
-    /* 刚进入检索时，把结果的顶端挪到吸顶刊头底下。
-       不这么做的话：用户滚到第 6000 行才开始打字，而结果区在页面最上面，
-       他敲完却看着一片与搜索无关的旧内容。命中少的时候目录一收、页面塌下来，
-       浏览器顺手把他夹回顶部，看着像"能用"；可一命中 40 条、页面还是几千行高，
-       他就会停在结果中段。这是撞运气，得写明。
-       只在"刚进入检索"这一刻做，逐字输入时不抢滚动条。 */
-    if (!wasSearching) {
-      const bar = document.querySelector('.masthead')
-      const barH = bar ? bar.getBoundingClientRect().height : 0
-      const top = results.getBoundingClientRect().top + window.scrollY - barH - 12
-      // 已经在画面里就别动了
-      if (results.getBoundingClientRect().top < barH) {
-        window.scrollTo({ top: Math.max(0, top), behavior: 'instant' })
-      }
-    }
-    wasSearching = true
-  }
-
-  const renderHit = (hit) => {
-    const doc = ranker.docs.find((d) => d.slug === hit.slug)
-    if (!doc) return ''
-    const href = `spell/${encodeURIComponent(doc.slug)}/`
-    const why = hit.why
-      ? `<p class="hit-why"><span class="hit-why-label">${escapeHtml(hit.why.label)}</span><em>${markTerms(hit.why.text, input.value, terms)}</em></p>`
-      : ''
-    // 结果里不放 iframe。125 条目录已经是懒加载的图版，每敲一个字再挂 40 个会很沉。
-    // 想看动的就点「预览」，那时只挂一个。
-    return `<li class="hit" data-slug="${escapeHtml(doc.slug)}">
-      <a class="hit-link" href="${href}">
-        <span class="hit-name">${markTerms(doc.title, input.value, terms)}</span>
-        <span class="hit-cat">${escapeHtml(doc.category)}</span>
-      </a>
-      ${why}
-      <p class="hit-when">${markTerms(doc.when_text, input.value, terms)}</p>
-      <span class="hit-tools">
-        <button class="hit-tool" type="button" data-peek="${escapeHtml(doc.slug)}">预览</button>
-        <button class="hit-tool" type="button" data-prompt="${escapeHtml(doc.slug)}" data-prompt-url="spell/${encodeURIComponent(doc.slug)}/prompt.txt">抄咒语</button>
-        <button class="hit-tool hit-apply" type="button" data-apply="${escapeHtml(doc.slug)}" data-apply-url="spell/${encodeURIComponent(doc.slug)}/prompt.txt" data-apply-mode="insert">应用</button>
-      </span>
-    </li>`
-  }
-
-  // 首次进入搜索状态时才去取索引：不查的人不必下载。
-  // 载入完成后必须重画一次 —— 首屏那次 render() 跑在索引还没到的时候，
-  // 状态行会停在「共  条咒语」这种空计数上。
-  let warmed = false
-  const warm = () => {
-    if (warmed) return
-    warmed = true
-    loadSearch()
-      .then(() => render())
-      .catch((error) => setStatus(`搜索不可用：${error.message}`))
-  }
-  input.addEventListener('focus', warm, { once: true })
-  input.addEventListener('pointerdown', warm, { once: true })
-
-  // 从条目页点标签过来会带 ?q=<标签>：把词填进查词口并当场查一遍。
-  // 于是标签不只是「这条咒语被标了什么」，而是一个能一路点下去的入口 ——
-  // 这是标签系统真正省事的地方：不用先把词抄进查词口。
-  const initial = new URLSearchParams(location.search).get('q')
-  if (initial) {
-    input.value = initial
-    render()
-  }
-
-  input.addEventListener('input', render)
-
-  input.addEventListener('keydown', (event) => {
-    const links = [...results.querySelectorAll('.hit-link')]
-    if (event.key === 'ArrowDown' && links.length) {
-      event.preventDefault()
-      selected = Math.min(selected + 1, links.length - 1)
-      links[selected].focus()
-    } else if (event.key === 'Escape') {
-      input.value = ''
-      render()
-      input.blur()
-    }
-  })
-
-  // 结果列表里继续用上下键走，走到底再回到输入框
-  results.addEventListener('keydown', (event) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-    const links = [...results.querySelectorAll('.hit-link')]
-    const at = links.indexOf(document.activeElement)
-    if (at === -1) return
-    event.preventDefault()
-    const next = event.key === 'ArrowDown' ? at + 1 : at - 1
-    if (next < 0) input.focus()
-    else if (next < links.length) links[next].focus()
-  })
-
-  clear?.addEventListener('click', () => {
-    input.value = ''
-    render()
-    input.focus()
-  })
-
-  // 「/」或 ⌘K 直接落到查词口。已经在输入控件里时不抢。
-  window.addEventListener('keydown', (event) => {
-    const tag = document.activeElement?.tagName
-    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable
-    if (event.key === '/' && !typing) {
-      event.preventDefault()
-      input.focus()
-      input.select()
-    } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault()
-      input.focus()
-      input.select()
-    }
-  })
-
-  render()
-}
-
-/* ------------------------------------------------------- 抄一整条咒语 */
-
-/**
- * 复制的是构建期生成的 prompt.txt，与「看这一条的全文」用的是同一份内容，
- * 所以复制到的不可能和页面上的不一致。
- *
- * 取哪个地址由模板写在 data-prompt-url 上，不在这里按 slug 拼：目录页与条目页
- * 的相对深度不一样（`spell/<slug>/prompt.txt` 对 `prompt.txt`），在这儿拼就迟早
- * 会在另一层深度上拼错一个前缀 —— 而拼错只表现为 404，不会有人当场发现。
- */
+/** 复制整条咒语（prompt.txt）。取哪个地址由模板写在 data-prompt-url 上，不在这里按 slug 拼 —— 目录页与条目页深度不同。 */
 function initPromptCopy() {
   document.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-prompt]')
-    if (!button) return
-
-    const original = button.textContent
+    if (!button || button.disabled) return
     button.disabled = true
-    button.textContent = '取…'
-
     try {
-      const response = await fetch(button.dataset.promptUrl, {
-        cache: 'force-cache',
-      })
+      const response = await fetch(button.dataset.promptUrl, { cache: 'force-cache' })
       if (!response.ok) throw new Error(String(response.status))
-      const text = await response.text()
-      const done = await copyText(text)
-      button.textContent = done ? '已抄走' : '没抄成'
+      const done = await copyText(await response.text())
+      toast(done ? '已复制' : '复制失败')
       button.classList.toggle('is-done', done)
     } catch {
-      button.textContent = '没取到'
+      toast('取不到')
     }
-
-    window.setTimeout(() => {
-      button.textContent = original
-      button.disabled = false
-      button.classList.remove('is-done')
-    }, 1600)
+    setTimeout(() => { button.disabled = false; button.classList.remove('is-done') }, 1400)
   })
 }
 
-/* ------------------------------------------------------- 应用到对话 */
+/* ------------------------------------------------------ 应用到对话 */
 
 /**
- * 把一条咒语送进 DSH 的输入框。
- *
- * 这一页嵌在侧边栏 iframe 里，自己够不着对话的输入框 —— 能碰到它的只有外层宿主
- * （宿主那半边拿得到 composer 的 inputActions）。所以「应用」必须过一次 postMessage：
- *
- *   站点 → 宿主   {type:'spellbook:apply', requestId, prompt, mode}
- *   宿主 → 站点   {type:'spellbook:apply-result', requestId, ok, reason?}
- *
- * 回执不是客气话，而是这条路上的**正常分支**：宿主拒绝插入很常见（草稿版本变了、
- * 正在提交、这个会话压根没挂载输入框）。少了回执，按钮只能假装成功 ——
- * 而「假装成功」正是这一类桥接最容易犯、也最难查的错：用户以为送过去了，
- * 输入框里却是空的。所以每条请求带 requestId、回执按 id 对上，超时也算失败。
+ * 页面嵌在侧边栏 iframe 里，自己够不着对话输入框，只有宿主能。所以「应用」是一次 postMessage：
+ *   站点 → 宿主 {type:'spellbook:apply', requestId, prompt, mode}
+ *   宿主 → 站点 {type:'spellbook:apply-result', requestId, ok, reason?}
+ * 回执是这条路上的正常分支（草稿版本变了、正在提交、没有会话），超时也算失败。
+ * 失败时把正文放进剪贴板：最坏的结果是「正文没了」，而它此刻就在手里。
  */
-
 const APPLY_TIMEOUT_MS = 4000
-
-/** 宿主拒绝的原因 → 按钮上那句话。查不到的原样透出来，别吞成一句笼统的失败。 */
-const APPLY_FAIL_TEXT = {
-  timeout: '宿主没应',
-  'no-sink': '没有会话',
-  rejected: '插入被拒',
-  'bad-request': '请求被拒',
-  fetch: '取咒语失败',
-  'no-url': '没配地址',
-}
-
+const APPLY_FAIL_TEXT = { timeout: '无响应', 'no-sink': '无会话', rejected: '被拒', 'bad-request': '被拒', fetch: '取不到', 'no-url': '无地址' }
 let applySeq = 0
 const pendingApplies = new Map()
 
 function requestApply(prompt, mode) {
   return new Promise((resolve) => {
-    applySeq += 1
-    const requestId = `sp-${Date.now().toString(36)}-${applySeq}`
-
-    const timer = window.setTimeout(() => {
-      pendingApplies.delete(requestId)
-      resolve({ ok: false, reason: 'timeout' })
-    }, APPLY_TIMEOUT_MS)
-
-    pendingApplies.set(requestId, (result) => {
-      window.clearTimeout(timer)
-      pendingApplies.delete(requestId)
-      resolve(result)
-    })
-
-    // targetOrigin 写明确的原点，不用 '*'：宿主与这页同源，
-    // 用 '*' 等于把咒语正文广播给任何嵌了这一页的人。
-    window.parent.postMessage(
-      { type: 'spellbook:apply', requestId, prompt, mode },
-      window.location.origin
-    )
+    const requestId = 'sp-' + Date.now().toString(36) + '-' + ++applySeq
+    const timer = setTimeout(() => { pendingApplies.delete(requestId); resolve({ ok: false, reason: 'timeout' }) }, APPLY_TIMEOUT_MS)
+    pendingApplies.set(requestId, (result) => { clearTimeout(timer); pendingApplies.delete(requestId); resolve(result) })
+    // targetOrigin 写明确的原点：宿主与这页同源，用 '*' 等于把咒语广播给任何嵌了这一页的人
+    window.parent.postMessage({ type: 'spellbook:apply', requestId, prompt, mode }, window.location.origin)
   })
 }
 
 function initApply() {
-  // 自己开一个标签页看站时，没有对话可应用 —— 按钮留着只会骗人。
-  // 判 embed 而不是判按钮在不在：按钮是构建期写死的，这里才是运行期的真相。
-  if (!document.documentElement.dataset.embed) return
-  if (window.parent === window) return
-
+  if (!html.dataset.embed || window.parent === window) return
   window.addEventListener('message', (event) => {
     const data = event.data
     if (!data || data.type !== 'spellbook:apply-result') return
-    const settle = pendingApplies.get(data.requestId)
-    if (!settle) return
-    settle({
-      ok: data.ok === true,
-      reason: typeof data.reason === 'string' ? data.reason : undefined,
-    })
+    pendingApplies.get(data.requestId)?.({ ok: data.ok === true, reason: typeof data.reason === 'string' ? data.reason : undefined })
   })
 
   document.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-apply]')
     if (!button || button.disabled) return
-
     const mode = button.dataset.applyMode === 'send' ? 'send' : 'insert'
-    // 静止时那两个字由模板给（两处按钮文案不同），记下来是为了回得去
     const idle = button.dataset.applyIdle || (button.dataset.applyIdle = button.textContent)
-
     button.disabled = true
-    button.textContent = '送…'
+    button.textContent = '…'
     button.classList.remove('is-done', 'is-failed')
 
     let prompt = ''
     let result
     if (!button.dataset.applyUrl) {
-      // 取址空着就别 fetch：`fetch('')` 会把**当前这一页**（HTML）当成咒语送出去，
-      // 而且那是 200、不报错 —— 一个安静送错东西的陷阱，一行挡住。
+      // 取址空着就别 fetch：fetch('') 会把当前这一页（HTML）当咒语送出去，而且是 200、不报错
       result = { ok: false, reason: 'no-url' }
     } else {
       try {
@@ -723,211 +443,154 @@ function initApply() {
         if (!response.ok) throw new Error(String(response.status))
         prompt = await response.text()
         result = await requestApply(prompt, mode)
-      } catch {
-        result = { ok: false, reason: 'fetch' }
-      }
+      } catch { result = { ok: false, reason: 'fetch' } }
     }
 
     let label
-    if (result.ok) {
-      label = mode === 'send' ? '已发送' : '已进输入框'
-    } else {
-      const why = APPLY_FAIL_TEXT[result.reason] || '没送成'
-      /*
-       * 失败时把正文交到剪贴板，而不是让它消失。
-       *
-       * 这一路最坏的结果不是「没插进去」——那是可见的、能重试的；最坏的是
-       * 「正文没了」：用户只看到一句「插入被拒」，而那段咒语还在几屏之外的
-       * 某个条目页上，得回去重新找一遍。而正文此刻**就在手里**（`prompt`），
-       * 白扔掉没有道理。
-       *
-       * 剪贴板也可能被拒（没手势、权限策略），那就只报原因 —— 别把
-       * 「已复制」写成一句没兑现的承诺，那比不写更糟。
-       */
+    if (result.ok) label = mode === 'send' ? '已发送' : '已应用'
+    else {
+      const why = APPLY_FAIL_TEXT[result.reason] || '失败'
       const rescued = prompt !== '' && (await copyText(prompt))
-      label = rescued ? `${why}·已复制` : why
+      label = rescued ? why + ' · 已复制' : why
     }
-
     button.textContent = label
     button.classList.toggle('is-done', result.ok)
     button.classList.toggle('is-failed', !result.ok)
     button.disabled = false
-
-    window.setTimeout(
-      () => {
-        button.textContent = idle
-        button.classList.remove('is-done', 'is-failed')
-      },
-      result.ok ? 1600 : 2600
-    )
+    setTimeout(() => { button.textContent = idle; button.classList.remove('is-done', 'is-failed') }, result.ok ? 1600 : 2600)
   })
 }
 
-/* ---------------------------------------------------------- 放大预览 */
+/* ------------------------------------------------------------ 放大预览 */
 
-/**
- * 点击缩略图 → 弹一个放大的活预览。
- *
- * 用 <dialog> 而不是自建遮罩：焦点圈禁、Esc 关闭、背景 inert 都由浏览器负责，
- * 自己写这三样很容易漏掉其中一样。
- */
 function initPeek() {
-  const dialog = document.querySelector('[data-peek-dialog]')
+  const dialog = $('[data-peek-dialog]')
   if (!dialog) return
+  const stage = $('[data-peek-stage]', dialog)
+  const title = $('[data-peek-title]', dialog)
+  const more = $('[data-peek-more]', dialog)
+  const apply = $('[data-apply]', dialog)
 
-  const stage = dialog.querySelector('[data-peek-stage]')
-  const title = dialog.querySelector('[data-peek-title]')
-  const why = dialog.querySelector('[data-peek-why]')
-  const more = dialog.querySelector('[data-peek-more]')
-
-  const close = () => {
-    // 关掉时把 iframe 卸掉：否则里面的动画会一直在后台跑
-    stage.replaceChildren()
-    dialog.close()
-  }
+  const close = () => { stage.replaceChildren(); if (dialog.open) dialog.close() }
 
   document.addEventListener('click', (event) => {
     const trigger = event.target.closest('[data-peek]')
     if (!trigger) return
     event.preventDefault()
-
     const slug = trigger.dataset.peek
-    const row = trigger.closest('.row, .hit')
-    const name = row?.querySelector('.row-name, .hit-name')?.textContent ?? slug
-    const matched = row?.querySelector('.hit-why')?.textContent ?? ''
-
-    title.textContent = name
-    why.textContent = matched ? `搜索命中：${matched.replace(/^[^：]*：/, '')}` : ''
-    more.href = `spell/${encodeURIComponent(slug)}/`
-
-    // 应用按钮也要换成这一条的。
-    // 这个对话框全书共用一份，所以每次打开都得重设 —— 而且要把上一次留下的
-    // 「已进输入框 / 插入被拒」那点状态清掉，否则下一条会顶着上一条的结果开场。
-    const apply = dialog.querySelector('[data-apply]')
+    const card = trigger.closest('.card')
+    const base = 'spell/' + encodeURIComponent(slug) + '/'
+    title.textContent = $('.card-title a', card)?.dataset.raw ?? $('.card-title a', card)?.textContent ?? slug
+    more.href = base
+    // 全书共用这一个对话框：每次打开都要重设应用按钮，并清掉上一条留下的「已放进 / 被拒」状态
     if (apply) {
       apply.dataset.apply = slug
-      apply.dataset.applyUrl = `spell/${encodeURIComponent(slug)}/prompt.txt`
+      apply.dataset.applyUrl = base + 'prompt.txt'
       apply.disabled = false
       apply.classList.remove('is-done', 'is-failed')
-      apply.textContent = apply.dataset.applyIdle || '应用到对话'
+      apply.textContent = apply.dataset.applyIdle || '应用'
+      apply.hidden = !html.dataset.embed
     }
-
     const frame = document.createElement('iframe')
     frame.className = 'peek-doc'
-    frame.src = `spell/${encodeURIComponent(slug)}/demo.html`
+    frame.src = base + 'demo.html'
     frame.setAttribute('sandbox', 'allow-scripts')
-    frame.title = `放大预览：${name}`
+    frame.title = '放大预览：' + title.textContent
     stage.replaceChildren(frame)
-
     dialog.showModal()
   })
 
-  dialog.querySelector('[data-peek-close]')?.addEventListener('click', close)
-  // 点遮罩（dialog 自身）关闭
-  dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) close()
-  })
+  $('[data-peek-close]', dialog)?.addEventListener('click', close)
+  dialog.addEventListener('click', (event) => { if (event.target === dialog) close() })
   dialog.addEventListener('close', () => stage.replaceChildren())
 }
 
-/**
- * 把吸顶刊头的真实高度写进 --masthead-h。
- *
- * 章目导航也要吸顶，它得让开刊头那一段。可刊头多高是内容定的 ——
- * 查词口、书名的字号、字体加载前后都会变，写死一个数迟早错位
- * （先前写 78px，实测 89px，于是两级吸顶只差 5px 就贴上了）。
- * 所以量一次写进变量，字号变了、字体到了、窗口缩放了都重量。
- */
-function syncMastheadHeight() {
-  const masthead = document.querySelector('.masthead')
-  if (!masthead) return
-  const height = Math.round(masthead.getBoundingClientRect().height)
-  if (height > 0) {
-    document.documentElement.style.setProperty('--masthead-h', `${height}px`)
+/* ------------------------------------------------------------ 条目页 */
+
+function initPlate() {
+  const plate = $('.plate')
+  const doc = plate && $('.plate-doc', plate)
+  if (!doc) return
+  const inputs = $$('[data-param]', plate)
+  const params = inputs.map((i) => ({ name: i.dataset.param, type: i.type === 'range' ? 'range' : 'text', unit: i.dataset.unit || undefined }))
+  const values = () => {
+    const raw = {}
+    for (const i of inputs) raw[i.dataset.param] = i.type === 'range' ? Number(i.value) : i.value
+    return paramValues(params, raw)
   }
+  const post = (message) => doc.contentWindow?.postMessage(message, '*')
+  const push = () => post({ type: 'spellbook:params', values: values() })
+
+  for (const input of inputs) {
+    input.addEventListener('input', () => {
+      const out = input.parentElement?.querySelector('.control-value')
+      if (out) out.textContent = input.value + (input.dataset.unit ?? '')
+      push()
+    })
+  }
+  // iframe 没加载完就发消息会丢，所以等 load 之后再推一次
+  doc.addEventListener('load', push)
+  if (doc.contentDocument?.readyState === 'complete') push()
+  $('[data-replay]', plate)?.addEventListener('click', () => { post({ type: 'spellbook:replay' }); setTimeout(push, 60) })
+}
+
+/** 描述里的机制短语 ↔ 代码里的机制行：悬停任一侧点亮另一侧。排版权重 = 迁移权重。 */
+function initMechanismLink() {
+  const marks = $$('[data-mech]')
+  if (marks.length < 2) return
+  const light = (on) => { for (const m of marks) m.classList.toggle('is-lit', on) }
+  for (const m of marks) {
+    m.addEventListener('mouseenter', () => light(true))
+    m.addEventListener('mouseleave', () => light(false))
+  }
+}
+
+const isTyping = () => {
+  const a = document.activeElement
+  return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)
+}
+
+/** 条目页的查词口：回车带着词回目录；左右方向键翻页。 */
+function initSpellSearch() {
+  if (!document.body.classList.contains('page-spell')) return
+  const input = $('.search-input')
+  const clear = $('[data-search-clear]')
+  input.addEventListener('input', () => { clear.hidden = !input.value })
+  clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; input.focus() })
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && input.value.trim()) location.href = '../../?q=' + encodeURIComponent(input.value.trim())
+    if (e.key === 'Escape') input.blur()
+  })
+  addEventListener('keydown', (e) => {
+    if (isTyping() || e.metaKey || e.ctrlKey || e.altKey) return
+    const link = e.key === 'ArrowLeft' ? $('.pager-link.is-prev') : e.key === 'ArrowRight' ? $('.pager-link.is-next') : null
+    if (link) location.href = link.href
+  })
+}
+
+/** 「/」或 ⌘K 直接落到查词口。 */
+function initHotkeys() {
+  const input = $('.search-input')
+  if (!input) return
+  addEventListener('keydown', (e) => {
+    if ((e.key === '/' && !isTyping()) || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+      e.preventDefault()
+      input.focus()
+      input.select()
+    }
+  })
 }
 
 initTheme()
-initView()
-syncMastheadHeight()
-window.addEventListener('resize', syncMastheadHeight)
-// 自托管字体是后到的，落位后刊头可能变高，得再量一次
-if (document.fonts?.ready) document.fonts.ready.then(syncMastheadHeight).catch(() => {})
-initChapterNav()
-initPlate()
-initMechanismLink()
-initCopy()
-initSearch()
-initTagFilter()
 initEmbed()
+syncTopbar()
+initCatalog()
+initCopy()
 initPromptCopy()
 initApply()
 initPeek()
-initPreviewRecycle()
-
-/* ------------------------------------------------------- 回收看不见的预览 */
-/**
- * 索引页每一行里都嵌着一个**真在跑**的预览文档，一行一个 —— 333 行就是 333 个。
- *
- * 浏览器只会把看得见的那些加载起来（`loading="lazy"`），但**加载完就不放手**：
- * 实测在 400px 宽的侧边栏里往下滚，到八成处已经累计加载了 **217 个活文档**，
- * 而且只增不减。每个活文档都占着一份内存，在 Electron 里就是实打实的占用 ——
- * 而且越往下翻越沉。
- *
- * 所以把**离视口很远的**换回 about:blank 放掉，滚回来再重新挂上。
- * 余量留两屏：加载发生在它还没露头的时候，滚到它跟前早就画好了，
- * 因此这个回收对用户是看不见的。
- *
- * 两个坑写在这里，免得下次再踩：
- *   1. 放掉要用 `about:blank`，**不能写 `src = ''`** —— 空串会被解析成当前页面的地址，
- *      于是每一行都会把整个站点再加载一遍。
- *   2. 原地址得先记在 `data-doc` 上，否则放掉之后挂不回去。
- *   3. **不要用 IntersectionObserver。** 它的两种取根方式在这里都是错的，而且都实测过：
- *      留空（隐式根）算的是**顶层浏览上下文**的视口 —— 侧边栏是 iframe，于是它量的是
- *      宿主 App 的窗口，不是侧边栏那块 400×800 的滚动区，结果只剩贴着视口的三四行有预览；
- *      显式给 `document.documentElement` 则根元素的内容盒是**整个可滚动区域**（九万多像素），
- *      于是每一行都算相交，回收等于没做（333 个全活）。
- *      所以这里自己按 `window.innerHeight` 算 —— 简单、精确、不依赖那套语义。
- */
-function initPreviewRecycle() {
-  const frames = [...document.querySelectorAll('iframe.row-preview-doc[src]')]
-  if (!frames.length) return
-
-  for (const frame of frames) frame.dataset.doc = frame.getAttribute('src')
-
-  /** 视口上下各留两屏：加载发生在它还没露头的时候，滚到跟前早就画好了。 */
-  const MARGIN = 2
-
-  const sync = () => {
-    const h = window.innerHeight || 1
-    const top = -h * MARGIN
-    const bottom = h * (1 + MARGIN)
-
-    for (const frame of frames) {
-      const rect = frame.getBoundingClientRect()
-      const near = rect.bottom > top && rect.top < bottom
-      const current = frame.getAttribute('src')
-
-      if (near) {
-        if (current === 'about:blank') frame.setAttribute('src', frame.dataset.doc)
-      } else if (current !== 'about:blank') {
-        frame.setAttribute('src', 'about:blank')
-      }
-    }
-  }
-
-  let scheduled = false
-  const schedule = () => {
-    if (scheduled) return
-    scheduled = true
-    requestAnimationFrame(() => {
-      scheduled = false
-      sync()
-    })
-  }
-
-  // 一帧内最多扫一次；滚动与改尺寸都要重算
-  addEventListener('scroll', schedule, { passive: true })
-  addEventListener('resize', schedule, { passive: true })
-  sync()
-}
+initPlate()
+initMechanismLink()
+initSpellSearch()
+initHotkeys()
+warmSearchWhenIdle()

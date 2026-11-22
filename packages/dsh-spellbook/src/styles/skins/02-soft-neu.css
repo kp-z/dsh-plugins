@@ -1,0 +1,31 @@
+/* 柔和拟态 2.0 —— 同色系凸起，无边框，光线从左上角来 */
+:root {
+  --ground: #e8ebf2;
+  --ground-2: #eceff5;
+  --text: #2c3244;
+  --text-dim: #6d7488;
+  --gilt: #6b5bd2;
+  --gilt-bright: #5647bd;
+  --rubric: #c2477f;
+  --rule: #d4d9e6;
+  --accent: #5b6cff;
+  --accent-ink: #ffffff;
+  --surface: #e8ebf2;
+  --surface-hover: #eef1f7;
+  --line: rgb(255 255 255 / 0.85);
+  --line-strong: rgb(163 172 192 / 0.5);
+  --shadow: 8px 8px 20px rgb(163 172 192 / 0.55), -8px -8px 20px rgb(255 255 255 / 0.95);
+  --glow: radial-gradient(70% 60% at 20% 0%, rgb(91 108 255 / 0.10), transparent 70%);
+  --radius: 24px;
+  --radius-sm: 16px;
+}
+.topbar { background: color-mix(in oklab, var(--ground) 90%, transparent); border-bottom: 0; box-shadow: 0 10px 20px -16px rgb(120 130 160 / 0.9); }
+.logo { border-radius: 14px; box-shadow: 3px 3px 8px rgb(163 172 192 / 0.6), -3px -3px 8px rgb(255 255 255 / 0.9); }
+.search-field { border-color: transparent; background: var(--ground); box-shadow: inset 4px 4px 10px rgb(163 172 192 / 0.5), inset -4px -4px 10px #fff; }
+.card { border-color: transparent; box-shadow: var(--shadow); }
+.card:hover { transform: translateY(-4px); box-shadow: 12px 12px 28px rgb(163 172 192 / 0.6), -10px -10px 26px #fff; }
+.card-thumb { border-bottom: 1px solid rgb(163 172 192 / 0.25); background: #dfe4ef; }
+.chip { border-color: transparent; background: var(--ground); box-shadow: 3px 3px 7px rgb(163 172 192 / 0.5), -3px -3px 7px #fff; }
+.chip[aria-pressed="true"] { box-shadow: inset 3px 3px 7px rgb(163 172 192 / 0.55), inset -3px -3px 7px #fff; background: var(--ground); color: var(--accent); }
+.btn { border-color: transparent; box-shadow: 3px 3px 8px rgb(163 172 192 / 0.5), -3px -3px 8px #fff; }
+.card-badge { color: var(--accent); }

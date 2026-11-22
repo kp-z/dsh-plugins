@@ -24,7 +24,7 @@ export const CSS = `
   position: relative; /* 悬浮提示层（.frx-tip）按页根定位 */
   container-type: inline-size;
   container-name: frxpage;
-  display: flex; flex-direction: column; gap: 24px;
+  display: flex; flex-direction: column; gap: var(--fo-gap, 16px);
   /* 运行页比一屏高（气泡卡 + 三个统计卡 + 历史 + 动作卡），必须自己能滚：
      宿主给功能页的容器是 .fo-feature-host（flex:1 + min-height:0，本身不滚），
      所以滚动要落在这一层 —— 否则内容直接被裁掉，看起来就是「页面无法滚动」。 */
@@ -32,9 +32,8 @@ export const CSS = `
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* 侧边栏（rail）与卡片之间要留出呼吸位：左右各 20px + 上下 16/28px，
-     否则卡片会贴着 rail 的边线，看起来像「挤在一起」。 */
-  padding: 16px 20px 28px;
+  /* 页边距走刻度（以前是 16/20/28 —— 和洞察 12、看板 10 各写一套） */
+  padding: var(--fo-gutter, 14px);
   color: var(--frx-text);
 
   /* 表面/文字/描边一律**从宿主令牌派生**：亮色深色自动跟着变，不需要我自己判断主题
@@ -44,21 +43,23 @@ export const CSS = `
   --frx-text-strong: color-mix(in oklab, var(--dsw-alias-label-primary) 94%, transparent);
   --frx-text-dim: color-mix(in oklab, var(--dsw-alias-label-secondary) 92%, transparent);
   --frx-text-faint: color-mix(in oklab, var(--dsw-alias-label-secondary) 75%, transparent);
-  --frx-surface: color-mix(in oklab, var(--dsw-alias-bg-layer-1) 82%, transparent);
-  --frx-surface-hover: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 92%, transparent);
-  --frx-border: color-mix(in oklab, var(--dsw-alias-border-l1) 62%, transparent);
+  /* 表面/描边与看板、洞察用同一组百分比：三页的卡必须是同一块玻璃 */
+  --frx-surface: color-mix(in oklab, var(--dsw-alias-bg-layer-1) 92%, transparent);
+  --frx-surface-hover: color-mix(in oklab, var(--dsw-alias-label-primary) 7%, transparent);
+  --frx-border: color-mix(in oklab, var(--dsw-alias-border-l2) 55%, transparent);
   --frx-border-hover: var(--dsw-alias-border-l2);
-  --frx-inner: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 70%, transparent);
+  --frx-inner: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent);
   --frx-orb-bg-1: color-mix(in oklab, var(--dsw-alias-label-primary) 9%, transparent);
   --frx-orb-bg-2: color-mix(in oklab, var(--dsw-alias-label-primary) 4%, transparent);
   --frx-orb-dim-border: color-mix(in oklab, var(--dsw-alias-label-secondary) 40%, transparent);
   --frx-avatar-border: color-mix(in oklab, var(--dsw-alias-border-l1) 80%, transparent);
-  --frx-avatar-bg: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 60%, transparent);
+  --frx-avatar-bg: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent);
   --frx-avatar-ring: var(--dsw-alias-bg-base);
   --frx-tip-bg: var(--dsw-alias-bg-overlay);
   --frx-tip-fg: var(--dsw-alias-label-primary);
   --frx-tip-meta: var(--dsw-alias-label-secondary);
-  --frx-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-bg-base) 22%, transparent), 0 10px 22px -16px color-mix(in oklab, var(--dsw-alias-bg-base) 60%, transparent);
+  /* 亮色=黑（真阴影），暗色=白（只剩贴边高光） */
+  --frx-shadow: 0 1px 2px color-mix(in oklab, var(--dsw-alias-label-primary) 6%, transparent), 0 10px 22px -16px color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
   --frx-scrollbar: color-mix(in oklab, var(--dsw-alias-label-secondary) 30%, transparent);
   /* 参考项目的行高是 clamp(...) 让行随视口长；但用户口径是「三行一样高」——
      行高由内容决定时跨行永远不可能相等（实测 329 / 360 / 334），所以这里改成固定值。 */
@@ -71,7 +72,7 @@ export const CSS = `
    N 列、跨列卡被挤到下一行。各卡片用 .is-spanN 决定占几列。 */
 .frx-grid {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px; align-items: stretch;
+  gap: var(--fo-gap, 16px); align-items: stretch;
   height: auto;
   /* 三行**等高**（用户口径：第一/二/三行应该一样高）。用固定行高而不是 auto：
      行高由内容决定时永远不可能跨行相等（329 / 360 / 334 就是这么来的）。
@@ -81,9 +82,9 @@ export const CSS = `
 .frx-grid.is-tight { height: auto; }
 .frx-card {
   position: relative; overflow: hidden; display: flex; flex-direction: column;
-  padding: 20px; border-radius: 14px; cursor: default;
+  padding: var(--fo-card-pad, 16px); border-radius: var(--fo-radius-card, 20px); cursor: default;
   background: var(--frx-surface);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: var(--fo-glass-blur); backdrop-filter: var(--fo-glass-blur);
   border: 1px solid var(--frx-border);
   box-shadow: var(--frx-shadow);
   transition: border-color .3s ease, transform .3s ease;
@@ -121,7 +122,7 @@ export const CSS = `
 .frx-kpi {
   display: inline-flex; align-items: center; gap: 7px;
   height: 30px; padding: 0 11px; border-radius: 999px;
-  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 62%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent);
   border: 1px solid var(--frx-border);
 }
 .frx-kpi[data-tone="warn"] { border-color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 45%, transparent); }

@@ -1,7 +1,7 @@
 /**
  * 会话事件解码：把 `ctx.on('session/event')` 拿到的 `unknown` 变成能用的字段。
  *
- * 形状照抄本仓 `dsh-agent-world/src/bridge/decode.ts`（真机验证过）：
+ * 形状照抄本仓 `dsh-xcity/src/bridge/decode.ts`（真机验证过）：
  * - `assistant/message` 的 data 是 `{ turn, step, message, stream?, usage?, interrupted? }`，
  *   正文在 `message.content` 的 `text` 块里；`tool-call` 块给出这次调了哪些工具。
  * - `turn/end` 的 data 是 `{ turn, reason }`，`reason.kind` 有 7 种（completed / aborted /

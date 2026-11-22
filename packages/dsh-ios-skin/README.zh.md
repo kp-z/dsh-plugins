@@ -1,4 +1,4 @@
-# dsh-ios-skin
+# @kpeace/dsh-ios-skin
 
 **Deep Fusion（品牌融合）** —— 为 DeepSeek Harness Web GUI 提供的 DeepSeek 品牌化液态玻璃主题。
 
@@ -74,7 +74,7 @@ v0.3.0 是一次完整的视觉重设计：架构不变（官方 token 交接 + 
 
 ```sh
 # 在工作区根目录：先构建
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin build
 
 # 装进目标 profile
 dsh plugin --profile web add file:/path/to/dsh-plugins/packages/dsh-ios-skin
@@ -86,7 +86,7 @@ dsh plugin --profile web add file:/path/to/dsh-plugins/packages/dsh-ios-skin
 卸载：
 
 ```sh
-dsh plugin --profile web remove dsh-ios-skin
+dsh plugin --profile web remove @kpeace/dsh-ios-skin
 # 重启 dsh web
 ```
 
@@ -94,7 +94,7 @@ dsh plugin --profile web remove dsh-ios-skin
 
 - **主题不是内置外观项。** 第三方主题 id 是官方主题包的进程内扩展，不跨内置 settings schema。它不会出现在「设置 → 外观」里，也不会作为偏好持久化；只要插件被加载就生效。要关掉就移除插件。
 - **签名光带只在激活态出现。** 它画在激活的 dock pane 与浮动标签页上；默认单 pane 会话可能完全看不到，直到选中标签或把标签拖出。它只画、不改变几何。
-- **材质层依赖官方内部组件类名。** 官方前端用 CSS-module hash 生成类名；升级改名后玻璃可能不再出现。这不会崩，所以加载时会做一次只读探测：已知局部类名一个都没命中时，控制台会打印 `[dsh-ios-skin] material layer is inert: …`。此时 token 层、无障碍回退和可读性下限仍然工作，只是材质层失效。
+- **材质层依赖官方内部组件类名。** 官方前端用 CSS-module hash 生成类名；升级改名后玻璃可能不再出现。这不会崩，所以加载时会做一次只读探测：已知局部类名一个都没命中时，控制台会打印 `[@kpeace/dsh-ios-skin] material layer is inert: …`。此时 token 层、无障碍回退和可读性下限仍然工作，只是材质层失效。
 - **新 UI 覆盖范围是刻意收窄的。** better-sidebar、dockkit 与 Agent Teams 是插件或前端内部实现，不属于官方主题规范。主题只保证上表列出的表面有玻璃（底部工作台、浮动窗口、标签条、团队面板）；编辑器/diff/变更/任务/旁路对话等更丰富的视图保留各自基于 token 的表面，better-sidebar 的内部布局也保留自己的 token 样式（整棵子树退出泛类名匹配）。dockkit / better-sidebar 升级若改了钩子，个别表面仍可能退回无主题状态；加载探测会在一个都匹配不上时报警。
 - **不是所有表面都有玻璃。** 材质层覆盖栏、侧栏、面板、对话框、菜单、toast、卡片和用户气泡；header 平面、真圆保持正圆、文字/可编辑表面保持不透明，都是刻意设计。
 - **只有 Apple 平台上的字体才真正是 iOS 字体。** 字体链把设置里选中的字体放在最前，再用 iOS 栈（`-apple-system` / SF Pro / SF Mono）兜底；其他平台上兜底为 `system-ui` 和平台等宽字体，观感接近但不会逐字节一致。
@@ -107,9 +107,9 @@ dsh plugin --profile web remove dsh-ios-skin
 ## 开发
 
 ```sh
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin typecheck
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin test
-pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin typecheck
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin test
+pnpm --config.verify-deps-before-run=false --filter @kpeace/dsh-ios-skin build
 
 # 用真实样式表重新生成自包含演示页
 node scripts/build-glass-demo.mjs

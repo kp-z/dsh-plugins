@@ -2,7 +2,7 @@
  * 构建的并发安全。
  *
  * 这一条是被咬过才写的。站点上出现的那些怪象 —— 首页 404、spell/ 只有十个目录、
- * numeral.css 在而 index.html 不在 —— 全都不是页面的问题，是构建自己踩自己：
+ * styles 在而 index.html 不在 —— 全都不是页面的问题，是构建自己踩自己：
  *
  *   serve.mjs 同时监听 content/ 与 src/，改一个文件它就重建一次；
  *   而我一边改一边又手动 node build.mjs，两个构建重叠。
@@ -86,7 +86,7 @@ test('四个构建同时跑，产物仍然完整、不留临时目录、不放�
 
   // 1. 产物必须完整
   assert.ok(await exists(path.join(DIST, 'index.html')), 'index.html 必须在')
-  for (const asset of ['site.js', 'numeral.css', 'search-index.json', 'effects.json']) {
+  for (const asset of ['site.js', 'search-index.json', 'effects.json']) {
     assert.ok(await exists(path.join(DIST, asset)), `${asset} 必须在`)
   }
 

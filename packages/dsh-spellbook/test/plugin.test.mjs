@@ -69,7 +69,7 @@ test('目录页与条目页都能取到，且是 HTML', async () => {
   const index = await call(route, 'GET', '/dsh-spellbook/')
   assert.equal(index.status, 200)
   assert.match(index.headers['content-type'], /text\/html/)
-  assert.match(index.body, /咒语书/)
+  assert.match(index.body, /长这样/)
 
   // 目录式链接（无扩展名、目录结尾）也要能落到 index.html
   const entry = await call(route, 'GET', '/dsh-spellbook/spell/liquid-glass/')
@@ -226,14 +226,14 @@ function runClient() {
   }
 }
 
-test('客户端给侧边栏注册了「咒语书」tab', () => {
+test('客户端给侧边栏注册了「Spellbook」tab', () => {
   const { exportsObj, tabs } = runClient()
   assert.deepEqual(exportsObj.inject, ['slots', 'betterSidebar'])
   assert.equal(tabs.length, 1, `注册了 ${tabs.length} 个 tab，应当只有 1 个`)
 
   const tab = tabs[0]
   assert.equal(tab.id, 'spellbook')
-  assert.equal(tab.title(), '咒语书')
+  assert.equal(tab.title(), 'Spellbook')
   assert.equal(tab.single, true)
   assert.equal(typeof tab.order, 'number')
   assert.equal(typeof tab.component, 'function')
@@ -257,7 +257,7 @@ test('tab 组件渲染的是指向 /dsh-spellbook/ 的 iframe', () => {
   // embed=1 让站点收起书封那截刊头；theme 让首屏就跟宿主明暗一致
   assert.match(frame.props.src, /embed=1/)
   assert.match(frame.props.src, /theme=(dark|light)/)
-  assert.equal(frame.props.title, '咒语书')
+  assert.equal(frame.props.title, 'Spellbook')
 
   // 关键：外层 iframe 绝不能带 sandbox —— 嵌套 sandbox 是往下取并集的，
   // 外层写了 allow-same-origin 就等于把那 332 个预览的隔离一并撤掉。
@@ -265,7 +265,7 @@ test('tab 组件渲染的是指向 /dsh-spellbook/ 的 iframe', () => {
 })
 
 test('整站产物里没有 allow-same-origin', () => {
-  // 咒语书的隔离底线：332 个预览文档全靠 `sandbox="allow-scripts"` 隔开。
+  // 站点的隔离底线：332 个预览文档全靠 `sandbox="allow-scripts"` 隔开。
   // 这条扫的是**构建产物**（而不是源码）—— 因为产物就是真正被端出去的东西，
   // 而源码里的注释提到这个词是正常的（client.js 里就有一段解释为什么不能用它）。
   //

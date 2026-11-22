@@ -1,0 +1,38 @@
+/* 杂志编辑 —— 衬线大标题、发丝线、小体大写栏标，像一份周末副刊 */
+:root {
+  --ground: #fbfaf7;
+  --ground-2: #ffffff;
+  --text: #14110d;
+  --text-dim: #6b635a;
+  --gilt: #9a7b3f;
+  --gilt-bright: #7d6230;
+  --rubric: #b3122b;
+  --rule: #e2ddd4;
+  --accent: #b3122b;
+  --accent-ink: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f7f5f1;
+  --line: #e2ddd4;
+  --line-strong: #c9c2b6;
+  --shadow: 0 1px 2px rgb(30 24 16 / 0.05);
+  --glow: none;
+  --font-ui: 'Charter', 'Songti SC', Georgia, serif;
+  --font-display: 'Charter', 'Songti SC', 'Noto Serif SC', Georgia, serif;
+  --radius: 0px;
+  --radius-sm: 0px;
+}
+.topbar { background: #fff; border-bottom: 1px solid #14110d; }
+.topbar-row { border-bottom: 3px double #14110d; padding-bottom: 12px; }
+.brand-name { font-size: 26px; letter-spacing: 0.02em; font-weight: 600; }
+.logo { background: none; color: #14110d; box-shadow: none; }
+.hero-title { font-size: clamp(38px, 6vw, 64px); font-weight: 400; letter-spacing: -0.02em; line-height: 1.02; }
+.hero-title em { background: none; -webkit-text-fill-color: var(--rubric); color: var(--rubric); font-style: italic; }
+.chip { border: 0; border-bottom: 1px solid transparent; border-radius: 0; text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-family: var(--font-ui); }
+.chip[aria-pressed="true"] { background: none; color: var(--text); border-bottom-color: #14110d; }
+.card { border: 0; border-top: 1px solid var(--line-strong); background: transparent; padding-top: 0; }
+.card:hover { transform: none; box-shadow: none; }
+.card-thumb { border: 1px solid var(--line); }
+.card-title { font-size: 19px; font-weight: 600; line-height: 1.25; }
+.card-when { font-size: 14px; }
+.group-head { text-transform: uppercase; letter-spacing: 0.2em; font-size: 13px; font-weight: 600; border-bottom: 1px solid #14110d; padding-bottom: 10px; }
+.group-head::after { display: none; }

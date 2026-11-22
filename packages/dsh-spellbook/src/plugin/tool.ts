@@ -265,7 +265,7 @@ interface ToolDefinitionLike {
  */
 function renderLookup(value: LookupResult): Array<{ type: string; text: string }> {
   if (!value.found) {
-    return [{ type: 'text', text: value.hint || '咒语书里没有匹配的条目。' }]
+    return [{ type: 'text', text: value.hint || '「长这样」里没有匹配的条目。' }]
   }
 
   const head = [`命中 ${value.count} 条：`, ...value.items.map((line) => `- ${line}`)].join('\n')
@@ -293,7 +293,7 @@ export function registerSpellbookTool(ctx: Context, dist: string): void {
   const definition: ToolDefinitionLike = {
     name: 'spellbook_lookup',
     description:
-      '查「咒语书」里的前端效果，取回那一条的完整任务书（效果 / 机制 / 边界 / 参考实现）。' +
+      '查「长这样」里的前端效果，取回那一条的完整任务书（效果 / 机制 / 边界 / 参考实现）。' +
       '用户提到某条咒语（说 slug，如 neon-glow），或用一句话描述想要的前端效果' +
       '（「深色招牌上一行发光的字」「玻璃面板的模糊」）时，先调它把任务书取回来，再照着实现。' +
       '取回的是与具体项目无关的机制说明：落到什么栈（React / Vue / SwiftUI / shader）由你按对方项目决定，' +

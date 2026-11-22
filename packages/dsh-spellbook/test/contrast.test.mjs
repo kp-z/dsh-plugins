@@ -2,7 +2,7 @@
  * 两套主题的对比度 —— 用眼睛看不出来的问题，用算术看
  *
  * 为什么值得单开一份测试：
- *   亮色模式里，「选中筹码」曾经用的是夜本的 --gilt-bright（#b8933f），
+ *   亮色模式里，「选中筹码」曾经用的是暗版的 --gilt-bright（#b8933f），
  *   落在羊皮纸底色 #eee7da 上对比度只有 **2.34** —— 那几个「全书 / 材质 / 动效」
  *   在亮色下几乎看不见。这不是审美分歧，是一个能被算出来的事实：
  *   2.34 远低于 WCAG AA 的 4.5。
@@ -30,8 +30,9 @@ function tokensIn(selectorPattern) {
   return out
 }
 
-const dark = tokensIn(':root')
-const light = { ...dark, ...tokensIn(":root\\[data-theme='light'\\]") }
+// 默认主题（:root）是「新粗野」的亮版；暗版在 data-theme='dark' 下，只覆盖颜色。
+const light = tokensIn(':root')
+const dark = { ...light, ...tokensIn(":root\\[data-theme='dark'\\]") }
 
 function channels(color) {
   const hex = color.replace('#', '')
@@ -72,7 +73,7 @@ const MIN = 4.5
  * 这些线是**装饰性的**（条目之间本来还有大段留白隔着），WCAG 1.4.11 对纯装饰元素
  * 不设对比度要求，古书上的发丝线本来就该是「将将看得见」。
  * 所以这里的下限只守一件事：**它不能等于底色**。
- * 夜本的 --rule 实测 1.36，是刻意的淡，不是错误。
+ * 暗版的 --rule 实测 1.36，是刻意的淡，不是错误。
  */
 const MIN_RULE = 1.25
 
@@ -93,19 +94,19 @@ for (const [themeName, tokens] of [
   }
 }
 
-test('两套主题的底色确实不同（亮色不是暗色的别名）', () => {
+test('两套主题的底色确实不同（暗版不是亮版的别名）', () => {
   assert.notEqual(dark['--ground'], light['--ground'])
   assert.notEqual(dark['--text'], light['--text'])
 })
 
-test('亮色下「亮金」必须比「金」更深 —— 更跳的方向在羊皮纸上是往下走', () => {
+test('「更跳」的方向随底色反过来', () => {
   // 夜本里亮金更浅，昼本里亮金必须更深。搞反了就会出现 2.34 那种对比度。
   assert.ok(
     luminance(light['--gilt-bright']) < luminance(light['--gilt']),
-    `昼本的 --gilt-bright(${light['--gilt-bright']}) 应当比 --gilt(${light['--gilt']}) 深`,
+    `亮版的 --gilt-bright(${light['--gilt-bright']}) 应当比 --gilt(${light['--gilt']}) 深`,
   )
   assert.ok(
     luminance(dark['--gilt-bright']) > luminance(dark['--gilt']),
-    `夜本的 --gilt-bright(${dark['--gilt-bright']}) 应当比 --gilt(${dark['--gilt']}) 浅`,
+    `暗版的 --gilt-bright(${dark['--gilt-bright']}) 应当比 --gilt(${dark['--gilt']}) 浅`,
   )
 })

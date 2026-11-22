@@ -25,7 +25,6 @@ export function createGraphFeature(deps) {
         taskById: ctx.taskById,
         revealIds: ctx.revealIds,
         onOpenTask: ctx.onOpenTask,
-        onOrganize: ctx.onOrganizeGraph,
         onFocusTask: ctx.onFocusTask,
         onNodeMove: ctx.onNodeMove,
         onResetLayout: ctx.onResetLayout,

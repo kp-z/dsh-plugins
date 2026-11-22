@@ -130,7 +130,7 @@ test('章节名写错不能变成静默的 0 条 —— 那是假否定', async 
   assert.equal(typo.promptSlug, 'neon-glow')
   assert.match(typo.hint, /不是这本书的章节/)
   // 真实的章节名要一起交出去，模型下一轮才知道该写什么
-  assert.match(typo.hint, /材质 \/ 动效 \/ 排版 \/ 交互 \/ 布局 \/ 图形/)
+  assert.match(typo.hint, /材质 \/ 动效 \/ 排版 \/ 交互 \/ 布局 \/ 图形 \/ 组件 \/ 风格/)
 })
 
 test('章节名写对就真筛；那一章里没有也要给出全书候选', async () => {
@@ -249,7 +249,7 @@ test('手写的两份 JSON Schema 必须合法 —— 畸形会连累整个会�
   //
   // tool.ts 里那两份 schema 是手写的（没用 defineTool 的投影），而它们会被原样
   // 送进模型的工具清单。一份畸形的 parameters 不是「这条工具不好用」，
-  // 而是可能让整次请求的工具声明被 API 拒掉 —— 那时坏的就不只是咒语书了。
+  // 而是可能让整次请求的工具声明被 API 拒掉 —— 那时坏的就不只是这本书了。
   // 所以用真的 JSON Schema 校验器过一遍，不靠肉眼看。
   const Ajv = (await import('ajv')).default
   const ajv = new Ajv({ allErrors: true, strict: false })

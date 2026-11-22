@@ -127,6 +127,6 @@ test('slug 跨条目重复会被指出', () => {
 })
 
 test('枚举值与文档一致', () => {
-  assert.deepEqual(CATEGORIES, ['材质', '动效', '排版', '交互', '布局', '图形'])
+  assert.deepEqual(CATEGORIES, ['材质', '动效', '排版', '交互', '布局', '图形', '组件', '风格'])
   assert.deepEqual(STAGES, ['plain', 'photo', 'grid', 'dark'])
 })

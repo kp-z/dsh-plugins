@@ -7,7 +7,10 @@
  *
  * props：
  *   open, groups（新→旧）, visible, status, failed
- *   scopeLabel(batch)    组标题里的范围文案
+ *   scopes               @ 可选的分类 [{ id, label }]（看板上的自定义目录 / 未分类）
+ *   mention              当前范围 { kind:'group'|'project', id }；null = 全部任务
+ *   mentionLabel        范围胶囊上显示的名字
+ *   onMention(next)     选分类（null = 不限范围）
  *   onLoadMore() onAcceptGroup(batchId, ids) onRejectGroup(batchId, ids) onUndoGroup(batchId, ids)
  *   onRetrySync(item) onRerun() onClose() onToggleDock() docked
  */
@@ -27,6 +30,8 @@ const ICON_PATHS = {
   sync: ['M20 12a8 8 0 1 1-2.3-5.7', 'M20 4v5h-5'],
   /* 底部对话框的模式按钮（对齐 cove 的 agent 输入框图标语义） */
   target: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'],
+  /* @ 菜单里的项目图标（文件夹）；「全部任务」沿用 sparkles。 */
+  folder: ['M3.5 7a2 2 0 0 1 2-2h4.2l2 2h8.3a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2z'],
   link: ['M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1', 'M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1'],
   send: ['M4 12l16-8-6 8 6 8z'],
 }
@@ -108,6 +113,15 @@ export function createOrganizeDrawer(deps) {
     const composerInputRef = useRef ? useRef(null) : { current: null }
     const modeMenuRef = useRef ? useRef(null) : { current: null }
     const [expanded, setExpanded] = useState({})
+    /* 范围：底部输入里打 @ 选分类；不选 = 全部任务。选择只走 onMention，抽屉不自己存范围。 */
+    const scopes = Array.isArray(p.scopes) ? p.scopes : []
+    const mention = p.mention && typeof p.mention === 'object' ? p.mention : null
+    const mentionId = model.str(mention && mention.id)
+    const mentionLabel = mentionId ? (model.str(p.mentionLabel) || mentionId) : ''
+    const [mentionOpen, setMentionOpen] = useState(false)
+    const [mentionQuery, setMentionQuery] = useState('')
+    const [mentionIndex, setMentionIndex] = useState(0)
+    const mentionMenuRef = useRef ? useRef(null) : { current: null }
     /* 「当前组」= 用户正在看/展开的那一组（默认最新）。接受以上只作用于它。 */
     const latestId = model.str(latest && latest.batchId)
     const [activeId, setActiveId] = useState(latestId)
@@ -334,6 +348,88 @@ export function createOrganizeDrawer(deps) {
     const activeMode = COMPOSER_MODES.find((row) => row.id === composerMode) || COMPOSER_MODES[0]
     const composerPlaceholder = generating ? '生成中…' : '修改建议…'
 
+    /* @ 菜单：空查询时「全部任务」排第一（选它 = 清除范围）；有关键词就只在分类里找。 */
+    const mentionRowsOf = (query) => {
+      const needle = model.str(query).toLowerCase()
+      if (!needle) return [{ id: '', label: '全部任务' }].concat(scopes)
+      return scopes.filter((row) => model.str(row && row.id).toLowerCase().indexOf(needle) >= 0
+        || model.collapse(row && row.label).toLowerCase().indexOf(needle) >= 0)
+    }
+    const mentionRows = mentionRowsOf(mentionQuery)
+
+    /* 关闭菜单 = 放弃这次 @：输入框里残留的「@关键词」只是触发器，不能跟着要求发给模型。 */
+    const closeMentionMenu = () => {
+      setMentionOpen(false)
+      setMentionQuery('')
+      setMentionIndex(0)
+      setHintText((prev) => model.str(prev).replace(/@[^\s@]*$/u, ''))
+    }
+
+    /* 选中的行 → 范围：有 id = 按这个分类出建议；「全部任务」= 清除范围。 */
+    const pickMention = (row) => {
+      if (running) return
+      const id = model.str(row && row.id)
+      if (typeof p.onMention === 'function') p.onMention(id ? { kind: 'group', id } : null)
+      closeMentionMenu()
+      const node = composerInputRef && composerInputRef.current
+      if (node && typeof node.focus === 'function') node.focus()
+    }
+
+    /* 输入末尾的「@关键词」= 打开分类菜单；后面出现空格/换行就不再算触发。 */
+    const changeHint = (event) => {
+      const value = model.str(event && event.currentTarget && event.currentTarget.value)
+      setHintText(value)
+      const trailing = /@([^\s@]*)$/u.exec(value)
+      if (trailing && !running) {
+        setMentionOpen(true)
+        setMentionQuery(trailing[1])
+        /* 默认高亮当前分类：打 @ 再回车是「重新选」，不该把范围清成全部。 */
+        const hit = mentionRowsOf(trailing[1]).findIndex((row) => model.str(row && row.id) === mentionId)
+        setMentionIndex(hit > 0 ? hit : 0)
+      } else if (mentionOpen) {
+        setMentionOpen(false)
+        setMentionQuery('')
+        setMentionIndex(0)
+      }
+    }
+
+    /* ↑↓ 移动、Enter/Tab 选中、Esc 放弃；菜单开着时 Enter 不能提交这一轮要求。 */
+    const keyHint = (event) => {
+      const key = model.str(event && event.key)
+      if (mentionOpen) {
+        const last = mentionRows.length - 1
+        if (key === 'ArrowDown' || key === 'ArrowUp') {
+          if (event && event.preventDefault) event.preventDefault()
+          setMentionIndex((prev) => Math.max(0, Math.min(last, prev + (key === 'ArrowDown' ? 1 : -1))))
+          return
+        }
+        if (key === 'Enter' || key === 'Tab') {
+          const row = mentionRows[Math.max(0, Math.min(last, mentionIndex))]
+          if (row) {
+            if (event && event.preventDefault) event.preventDefault()
+            pickMention(row)
+            return
+          }
+          /* 没有匹配项时 Enter 只关菜单，不要把「@关键词」当这一轮要求发出去。 */
+          if (key === 'Enter') {
+            if (event && event.preventDefault) event.preventDefault()
+            closeMentionMenu()
+            return
+          }
+        }
+        if (key === 'Escape') {
+          if (event && event.preventDefault) event.preventDefault()
+          closeMentionMenu()
+          return
+        }
+      }
+      /* Enter 发送、Shift+Enter 换行（cove 的 composer 同一手势）。 */
+      if (key === 'Enter' && !(event && event.shiftKey)) {
+        if (event && event.preventDefault) event.preventDefault()
+        submitHint()
+      }
+    }
+
     /*
      * 提交 = 「生成建议」。
      *
@@ -345,7 +441,9 @@ export function createOrganizeDrawer(deps) {
      */
     const submitHint = () => {
       if (running) return
-      const text = model.str(hintText).trim()
+      /* 菜单开着时末尾的「@关键词」只是选项目的触发器，不能混进这一轮要求。 */
+      const raw = mentionOpen ? model.str(hintText).replace(/@[^\s@]*$/u, '') : model.str(hintText)
+      const text = raw.trim()
       if (typeof p.onHintSubmit === 'function') {
         p.onHintSubmit(text, activeMode.id)
         if (text) setHintText('')
@@ -367,14 +465,25 @@ export function createOrganizeDrawer(deps) {
       return () => document.removeEventListener('pointerdown', onDocDown)
     }, [modeMenuOpen])
 
+    /* 点空白处收起 @ 菜单（与模式菜单同一口径）：关掉时顺手清掉输入框里残留的触发词。 */
+    useEffect(() => {
+      if (!mentionOpen) return undefined
+      if (typeof document === 'undefined' || !document.addEventListener) return undefined
+      const onDocDown = (event) => {
+        const target = event && event.target
+        const inMenu = mentionMenuRef.current && target && mentionMenuRef.current.contains(target)
+        if (!inMenu) closeMentionMenu()
+      }
+      document.addEventListener('pointerdown', onDocDown)
+      return () => document.removeEventListener('pointerdown', onDocDown)
+    }, [mentionOpen])
+
     const shown = groups.slice(0, visible).reverse()
+
     const more = groups.length - visible
     const latestBatch = latest || {}
     const latestDropped = latestItems.filter((item) => item.status === 'dropped')
     const droppedOpen = p.droppedOpen === true
-    /** 底栏永远跟着「当前组」：用户展开哪一组，接受以上就作用于哪一组。 */
-    const activeBatch = groups.find((batch) => model.str(batch && batch.batchId) === (activeId || latestId)) || latest
-    const latestScope = typeof p.scopeLabel === 'function' && activeBatch ? p.scopeLabel(activeBatch) : ''
 
     return h('aside', { id: 'fo-suggest-panel', className: 'fo-organize', 'aria-label': '整理建议', 'aria-busy': running ? 'true' : 'false' },
       h('div', {
@@ -384,9 +493,9 @@ export function createOrganizeDrawer(deps) {
         onPointerDown: beginResize,
       }),
       h('div', { className: 'fo-org-head' },
+        /* 范围不在标题上显示：底部输入里的 @项目 才是范围的唯一表达。 */
         h('div', { className: 'fo-org-head-main' },
           h('span', { className: 'fo-org-title' }, '建议'),
-          h('span', { className: 'fo-org-counts' }, latestScope),
         ),
         h('div', { className: 'fo-org-head-actions' },
           iconBtn('dock', 'dock',
@@ -457,6 +566,21 @@ export function createOrganizeDrawer(deps) {
             submitHint()
           },
         },
+          /* 选中的 @分类 = 这一轮的范围；不选 = 全部任务。范围只在这里表达，不再写在标题上。 */
+          mentionId
+            ? h('div', { className: 'fo-org-composer-scope' },
+              h('span', { className: 'fo-org-composer-scope-tag', title: `本轮建议的范围：${mentionLabel}` },
+                h('span', { className: 'fo-org-composer-scope-at', 'aria-hidden': 'true' }, '@'),
+                h('span', { className: 'fo-org-composer-scope-name' }, model.collapse(mentionLabel)),
+              ),
+              h('button', {
+                type: 'button', className: 'fo-org-composer-scope-clear', 'data-action': 'composer-scope-clear',
+                title: '不限范围（建议全部任务）', 'aria-label': '不限范围（建议全部任务）',
+                disabled: running,
+                onClick: () => pickMention(null),
+              }, icon('close')),
+            )
+            : null,
           h('div', { className: 'fo-org-composer-row' },
             /* 模式按钮 + 菜单（acc 色表达当前关注点，照 cove 的 Normal/Code/Markdown）。
                底部只留两个按钮：模式 + 发送；高度靠拖拽输入框下缘调整（CSS resize）。 */
@@ -489,23 +613,43 @@ export function createOrganizeDrawer(deps) {
                   row.id === activeMode.id ? h('span', { className: 'fo-org-composer-menu-dot', 'aria-hidden': 'true' }) : null,
                 ))) : null,
             ),
-            h('textarea', {
-              className: 'fo-org-composer-input',
-              ref: composerInputRef,
-              rows: 1,
-              value: hintText,
-              placeholder: composerPlaceholder,
-              'aria-label': '修改建议',
-              disabled: running,
-              onChange: (event) => setHintText(model.str(event.currentTarget.value)),
-              onKeyDown: (event) => {
-                /* Enter 发送、Shift+Enter 换行（cove 的 composer 同一手势）。 */
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  submitHint()
-                }
-              },
-            }),
+            /* 输入框 + 打 @ 弹出的项目菜单（菜单挂在输入框上方，宽度跟随输入框）。 */
+            h('div', { className: 'fo-org-composer-field', ref: mentionMenuRef },
+              mentionOpen
+                ? h('div', { className: 'fo-org-composer-menu fo-org-mention-menu', role: 'listbox', 'aria-label': '选择分类' },
+                  mentionRows.length
+                    ? mentionRows.map((row, i) => h('button', {
+                      key: 'mention-' + (model.str(row.id) || 'all'),
+                      type: 'button',
+                      role: 'option',
+                      'aria-selected': i === mentionIndex ? 'true' : 'false',
+                      className: 'fo-org-composer-menu-item',
+                      'data-active': i === mentionIndex ? '1' : '0',
+                      'data-action': 'composer-mention-' + (model.str(row.id) || 'all'),
+                      onMouseEnter: () => setMentionIndex(i),
+                      onClick: () => pickMention(row),
+                    },
+                      h('span', { className: 'fo-org-composer-menu-icon' }, icon(model.str(row.id) ? 'folder' : 'sparkles')),
+                      h('span', { className: 'fo-org-composer-menu-label' }, model.collapse(row.label)),
+                      model.str(row.id) && model.str(row.id) === mentionId
+                        ? h('span', { className: 'fo-org-composer-menu-dot', 'aria-hidden': 'true' })
+                        : null,
+                    ))
+                    : h('div', { className: 'fo-org-composer-menu-empty' }, '没有匹配的分类'),
+                )
+                : null,
+              h('textarea', {
+                className: 'fo-org-composer-input',
+                ref: composerInputRef,
+                rows: 1,
+                value: hintText,
+                placeholder: composerPlaceholder,
+                'aria-label': '修改建议（输入 @ 可选分类范围）',
+                disabled: running,
+                onChange: changeHint,
+                onKeyDown: keyHint,
+              }),
+            ),
             /* 这是本栏唯一的「生成建议」入口：空着点也会按当前关注点重新生成一组。 */
             h('button', {
               type: 'submit',

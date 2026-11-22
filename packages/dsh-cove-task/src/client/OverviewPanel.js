@@ -387,18 +387,18 @@ export function createOverviewPanel(deps) {
        因为「跑」是异步的，分开的 setState 会出现抽屉和 batch 短暂对不上的中间态。 */
     const [org, setOrg] = useState(() => {
       const saved = readStore(store, 'organize')
-      /* 范围跟着抽屉走：打开时记住当前页面的范围，刷新/回前台也按同一个范围取，
-         否则「按项目生成的建议」会被下一次 all 范围轮询整组替换掉。 */
-      const savedScope = model.isObj(saved) && model.isObj(saved.scope)
-        ? model.normScope(saved.scope)
-        : model.normScope(scope)
+      /* 范围只由底部输入里的 @分类 决定：没选 = 全部任务。
+         看板页看的是哪个范围，打开时自动 @ 它（分类 / 项目）；运行 / 洞察页看全局，默认全部任务。 */
+      const pageScope = model.normScope(scope)
       return {
         open: model.isObj(saved) ? saved.open === true : false,
         batchId: model.isObj(saved) ? model.str(saved.batchId) : '',
         batch: null,
         groups: [],
         visible: 1,
-        scope: savedScope,
+        mention: activeFeatureId === 'graph' && pageScope.kind !== 'all'
+          ? { kind: pageScope.kind, id: pageScope.id }
+          : null,
         status: 'idle',
         /* running 的细分：organize=正在生成建议；accept=正在接受/拒绝/撤销。 */
         phase: '',
@@ -407,6 +407,14 @@ export function createOverviewPanel(deps) {
         droppedOpen: false,
       }
     })
+    /** @ 里的分类 / 项目 = 建议范围；没选 = 全部任务。批次读写、生成、轮询都按这个范围走。 */
+    const scopeOfMention = useCallback((mention) => {
+      const m = mention && typeof mention === 'object' ? mention : null
+      const kind = m && (m.kind === 'group' || m.kind === 'project') ? m.kind : ''
+      const id = model.str(m && m.id)
+      return kind && id ? { kind, id, members: [] } : { kind: 'all', id: '', members: [] }
+    }, [])
+    const mentionScope = useMemo(() => scopeOfMention(org.mention), [scopeOfMention, org.mention])
     const [keyword, setKeyword] = useState(() => model.str(readStore(store, 'keyword')))
     /* 全局搜索：cove 的做法是先一个 42px 图标按钮，点开才是输入框（⌘K 直接展开并聚焦） */
     const searchRef = useRef(null)
@@ -520,12 +528,8 @@ export function createOverviewPanel(deps) {
     useEffect(() => { writeStore(store, 'rail', railOpen) }, [railOpen])
     useEffect(() => { writeStore(store, 'nodePos', nodePos) }, [nodePos])
     useEffect(() => {
-      writeStore(store, 'organize', {
-        open: org.open,
-        batchId: org.batchId,
-        scope: { kind: org.scope.kind, id: org.scope.id },
-      })
-    }, [org.open, org.batchId, org.scope])
+      writeStore(store, 'organize', { open: org.open, batchId: org.batchId })
+    }, [org.open, org.batchId])
 
     /* ⌘K / Ctrl+K：聚焦全局搜索（Search 是 Header 的固定入口，快捷键只是加速） */
     useEffect(() => {
@@ -876,8 +880,9 @@ export function createOverviewPanel(deps) {
       ].join('|')
     }).join('||')
 
-    /* 把最近一批/历史组写回抽屉状态（挂载、轮询、回前台共用）。 */
-    const applyOrganizeView = useCallback((res) => {
+    /* 把最近一批/历史组写回抽屉状态（挂载、轮询、回前台共用）。
+       scopeArg 是这次读取用的范围：输入里的 @项目 已经换掉时，旧回包不能顶上来。 */
+    const applyOrganizeView = useCallback((res, scopeArg) => {
       /* 兼容旧宿主/测试桩：直接返回 batch 对象时当成 { batch }。 */
       const batch = res && res.batch ? res.batch : (res && (res.batchId || Array.isArray(res.items)) ? res : null)
       const batches = asArray(res && res.batches)
@@ -885,9 +890,12 @@ export function createOverviewPanel(deps) {
       const groups = batches.length ? batches : (batch ? [batch] : [])
       const newestId = model.str((groups[0] && groups[0].batchId) || (batch && batch.batchId))
       const fingerprint = organizeGroupsFingerprint(groups)
+      const wantKey = scopeArg ? model.scopeKey(scopeArg) : ''
       setOrg((prev) => {
         /* 本地正在跑时不要被上一次查询的旧结果覆盖。 */
         if (prev.status === 'running') return prev
+        /* 过期回包：范围已经换了（用户改了 @项目），按旧范围读回的批次不能覆盖屏幕。 */
+        if (wantKey && wantKey !== model.scopeKey(scopeOfMention(prev.mention))) return prev
         const prevNewest = model.str((prev.groups && prev.groups[0] && prev.groups[0].batchId) || prev.batchId)
         const sameNewest = newestId === prevNewest
         if (sameNewest && organizeGroupsFingerprint(prev.groups) === fingerprint) return prev
@@ -901,33 +909,34 @@ export function createOverviewPanel(deps) {
           status: 'ready', phase: '',
         }
       })
-    }, [])
+    }, [scopeOfMention])
 
+    /* 读某范围最近一批建议。范围永远由调用方明确给出（= 输入里的 @项目），不读页面范围。 */
     const refreshOrganizeView = useCallback((scopeArg) => {
       const fn = apiRef.current.organizeView
       if (!fn) return Promise.resolve(null)
-      const scopeToRead = model.normScope(scopeArg || org.scope)
+      const scopeToRead = model.normScope(scopeArg)
       return Promise.resolve()
         .then(() => fn({ kind: scopeToRead.kind, id: scopeToRead.id }))
-        .then((res) => { if (alive.current) applyOrganizeView(res); return res })
+        .then((res) => { if (alive.current) applyOrganizeView(res, scopeToRead); return res })
         .catch(() => null)
-    }, [applyOrganizeView, org.scope])
+    }, [applyOrganizeView])
 
-    /* 首次挂载 / 切换范围：把该范围最近一批建议取回来（没有就是 null）。
-       范围跟着抽屉走；项目/目录的建议不会再被 all 范围的轮询覆盖。 */
-    useEffect(() => { refreshOrganizeView(org.scope) }, [refreshOrganizeView, org.scope])
+    /* 首次挂载 / 换 @项目：把该范围最近一批建议取回来（没有就是 null）。
+       项目批次不会被 all 范围的轮询覆盖：轮询也用同一个范围。 */
+    useEffect(() => { refreshOrganizeView(mentionScope) }, [refreshOrganizeView, mentionScope])
 
     /* 面板打开时轮询 + 回前台补拉：在别的页面等生成结果，切回来也能看到新组。 */
     useEffect(() => {
       if (org.open !== true) return undefined
-      const timer = setInterval(() => { refreshOrganizeView() }, 4000)
-      const onVisible = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') refreshOrganizeView() }
+      const timer = setInterval(() => { refreshOrganizeView(mentionScope) }, 4000)
+      const onVisible = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') refreshOrganizeView(mentionScope) }
       if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
       return () => {
         clearInterval(timer)
         if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
       }
-    }, [org.open, refreshOrganizeView])
+    }, [org.open, refreshOrganizeView, mentionScope])
 
     /* 建议栏：默认「自动」（宽屏固定成列、窄面板变浮层），用户可以手动钉成固定或浮层。
        值落 store 键 organizeDock：'1' 固定 / '0' 浮层 / 未设置 = 自动。 */
@@ -983,18 +992,47 @@ export function createOverviewPanel(deps) {
       if (detailId) setRightTab('detail')
     }, [detailId])
 
-    /** 组标题里的范围文案：全部 / 项目名 / 目录名。 */
-    const scopeLabelOf = useCallback((batch) => {
-      const s = (batch && batch.scope) || {}
-      if (!s.kind || s.kind === 'all') return '全部任务'
-      const id = model.str(s.id)
-      if (s.kind === 'project') {
-        const hit = asArray(data && data.workspaces).find((row) => model.str(row && row.key) === id)
-        return '项目 · ' + (model.str(hit && (hit.title || hit.label)) || id)
+    /* @ 的可选范围 = 看板上的那几个分类（自定义目录 / 未分类），与看板卡片一一对应。 */
+    const organizeScopes = useMemo(() => model.groupByCustom(groups, tasks, workspaces).map((lane) => ({
+      id: lane.ungrouped === true ? model.UNGROUPED_KEY : model.str(lane.id),
+      label: model.str(lane.label) || (lane.ungrouped === true ? model.UNGROUPED_LABEL : model.str(lane.id)),
+    })).filter((row) => row.id), [groups, tasks, workspaces])
+
+    /* 范围胶囊上的名字：项目用工作区标题，分类用目录名；数据没到时先显示 id。 */
+    const mentionLabel = useMemo(() => {
+      const m = org.mention
+      if (!m) return ''
+      if (m.kind === 'project') {
+        const hit = workspaces.find((row) => model.str(row && (row.key || row.id)) === m.id)
+        const path = model.str(hit && hit.path).replace(/\/+$/u, '').split('/').pop() || ''
+        return model.str(hit && (hit.title || hit.label)) || path || m.id
       }
-      const group = asArray(groups).find((row) => model.str(row && row.id) === id)
-      return '目录 · ' + (model.str(group && (group.name || group.title)) || (id === model.UNGROUPED_KEY ? '未分类' : id))
-    }, [data, groups])
+      const hit = organizeScopes.find((row) => row.id === m.id)
+      return hit ? hit.label : (m.id === model.UNGROUPED_KEY ? model.UNGROUPED_LABEL : m.id)
+    }, [org.mention, workspaces, organizeScopes])
+
+    /* @ 范围：换了就清掉旧批次，再按新范围读回最近一批（见上面的 effect）。 */
+    const setMention = useCallback((next) => {
+      const m = next && typeof next === 'object' && model.str(next.id)
+        ? { kind: next.kind === 'project' ? 'project' : 'group', id: model.str(next.id) }
+        : null
+      setOrg((prev) => {
+        const keyOf = (value) => (value ? value.kind + ':' + value.id : 'all')
+        if (keyOf(prev.mention) === keyOf(m)) return prev
+        return {
+          ...prev,
+          mention: m,
+          groups: [],
+          batch: null,
+          batchId: '',
+          visible: 1,
+          status: 'idle',
+          phase: '',
+          error: '',
+          failed: {},
+        }
+      })
+    }, [])
 
     const loadMoreGroups = useCallback(() => {
       setOrg((prev) => ({ ...prev, visible: Math.max(1, Number(prev.visible) || 1) + 3 }))
@@ -1002,25 +1040,6 @@ export function createOverviewPanel(deps) {
 
     const toggleDropped = useCallback(() => {
       setOrg((prev) => ({ ...prev, droppedOpen: prev.droppedOpen !== true }))
-    }, [])
-
-    /**
-     * 打开建议栏：只负责「打开」。上次那批建议由挂载时的那次 organizeView 取回（见上面的 effect），
-     * 入口点击不再等于「跑一次几十秒的分析」——要重算按侧栏顶部的「重新分析」。
-     */
-    const openOrganize = useCallback(() => {
-      setRightTab('suggest')
-      setOrg((prev) => ({ ...prev, open: true }))
-      return Promise.resolve(org.batch || null)
-    }, [org.batch])
-
-    /** 一张图 → 整理范围：project 用项目 key；分组/未分类用 group id。 */
-    const scopeOfGraph = useCallback((graph) => {
-      const g = graph && typeof graph === 'object' ? graph : {}
-      const id = model.str(g.scopeId || g.key)
-      if (!id) return { kind: 'all', id: '' }
-      if (g.kind === 'project') return { kind: 'project', id }
-      return { kind: 'group', id: g.kind === 'ungrouped' ? model.UNGROUPED_KEY : id }
     }, [])
 
     /** 跑一次分析：零副作用，只出建议；失败给 role=alert 的错误条（重试按钮再跑一次）。 */
@@ -1033,12 +1052,13 @@ export function createOverviewPanel(deps) {
       /* 关注点只认这三个值，和 service 端的白名单一致。 */
       const focus = ['all', 'relation', 'okr'].includes(modeArg) ? modeArg : 'all'
       setRightTab('suggest')
-      /* 生成和读取必须是同一个范围：否则项目批次的 batchId 不在 all 的 batches 里，
-         下一次轮询会把刚生成的那一组整组替换掉。 */
-      const scopeToRun = model.normScope((scopeArg && typeof scopeArg === 'object' ? scopeArg : null) || org.scope)
+      /* 生成和读取必须是同一个范围（= 底部输入里的 @项目）；调用方直接交当前范围进来。
+         否则项目批次的 batchId 不在 all 的 batches 里，下一次轮询会把刚生成的那组整组替换掉。 */
+      const scopeToRun = model.normScope(scopeArg)
+      const mentionToRun = scopeToRun.kind === 'all' ? null : { kind: scopeToRun.kind, id: scopeToRun.id }
       /* 点「建议」就**立刻**把右侧建议栏打开（分析可能要几十秒 —— 先给用户一个在跑的侧栏，
          而不是让按钮干转、什么也没发生）。 */
-      setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun, hint: hintText, hintMode: focus, status: 'running', phase: 'organize', error: '', failed: {} }))
+      setOrg((prev) => ({ ...prev, open: true, mention: mentionToRun, hint: hintText, hintMode: focus, status: 'running', phase: 'organize', error: '', failed: {} }))
       return Promise.resolve()
         .then(() => fn(scopeToRun, hintText, focus))
         .then((res) => {
@@ -1052,7 +1072,7 @@ export function createOverviewPanel(deps) {
             return {
               ...prev,
               open: true,
-              scope: batchScope,
+              mention: batchScope.kind === 'all' ? null : { kind: batchScope.kind, id: batchScope.id },
               batch,
               groups: batch ? [batch, ...previous] : previous,
               visible: 1,
@@ -1070,16 +1090,7 @@ export function createOverviewPanel(deps) {
           if (alive.current) setOrg((prev) => ({ ...prev, status: 'error', error: message }))
           return null
         })
-    }, [org.scope])
-
-    /** 画布图头的「建议」：唯一入口，打开右侧建议栏并记住这张图的范围。 */
-    const organizeGraph = useCallback((graph) => {
-      const scopeToRun = scopeOfGraph(graph)
-      /* 只负责「打开右侧建议面板」，不在入口上直接跑分析（生成新的建议在面板里点）。 */
-      setRightTab('suggest')
-      setOrg((prev) => ({ ...prev, open: true, scope: scopeToRun }))
-      return Promise.resolve(null)
-    }, [scopeOfGraph])
+    }, [])
 
     /**
      * 手动连边 / 断开：走宿主的 /api/overview/relations（与建议接受同一条落库路径）。
@@ -1389,9 +1400,6 @@ export function createOverviewPanel(deps) {
       onFocusTask: focusTask,
       onTaskStatus: changeTaskStatus,
       onTaskUpdated: () => load(true),
-      /* 画布卡片上的「整理」：按这张图的项目/目录范围跑 AI 关系建议，并打开右侧建议栏。
-         宿主没有 organize 接口就置空，卡片不渲染这个按钮。 */
-      onOrganizeGraph: apiRef.current.organize ? organizeGraph : null,
       onNodeMove: moveNode,
       onResetLayout: resetLayout,
       onBlur: blurCanvas,
@@ -1402,14 +1410,6 @@ export function createOverviewPanel(deps) {
         return acc
       }, {}),
       revealIds,
-      organize: {
-        available: typeof apiRef.current.organize === 'function',
-        running: org.status === 'running',
-        open: org.open,
-        pending: Number(org.batch && org.batch.pending) || 0,
-        onRun: runOrganize,
-        onToggle: toggleOrganize,
-      },
       /* 仪表盘页（洞察 / 运行）看的是**全局**：不受当前范围、也不受搜索词影响，
          所以要传未过滤的 tasks（复核 R1：传 visibleTasks 会让搜索时 ghosts 虚高、KPI 总数缩水）。 */
       tasks,
@@ -1482,9 +1482,9 @@ export function createOverviewPanel(deps) {
             /* 品牌标（cove）：这个方块本身仍是「收起 / 展开 rail」的按钮 */
             coveMark(h, 22),
           ),
-          h('span', { className: 'fo-brand-text' },
+          /* cove 的品牌区是「logo + 一行名字」：副标题不再占第二行，降级成 title 提示 */
+          h('span', { className: 'fo-brand-text', title: model.str(options.subtitle) || 'DeepSeek Harness' },
             h('span', { className: 'fo-brand-title' }, model.str(options.title) || '海湾'),
-            h('span', { className: 'fo-brand-sub' }, model.str(options.subtitle) || 'DeepSeek Harness'),
           ),
         ),
         /* 功能导航 = 两级菜单：一级项是功能（数量 = 注册表长度），可展开的项下面是它的二级菜单
@@ -1671,15 +1671,19 @@ export function createOverviewPanel(deps) {
                   title: org.open ? '收起建议面板' : '打开建议面板（在这里生成/查看建议）',
                   onClick: () => {
                     if (org.open) return toggleOrganize()
-                    const nextScope = model.normScope(scope)
-                    const same = model.scopeKey(org.scope) === model.scopeKey(nextScope)
+                    /* 打开面板 = 定范围：看板页看的是分类 / 项目就自动 @ 它；其它页面不带 @（= 全部任务）。 */
+                    const pageScope = model.normScope(scope)
+                    const nextMention = activeFeatureId === 'graph' && pageScope.kind !== 'all'
+                      ? { kind: pageScope.kind, id: pageScope.id }
+                      : null
+                    const same = model.scopeKey(mentionScope) === model.scopeKey(scopeOfMention(nextMention))
                     setRightTab('suggest')
                     setOrg((prev) => (same
                       ? { ...prev, open: true }
                       : {
                         ...prev,
                         open: true,
-                        scope: nextScope,
+                        mention: nextMention,
                         groups: [],
                         batch: null,
                         batchId: '',
@@ -1689,7 +1693,7 @@ export function createOverviewPanel(deps) {
                         error: '',
                         failed: {},
                       }))
-                    if (!same) refreshOrganizeView(nextScope)
+                    if (!same) refreshOrganizeView(scopeOfMention(nextMention))
                     return null
                   },
                 },
@@ -1726,7 +1730,7 @@ export function createOverviewPanel(deps) {
           org.error && !org.open
             ? h('div', { className: 'fo-banner', role: 'alert' },
               h('span', null, org.error),
-              h('button', { type: 'button', className: 'fo-btn', 'data-size': 'sm', onClick: () => runOrganize() }, '重试'),
+              h('button', { type: 'button', className: 'fo-btn', 'data-size': 'sm', onClick: () => runOrganize(mentionScope) }, '重试'),
               h('button', { type: 'button', className: 'fo-btn', 'data-size': 'sm', 'data-variant': 'ghost', onClick: () => setOrg((prev) => ({ ...prev, error: '' })) }, '知道了'),
             )
             : null,
@@ -1780,7 +1784,6 @@ export function createOverviewPanel(deps) {
                 error: org.error,
                 failed: org.failed,
                 droppedOpen: org.droppedOpen,
-                scopeLabel: scopeLabelOf,
                 onLoadMore: loadMoreGroups,
                 onAcceptGroup: acceptOrganize,
                 onRejectGroup: rejectOrganize,
@@ -1794,9 +1797,14 @@ export function createOverviewPanel(deps) {
                 width: organizeWidth,
                 onResize: resizeOrganize,
                 onToggleDock: toggleOrganizeDock,
-                onRerun: () => runOrganize(org.scope),
-                /* 底部对话框：带上这一句只重跑当前这一组（同一个 scope = 同一条 cove 会话）。 */
-                onHintSubmit: (text, mode) => { void runOrganize(org.scope, text, mode) },
+                /* 范围 = 底部输入里的 @分类：列出看板上的分类，没选就是全部任务。 */
+                scopes: organizeScopes,
+                mention: org.mention,
+                mentionLabel,
+                onMention: setMention,
+                onRerun: () => runOrganize(mentionScope),
+                /* 底部对话框：带上这一句只重跑当前这一组（同一个范围 = 同一条 cove 会话）。 */
+                onHintSubmit: (text, mode) => { void runOrganize(mentionScope, text, mode) },
               })
               : null,
           )

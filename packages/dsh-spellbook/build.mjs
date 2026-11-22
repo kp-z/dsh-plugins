@@ -18,13 +18,11 @@ import { validateAll, CATEGORIES } from './shared/schema.mjs'
 import { openVault, defaultVaultPaths } from './shared/vault.mjs'
 import { buildDemoDocument } from './src/render/demo.mjs'
 import { renderIndex, renderSpell, chaptersOf } from './src/render/pages.mjs'
+import { SKINS, previewPage, galleryPage } from './src/render/skins.mjs'
 import { stripMechanismMarkers } from './src/render/text.mjs'
 import { buildPrompt } from './shared/prompt.mjs'
-import { widestNumeral, numeralColumnRem, numeralFontRem } from './shared/numeral.mjs'
 
 /* 目录行的编号字号 0.85rem = 13.6px；页边注那栏是 --rail-w。改 CSS 要同步改这里。 */
-const NUMERAL_ROW_PX = 13.6
-const RAIL_W = 176
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const CONTENT_DIR = path.join(ROOT, 'content', 'effects')
@@ -199,6 +197,8 @@ function searchIndex(entries) {
 
 async function copyAssets(dest) {
   await cp(path.join(SRC, 'styles'), path.join(dest, 'styles'), { recursive: true })
+  // 样张的皮肤：与站点同一份结构，只叠令牌与少量结构性规则
+  await cp(path.join(SRC, 'styles', 'skins'), path.join(dest, 'skins'), { recursive: true })
   await cp(path.join(SRC, 'site.js'), path.join(dest, 'site.js'))
   // 浏览器侧要用同一份「参数 → CSS 值」规则
   await cp(path.join(ROOT, 'shared', 'param.mjs'), path.join(dest, 'param.mjs'))
@@ -208,15 +208,6 @@ async function copyAssets(dest) {
   const fonts = path.join(SRC, 'fonts')
   if (existsSync(fonts)) {
     await cp(fonts, path.join(dest, 'fonts'), { recursive: true })
-  }
-  // 画框素材（第三方，改色后使用；来源与许可见 frames/README.md）
-  const frames = path.join(SRC, 'frames')
-  if (existsSync(frames)) {
-    await mkdir(path.join(dest, 'frames'), { recursive: true })
-    for (const name of await readdir(frames)) {
-      if (!name.endsWith('.png')) continue
-      await cp(path.join(frames, name), path.join(dest, 'frames', name))
-    }
   }
 }
 
@@ -272,14 +263,21 @@ async function build() {
     process.exit(1)
   }
 
-  const widest = widestNumeral(total, NUMERAL_ROW_PX, 0.1)
   const plain = sorted.map((item) => item.entry)
-  const chapterMap = new Map(chaptersOf(plain).map((chapter) => [chapter.category, chapter.index]))
+  const chapterMap = new Map(chaptersOf(plain).map((chapter, index) => [chapter.category, index + 1]))
 
   await rm(STAGE, { recursive: true, force: true })
   await mkdir(path.join(STAGE, 'spell'), { recursive: true })
 
   await writeFile(path.join(STAGE, 'index.html'), renderIndex(plain), 'utf8')
+
+  /* 风格样张：十种视觉方向，同一套结构与内容，只换一层皮。
+     放在 skins/ 下，各自是一页独立的静态文档，总览页用 iframe 并排摊开。 */
+  await mkdir(path.join(STAGE, 'skins'), { recursive: true })
+  for (const skin of SKINS) {
+    await writeFile(path.join(STAGE, 'skins', skin.slug + '.html'), previewPage(skin), 'utf8')
+  }
+  await writeFile(path.join(STAGE, 'skins', 'index.html'), galleryPage(SKINS), 'utf8')
 
   for (const [index, { entry }] of sorted.entries()) {
     const dir = path.join(STAGE, 'spell', entry.meta.slug)
@@ -288,8 +286,8 @@ async function build() {
       path.join(dir, 'index.html'),
       renderSpell(entry, {
         ordinal: index + 1,
-        total,
-        chapter: { index: chapterMap.get(entry.meta.category) ?? 1 },
+        prev: plain[index - 1] ?? null,
+        next: plain[index + 1] ?? null,
       }),
       'utf8',
     )
@@ -307,21 +305,6 @@ async function build() {
   await writeFile(
     path.join(STAGE, 'effects.json'),
     JSON.stringify(machineIndex(sorted, chapterMap), null, 2) + '\n',
-    'utf8',
-  )
-
-  // 编号栏要多宽，取决于**当下载库**里最长的那个罗马数字，而它不是条目数本身：
-  // 125 条的 CXXV 只有 44px，可 88 的 LXXXVIII 要 69px。算出来写进 CSS，
-  // 库长大了栏会自己变宽，不会悄悄撞到标题上。详见 shared/numeral.mjs。
-  await writeFile(
-    path.join(STAGE, 'numeral.css'),
-    `:root {
-  /* 目录每行的编号栏宽（当下载库最宽的是 ${widest.text}） */
-  --numeral-w: ${numeralColumnRem(total, { fontSizePx: NUMERAL_ROW_PX })}rem;
-  /* 对开页页边注的大编号字号（栏只有 ${RAIL_W}px，再大就出框） */
-  --numeral-lead: ${numeralFontRem(total, { maxWidthPx: RAIL_W })}rem;
-}
-`,
     'utf8',
   )
 

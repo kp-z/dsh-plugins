@@ -1,0 +1,39 @@
+/* 明亮 Bento —— 大圆角、奶油底、彩色块，活泼但不吵 */
+:root {
+  --ground: #fbf9f6;
+  --ground-2: #ffffff;
+  --text: #1d1b22;
+  --text-dim: #6f6a75;
+  --gilt: #ff8a3d;
+  --gilt-bright: #f4711c;
+  --rubric: #e0436c;
+  --rule: #ece7e1;
+  --accent: #ff4d6d;
+  --accent-ink: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #fff5f7;
+  --line: #ece7e1;
+  --line-strong: #ddd5cc;
+  --shadow: 0 1px 2px rgb(60 40 20 / 0.05), 0 14px 30px -22px rgb(60 40 20 / 0.35);
+  --glow: radial-gradient(40% 40% at 12% 0%, rgb(255 138 61 / 0.14), transparent 70%),
+          radial-gradient(40% 40% at 90% 2%, rgb(255 77 109 / 0.12), transparent 70%);
+  --radius: 22px;
+  --radius-sm: 14px;
+}
+.topbar { border-bottom: 0; background: color-mix(in oklab, var(--ground) 88%, transparent); }
+.logo { background: linear-gradient(140deg, #ff8a3d, #ff4d6d); color: #fff; border-radius: 14px; box-shadow: 0 8px 18px -8px rgb(255 77 109 / 0.8); }
+.brand-name { font-size: 22px; letter-spacing: 0.02em; }
+.search-field { height: 46px; border-radius: 999px; border-color: transparent; background: #fff; box-shadow: 0 6px 18px -12px rgb(60 40 20 / 0.5); }
+.search-field:focus-within { border-color: color-mix(in oklab, var(--accent) 40%, transparent); box-shadow: 0 0 0 4px rgb(255 77 109 / 0.14); }
+.chip { border-radius: 999px; border-color: transparent; background: #fff; box-shadow: 0 2px 8px -4px rgb(60 40 20 / 0.3); }
+.chip[aria-pressed="true"] { background: linear-gradient(120deg, #ff8a3d, #ff4d6d); color: #fff; }
+.hero-title em { background: linear-gradient(100deg, #ff8a3d, #ff4d6d); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.group-head { font-size: 24px; }
+.group-head::after { background: linear-gradient(90deg, #f0e8e0, transparent); }
+.card { border-color: transparent; box-shadow: var(--shadow); }
+.card:nth-of-type(4n+1) .card-thumb { background: #fff1e8; }
+.card:nth-of-type(4n+2) .card-thumb { background: #eef4ff; }
+.card:nth-of-type(4n+3) .card-thumb { background: #f1fff4; }
+.card:hover { transform: translateY(-5px); box-shadow: 0 22px 40px -26px rgb(60 40 20 / 0.5); }
+.card-thumb { border-bottom: 0; }
+.card-badge { color: var(--accent); }

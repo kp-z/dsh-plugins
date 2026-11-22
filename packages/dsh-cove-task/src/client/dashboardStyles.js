@@ -18,11 +18,11 @@ const g = (token, pct) => `color-mix(in oklab, var(--dsw-alias-${token}) ${pct}%
 export const CSS = `
 /* ============ 仪表盘根：auto-fit 网格填满主区（最后一列/行自动拉满） ============ */
 .fd-page {
-  --fd-line: ${g('border-l1', 55)};
-  --fd-line-strong: ${g('border-l2', 70)};
-  --fd-surface: ${g('bg-layer-1', 55)};
-  --fd-surface-2: ${g('bg-layer-2', 50)};
-  --fd-sunken: ${g('bg-base', 60)};
+  --fd-line: ${g('border-l2', 55)};
+  --fd-line-strong: ${g('border-l2', 80)};
+  --fd-surface: ${g('bg-layer-1', 92)};
+  --fd-surface-2: ${g('label-primary', 6)};
+  --fd-sunken: ${g('label-primary', 4)};
   --fd-text: var(--dsw-alias-label-primary);
   --fd-dim: var(--dsw-alias-label-secondary);
   --fd-brand: var(--dsw-alias-brand-primary);
@@ -38,8 +38,9 @@ export const CSS = `
      里面只有一排 70px 的小卡，下半截全是空 —— 用户口径「最上面这个卡片太高了」。 */
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  /* 页边距/卡间距走刻度（以前这一页是 12/12，运行页是 16-20-28/24，看板是 10/12） */
+  gap: var(--fo-gap, 16px);
+  padding: var(--fo-gutter, 14px);
   overflow: auto;
   color: var(--fd-text);
   /* 列数/行高都按「页面自己的宽度」判断（面板会被拖窄），所以这里当容器 */
@@ -58,7 +59,7 @@ export const CSS = `
      整页一半是空白 —— 用户口径「好多区域空白太多了」。 */
   grid-auto-rows: min-content;
   align-content: start;
-  gap: 12px;
+  gap: var(--fo-gap, 16px);
 }
 @container fdpage (max-width: 1099px) {
   .fd-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -70,7 +71,7 @@ export const CSS = `
   .fd-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-.fd-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+.fd-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: var(--fo-gap, 16px); }
 .fd-top > .fd-panel { min-width: 0; }
 
 /* ============ 活跃日历（GitHub 贡献图：周列 × 7 行 + 月标 + 图例） ============ */
@@ -137,11 +138,15 @@ export const CSS = `
 /* ============ 面板：玻璃卡 + 头/体 ============ */
 .fd-panel {
   display: flex; flex-direction: column; min-width: 0; min-height: 0;
-  padding: 14px; border-radius: 14px;
+  /* 卡片 = 和运行/看板同一套玻璃：圆角、内边距、模糊都走刻度
+     （以前这里是 14px 圆角 + 8px 模糊 + 55% 半透明底，比别处的卡更「糊」） */
+  padding: var(--fo-card-pad, 16px); border-radius: var(--fo-radius-card, 20px);
   border: 1px solid var(--fd-line);
   background: var(--fd-surface);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: var(--fo-glass-blur);
+  -webkit-backdrop-filter: var(--fo-glass-blur);
+  /* 亮色里卡片和白底同色：靠描边 + 一层紧投影把边「立」出来 */
+  box-shadow: var(--fo-card-shadow);
   overflow: hidden;
   animation: fd-rise 180ms cubic-bezier(.22, .61, .36, 1) backwards;
   animation-delay: calc(var(--fd-i, 0) * 24ms);
@@ -195,7 +200,8 @@ export const CSS = `
 .fd-kpi-note { font-size: 10px; color: var(--fd-dim); }
 .fd-bar {
   display: block; position: relative; height: 4px; border-radius: 999px; overflow: hidden;
-  background: ${g('border-l1', 35)};
+  /* 进度条底槽：border-l1 在亮色下只有 ~1.4% 黑，等于没有槽 —— 用 label 8% */
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent);
 }
 .fd-bar > i {
   display: block; height: 100%; border-radius: inherit; width: 0;
@@ -206,7 +212,7 @@ export const CSS = `
 /* ============ 状态 donut ============ */
 .fd-donut { display: flex; align-items: center; gap: 14px; min-height: 0; }
 .fd-donut-svg { flex: 0 0 auto; width: 132px; height: 132px; display: block; }
-.fd-donut-track { fill: none; stroke: ${g('border-l1', 40)}; stroke-width: 12; }
+.fd-donut-track { fill: none; stroke: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); stroke-width: 12; }
 .fd-donut-arc {
   fill: none; stroke-width: 12; stroke-linecap: butt;
   stroke: var(--fd-tone, var(--fd-idle));
@@ -233,7 +239,7 @@ export const CSS = `
 .fd-list-value { flex: 0 0 56px; text-align: right; font-variant-numeric: tabular-nums; }
 .fd-list-meta { flex: 0 0 auto; font-size: 10px; color: var(--fd-dim); font-variant-numeric: tabular-nums; }
 /* 叠加完成率：细条里再画一段更亮的 */
-.fd-bar-split { display: block; position: relative; height: 8px; border-radius: 999px; overflow: hidden; background: ${g('border-l1', 30)}; }
+.fd-bar-split { display: block; position: relative; height: 8px; border-radius: 999px; overflow: hidden; background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); }
 .fd-bar-split > i { position: absolute; inset: 0 auto 0 0; background: color-mix(in oklab, var(--fd-tone, var(--fd-brand)) 55%, transparent); }
 .fd-bar-split > b { position: absolute; inset: 0 auto 0 0; background: var(--fd-tone, var(--fd-brand)); border-radius: 999px; }
 
@@ -316,8 +322,8 @@ export const CSS = `
 .fr-page {
   --fr-line: ${g('border-l1', 55)};
   --fr-line-strong: ${g('border-l2', 70)};
-  --fr-surface: ${g('bg-layer-1', 55)};
-  --fr-surface-2: ${g('bg-layer-2', 50)};
+  --fr-surface: ${g('label-primary', 4)};
+  --fr-surface-2: ${g('label-primary', 6)};
   --fr-sunken: ${g('bg-base', 60)};
   --fr-text: var(--dsw-alias-label-primary);
   --fr-dim: var(--dsw-alias-label-secondary);
@@ -525,7 +531,7 @@ export const CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; font: inherit; cursor: pointer; overflow: hidden;
   /* 深灰暗态（非活跃）：半透明底 + 1px 极细浅白描边 + 浅灰字 */
-  background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 55%, transparent);
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent);
   border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
   color: var(--dsw-alias-label-secondary);
   transition: transform 160ms cubic-bezier(.22, .61, .36, 1), border-color 160ms cubic-bezier(.22, .61, .36, 1), box-shadow 160ms cubic-bezier(.22, .61, .36, 1);
@@ -655,7 +661,7 @@ export const CSS = `
   background: var(--fr-surface-2); border: 1px solid transparent;
   transition: background-color 160ms cubic-bezier(.22, .61, .36, 1), border-color 160ms cubic-bezier(.22, .61, .36, 1);
 }
-.fr-row:hover { border-color: var(--fr-line); background: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 70%, transparent); }
+.fr-row:hover { border-color: var(--fr-line); background: color-mix(in oklab, var(--dsw-alias-label-primary) 6%, transparent); }
 .fr-avatar {
   position: relative; flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -706,7 +712,7 @@ export const CSS = `
 .fr-list-bar { flex: 1 1 auto; min-width: 24px; }
 .fr-list-value { flex: 0 0 28px; text-align: right; font-variant-numeric: tabular-nums; }
 .fr-list-meta { flex: 0 0 auto; font-size: 10px; color: var(--fr-dim); }
-.fr-bar { display: block; position: relative; height: 6px; border-radius: 999px; overflow: hidden; background: ${g('border-l1', 35)}; }
+.fr-bar { display: block; position: relative; height: 6px; border-radius: 999px; overflow: hidden; background: color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent); }
 .fr-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--fr-tone, var(--fr-brand)); transition: width 260ms cubic-bezier(.22, .61, .36, 1); }
 
 /* 可点行（时长 Top5 / 告警） */

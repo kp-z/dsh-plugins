@@ -1,0 +1,71 @@
+/* 装帧书 · 冷调 —— 同一本书，换成冷灰绿的纸与墨绿皮革、黄铜金。
+ * 结构、纸纹、书脊、图版装裱全部沿用 01（@import），只有颜色不同。
+ * 蜜色偏暖、偏旧；这一版更像「新印的精装书」，安静一点、没那么黄。 */
+@import url("./01-paper-book.css");
+
+:root {
+  --ground: #d2d5c7;
+  --ground-2: #f4f5ef;
+  --text: #21261f;
+  --text-dim: #5b6257;
+  --gilt: #96752f;
+  --gilt-bright: #6f5316;
+  --rubric: #8d3227;
+  --rule: #bfc4b6;
+  --accent: #2f5d45;
+  --accent-ink: #f4f5ef;
+  --surface: #f4f5ef;
+  --surface-hover: #fbfcf8;
+  --line: #c3c7ba;
+  --line-strong: #8a9182;
+}
+
+body {
+  border-left-color: #16241b;
+  background-color: var(--ground);
+  background-image:
+    var(--paper-noise),
+    radial-gradient(38% 26% at 78% 22%, rgb(96 110 80 / 0.08), transparent 70%),
+    radial-gradient(30% 22% at 22% 64%, rgb(96 110 80 / 0.07), transparent 70%),
+    radial-gradient(130% 80% at 46% -10%, rgb(252 253 248 / 0.9), transparent 62%),
+    radial-gradient(150% 110% at 50% 118%, rgb(70 80 60 / 0.14), transparent 62%),
+    linear-gradient(174deg, #dfe1d5 0%, #d2d5c7 46%, #c6c9ba 100%);
+}
+body::before {
+  background:
+    repeating-linear-gradient(180deg,
+      rgb(226 214 170 / 0.16) 0 1px,
+      rgb(226 214 170 / 0.05) 1px 5px,
+      rgb(4 10 6 / 0.55) 5px 7px,
+      transparent 7px 9px,
+      transparent 9px 128px) left top / 30px 100% no-repeat,
+    linear-gradient(90deg, #0d1611 0%, #1d2f24 20%, #2f4a39 46%, #3a5a46 58%, #22392c 80%, #101d16 100%) left top / 30px 100% no-repeat,
+    linear-gradient(90deg, rgb(14 24 18 / 0.6) 0, rgb(14 24 18 / 0.32) 14px, rgb(14 24 18 / 0.11) 40px, transparent 96px) left top / 120px 100% no-repeat;
+}
+body::after { background: repeating-linear-gradient(90deg, #b9bdae 0 1px, #f4f5ef 1px 3px, #e2e4da 3px 4px); }
+.topbar {
+  background: linear-gradient(180deg, #f3f4ec, #e6e8dc 60%, #dcdfd2);
+  border-bottom-color: #8a9182;
+}
+.topbar::before { background: repeating-linear-gradient(115deg, #8d3227 0 5px, #c9a24d 5px 7px, #2f4a39 7px 12px); }
+.card {
+  border-color: #aab0a1;
+  background-color: #f4f5ef;
+  background-image: var(--paper-noise), linear-gradient(178deg, #fbfcf7, #eef0e6);
+}
+.card::after { border-color: rgb(138 145 130 / 0.22); }
+.card-thumb { background: #e3e6da; }
+.card-thumb::after {
+  box-shadow:
+    inset 0 0 0 7px #f4f5ef,
+    inset 0 0 0 8px #aab0a1,
+    inset 0 0 0 9px rgb(252 253 248 / 0.6),
+    inset 0 0 18px rgb(30 40 30 / 0.35);
+}
+.logo { background: radial-gradient(circle at 34% 26%, #f6e8b8 0%, #d5b465 38%, #9c7a34 68%, #6d5218 100%); }
+.chip { background: linear-gradient(180deg, #f6f7f0, #e6e8dc); color: #46503f; }
+.chip[aria-pressed="true"] { background: linear-gradient(180deg, #33513f, #1e3327); color: #eef1e6; }
+.hero-title em { color: var(--accent); }
+.code-block { background: #eceee4; border-color: #aab0a1; }
+.code-head { background: linear-gradient(180deg, #f3f4ec, #e6e8dc); }
+.mech, mark { background: rgb(141 50 39 / 0.1); color: #7d2a20; }

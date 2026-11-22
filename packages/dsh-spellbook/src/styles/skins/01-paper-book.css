@@ -1,0 +1,241 @@
+
+/* 装帧书 —— 一本摊开的皮革精装书。
+ *
+ * 拟物靠三样东西，缺一样就只剩「米黄色网页」：
+ *   1. 纸：不是一块平色。噪点纸纹 + 中间受光、四周压暗 + 几处老化的黄斑（foxing）。
+ *   2. 书：左边缘是真的皮革书脊（受光的高光、束带横棱、压深的两端），右侧是叠起来的书口纸边，
+ *      书沟处有一道从皮革往里落的阴影 —— 它让画面读成「纸是弯进书脊里的」。
+ *   3. 印刷：卡片是贴在纸上的便笺（浅一号的纸 + 双线压边 + 一点点落影），金字是烫上去的
+ *      （渐变高光 + 内阴影），标题用凸版压印（一像素的白高光落在字下面）。
+ *
+ * 颜色不再是「一整个米黄」：页是陈年纸（偏深），卡是另一张更新的纸（偏浅），皮革是深栗色，
+ * 金是黄铜金，朱批是氧化朱砂。三者明度拉开，层次才立得住。
+ */
+:root {
+  /* 纸纹：细密噪点，任何配色都叠这一层 */
+  --paper-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='220' height='220' filter='url(%23n)' opacity='0.5'/></svg>");
+  --ground: #d2ba8d;      /* 陈年纸：页面本身 */
+  --ground-2: #f7ecd3;    /* 更新的一张纸：卡片 */
+  --text: #35241a;        /* 铁胆墨水，不是纯黑 */
+  --text-dim: #6f5837;
+  --gilt: #a87c2e;        /* 黄铜金 */
+  --gilt-bright: #7c5a1c;
+  --rubric: #93301f;      /* 氧化朱砂 */
+  --rule: #c4aa79;
+  --accent: #8a2f1e;      /* 强调 = 朱砂，不是紫 */
+  --accent-ink: #f8eed6;
+  --surface: #f7ecd3;
+  --surface-hover: #fbf3e1;
+  --line: #c9b184;
+  --line-strong: #9c7d4c;
+  --shadow: 0 1px 0 #fffdf4 inset, 0 12px 26px -18px rgb(58 36 14 / 0.7);
+  --glow: none;
+  --font-ui: 'Iowan Old Style', 'Songti SC', 'Noto Serif SC', 'Hiragino Mincho ProN', Georgia, serif;
+  --font-display: 'Iowan Old Style', 'Songti SC', 'Noto Serif SC', 'Hiragino Mincho ProN', Georgia, serif;
+  --radius: 2px;
+  --radius-sm: 2px;
+}
+
+/* ---------- 纸：噪点、受光、黄斑 ---------- */
+body {
+  border-left: 30px solid #3a2113;   /* 给皮革书脊留位（下面 ::before 盖住它） */
+  background-color: var(--ground);
+  background-image:
+    var(--paper-noise),
+    radial-gradient(38% 26% at 78% 22%, rgb(150 108 52 / 0.10), transparent 70%),
+    radial-gradient(30% 22% at 22% 64%, rgb(150 108 52 / 0.09), transparent 70%),
+    radial-gradient(26% 18% at 62% 88%, rgb(140 100 48 / 0.08), transparent 70%),
+    radial-gradient(130% 80% at 46% -10%, rgb(255 249 232 / 0.85), transparent 62%),
+    radial-gradient(150% 110% at 50% 118%, rgb(96 68 32 / 0.14), transparent 62%),
+    linear-gradient(174deg, #e0cba2 0%, #d2ba8d 46%, #c6ab7d 100%);
+  background-size: 220px 220px, auto, auto, auto, auto, auto, auto;
+  background-blend-mode: multiply, normal, normal, normal, normal, multiply, normal;
+  box-shadow: inset 0 0 100px rgb(110 78 38 / 0.12);
+}
+
+/* ---------- 书脊与书沟 ---------- */
+body::before {
+  content: ''; position: fixed; left: 0; top: 0; bottom: 0; width: 120px; z-index: 20; pointer-events: none;
+  background:
+    /* 束带：每 128px 一道横棱，只在书脊那 30px 里 */
+    repeating-linear-gradient(180deg,
+      rgb(255 224 168 / 0.18) 0 1px,
+      rgb(255 224 168 / 0.06) 1px 5px,
+      rgb(20 10 3 / 0.55) 5px 7px,
+      transparent 7px 9px,
+      transparent 9px 128px) left top / 30px 100% no-repeat,
+    /* 皮革：受光的圆弧，两端压深 */
+    linear-gradient(90deg, #24140a 0%, #4d2c17 18%, #6d4526 44%, #7d5330 56%, #573520 78%, #2c1a0e 100%) left top / 30px 100% no-repeat,
+    /* 书沟：阴影落在纸上，越往右越淡 */
+    linear-gradient(90deg, rgb(40 22 10 / 0.62) 0, rgb(40 22 10 / 0.34) 14px, rgb(40 22 10 / 0.12) 40px, transparent 96px) left top / 120px 100% no-repeat;
+}
+
+/* ---------- 书口：右边叠起来的一摞纸 ---------- */
+body::after {
+  content: ''; position: fixed; right: 0; top: 0; bottom: 0; width: 13px; z-index: 20; pointer-events: none;
+  background: repeating-linear-gradient(90deg, #c9b184 0 1px, #f6ebd1 1px 3px, #e6d7b4 3px 4px);
+  box-shadow: inset 3px 0 6px rgb(110 80 40 / 0.35), inset -1px 0 0 #a98d5e;
+}
+
+/* ---------- 书脊丝带 ---------- */
+.topbar::after {
+  content: ''; position: absolute; right: 84px; top: 100%; width: 22px; height: 52px; z-index: 8; pointer-events: none;
+  background: linear-gradient(90deg, #6f1f12, #a33a24 45%, #7e2716);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%);
+  box-shadow: 0 8px 16px -10px rgb(40 15 5 / 0.9), inset 0 1px 0 rgb(255 200 170 / 0.35);
+}
+
+/* ---------- 书眉 ---------- */
+.topbar {
+  background: linear-gradient(180deg, #f4e7c8, #e9d6b0 60%, #e2cca2);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  border-bottom: 3px double var(--line-strong);
+  box-shadow: 0 10px 24px -20px rgb(60 38 16 / 0.9), inset 0 1px 0 rgb(255 250 235 / 0.75);
+}
+.brand-name {
+  font-size: 25px; letter-spacing: 0.2em; font-weight: 600;
+  color: #2f1d10;
+  text-shadow: 0 1px 0 rgb(255 248 228 / 0.7), 0 -1px 0 rgb(60 38 16 / 0.25);
+}
+/* 烫金徽记 */
+.logo {
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, #f8e6b0 0%, #d9b45f 38%, #a87c2e 68%, #7a5518 100%);
+  color: #3d2410;
+  box-shadow:
+    inset 0 1px 1px rgb(255 249 225 / 0.9),
+    inset 0 -2px 3px rgb(74 44 12 / 0.7),
+    0 1px 0 rgb(255 248 228 / 0.6),
+    0 3px 6px -2px rgb(60 38 16 / 0.6);
+}
+.logo svg { filter: drop-shadow(0 1px 0 rgb(255 245 210 / 0.5)); }
+
+/* 查词口像一条压进纸里的横线 */
+.topbar::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 6px; z-index: 2; pointer-events: none;
+  background: repeating-linear-gradient(115deg, #8a2f1e 0 5px, #d9b45f 5px 7px, #6d4526 7px 12px);
+  box-shadow: 0 2px 4px -2px rgb(60 38 16 / 0.8);
+}
+
+.search-field {
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  background: #fbf4e2;
+  box-shadow: inset 0 2px 4px rgb(94 66 30 / 0.28), inset 0 -1px 0 rgb(255 251 238 / 0.9);
+}
+.search-field:focus-within { border-color: var(--accent); box-shadow: inset 0 2px 4px rgb(94 66 30 / 0.28), 0 0 0 2px rgb(147 48 31 / 0.22); }
+.search-input { color: var(--text); }
+.search-kbd { border-color: var(--line-strong); background: #f3e6c8; }
+
+/* ---------- 分类：凸版小签 ---------- */
+.chips { border-bottom: 0; }
+.chip {
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, #f8eed6, #ead7b0);
+  color: #5b4527;
+  box-shadow: inset 0 1px 0 rgb(255 251 238 / 0.9), 0 1px 2px rgb(80 52 22 / 0.22);
+  font-variant: all-small-caps; letter-spacing: 0.1em;
+}
+.chip:hover { background: linear-gradient(180deg, #fbf4e2, #f0dfbb); color: #3d2a15; }
+.chip[aria-pressed="true"] {
+  background: linear-gradient(180deg, #6d4526, #4a2c17);
+  border-color: #2c1a0e; color: #f4e5c4;
+  box-shadow: inset 0 2px 5px rgb(20 10 3 / 0.7), inset 0 -1px 0 rgb(255 220 170 / 0.25);
+}
+
+/* ---------- 标题：凸版压印 ---------- */
+.hero { padding: 44px 0 34px; }
+.hero-title {
+  color: #2b1a0e;
+  text-shadow: 0 1px 0 rgb(255 250 236 / 0.85), 0 -1px 1px rgb(74 46 18 / 0.22);
+}
+.hero-title em {
+  background: none; -webkit-text-fill-color: currentColor; color: var(--rubric);
+  text-shadow: 0 1px 0 rgb(255 245 225 / 0.5);
+}
+.hero-stats { color: #6f5837; }
+.hero-stats b { font-family: var(--font-display); color: #3d2a15; text-shadow: 0 1px 0 rgb(255 250 236 / 0.8); }
+
+.group-head { color: #3d2a15; letter-spacing: 0.16em; font-variant: small-caps; }
+.group-head::after { background: linear-gradient(90deg, var(--line-strong), rgba(156, 125, 76, 0.15)); }
+.group-icon { color: var(--gilt); filter: drop-shadow(0 1px 0 rgb(255 250 236 / 0.7)); }
+.group-count { color: #7a6141; }
+
+/* ---------- 卡片：贴在纸上的一张便笺 ---------- */
+.card {
+  border-radius: 2px;
+  border: 1px solid #b99b6c;
+  background-color: #f6ead0;
+  background-image:
+    var(--paper-noise),
+    linear-gradient(178deg, #faf2de, #f3e7ca);
+  background-size: 220px 220px, auto;
+  background-blend-mode: multiply, normal;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 252 242 / 0.75),
+    0 1px 0 #fffdf4 inset,
+    0 2px 0 -1px #d3bd95,
+    0 14px 26px -20px rgb(58 36 14 / 0.85);
+}
+/* 便笺的压边：一圈细线往里收 */
+.card::after {
+  content: ''; position: absolute; inset: 5px; border: 1px solid rgb(168 130 78 / 0.22); border-radius: 1px; pointer-events: none; z-index: 1;
+}
+/* 纸上没有聚光灯 */
+.card::before { background: none; }
+.card:hover {
+  transform: translateY(-2px) rotate(-0.15deg);
+  border-color: #8a6636;
+  box-shadow: inset 0 0 0 1px rgb(255 252 242 / 0.75), 0 2px 0 -1px #d3bd95, 0 20px 30px -22px rgb(58 36 14 / 0.95);
+}
+.card-thumb { border-bottom: 0; background: #e8dabb; }
+/* 图版装裱：一圈纸边压在预览四周，像贴进书里的图 */
+.card-thumb::after {
+  content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  box-shadow:
+    inset 0 0 0 7px #f6ead0,
+    inset 0 0 0 8px #b99b6c,
+    inset 0 0 0 9px rgb(255 252 242 / 0.6),
+    inset 0 0 18px rgb(60 38 16 / 0.35);
+}
+.card-title { letter-spacing: 0.01em; }
+.card-title a { color: #2b1a0e; }
+.card-link:hover { color: var(--rubric); }
+.card-when { color: #6f5837; }
+.card-badge { color: var(--gilt); filter: drop-shadow(0 1px 0 rgb(255 250 236 / 0.8)); }
+
+/* ---------- 按钮：书里的印章 ---------- */
+.btn {
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, #f9f0da, #ecdcb8);
+  color: #4a3520;
+  box-shadow: inset 0 1px 0 rgb(255 252 242 / 0.9), 0 1px 2px rgb(80 52 22 / 0.25);
+}
+.btn:hover:not(:disabled) { background: linear-gradient(180deg, #fbf5e5, #f1e3c3); }
+.btn.is-primary {
+  background: linear-gradient(180deg, #a33a24, #7c2515);
+  border-color: #5e1b0e; color: #fbeed2;
+  box-shadow: inset 0 1px 0 rgb(255 196 170 / 0.45), inset 0 -2px 3px rgb(40 12 4 / 0.5), 0 2px 3px rgb(60 20 8 / 0.35);
+}
+
+/* ---------- 代码：印在纸上的等宽引文 ---------- */
+.code-block {
+  border-radius: 2px; border: 1px solid #b99b6c;
+  background: #efe2c3;
+  box-shadow: inset 0 1px 3px rgb(94 66 30 / 0.22);
+}
+.code-head { background: linear-gradient(180deg, #f5e9cc, #ead9b6); border-bottom: 1px solid #c9b184; }
+.code-lang { color: #7a6141; }
+.section-head { color: #3d2a15; text-shadow: 0 1px 0 rgb(255 250 236 / 0.8); }
+.section-head::before { background: linear-gradient(180deg, #d9b45f, #8a6320); }
+
+/* 机制：朱笔圈点 */
+.mech, mark {
+  background: rgb(147 48 31 / 0.12);
+  color: #8a2a18;
+  box-shadow: inset 0 -0.42em 0 rgb(200 120 70 / 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) { .card:hover { transform: none; } }

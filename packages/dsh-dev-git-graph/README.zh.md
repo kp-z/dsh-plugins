@@ -1,4 +1,4 @@
-# dsh-dev-git-graph
+# @kpeace/dsh-dev-git-graph
 
 DSH 插件：会话 **Git Graph 面板**——源码级移植 [mhutchie/vscode-git-graph](https://github.com/mhutchie/vscode-git-graph) 1.30.0（MIT 许可），
 在 DSH Web GUI 的会话页里以「Git 树」tab 显示**当前会话工作区**的提交图（分支彩线、
@@ -9,11 +9,11 @@ DSH 插件：会话 **Git Graph 面板**——源码级移植 [mhutchie/vscode-g
 ```
 会话 tab「Git 树」(client.js)
   └─ sessionCwd() 从 sessions 取该会话工作区
-  └─ iframe /dsh-dev-git-graph/gg/index.html?repo=<cwd>
+  └─ iframe /@kpeace/dsh-dev-git-graph/gg/index.html?repo=<cwd>
         │ host 注入 window.__DSH_GG_BOOT__ = { apiBase, repo, initialState, ... }
         ▼
 git-graph 前端（media/gitgraph.js，原版 webview UI）
-  └─ VS Code 兼容桥：postMessage → fetch POST /dsh-dev-git-graph/gg/api
+  └─ VS Code 兼容桥：postMessage → fetch POST /@kpeace/dsh-dev-git-graph/gg/api
         ▼
 host 路由 (src/git-graph/routes.ts)
   └─ vendor/git-graph/dataSource.ts：child_process 直跑 git（spawn 数组，无 shell 注入）
@@ -21,8 +21,8 @@ host 路由 (src/git-graph/routes.ts)
 本地 git 仓库
 ```
 
-- 静态：`GET /dsh-dev-git-graph/gg/` 及 `/<static>`（media/ 下构建产物，index.html 动态注入 boot 数据）。
-- API：`POST /dsh-dev-git-graph/gg/api`，命令集对齐原扩展 `gitGraphView.respondToMessage`（约 60 个命令）。
+- 静态：`GET /@kpeace/dsh-dev-git-graph/gg/` 及 `/<static>`（media/ 下构建产物，index.html 动态注入 boot 数据）。
+- API：`POST /@kpeace/dsh-dev-git-graph/gg/api`，命令集对齐原扩展 `gitGraphView.respondToMessage`（约 60 个命令）。
 - 主题：CSS 把 `--vscode-*` 映射到 DSH `--dsw-alias-*` 设计变量（缺省值兜底），随主题变明暗。
 
 ## 与原版差异
@@ -66,13 +66,13 @@ host 路由 (src/git-graph/routes.ts)
 
 ```bash
 # 构建（web 前端 tsc → media/ 合并；host tsc → lib/；client.js 拷贝）
-pnpm --filter dsh-dev-git-graph build
+pnpm --filter @kpeace/dsh-dev-git-graph build
 
 # 类型检查
-pnpm --filter dsh-dev-git-graph typecheck
+pnpm --filter @kpeace/dsh-dev-git-graph typecheck
 
 # 测试（diff 载荷映射 + diff 桥契约）
-pnpm --filter dsh-dev-git-graph test
+pnpm --filter @kpeace/dsh-dev-git-graph test
 
 # 安装到 web profile（本地 file: 依赖）
 dsh plugin --profile web add file:/Users/demo/dsh-plugins/packages/dsh-dev-git-graph
@@ -85,7 +85,7 @@ dsh plugin --profile web add file:/Users/demo/dsh-plugins/packages/dsh-dev-git-g
 
 ```bash
 # 一行完整安装（先 better-sidebar，再本插件）
-cd ~/.dsh && dsh plugin --profile web add dsh-better-sidebar && dsh plugin --profile web add dsh-dev-git-graph
+cd ~/.dsh && dsh plugin --profile web add dsh-better-sidebar && dsh plugin --profile web add @kpeace/dsh-dev-git-graph
 ```
 
 ## 许可

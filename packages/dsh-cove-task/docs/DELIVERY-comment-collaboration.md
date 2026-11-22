@@ -20,6 +20,6 @@
 
 ## 提交
 
-b643376主体，9e91798警告保留，ec8101e真实回执fixture，f96f28a认证日志安全，c03abfc提及API，b7fc945显式提及配置。均已推送当前feat/dsh-agent-world。文档与offline测试发现自动纳入Python补充回归后单独提交。
+b643376主体，9e91798警告保留，ec8101e真实回执fixture，f96f28a认证日志安全，c03abfc提及API，b7fc945显式提及配置。均已推送当前feat/dsh-xcity。文档与offline测试发现自动纳入Python补充回归后单独提交。
 
 其余未提交的task reopen/人员展示等并行改动不包含在本评论协作提交内。

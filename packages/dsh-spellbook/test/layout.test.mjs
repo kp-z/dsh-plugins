@@ -1,10 +1,21 @@
+/**
+ * 页面结构与加载纪律。
+ *
+ * 这一份守两类东西：
+ *   1. 加载：首页首屏 HTML 里不许有任何 iframe（缩略图按需挂载），目录里的每张卡都是占位；
+ *   2. 结构：分章顺序、对开页的骨架、吸顶顶栏、[hidden] 兜底、两套主题。
+ */
+
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { chineseNumeral, roman } from '../src/render/text.mjs'
 import { chaptersOf, renderIndex, renderSpell } from '../src/render/pages.mjs'
 import { CATEGORIES } from '../shared/schema.mjs'
+
+const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
+const CSS = read('../src/styles/spellbook.css')
+const JS = read('../src/site.js')
 
 function entry(meta = {}, extra = {}) {
   return {
@@ -16,6 +27,7 @@ function entry(meta = {}, extra = {}) {
       source: '自行实现',
       when: '想用的时候',
       stage: 'plain',
+      tags: ['blur', '卡片', '玻璃'],
       ...meta,
     },
     description: '机制是 ==某个东西==。',
@@ -26,525 +38,215 @@ function entry(meta = {}, extra = {}) {
   }
 }
 
-/* ------------------------------------------------------------ 中文数字 */
+const count = (html, re) => (html.match(re) ?? []).length
 
-test('章节数字用中文，条目数字用罗马 —— 两套记号不能混', () => {
-  assert.equal(chineseNumeral(1), '一')
-  assert.equal(chineseNumeral(9), '九')
-  assert.equal(chineseNumeral(10), '十')
-  assert.equal(chineseNumeral(11), '十一')
-  assert.equal(chineseNumeral(20), '二十')
-  assert.equal(chineseNumeral(21), '二十一')
-  assert.equal(roman(1), 'I')
-  assert.equal(roman(4), 'IV')
-})
+/* ------------------------------------------------------------ 分章 */
 
-test('超出范围的中文数字老实退回阿拉伯数字', () => {
-  assert.equal(chineseNumeral(0), '0')
-  assert.equal(chineseNumeral(100), '100')
-})
-
-/* ---------------------------------------------------------------- 分章 */
-
-test('分章按 CATEGORIES 的顺序，而不是出现顺序', () => {
+test('组件与风格排在最前，其余章按原顺序', () => {
   const chapters = chaptersOf([
-    entry({ category: '交互', slug: 'a' }),
-    entry({ category: '材质', slug: 'b' }),
-    entry({ category: '交互', slug: 'c' }),
+    entry({ category: '交互', slug: 'a' }), entry({ category: '材质', slug: 'b' }),
+    entry({ category: '风格', slug: 'c' }), entry({ category: '组件', slug: 'd' }),
   ])
-  assert.deepEqual(
-    chapters.map((chapter) => chapter.category),
-    ['材质', '交互'],
-  )
-  assert.deepEqual(
-    chapters.map((chapter) => chapter.index),
-    [1, 2],
-  )
-  assert.deepEqual(
-    chapters.map((chapter) => chapter.items.length),
-    [1, 2],
-  )
+  assert.deepEqual(chapters.map((c) => c.category), ['组件', '风格', '材质', '交互'])
+  // 展示顺序里的每一章都必须是合法分类，否则会悄悄丢章
+  assert.ok(chapters.every((c) => CATEGORIES.includes(c.category)))
 })
 
-test('空分类不占章号', () => {
-  const chapters = chaptersOf([entry({ category: '图形' })])
-  assert.equal(chapters.length, 1)
-  assert.equal(chapters[0].index, 1)
-  assert.equal(chapters[0].category, '图形')
+test('每一个分类都会出现在目录里，不因展示顺序漏章', () => {
+  const all = CATEGORIES.map((category, i) => entry({ category, slug: 's' + i }))
+  assert.equal(chaptersOf(all).length, CATEGORIES.length)
 })
 
-/* ---------------------------------------------------------------- 目录 */
+test('章内精选在前', () => {
+  const chapters = chaptersOf([entry({ category: '组件', slug: 'zzz' }), entry({ category: '组件', slug: 'kpi-tile' })])
+  assert.deepEqual(chapters[0].items.map((e) => e.meta.slug), ['kpi-tile', 'zzz'])
+})
 
-test('每一章都有章首标题，章号与顺序一致', () => {
+test('组件章开头两张、风格章开头一张是两倍宽的精选卡', () => {
   const html = renderIndex([
-    entry({ category: '材质', title: '甲', slug: 'jia' }),
-    entry({ category: '动效', title: '乙', slug: 'yi' }),
+    entry({ category: '组件', slug: 'kpi-tile' }), entry({ category: '组件', slug: 'glass-card-layers' }), entry({ category: '组件', slug: 'plain-one' }),
+    entry({ category: '风格', slug: 'style-cove-dark-glass' }), entry({ category: '风格', slug: 'token-mix-theming' }),
   ])
-  assert.match(html, /第一章/)
-  assert.match(html, /第二章/)
-  assert.match(html, /chapter-材质/)
-  assert.match(html, /chapter-动效/)
-  assert.match(html, /chapter-nav-link/)
+  assert.equal(count(html, /class="card is-wide"/g), 3)
+  assert.equal(count(html, /card-badge/g), 3)
 })
 
-test('只有一章时不摆章目导航', () => {
-  const html = renderIndex([entry({ category: '材质' })])
-  assert.match(html, /chapter-head/)
-  assert.doesNotMatch(html, /chapter-nav-link/)
-  assert.doesNotMatch(html, /has-nav/)
+test('首页有开场介绍，带真实数字', () => {
+  const html = renderIndex([entry({ category: '组件', slug: 'a' }), entry({ slug: 'b' })])
+  assert.match(html, /data-hero/)
+  assert.match(html, /<b>2<\/b>条/)
 })
 
-test('多章时目录带 has-nav，走两栏布局', () => {
-  const html = renderIndex([
-    entry({ category: '材质', slug: 'a' }),
-    entry({ category: '动效', slug: 'b' }),
-  ])
-  assert.match(html, /index-body has-nav/)
+test('空分类不出现', () => {
+  assert.equal(chaptersOf([entry({ category: '材质' })]).length, 1)
 })
 
-test('每行右侧的缩略图指向该条目自己的 demo，并且自己是个按钮', () => {
-  const html = renderIndex([entry({ slug: 'liquid-glass', category: '材质' })])
-  // 缩略图从 <span> 改成了 <button data-peek>：它要点开放大预览。
-  // 按钮不能嵌在 <a> 里（无效 HTML，而且点它会连带跳页），所以它是链接的兄弟节点。
-  assert.match(html, /<button class="row-peek" type="button" data-peek="liquid-glass"/)
-  assert.match(html, /src="spell\/liquid-glass\/demo\.html"/)
-  assert.match(html, /href="spell\/liquid-glass\/"/)
-  assert.match(html, /data-prompt="liquid-glass"/)
+/* ------------------------------------------------------------ 加载 */
+
+test('首屏 HTML 里一个 iframe 都没有 —— 缩略图是占位，按需挂载', () => {
+  const html = renderIndex([entry({ slug: 'a' }), entry({ slug: 'b', category: '动效' })])
+  // 放大预览的 dialog 里没有 iframe（打开时才创建），卡片里也没有
+  assert.equal(count(html, /<iframe/g), 0, '首屏出现了 iframe：每一个都会在页面加载时去取一份文档')
+  assert.equal(count(html, /class="card-thumb"/g), 2)
 })
 
-test('缩略图与图版一样走沙箱，且不给它键盘焦点', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  const preview = html.match(/<iframe class="row-preview-doc"[^>]*>/)?.[0] ?? ''
-  assert.match(preview, /sandbox="allow-scripts"/)
-  assert.match(preview, /tabindex="-1"/)
-  assert.match(preview, /loading="lazy"/)
-  assert.doesNotMatch(preview, /allow-same-origin/)
+test('站点脚本按自己的算法挂缩略图，不用 IntersectionObserver', () => {
+  // 侧边栏里这页嵌在 iframe 里，隐式根算的是宿主窗口的视口；显式取根又会整页都算相交
+  assert.doesNotMatch(JS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''), /IntersectionObserver/)
+  assert.match(JS, /PER_TICK/, '挂载要限速，一拍只挂几个')
 })
 
-test('刊头放的是魔法书，不是魔杖', () => {
-  // 分工：书是「物」（刊头：这本书自己），杖是「器械」（查词口：你用来说话的东西）。
-  // 刊头答的是「这是什么」，不是「你怎么用」，所以那里该是一本书。
+test('缩略图与图版一样走沙箱', () => {
+  assert.match(JS, /setAttribute\('sandbox', 'allow-scripts'\)/)
+  assert.doesNotMatch(JS, /allow-same-origin/)
+})
+
+test('检索索引不在首屏同步取：由空闲或碰搜索框触发', () => {
+  assert.match(JS, /requestIdleCallback/)
+  assert.match(JS, /addEventListener\('focus'/)
+})
+
+/* ------------------------------------------------------------ 目录 */
+
+test('每张卡：标题是链接，放大与复制是它的兄弟，不嵌进 <a>', () => {
   const html = renderIndex([entry()])
-  assert.match(html, /wordmark-book/, '刊头那枚该是书')
-  assert.doesNotMatch(html, /wordmark-wand/, '刊头不该再是魔杖')
-  const book = html.match(/<svg class="wordmark-book"[\s\S]*?<\/svg>/)?.[0] ?? ''
-  assert.ok(book, '该有一枚 wordmark-book 图标')
-  assert.match(book, /<rect[^>]*class="mark-line"/, '书要有封面')
-  assert.match(book, /class="mark-spark"/, '书要有火星')
-  assert.match(book, /aria-hidden="true"/, '图标是装饰，书名才是名字')
-  // 线稿的两种笔画不挂在某个装置上，书身上不该出现「魔杖的零件」
-  assert.doesNotMatch(book, /wand-shaft|wand-spark/, '书不该用魔杖的零件名')
+  assert.match(html, /<h3 class="card-title"><a class="card-link" href="spell\/wuming\/">无名<\/a><\/h3>/)
+  // 按钮不能塞进 <a>（无效 HTML，点工具会连带跳页）
+  assert.doesNotMatch(html, /<a [^>]*>(?:(?!<\/a>)[\s\S])*<button/)
+  assert.match(html, /data-peek="wuming"/)
+  assert.match(html, /data-prompt="wuming"[^>]*data-prompt-url="spell\/wuming\/prompt\.txt"/)
 })
 
-test('魔杖只留在查词口一处', () => {
-  // 刊头换成了书、花饰整条去掉了 —— 一页上只剩查词口这一个魔杖。
-  // 同一个记号在一页上出现两次就不再是记号。
+test('分类筹码带数量，「全部」排第一', () => {
+  const html = renderIndex([entry({ slug: 'a' }), entry({ slug: 'b' }), entry({ slug: 'c', category: '动效' })])
+  assert.match(html, /<button class="chip"[^>]*data-cat=""[^>]*aria-pressed="true"><span class="chip-name">全部<\/span><b class="chip-count">3<\/b>/)
+  assert.match(html, /data-cat="材质"[^>]*>[\s\S]*?<b class="chip-count">2<\/b>/)
+})
+
+test('查词口有可访问名，且弹层默认收着', () => {
   const html = renderIndex([entry()])
-  assert.match(html, /class="concordance-wand"/, '查词口该是魔杖')
-  assert.equal((html.match(/wand-shaft|mark-line/g) ?? []).length > 0, true)
-  assert.equal((html.match(/concordance-wand/g) ?? []).length, 1, '魔杖只该出现一次')
+  assert.match(html, /<label class="visually-hidden" for="spellbook-query">搜索<\/label>/)
+  assert.match(html, /data-search-pop hidden/)
+  assert.match(html, /data-empty hidden/)
 })
 
-test('刊头与正文之间不再夹着花饰', () => {
-  // 那道分隔纹（细线—魔杖—细线）整条去掉了：它只是一道分隔纹，
-  // 而刊头本来就有下边线、章首本来就有饰线，三条横线互相打岔。
-  const html = renderIndex([entry({ category: '材质' }), entry({ slug: 'y', category: '动效' })])
-  assert.doesNotMatch(html, /class="fleuron/, '花饰该整条去掉')
-  assert.doesNotMatch(html, /fleuron-wand/, '花饰里的魔杖也该走')
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-  assert.doesNotMatch(css, /\.fleuron/, 'CSS 里不该再有花饰')
-  assert.doesNotMatch(css, /has-rail\s+\.fleuron/, '让位名单里也要清掉')
-  // 花饰原先靠 58px 内边距撑出刊头与正文的气口，现在得由正文自己给
-  const body = css.match(/\n\.index-body \{[\s\S]*?\n\}/)?.[0] ?? ''
-  assert.ok(body, '.index-body 该有自己的基础规则')
-  assert.match(body, /margin-top:\s*\d+px/, '.index-body 该自己留出上方的气口')
-  const js = readFileSync(new URL('../src/site.js', import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-  assert.doesNotMatch(js, /fleuron/, 'site.js 里不该再管花饰的显隐')
+test('放大预览用的 dialog 只出现一次，且默认没内容', () => {
+  const html = renderIndex([entry({ slug: 'a' }), entry({ slug: 'b' })])
+  assert.equal(count(html, /<dialog/g), 1)
+  assert.match(html, /<div class="peek-stage" data-peek-stage><\/div>/)
+  // 取址先留空、按钮先禁用：空着还能点的话 fetch('') 会把当前页当咒语送出去
+  assert.match(html, /data-apply-url="" data-apply-mode="insert" disabled/)
 })
 
-test('条目序号全书连续，不随章节重置', () => {
-  const html = renderIndex([
-    entry({ category: '材质', title: '甲', slug: 'a' }),
-    entry({ category: '动效', title: '乙', slug: 'b' }),
-    entry({ category: '动效', title: '丙', slug: 'c' }),
-  ])
-  const numerals = [...html.matchAll(/class="row-numeral"[^>]*>([^<]+)</g)].map((m) => m[1])
-  assert.deepEqual(numerals, ['I', 'II', 'III'])
+test('常用标签只取「场合 / 观感」轴，不拿机制词凑数', () => {
+  const html = renderIndex([entry()])
+  const pop = html.match(/<h3 class="pop-title">标签[\s\S]*?<\/section>/)?.[0] ?? ''
+  assert.match(pop, /data-tag="卡片"/)
+  assert.match(pop, /data-tag="玻璃"/)
+  assert.doesNotMatch(pop, /data-tag="blur"/)
 })
 
-/* -------------------------------------------------------------- 对开页 */
-
-test('对开页页边注标出所属章节', () => {
-  const html = renderSpell(entry({ category: '动效' }), {
-    ordinal: 2,
-    total: 5,
-    chapter: { index: 2 },
-  })
-  assert.match(html, /marginalia-chapter/)
-  assert.match(html, /第二章/)
-  assert.match(html, /动效/)
-  assert.match(html, />II</)
+test('首屏顶栏里没有编号、罗马数字这类旧书的装置', () => {
+  const html = renderIndex([entry()])
+  assert.doesNotMatch(html, /row-numeral|chapter-nav|tabula/)
 })
 
-test('对开页不再单独列一行「分类」，章号已经说清楚了', () => {
-  const html = renderSpell(entry(), { ordinal: 1, total: 1, chapter: { index: 1 } })
-  assert.doesNotMatch(html, /<dt>分类<\/dt>/)
-  assert.match(html, /<dt>收录<\/dt>/)
-  assert.match(html, /<dt>出处<\/dt>/)
+/* ------------------------------------------------------------ 条目页 */
+
+function spellHtml(extra = {}) {
+  return renderSpell(entry({}, extra), { ordinal: 2, total: 9, prev: entry({ slug: 'p', title: '前一条' }), next: entry({ slug: 'n', title: '后一条' }) })
+}
+
+test('条目页只有一个 h1，就是条目名', () => {
+  const html = spellHtml()
+  assert.equal(count(html, /<h1/g), 1)
+  assert.match(html, /<h1 class="title">无名<\/h1>/)
 })
 
-test('首页首屏让给检索，原导语挪到页脚', () => {
-  const html = renderIndex([entry({ category: '材质' })])
-  assert.match(html, /<section class="concordance"/)
-  assert.match(html, /id="spellbook-query"/)
-  // 立论还在，但不再是首屏标语
-  assert.match(html, /colophon-lede[^>]*>一条咒语 = 一段描述 \+ 一段示例代码。/)
-  assert.doesNotMatch(html, /class="prologue-lede"/)
+test('图版在机制与代码之前 —— 先看效果，再读为什么', () => {
+  const html = spellHtml()
+  const plate = html.indexOf('class="plate"')
+  assert.ok(plate > 0)
+  assert.ok(plate < html.indexOf('class="desc"'))
+  assert.ok(html.indexOf('class="desc"') < html.indexOf('class="source"'))
 })
 
-test('首屏不再有「限定分类」的筹码 —— 分类的入口只留章目导航一处', () => {
-  // 那排筹码是章目导航的重复品：分类本来就是章，左边已经列过一遍。
-  // 同样的入口做两遍，首屏就多出一条横带、还只占半幅，看着像没做完。
-  // 用两个分类，才会长出章目导航（只有一章时它本来就不出现）。
-  const html = renderIndex([entry({ category: '材质' }), entry({ slug: 'y', category: '动效' })])
-  assert.doesNotMatch(html, /scope-chip/, '筹码该整排去掉')
-  assert.doesNotMatch(html, /concordance-scope/, '容器也该去掉')
-  assert.doesNotMatch(html, /data-scope=/, '作用域的钩子一个都不该留')
-  // 但分类并没有从页面上消失：章首标题与章目导航仍在，按分类翻书照样成立
-  assert.match(html, /chapter-nav/, '章目导航要在')
-  assert.match(html, /材质/, '分类名仍该出现在章首/章目里')
+test('图版 iframe 走沙箱、懒加载', () => {
+  const html = spellHtml()
+  assert.match(html, /<iframe class="plate-doc" src="demo\.html" sandbox="allow-scripts" loading="lazy"/)
+  assert.doesNotMatch(html, /allow-same-origin/)
 })
 
-test('筹码去掉后，site.js 里不该剩下作用域那套机件', () => {
-  const js = readFileSync(new URL('../src/site.js', import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-  assert.doesNotMatch(js, /scope-chip/, '别再去找筹码')
-  assert.doesNotMatch(js, /let scope = /, '作用域变量该一起删掉')
-  assert.doesNotMatch(js, /category: scope/, '检索不该再按作用域过滤')
-  // 不限分类仍然要能查（rank 的 category 缺省就是 null）
-  assert.match(js, /rank\(ranker\.index, query, \{ limit: 40 \}\)/, '该退回到不限分类的查法')
+test('上一条 / 下一条：有就带链接，没有就留空位', () => {
+  const both = spellHtml()
+  assert.match(both, /href="\.\.\/p\/"/)
+  assert.match(both, /href="\.\.\/n\/"/)
+  const first = renderSpell(entry(), { ordinal: 1, total: 9, prev: null, next: entry({ slug: 'n' }) })
+  assert.match(first, /pager-gap/)
 })
 
-test('放大预览用的 dialog 只在首页出现一次，且默认没内容', () => {
-  const html = renderIndex([entry({ category: '材质' })])
-  assert.equal((html.match(/data-peek-dialog/g) ?? []).length, 1)
-  assert.match(html, /data-peek-stage><\/div>/)
+test('标签是通往目录筛选的入口，不写轴名', () => {
+  const html = spellHtml()
+  assert.match(html, /href="\.\.\/\.\.\/\?tag=%E7%8E%BB%E7%92%83"/)
+  assert.doesNotMatch(html, /tag-axis/)
 })
 
-test('编号在链接内部 —— 挪出去会失去 num 那一格', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  // .row-link 的 grid-template-areas 点名了 num/name/leader/when 四格。
-  // 编号一旦被挪到 <a> 外面，就找不到 num 那一格，会被自动排到整行的末尾。
-  const link = html.match(/<a class="row-link"[\s\S]*?<\/a>/)?.[0] ?? ''
-  assert.match(link, /class="row-numeral"/, '编号必须在 .row-link 里面')
-  assert.match(link, /class="row-name"/)
-  assert.match(link, /class="row-leader"/)
-  assert.match(link, /class="row-when"/)
+test('页面上的字要少：目录里没有长段说明', () => {
+  const html = renderIndex([entry({ category: '组件', slug: 'a' })])
+  assert.doesNotMatch(html, /colophon|hero-sub|group-blurb|brand-sub|card-tags|section-note|plate-caption/)
+  const text = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, ' ')
+  // 去掉条目自己的内容后，界面文案总共不到 150 个字
+  const chrome = text.replace(/无名|想用的时候/g, '').replace(/\s+/g, '')
+  assert.ok(chrome.length < 150, '界面文案 ' + chrome.length + ' 字，太啰嗦了：' + chrome)
 })
 
-test('放大预览与抄咒语是链接的兄弟节点，不是它的子节点', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  const link = html.match(/<a class="row-link"[\s\S]*?<\/a>/)?.[0] ?? ''
-  assert.doesNotMatch(link, /<button/, '按钮嵌在 <a> 里是无效 HTML')
-  assert.match(html, /<\/a>\s*<button class="row-copy"/)
-  assert.match(html, /<\/button>\s*<button class="row-peek"/)
+test('机制短语与代码机制行共享 data-mech', () => {
+  const html = spellHtml()
+  assert.match(html, /<mark class="mech" data-mech>某个东西<\/mark>/)
+  assert.match(html, /<span class="line is-mech" data-mech>/)
 })
 
-test('缩略图排在最右 —— 它是这一条的页码，不能被工具挤到中间', () => {
-  // 次序是「正文 → 工具 → 页码」。缩略图一旦不在行尾，
-  // 「引导线一路连到缩略图」那条设计就断了。
-  const html = renderIndex([entry({ slug: 'x' })])
-  const row = html.match(/<li class="row"[\s\S]*?<\/li>/)?.[0] ?? ''
-  const peekAt = row.indexOf('row-peek')
-  const copyAt = row.indexOf('row-copy')
-  assert.ok(peekAt > -1 && copyAt > -1, '两个控件都该在行里')
-  assert.ok(peekAt > copyAt, '缩略图必须在抄咒语之后（也就是更靠右）')
-  assert.match(row, /row-peek"[^>]*$|<\/li>\s*$/)
-  assert.ok(row.lastIndexOf('row-peek') > row.lastIndexOf('row-copy'))
+test('应用到对话的按钮在页面里，显隐交给 :root[data-embed]', () => {
+  const html = spellHtml()
+  assert.match(html, /data-apply="wuming"[^>]*data-apply-mode="insert"/)
+  assert.match(html, /data-apply="wuming"[^>]*data-apply-mode="send"/)
+  assert.match(CSS, /\.apply \{ display: none; \}/)
+  assert.match(CSS, /:root\[data-embed\] \.apply \{ display: inline-flex; \}/)
 })
 
-test('有边栏时给 main 挂 has-rail，首屏才好跟着正文列对齐', () => {
-  const two = renderIndex([entry({ category: '材质', slug: 'a' }), entry({ category: '动效', slug: 'b' })])
-  assert.match(two, /<main id="main" class="has-rail">/)
-  // 只有一章时没有边栏，就不该加位移
-  const one = renderIndex([entry({ category: '材质' })])
-  assert.match(one, /<main id="main">/)
-})
+/* ------------------------------------------------------------ 样式 */
 
 test('样式表里有 [hidden] 兜底 —— 类规则上的 display 会盖过浏览器默认', () => {
-  // .index-body.has-nav 是 display: grid，会盖掉浏览器自带的 [hidden] { display: none }。
-  // 搜索时目录藏不住，会整片铺在结果下面。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/)
+  assert.match(CSS, /\[hidden\]\s*\{\s*display:\s*none\s*!important/)
 })
 
 test('两套主题都声明了 color-scheme', () => {
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  assert.match(css, /:root \{[^}]*color-scheme: dark/)
-  assert.match(css, /:root\[data-theme='light'\] \{[^}]*color-scheme: light/)
+  assert.match(CSS, /:root \{[^}]*color-scheme: light/)
+  assert.match(CSS, /:root\[data-theme='dark'\] \{[^}]*color-scheme: dark/)
 })
 
-test('状态行只在检索时有字，平时是空的活口', () => {
-  // 状态行是检索的活口（role=status / aria-live），「正在取索引…」「N 条命中」
-  // 「搜索不可用：…」都从这里报。不查的时候它空着，不能 display:none ——
-  // 那会把活口从无障碍树里摘掉，读屏就播不出来了。
-  const html = renderIndex([entry({ category: '材质' })])
-  const status = html.match(/<p class="concordance-status"[^>]*><\/p>/)?.[0] ?? ''
-  assert.ok(status, '状态行该是空的（初值不由模板写死）')
-  assert.match(status, /role="status"/)
-  assert.match(status, /aria-live="polite"/)
-  assert.doesNotMatch(html, /共 \d+ 条咒语/, '「共 N 条」那句常驻说明已经去掉')
-
-  const js = readFileSync(new URL('../src/site.js', import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-  assert.match(js, /setStatus\(''\)/, '不查的时候该清空状态行')
-  assert.doesNotMatch(js, /条咒语/, '别再写那句常驻计数')
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  assert.doesNotMatch(
-    css.replace(/\/\*[\s\S]*?\*\//g, ''),
-    /\.concordance-status[^{]*\{[^}]*display:\s*none/,
-    '空的状态行不能 display:none，否则活口失效',
-  )
-})
-
-/* ── 刊头：书名与检索口一行，检索口吸顶 ───────────────────────────── */
-
-test('查词口住在刊头里，整格占满正文宽（右缘要跟条目对齐）', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  const masthead = html.match(/<header class="masthead">[\s\S]*?<\/header>/)?.[0] ?? ''
-  assert.ok(masthead, '该有刊头')
-  assert.match(masthead, /class="wordmark"/, '书名叫 wordmark')
-  assert.match(masthead, /class="concordance-field"/, '查词口要在刊头里')
-  assert.match(masthead, /id="spellbook-query"/, '输入框也在刊头里')
-  assert.match(masthead, /data-theme-toggle/, '明暗开关也在这一行')
-  // 刊头是两格：第一格「书名 + 开关」，第二格整格给查词口。
-  // 查词口必须**独占第二格** —— 开关但凡自己占一格，查词口就够不到 1250，
-  // 右缘比下面的条目短一整个开关（实测 73px），首屏上缺一角。
-  const idCell = masthead.match(/<div class="masthead-id">[\s\S]*?\n  <\/div>/)?.[0] ?? ''
-  assert.ok(idCell, '该有 .masthead-id 这一格')
-  assert.ok(idCell.includes('class="wordmark"'), '书名在第一格')
-  assert.ok(idCell.includes('data-theme-toggle'), '开关也在第一格')
-  assert.ok(!idCell.includes('concordance-field'), '查词口不许挤进第一格')
-  // 栅格只留两列：任何第三列都会把查词口从右边缘顶开
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const grid = css.match(/\n\.masthead \{[\s\S]*?\n\}/)?.[0] ?? ''
-  const cols = grid.match(/grid-template-columns:([^;]+);/)?.[1] ?? ''
-  assert.ok(cols, '刊头该写明栅格列')
-  // 拆列时不能把 calc(...) / minmax(...) 里面的空格算成列分隔，所以要数括号层数
-  const topLevel = (s) => {
-    const out = []
-    let depth = 0
-    let cur = ''
-    for (const ch of s.trim()) {
-      if (ch === '(') depth++
-      if (ch === ')') depth--
-      if (/\s/.test(ch) && depth === 0) {
-        if (cur) out.push(cur)
-        cur = ''
-        continue
-      }
-      cur += ch
-    }
-    if (cur) out.push(cur)
-    return out
-  }
-  assert.equal(topLevel(cols).length, 2, `刊头只该有两列，实为「${cols.trim()}」`)
-})
-
-test('「说一句你要的效果」那个标题已经去掉', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  assert.doesNotMatch(html, /说一句你要的效果/, '这句话不该再出现在页面上')
-  assert.doesNotMatch(html, /concordance-head/, '它的样式钩子也该一并清掉')
-})
-
-test('首页只剩一个 h1，就是书名 —— 标题去掉了，一级标题得有人接班', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  const h1s = html.match(/<h1[\s>]/g) ?? []
-  assert.equal(h1s.length, 1, `首页该正好一个 h1，实得 ${h1s.length}`)
-  const masthead = html.match(/<header class="masthead">[\s\S]*?<\/header>/)?.[0] ?? ''
-  assert.match(masthead, /<h1 class="masthead-heading">/, '这个 h1 该是刊头里的书名')
-})
-
-test('内页的 h1 仍是条目名，不吃刊头那一份', () => {
-  const html = renderSpell(entry({ slug: 'x', title: '液态玻璃面板' }), {
-    ordinal: 1,
-    total: 1,
-    chapter: { index: 1 },
-  })
-  const h1s = html.match(/<h1[\s>]/g) ?? []
-  assert.equal(h1s.length, 1, '内页也该正好一个 h1')
-  assert.match(html, /<h1 class="title">/)
-  assert.doesNotMatch(html, /masthead-heading/, '内页书名的 h1 不该出现')
-})
-
-test('查词口的记号是魔杖，不是「查」字，但可访问名还在', () => {
-  const html = renderIndex([entry({ slug: 'x' })])
-  const masthead = html.match(/<header class="masthead">[\s\S]*?<\/header>/)?.[0] ?? ''
-  assert.doesNotMatch(masthead, /concordance-label/, '「查」字标签该没有了')
-  assert.match(masthead, /class="concordance-wand"/, '该换成魔杖')
-  // 魔杖是 aria-hidden 的画，读屏读不出，所以必须有别的办法说出这个输入框叫什么
-  assert.match(
-    masthead,
-    /<label class="concordance-mark"[^>]*>[\s\S]*?class="visually-hidden">[^<]+</,
-    '标签里要有一段只给读屏看的文字当可访问名',
-  )
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  assert.match(css, /\.visually-hidden \{/, '配套的隐藏类得在样式表里')
-})
-
-test('刊头吸顶，并且是不透明的 —— 透字就废了', () => {
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const rule = css.match(/^\.masthead \{[\s\S]*?^\}/m)?.[0] ?? ''
-  assert.ok(rule, '该有 .masthead 规则')
-  assert.match(rule, /position:\s*sticky/, '刊头要吸顶')
-  assert.match(rule, /top:\s*0/, '吸在顶边')
-  assert.match(rule, /z-index:\s*\d/, '要压住底下的内容')
-  assert.match(rule, /background:\s*var\(--ground\)/, '底必须不透明')
-})
-
-test('章目导航吸顶时让开刊头，两级不会叠在一起', () => {
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const rule = css.match(/^\.chapter-nav \{[\s\S]*?^\}/m)?.[0] ?? ''
+test('顶栏吸顶，并且带底色 —— 透字就废了', () => {
+  const rule = CSS.match(/^\.topbar \{[\s\S]*?^\}/m)?.[0] ?? ''
   assert.match(rule, /position:\s*sticky/)
-  assert.match(rule, /top:\s*calc\(var\(--masthead-h\)/, '让开的量要由 --masthead-h 算出来')
-  // 刊头多高是内容定的（字号、字体加载都会变），写死数字迟早错位，
-  // 所以得由脚本量一次写进变量。
-  const js = readFileSync(new URL('../src/site.js', import.meta.url), 'utf8')
-  assert.match(js, /setProperty\('--masthead-h'/)
-  assert.match(js, /fonts\?\.ready/, '自托管字体后到，落位后要重量一次')
+  assert.match(rule, /background:/)
 })
 
-test('查词口与正文列在同一条左边缘上', () => {
-  // 刊头第一格按 --rail 减掉间距来定宽，所以查词口正好落在正文那条线（370）上，
-  // 与下面的筹码、结果、条目齐平 —— 吸顶的时候也不会跳。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const rule = css.match(/^\.masthead \{[\s\S]*?^\}/m)?.[0] ?? ''
-  assert.match(
-    rule,
-    /grid-template-columns:\s*calc\(var\(--rail\) - var\(--masthead-gap\)\)/,
-    '第一格宽度要从边栏占位推出来，不能写死',
-  )
-  assert.match(rule, /--masthead-gap/)
+test('缩略图里的 iframe 必须让开指针，否则点图没反应而且不报错', () => {
+  const rule = CSS.match(/\.card-thumb iframe \{[\s\S]*?\}/)?.[0] ?? ''
+  assert.match(rule, /pointer-events:\s*none/)
 })
 
-test('画框只有两档，查词口用小件那一档', () => {
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  assert.match(css, /--frame:\s*30px/)
-  assert.match(css, /--frame-thin:\s*13px/)
-  const field = css.match(/^\.concordance-field \{[\s\S]*?^\}/m)?.[0] ?? ''
-  assert.match(field, /border-image-width:\s*var\(--frame-thin\)/, '查词口用小件档')
-  // 窄屏那档若要收，必须比 13px 更细 —— 之前写 16px，在大档是 22px 时是「收」，
-  // 大档改成 30px、小档 13px 之后，16px 反而变成了「放」，画框越缩越粗。
-  // 别按位置切媒体查询块：基础规则恰好夹在两个 700px 段之间，按段一取就先撞上基础规则，
-  // 于是"窄屏那条"取到的是 var(--frame-thin)，测出个 null 来。改成按内容找：
-  // 全表扫 .concordance-field 的规则，谁把 border-image-width 写成了具体数字，谁就是窄屏那条。
-  const allFieldRules = [...css.matchAll(/\.concordance-field \{[\s\S]*?\}/g)].map((m) => m[0])
-  const narrowField =
-    allFieldRules.find((rule) => /border-image-width:\s*\d+px/.test(rule)) ?? ''
-  assert.ok(narrowField, '该有一条把画框宽度写成具体数字的窄屏规则')
-  const width = narrowField.match(/border-image-width:\s*(\d+)px/)
-  assert.ok(Number(width[1]) <= 13, `窄屏画框该比 13px 细，实得 ${width[1]}px`)
+test('整张卡可点：标题链接的伪元素铺满，工具按钮层级更高', () => {
+  assert.match(CSS, /\.card-link::after \{[^}]*inset: 0/)
+  const tools = CSS.match(/\.card-tools \{[\s\S]*?\}/)?.[0] ?? ''
+  assert.match(tools, /z-index:\s*3/)
 })
 
-/* ── 缩略图：点图就预览 ───────────────────────────────────────────── */
-
-test('缩略图的 iframe 必须让开指针 —— 否则点图没反应，而且不报错', () => {
-  // 缩略图的可见部分就是那块 iframe，而 iframe 是另一个文档，会自己吃掉点击。
-  // 实测：elementFromPoint 在缩略图正中心取到的是 IFRAME.row-preview-doc，
-  // 不是外面那个按钮 —— 于是整张图上只有悬停冒出来的 13px 角标点得动，
-  // 「点一下图就预览」是空话。这类失效不抛错、不报警，只能靠测试钉住。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const rule = css.match(/\.row-preview-doc \{[\s\S]*?\n\}/)?.[0] ?? ''
-  assert.ok(rule, '该有 .row-preview-doc 规则')
-  assert.match(rule, /pointer-events:\s*none/, '缩略图的 iframe 必须 pointer-events: none')
+test('触屏没有悬停：卡片工具常驻', () => {
+  assert.match(CSS, /@media \(hover: none\) \{ \.card-tools \{ opacity: 1/)
 })
 
-test('缩略图上的提示角标常驻，不只在悬停时出现', () => {
-  // 触屏没有悬停：把唯一的提示藏进 :hover，等于对触屏用户不存在。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const rule = css.match(/\n\.row-peek-zoom \{[\s\S]*?\n\}/)?.[0] ?? ''
-  assert.ok(rule, '该有 .row-peek-zoom 规则')
-  const opacity = rule.match(/opacity:\s*([\d.]+)/)
-  assert.ok(opacity, '该写明 opacity')
-  assert.ok(Number(opacity[1]) > 0, `角标默认要看得见，实得 opacity ${opacity[1]}`)
-})
-
-test('缩略图是按钮，点图与点标题各走各的', () => {
-  const html = renderIndex([entry({ slug: 'x', title: '液态玻璃面板' })])
-  const row = html.match(/<li class="row"[\s\S]*?<\/li>/)?.[0] ?? ''
-  // 缩略图必须是独立的 button，不能塞进 <a>：塞进去点图就跳条目页，预览反而开不了
-  const linkEnd = row.indexOf('</a>')
-  const peekAt = row.indexOf('row-peek')
-  assert.ok(peekAt > linkEnd, '预览按钮必须在链接之外（链接已经闭合）')
-  assert.match(row, /<button class="row-peek"[^>]*data-peek=/, '预览按钮该带 data-peek')
-  assert.match(row, /aria-label="放大预览：液态玻璃面板"/, '该说清它是放大预览')
-  assert.match(row, /<button class="row-copy"[^>]*data-prompt=/, '抄咒语仍该在')
-})
-
-test('没有对着链接去筛缩略图的死规则', () => {
-  // .row-peek 是 .row-link 的**兄弟**，不是后代。
-  // 原先写着 .row-link:hover .row-preview —— 选错了类，也选错了关系，永远匹配不上。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  assert.doesNotMatch(css, /\.row-link:hover\s+\.row-peek/, '.row-link 里没有 .row-peek，别这么选')
-  // 改名漏掉的那处也要清掉：HTML 里已经没有任何 .row-preview 元素了
-  assert.doesNotMatch(css, /[^-]\.row-preview\s*\{/, '.row-preview 已改名 .row-peek，不该再有规则')
-})
-
-test('刊头第二格 = 正文宽，所以查词口的右缘才够得着 1250', () => {
-  // 这是本次改动的要害：查词口右缘差 73px，等于「一个开关 + 一个格间距」。
-  // 光看 CSS 很难发现，所以把这条算术钉住：首格 + 格间距 + 第二格 = 正文宽。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  const grid = css.match(/\n\.masthead \{[\s\S]*?\n\}/)?.[0] ?? ''
-  assert.match(grid, /grid-template-columns:\s*calc\(var\(--rail\) - var\(--masthead-gap\)\)\s+minmax\(0, 1fr\)/,
-    '首格该是 rail - masthead-gap，第二格该吃掉剩下的全部')
-  // 算一遍：--rail 220 = --rail-w 176 + --rail-gap 44
-  // 首格（220 - 22）+ 格间距 22 = 220 = --rail
-  // 第二格 = 正文宽 880 → 查词口右缘 = 370 + 880 = 1250 = 条目右缘 ✓
-  const num = (name) => {
-    const m = css.match(new RegExp(`--${name}:\\s*([0-9.]+)px;`))
-    assert.ok(m, `该有 --${name}`)
-    return Number(m[1])
-  }
-  const rail = num('rail-w') + num('rail-gap')
-  assert.equal(num('rail-w') + num('rail-gap') - num('masthead-gap') + num('masthead-gap'), rail,
-    '首格加格间距该正好等于 --rail')
-  assert.equal(num('measure'), num('shell') - 2 * num('gutter') - rail,
-    `正文宽该是 shell - 两侧留白 - 边栏，实得 --measure ${num('measure')}`)
-  // 边栏的算法在 CSS 里写成 calc，确认它确实是 rail-w + rail-gap
-  assert.match(css, /--rail:\s*calc\(var\(--rail-w\)\s*\+\s*var\(--rail-gap\)\)/,
-    '--rail 该是 rail-w + rail-gap')
-})
-
-test('开关住在 .masthead-id 里，不再自己占一列', () => {
-  const raw = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-  // 先把注释剥掉 —— 注释里提到某个选择器，不代表真有那条规则
-  const css = raw.replace(/\/\*[\s\S]*?\*\//g, '')
-  // 只要还有 .masthead > .theme-toggle 这种「开关是栅格子元素」的写法，
-  // 就说明开关又跑回第三格了 —— 查词口会立刻短 73px
-  assert.doesNotMatch(css, /\.masthead\s*>\s*\.theme-toggle/, '开关不该是刊头的直接栅格子元素')
-  assert.match(css, /\.masthead-id \{[\s\S]*?justify-content: space-between/, '第一格内部该是书名靠左、开关靠右')
-})
-
-test('空的状态行不许漏出上边距', () => {
-  // 空块的高度是 0，可 margin 不会跟着消失 —— 那 12px 会永远横在
-  // 刊头和花饰之间，查不查都在，成了凭空的空白。
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-  const base = css.match(/\.concordance-status \{[\s\S]*?\n\}/)?.[0] ?? ''
-  assert.ok(base, '该有 .concordance-status 基础规则')
-  assert.match(base, /margin:\s*0/, '基础规则不该带上边距')
-  assert.match(css, /\.concordance-status:not\(:empty\) \{[\s\S]*?margin-top:\s*12px/,
-    '上边距该钉在「有字」这一种情况上')
-})
-
-test('检索区的上边距不留给空状态行占位', () => {
-  const css = readFileSync(new URL('../src/styles/spellbook.css', import.meta.url), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-  const rule = css.match(/\n\.concordance \{[\s\S]*?\n\}/)?.[0] ?? ''
-  assert.ok(rule, '该有 .concordance 规则')
-  assert.match(rule, /margin:\s*0/, '状态行空着时整块高度是 0，别再留 30px')
+test('嵌入态只跟明暗，不跟宿主的配色 —— 换了底色，粗黑框就沉进背景里了', () => {
+  assert.doesNotMatch(JS, /--dsw-alias-brand-primary/)
+  assert.match(JS, /dsh-spellbook-theme/)
 })

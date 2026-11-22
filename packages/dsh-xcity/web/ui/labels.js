@@ -1,0 +1,228 @@
+/*
+ * UI 文案（R35）—— **一处**集中放"界面上的中文"。
+ *
+ * ── 为什么要有这个模块 ──────────────────────────────────────────────────────
+ *
+ * 1. 六态标签原来有**两份**（`ui/board.js` 与 `ui/tasks.js` 各一份 `STATUS_LABEL`），
+ *    代理状态还有第三、第四份（`ui/roster.js`、`ui/topbar.js`）。同一件事四份实现，
+ *    改一次颜色/措辞就得记住改四个地方——这是 R32 就记下的债，这里一次还掉。
+ * 2. R35 要显示"角色调了哪个工具"，而工具名是 `xcity_dispatch` 这种代码标识符，
+ *    直接铺在界面上很难看。**中文标签是 UI 文案**，所以映射表放 UI 层是对的
+ *    （与 D37"人设/台词是内容"不冲突：这里说的是"按钮上写什么"，不是"角色是谁"）。
+ *
+ * ── 两条规矩 ────────────────────────────────────────────────────────────────
+ *
+ * · **未知名字原样显示**，绝不猜、也绝不隐藏：显示 `xcity_unknown` 至少能让人去查，
+ *   而"（未知操作）"会把唯一的线索抹掉。
+ * · 这个文件**不碰 DOM**（可被 node 测），也不 import 任何别的东西。
+ */
+
+/** `TaskStatus` 六态 → 界面文案。看板、工单、徽章共用这一份。 */
+export const TASK_STATUS_LABEL = {
+  pending: '待办',
+  ready: '可领取',
+  in_progress: '进行中',
+  blocked: '受阻',
+  done: '完成',
+  failed: '失败',
+  // R67 / M13-5：**派生**状态，不是世界的六态。`blockedBy` 里有前置 `failed` → 永远等不到。
+  // 放在同一张表里是因为界面只需要问一句"这个（显示）状态叫什么"。
+  dead: '卡死',
+}
+
+/** `AgentState` → 界面文案。 */
+export const AGENT_STATE_LABEL = {
+  idle: '待命',
+  walking: '赶路',
+  working: '干活',
+  talking: '交谈',
+  blocked: '受阻',
+  celebrating: '庆祝',
+  sleeping: '休息',
+}
+
+/**
+ * `AgentState` → 徽章色调。颜色表达**含义**而不是复刻任务状态：
+ * 干活=蓝、赶路/交谈=琥珀、受阻=红（同"需要人管"）、庆祝=绿、休息/待命=灰。
+ */
+export const AGENT_STATE_TONE = {
+  working: 'in_progress',
+  walking: 'ready',
+  talking: 'ready',
+  blocked: 'blocked',
+  celebrating: 'done',
+  idle: 'pending',
+  sleeping: 'pending',
+}
+
+/** `AgentRole` → 界面文案。 */
+export const ROLE_LABEL = {
+  lead: '负责人',
+  engineer: '工程师',
+  reviewer: '评审',
+  researcher: '调研',
+  ops: '运维',
+  docs: '文档',
+}
+
+/**
+ * 工具名 → 动宾短语。
+ *
+ * 用"派单/看世界/查内容库"这种**动宾结构**，因为它要和"正在…"拼起来（`actingText`）：
+ * 名词短语拼出来是"正在任务派发…"，读着别扭。
+ */
+export const TOOL_LABEL = {
+  // 世界工具（小镇里的事）
+  xcity_dispatch: '派单',
+  xcity_status: '看世界',
+  xcity_content: '查内容库',
+  xcity_open: '打开面板',
+
+  /*
+   * AgentTeams 工具（R45 / M7-12）—— 角色**自己**也是 agent-teams 的成员，
+   * 所以动作行里会大量出现 `agent_teams_*`。原来没有映射，界面上就铺着
+   * `agent_teams_send_message` 这种代码标识符。
+   *
+   * 名字与语义是照**装好的插件**核过的（`@nanmicoder/dsh-agent-teams` 的 14 个工具），
+   * 不是我猜的：`amend_task` 是"队长补任务说明"、`resume` 是"把被暂停/升级的团队重新跑起来"、
+   * `approve` 是"批准计划或任务"。标签一律留在这一处，别处不要再写第二份。
+   */
+  agent_teams_create: '建团队',
+  agent_teams_delete: '解散团队',
+  agent_teams_add_member: '加成员',
+  agent_teams_remove_member: '移出成员',
+  agent_teams_send_message: '给队友发消息',
+  agent_teams_create_task: '建任务',
+  agent_teams_claim_task: '领任务',
+  agent_teams_update_task: '更新任务',
+  agent_teams_reassign_task: '改派任务',
+  agent_teams_amend_task: '补任务说明',
+  agent_teams_edit_plan: '改计划',
+  agent_teams_approve: '审批',
+  agent_teams_status: '看团队状态',
+  agent_teams_resume: '恢复团队',
+}
+
+/*
+ * 视图（R46 · M10-11）：分组签与状态过滤的界面文案。
+ *
+ * ⚠️ **流水线自己的名字不在这里**：`task.quick-fix` 的中文名是**内容**，
+ * 前端只显示 `set` 去掉 `task.` 前缀的短名（见 `core/board-layout.js` 的 `shortGroupName`）。
+ * 想看中文流水线名，得由协议层下发——UI 层不猜。
+ */
+export const VIEW_GROUP_ALL = '全部'
+export const UNGROUPED_LABEL = '未分组'
+/** 状态过滤四档（顺序即界面顺序）。 */
+export const VIEW_FILTERS_ORDER = ['all', 'unfinished', 'failed', 'done']
+export const VIEW_FILTER_LABEL = { all: '全部', unfinished: '未完成', failed: '失败', done: '完成' }
+
+/**
+ * 分组签上要显示的**名字**（不含数量）。
+ *
+ * R152：数量从名字里拆出来，做成 chip 右侧的数字徽章——原来整句
+ * `快速修一个 bug · 3 张（3 未完成）` 有 205px 宽，四枚就把图区顶掉 113px。
+ * 名字与数字分开之后，名字可以省略（窄栏截断），数字仍然对齐好读。
+ */
+export function groupDisplayName(group) {
+  return group.id === 'all' ? VIEW_GROUP_ALL : group.name === '' ? UNGROUPED_LABEL : group.name
+}
+
+/** 分组签上的完整文字（只用于 `title`/`aria-label`，不再直接铺在窄 chip 上）。 */
+export function groupViewLabel(group) {
+  return `${groupDisplayName(group)} · ${group.total} 张${group.unfinished > 0 ? `（${group.unfinished} 未完成）` : ''}`
+}
+
+/**
+ * 成员头像上的那个字（R152）。
+ *
+ * 取"去掉 小/老/阿 这类前缀后的第一个字"：`小蓝` → `蓝`、`工头阿金` → `工`。
+ * 不这样做的话 8 个人里 7 个头像都是「小」，头像就退化成了一个色块。
+ * 空的/没有名字 → `?`（**不猜**，也不渲染空白头像）。
+ */
+export function memberInitial(name) {
+  const text = String(name ?? '').trim()
+  if (text === '') return '?'
+  const stripped = text.replace(/^(小|老|阿)/, '')
+  const char = [...stripped][0] ?? [...text][0]
+  return /[a-z]/.test(char) ? char.toUpperCase() : char
+}
+
+/** 工具的中文名（未知 → 原样返回）。 */
+export function toolLabel(name) {
+  if (typeof name !== 'string' || name === '') return '未知工具'
+  return TOOL_LABEL[name] ?? name
+}
+
+/** 六态文案（未知 → 原样）。 */
+export function taskStatusLabel(status) {
+  return TASK_STATUS_LABEL[status] ?? String(status ?? '')
+}
+
+/**
+ * 调度器"现在为什么不派这张单"的原因文案（R67 / M13-5）。
+ *
+ * 这两类原因要**与"前置失败"分开显示**：一个用户能做的是"等/补人/补工位"，
+ * 另一个是"这张单已经死了，重派或取消"。混成一句话，用户就不知道该做什么。
+ */
+export const STALL_REASON_LABEL = {
+  'no-worker': '没有空闲的人',
+  'no-station': '没有能承载它的工位',
+}
+
+/** 调度器停滞原因文案（未知 → 原样，宁可用英文短 id 也别显示 undefined）。 */
+export function stallReasonLabel(reason) {
+  return STALL_REASON_LABEL[reason] ?? String(reason ?? '未知')
+}
+
+/** 代理状态文案（未知 → 原样）。 */
+export function agentStateLabel(state) {
+  return AGENT_STATE_LABEL[state] ?? String(state ?? '')
+}
+
+/** 代理状态的徽章色调（未知 → 灰）。 */
+export function agentStateTone(state) {
+  return AGENT_STATE_TONE[state] ?? 'pending'
+}
+
+/** 角色文案（未知 → 原样）。 */
+export function roleLabel(role) {
+  if (role === null || role === undefined) return ''
+  return ROLE_LABEL[role] ?? String(role)
+}
+
+/** 动作成功 / 失败的图标（失败也要显示——"他试过但没成"本身就是信息）。 */
+export function actionIcon(action) {
+  return action !== null && action !== undefined && action.ok === false ? '⚠️' : '🔧'
+}
+
+/**
+ * 一条动作的可读文本，例如 `派单 task.quick-fix`。
+ *
+ * 参数（`detail`）**原样**跟在后面：它是 id（`task.quick-fix`）、路径或工具名，
+ * 翻译它只会让人对不上宿主那边的日志。
+ */
+export function actionText(action) {
+  if (action === null || action === undefined) return ''
+  const verb = toolLabel(action.name)
+  const detail = typeof action.detail === 'string' && action.detail !== '' ? ` ${action.detail}` : ''
+  return `${verb}${detail}`
+}
+
+/**
+ * `acting` 阶段那一行活动指示：`正在派单…`。
+ *
+ * 取**最后一个**动作——它才是"此刻在做的事"；前面那些会以动作行的形式留在下面。
+ * 一个动作都没有（模型只是在说话/思考）时退回"他在干活…"。
+ */
+export function actingText(actions) {
+  const list = Array.isArray(actions) ? actions : []
+  const last = list[list.length - 1]
+  if (last === undefined) return '他在干活…'
+  return `正在${toolLabel(last.name)}…`
+}
+
+/** `N 次调用`（多个工具时显示次数——R34 真机是 3 次，用户要看得见"调了几次"）。 */
+export function actionCountText(count) {
+  const n = Number.isFinite(count) ? count : 0
+  return n <= 0 ? '' : `${n} 次调用`
+}

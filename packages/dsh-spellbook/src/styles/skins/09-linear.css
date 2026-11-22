@@ -1,0 +1,39 @@
+/* 产品极简深色 —— 近乎无色的界面，只有一线品牌紫；精确、安静、高密度 */
+:root {
+  --ground: #08090a;
+  --ground-2: #111214;
+  --text: #f7f8f8;
+  --text-dim: #8a8f98;
+  --gilt: #a8a29e;
+  --gilt-bright: #d6d3d1;
+  --rubric: #f2994a;
+  --rule: #1c1d20;
+  --accent: #5e6ad2;
+  --accent-ink: #ffffff;
+  --surface: #101113;
+  --surface-hover: #16171a;
+  --line: #1c1d20;
+  --line-strong: #2a2b30;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px -16px #000;
+  --glow: radial-gradient(60% 45% at 50% 0%, rgb(94 106 210 / 0.10), transparent 70%);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+.topbar { border-bottom: 1px solid var(--line); background: rgb(8 9 10 / 0.82); }
+.logo { background: #1c1d20; color: #f7f8f8; border: 1px solid #2a2b30; border-radius: 8px; box-shadow: none; }
+.brand-name { font-size: 15px; letter-spacing: 0; font-family: var(--font-ui); font-weight: 600; }
+.search-field { height: 40px; border-radius: 8px; border-color: var(--line-strong); background: #101113; }
+.search-field:focus-within { box-shadow: 0 0 0 3px rgb(94 106 210 / 0.25); }
+.chip { height: 30px; border-radius: 6px; border-color: transparent; color: var(--text-dim); font-size: 13px; }
+.chip:hover { background: #16171a; }
+.chip[aria-pressed="true"] { background: #1c1d20; color: var(--text); border-color: var(--line-strong); }
+.hero { padding: 40px 0 28px; }
+.hero-title { font-family: var(--font-ui); font-size: clamp(28px, 4vw, 42px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.hero-title em { background: none; -webkit-text-fill-color: var(--text-dim); color: var(--text-dim); }
+.group-head { font-family: var(--font-ui); font-size: 13px; font-weight: 500; letter-spacing: 0.04em; color: var(--text-dim); }
+.group-head::after { background: linear-gradient(90deg, var(--line-strong), transparent); }
+.card { border-color: var(--line); background: var(--surface); }
+.card:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: 0 12px 32px -20px #000; }
+.card-title { font-size: 15px; font-weight: 550; letter-spacing: -0.01em; }
+.card-when { font-size: 13px; }
+.card-badge { color: var(--text-dim); }

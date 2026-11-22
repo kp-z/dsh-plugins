@@ -2,336 +2,238 @@
  * 页面渲染。
  *
  * 结构上只有两种页面：
- *   /            目录（tabula）—— 点引线，不是卡片栅格
- *   /spell/<slug>/  对开（opening）—— 左窄栏页边注，右宽栏正文
+ *   /               目录 —— 一块吸顶的操作区（查词 + 分类）+ 一张卡片网格
+ *   /spell/<slug>/  条目 —— 图版在前（先看效果），机制、代码、边界在后；右侧一张元数据卡
  *
- * 页边注里装的是真实元数据，左窄右宽是「注解 vs 正文」的真实层级。
- * 页面上唯一被强调的东西是「机制」：描述里的 ==…== 与代码里的 @mechanism
+ * 页面上唯一被强调的东西仍是「机制」：描述里的 ==…== 与代码里的 @mechanism
  * 共享 data-mech，悬停任一侧会点亮另一侧 —— 排版权重 = 迁移权重。
+ *
+ * 目录里的筛选与检索全部作用在**同一批卡片**上（隐藏 / 重排），不另渲染一份结果列表：
+ * 结果就是卡片本身，带着缩略图、带着工具，没有「搜索结果页」这个第二套界面。
  */
 
-import {
-  chineseNumeral,
-  escapeHtml,
-  renderInline,
-  renderParagraphs,
-  roman,
-  stripMechanismMarkers,
-} from './text.mjs'
-import { STAGES } from './demo.mjs'
-import { bookMark, wandMark } from './marks.mjs'
+import { escapeHtml, renderInline, renderParagraphs, stripMechanismMarkers } from './text.mjs'
+import { icon, iconUse, iconSprite, logo } from './icons.mjs'
 import { CATEGORIES } from '../../shared/schema.mjs'
-// 标签按轴分组显示用（机制 / 观感 / 场合 / 触发），词表在 shared/tags.mjs
-import { tagsByAxis } from '../../shared/tags.mjs'
+import { tagsByAxis, TAG_INDEX } from '../../shared/tags.mjs'
 
-const SITE_NAME = '咒语书'
-const SITE_TAGLINE = '前端效果库'
-
-function layout({ title, description, body, root, isSpell = false }) {
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)}</title>
-<meta name="description" content="${escapeHtml(description)}">
-<link rel="stylesheet" href="${root}styles/spellbook.css">
-<!-- 编号栏宽与页边注编号字号由构建期按条目数算出，见 shared/numeral.mjs -->
-<link rel="stylesheet" href="${root}numeral.css">
-<!-- 明暗与「条列/卡片」都在首屏渲染前恢复：晚一步就会先闪一下默认布局。
-     被 DSH 侧边栏嵌进来时会多带两个参数：
-       ?theme=dark|light  让书跟宿主明暗同步（优先于 localStorage，宿主说了算）
-       ?embed=1           收起「书的封面」那截刊头 —— 在侧边栏里它是多余的壳，
-                          查词口与卡片开关留着（那是在任何地方都要用的东西）
-      embed 会记进 sessionStorage：站内跳转丢查询串，但嵌入这件事不该在第二页失效。 -->
-<script>try{
-var p=new URLSearchParams(location.search);
-var t=p.get('theme')||localStorage.getItem('spellbook:theme');
-if(t)document.documentElement.dataset.theme=t;
-/* embed 必须跨页记住：站内跳转（目录 → 条目页）是普通导航，查询串会被丢掉，
-   而丢掉 embed 就等于「书的封面」那截刊头在侧边栏里重新冒出来、明暗也不再跟宿主走——
-   那截刊头正是 embed 存在的理由。sessionStorage 按标签页/iframe 隔离，
-   所以另开一个标签页独立看站，不会被这里记住的 embed 污染。 */
-var embed=p.get('embed');
-if(embed){try{sessionStorage.setItem('spellbook:embed','1')}catch(e){}}
-else{try{embed=sessionStorage.getItem('spellbook:embed')}catch(e){}}
-var v=localStorage.getItem('spellbook:view');
-if(v)document.documentElement.dataset.view=v;
-else if(embed)document.documentElement.dataset.view='card';
-if(embed)document.documentElement.dataset.embed='1';
-}catch(e){}</script>
-</head>
-<body${isSpell ? ' class="is-spell"' : ''}>
-<a class="skip" href="#main">跳到正文</a>
-${body}
-<script type="module" src="${root}site.js"></script>
-</body>
-</html>
-`
-}
+const SITE_NAME = '长这样'
+const SITE_TAGLINE = '前端效果库' // 只进 <title> 与描述，页面上不显示
 
 /**
- * 刊头：左边一格「书名 + 明暗开关」，右边一格拉满检索口。
- *
- * 检索口搬进刊头，是因为它要**吸顶**：整条刊头 sticky，滚到哪儿都能查。
- * 原来那个「说一句你要的效果」的标题因此去掉 —— 它本来只是在给查词口配句话，
- * 而刊头这一行已经说清这是什么书了，再顶一行字反而把首屏往下压。
- *
- * 开关为什么挪到书名这边来：查词口的**右边缘要和下面的条目对齐**（370 → 1250）。
- * 开关只要自己占着第三格，查词口就够不着 1250，右边缘差着一整个开关（73px），
- * 和条目对不齐 —— 首屏上就是一条缺了角的边。把开关收进书名那一格（边栏 220px），
- * 第二格便整整是 880 的正文宽：查词口、分类筹码、检索结果、条目，四条右边缘齐平。
- *
- * 代价是副标题得改竖排（书名在上、副题在下）。横排时「咒语书 前端效果库」
- * 一个块就占 198px，再塞不下一个开关；竖排后书名块收成 ~110px，同格还有富余。
- *
- * 首页于是没有别的 h1 了，书名就顶上 h1（`asHeading`）：
- * 首页用书名当一级标题，内页用条目名当一级标题，各页正好各一个。
+ * 章的展示顺序：先是「组件」与「风格」——这本书是给做前端界面的人用的，
+ * 打开第一眼应该看到最好看、最能直接拿走的东西；平台能力那六章在后面。
+ * 这是展示顺序，不是分类定义（分类定义在 shared/schema.mjs 的 CATEGORIES）。
  */
-function header({ root, current = null, search = '', asHeading = false, view = false }) {
-  const wordmark = `<a class="wordmark" href="${root}">
-    ${bookMark('wordmark-book')}
-    <span class="wordmark-text">
-      <span class="wordmark-name">${escapeHtml(SITE_NAME)}</span>
-      <span class="wordmark-tagline">${escapeHtml(SITE_TAGLINE)}</span>
-    </span>
-  </a>`
-  // 「条列 / 卡片」的开关只在目录页出现 —— 条目页没有条目可排。
-  // 和明暗开关并排：两个都是「怎么读这本书」的选择，属同一类器物。
-  const viewToggle = view
-    ? `<button class="view-toggle" type="button" data-view-toggle aria-label="切换条列与卡片">
-      <span class="view-toggle-mark" aria-hidden="true"></span>
-      <span data-view-label>卡</span>
-    </button>`
-    : ''
-  return `<header class="masthead">
-  <div class="masthead-id">
-    ${asHeading ? `<h1 class="masthead-heading">${wordmark}</h1>` : wordmark}
-    <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗">
-      <span class="theme-toggle-mark" aria-hidden="true"></span>
-      <span data-theme-label>明</span>
-    </button>
-    ${viewToggle}
-  </div>
-${search || (current ? `  <p class="masthead-current">${escapeHtml(current)}</p>` : '')}
-</header>`
+const DISPLAY_ORDER = ['组件', '风格', '材质', '动效', '交互', '布局', '排版', '图形']
+
+/** 每章里排在最前的几条（挑的是「一眼就想要」的）。其余按标题排。 */
+const FEATURED = [
+  'style-cove-dark-glass', 'glass-card-layers', 'ai-composer-bar', 'kpi-tile', 'donut-legend-linked',
+  'contribution-calendar', 'priority-task-card', 'nested-nav-groups', 'water-level-bubble', 'tone-badge-mix',
+  'token-mix-theming', 'style-dviz-data-first',
+]
+
+/** 这几章的开头几张卡做成两倍宽：目录有了节奏，最好看的也最大。 */
+const WIDE_COUNT = { 组件: 2, 风格: 1 }
+
+/** 查词口下拉里的「试试这样搜」。构建期会用真实索引过一遍，搜不到东西的不放（见 build.mjs）。 */
+const TRY_QUERIES = ['跟着鼠标发光', '毛玻璃', '滚动驱动', '卡片悬停', '表格', '拖拽', '输入框', '骨架屏', '渐变文字']
+
+function layout({ title, description, body, root, page }) {
+  return '<!doctype html>\n' +
+'<html lang="zh-CN">\n' +
+'<head>\n' +
+'<meta charset="utf-8">\n' +
+'<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+'<title>' + escapeHtml(title) + '</title>\n' +
+'<meta name="description" content="' + escapeHtml(description) + '">\n' +
+'<link rel="stylesheet" href="' + root + 'styles/spellbook.css">\n' +
+`<!-- 明暗与版式在首屏渲染前恢复：晚一步就会先闪一下默认样子。
+     被 DSH 侧边栏嵌进来时会多带两个参数：
+       ?theme=dark|light  跟宿主明暗同步（优先于 localStorage，宿主说了算）
+       ?embed=1           嵌入态：收起品牌名，跟宿主取色（见 site.js 的 initHostTokens）
+     embed 记进 sessionStorage：站内跳转丢查询串，但「嵌在侧边栏里」这件事不该在第二页失效。 -->
+<script>try{
+var p=new URLSearchParams(location.search),d=document.documentElement;
+var t=p.get('theme')||localStorage.getItem('spellbook:theme');
+if(t)d.dataset.theme=t;
+var e=p.get('embed');
+if(e){try{sessionStorage.setItem('spellbook:embed','1')}catch(x){}}
+else{try{e=sessionStorage.getItem('spellbook:embed')}catch(x){}}
+if(e)d.dataset.embed='1';
+var l=localStorage.getItem('spellbook:layout');
+if(l==='list'||l==='grid')d.dataset.layout=l;
+}catch(e){}</script>
+</head>
+` +
+'<body class="' + page + '">\n' +
+'<a class="skip" href="#main">跳到正文</a>\n' +
+body + '\n' +
+'<script type="module" src="' + root + 'site.js"></script>\n' +
+'</body>\n</html>\n'
+}
+
+function brand(root) {
+  return '<a class="brand" href="' + root + '">' + logo() +
+    '<span class="brand-name">' + SITE_NAME + '</span></a>'
+}
+
+function searchField(placeholder) {
+  return '<div class="search-field">' + icon('search', 'search-icon') +
+    '<label class="visually-hidden" for="spellbook-query">搜索</label>' +
+    '<input class="search-input" id="spellbook-query" type="search" name="q" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="' + escapeHtml(placeholder) + '">' +
+    '<button class="search-clear" type="button" data-search-clear hidden aria-label="清空">' + icon('close') + '</button>' +
+    '<kbd class="search-kbd" aria-hidden="true">/</kbd>' +
+    '</div>'
+}
+
+function themeButton() {
+  return '<button class="icon-btn" type="button" data-theme-toggle aria-label="切换明暗" title="切换明暗">' +
+    icon('sun', 'is-sun') + icon('moon', 'is-moon') + '</button>'
 }
 
 /* ------------------------------------------------------------------ *
  * 目录
  * ------------------------------------------------------------------ */
 
-function renderTabulaRow(entry, ordinal) {
-  const numeral = roman(ordinal)
-  const slug = entry.meta.slug
-  const href = `spell/${encodeURIComponent(slug)}/`
-  const title = escapeHtml(entry.meta.title)
-  // 一行的三个兄弟：链接、抄咒语、放大预览。
-  // 按钮不能塞进 <a> 里（无效 HTML，且点「抄」会连带跳页），所以它们必须是兄弟节点。
-  // 次序是「文本 → 工具 → 缩略图」：缩略图是这条咒语的**页码**，必须留在右边距上，
-  // 一旦被工具挤到中间，「一路连到缩略图」的那条引导线就断了。
-  //
-  // 编号则相反，必须留在链接**内部**：.row-link 的 grid-template-areas 里点名了 num
-  // 那一格，把它挪到链接外面就会失去那一格、被自动排到行尾（实测跑到 x=1237 去了）。
-  // 而且编号本来就是这个条目名字的一部分，跟着链接一起点得通才对。
-  return `<li class="row" data-category="${escapeHtml(entry.meta.category)}" data-slug="${escapeHtml(slug)}" data-tags="${escapeHtml((entry.meta.tags ?? []).join(' '))}">
-  <a class="row-link" href="${href}">
-    <span class="row-numeral" aria-hidden="true">${numeral}</span>
-    <span class="row-name">${title}</span>
-    <span class="row-leader" aria-hidden="true"></span>
-    <span class="row-when">${escapeHtml(entry.meta.when)}</span>
-  </a>
-  <button class="row-copy" type="button" data-prompt="${escapeHtml(slug)}" data-prompt-url="spell/${encodeURIComponent(slug)}/prompt.txt" aria-label="复制咒语：${title}">抄咒语</button>
-  <button class="row-peek" type="button" data-peek="${escapeHtml(slug)}" aria-label="放大预览：${title}">
-    <iframe class="row-preview-doc" src="${href}demo.html" loading="lazy" sandbox="allow-scripts" tabindex="-1" title=""></iframe>
-    <span class="row-peek-zoom" aria-hidden="true"></span>
-  </button>
-</li>`
+function renderCard(entry, wide = false) {
+  const meta = entry.meta
+  const slug = meta.slug
+  const href = 'spell/' + encodeURIComponent(slug) + '/'
+  const title = escapeHtml(meta.title)
+  const tags = meta.tags ?? []
+  return '<article class="card' + (wide ? ' is-wide' : '') + '" data-slug="' + escapeHtml(slug) + '" data-cat="' + escapeHtml(meta.category) + '" data-tags="' + escapeHtml(tags.join(' ')) + '">\n' +
+    // 缩略图只是个占位：iframe 由 site.js 在它接近视口时才挂（见 initThumbs），
+    // 页面里没有任何一个在一开始就会去取的文档。
+    '  <div class="card-thumb"></div>\n' +
+    '  <div class="card-body">\n' +
+    '    <h3 class="card-title"><a class="card-link" href="' + href + '">' + title + '</a>' + (wide ? '<span class="card-badge" title="精选">' + icon('sparkle') + '</span>' : '') + '</h3>\n' +
+    '    <p class="card-when">' + escapeHtml(meta.when) + '</p>\n' +
+    '    <p class="card-why" hidden></p>\n' +
+    '  </div>\n' +
+    '  <div class="card-tools">\n' +
+    '    <button class="tool" type="button" data-peek="' + escapeHtml(slug) + '" aria-label="放大预览：' + title + '" title="放大预览">' + iconUse('expand') + '</button>\n' +
+    '    <button class="tool" type="button" data-prompt="' + escapeHtml(slug) + '" data-prompt-url="' + href + 'prompt.txt" aria-label="复制咒语：' + title + '" title="复制咒语">' + iconUse('copy') + '</button>\n' +
+    '  </div>\n' +
+    '</article>'
 }
 
-/**
- * 按 CATEGORIES 的顺序分章。
- * 目录导航与对开页的章节标识都必须走这一份，否则同一个分类在两处会算出不同章号。
- */
+/** 按展示顺序分章（见 DISPLAY_ORDER）；空分类不出现。章内精选在前，其余保持输入顺序。 */
 export function chaptersOf(entries) {
-  return CATEGORIES.map((category) => ({
+  const rank = (slug) => { const i = FEATURED.indexOf(slug); return i === -1 ? FEATURED.length : i }
+  const known = DISPLAY_ORDER.filter((c) => CATEGORIES.includes(c))
+  const order = [...known, ...CATEGORIES.filter((c) => !known.includes(c))]
+  return order.map((category) => ({
     category,
-    items: entries.filter((entry) => entry.meta.category === category),
-  }))
-    .filter((chapter) => chapter.items.length > 0)
-    .map((chapter, index) => ({ ...chapter, index: index + 1 }))
+    items: entries
+      .filter((entry) => entry.meta.category === category)
+      .sort((a, b) => rank(a.meta.slug) - rank(b.meta.slug)),
+  })).filter((chapter) => chapter.items.length > 0)
 }
 
-/**
- * 查词口本身。它住在刊头里，跟着刊头一起吸顶。
- *
- * 左边原先是「查」字标签。换成一柄魔杖：这本书的器物是魔杖，
- * 而放大镜在每一本工具书里都长一样 —— 这根杖才是这本书自己的记号。
- *
- * 但魔杖是 `aria-hidden` 的画，读屏读不出它，所以标签里另放一段
- * `.visually-hidden` 的「查词」当输入框的可访问名。去掉文字留图标可以，
- * 去掉可访问名不行。
- */
-function searchField() {
-  return `  <div class="concordance-field">
-    <label class="concordance-mark" for="spellbook-query">
-      <span class="visually-hidden">查词</span>
-      ${wandMark('concordance-wand')}
-    </label>
-    <input
-      class="concordance-input"
-      id="spellbook-query"
-      type="search"
-      name="q"
-      autocomplete="off"
-      autocapitalize="off"
-      spellcheck="false"
-      enterkeyhint="search"
-      placeholder="跟着鼠标动的按钮 / 玻璃 / 斜条纹 / 文字绕图排">
-    <button class="concordance-clear" type="button" data-search-clear hidden>清空</button>
-    <kbd class="concordance-key" data-search-key aria-hidden="true">/</kbd>
-  </div>`
+/** 常用标签：只取「场合 / 观感」两轴里条数最多的 —— 那是人会拿来找东西的词。 */
+function popularTags(entries, limit = 14) {
+  const counts = new Map()
+  for (const { meta } of entries) {
+    for (const tag of meta.tags ?? []) {
+      const axis = TAG_INDEX.get(tag)
+      if (axis === 'use' || axis === 'look') counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN')).slice(0, limit)
 }
 
-/**
- * 检索区：一条状态行，查词口已经在刊头里。
- *
- * 这里原先还有一排「限定分类」的筹码（全书 / 材质 / 动效 / …）。它已经去掉了：
- * 那排筹码是**章目导航的重复品** —— 分类本来就是章，左边的章目已经把同一个
- * 分类列了一遍，再横着摆一排按钮，等于同样的入口做两遍。
- * 去掉之后首屏是「刊头（含查词口）→ 分隔纹 → 目录」，一眼到底。
- *
- * 状态行留着，但**只在检索时才有字**（`role="status"`，`aria-live="polite"`）：
- * 它是检索的活口 —— 「正在取索引…」「N 条命中」「搜索不可用：…」都从这里报。
- * 不查的时候它空着，`<p>` 没有内容就没有高度，不占地方，也不影响读屏播报。
- */
-function concordance() {
-  return `  <section class="concordance" aria-label="检索状态">
-    <p class="concordance-status" data-search-status role="status" aria-live="polite"></p>
-  </section>
-
-  <div class="search-results" data-search-results hidden></div>`
+/** 首页最上面：一句话 + 三个数。筛选或检索时收起，把位置还给结果。 */
+function hero(entries, chapters) {
+  const components = chapters.find((c) => c.category === '组件')?.items.length ?? 0
+  return '  <section class="hero" data-hero>\n' +
+    '    <h1 class="hero-title">把好看的界面，<em>说成一句咒语</em></h1>\n' +
+    '    <p class="hero-stats"><span><b>' + entries.length + '</b>条</span><span><b>' + chapters.length + '</b>章</span>' +
+    (components ? '<span><b>' + components + '</b>组件</span>' : '') + '</p>\n' +
+    '  </section>\n'
 }
 
-/* 原先把这条立论挂在首屏当标语。现在首屏让给检索，立论挪到页脚，位置换了，话没变。 */
-const PROLOGUE_NOTE = '描述负责说清它靠什么机制成立，代码负责证明这件事真的能做到。图版里的预览是真在跑的，不是截图。'
+const pills = (queries) => queries.map((q) => '<button class="pill" type="button" data-q="' + escapeHtml(q) + '">' + escapeHtml(q) + '</button>').join('')
 
-const COLOPHON = `      <section class="colophon">
-        <p class="colophon-lede">一条咒语 = 一段描述 + 一段示例代码。${PROLOGUE_NOTE}</p>
-        <h2 class="colophon-head">收录标准</h2>
-        <ul class="colophon-list">
-          <li><strong>跑得起来</strong>——演示代码在图版里真的渲染，跑不通的不进。</li>
-          <li><strong>说得清机制</strong>——描述里必须点名它靠什么成立，那是迁移时唯一不能被冲掉的部分。</li>
-          <li><strong>记得住出处</strong>——来源与收录时间。</li>
-          <li><strong>说得出场合</strong>——什么时候该用它。</li>
-          <li><strong>一句话能说清的不收</strong>——「按钮加个圆角」这种，不说它也懂。</li>
-        </ul>
-      </section>`
-
-export function renderIndex(entries) {
+export function renderIndex(entries, { tryQueries = TRY_QUERIES } = {}) {
   const chapters = chaptersOf(entries)
 
-  if (!chapters.length) {
-    const body = `${header({ root: './', search: searchField(), asHeading: true })}
-<main id="main">
-${concordance()}
-  <p class="empty">库还是空的。往 <code>content/effects/</code> 里放一个 <code>.md</code>，它就会出现在这里。</p>
-</main>`
-    return layout({
-      title: `${SITE_NAME} · ${SITE_TAGLINE}`,
-      description: '前端效果库：每条是一段描述加一段可运行的示例代码。',
-      body,
-      root: './',
-    })
-  }
+  const chips = ['<button class="chip" type="button" data-cat="" aria-pressed="true"><span class="chip-name">全部</span><b class="chip-count">' + entries.length + '</b></button>']
+    .concat(chapters.map((c) =>
+      '<button class="chip" type="button" data-cat="' + escapeHtml(c.category) + '" aria-pressed="false">' +
+      icon(c.category, 'chip-icon') + '<span class="chip-name">' + escapeHtml(c.category) + '</span><b class="chip-count">' + c.items.length + '</b></button>'))
+    .join('\n      ')
 
-  // 全书连续编号：章节只决定分组，条目序号 I、II、III 一路排下去
-  let ordinal = 0
-  const sections = chapters
-    .map((chapter) => {
-      const rows = chapter.items.map((entry) => renderTabulaRow(entry, ++ordinal)).join('\n')
-      return `      <section class="chapter" id="chapter-${escapeHtml(chapter.category)}">
-        <h2 class="chapter-head">
-          <span class="chapter-label">第${chineseNumeral(chapter.index)}章</span>
-          <span class="chapter-name">${escapeHtml(chapter.category)}</span>
-          <span class="chapter-rule" aria-hidden="true"></span>
-        </h2>
-        <ol class="tabula">
-${rows}
-        </ol>
-      </section>`
-    })
-    .join('\n\n')
+  const cards = chapters.map((c) =>
+    '<h2 class="group-head" data-cat="' + escapeHtml(c.category) + '" id="cat-' + escapeHtml(c.category) + '">' +
+    icon(c.category, 'group-icon') +
+    '<span class="group-name">' + escapeHtml(c.category) + '</span>' +
+    '<span class="group-count">' + c.items.length + '</span></h2>\n' +
+    c.items.map((entry, i) => renderCard(entry, i < (WIDE_COUNT[c.category] ?? 0))).join('\n')).join('\n')
 
-  // 只有一章时不摆导航：一条目录不叫目录
-  const withNav = chapters.length > 1
-  const nav = withNav
-    ? `        <nav class="chapter-nav" aria-label="章目">
-          <h2 class="chapter-nav-head">章目</h2>
-          <ol class="chapter-nav-list">
-${chapters
-  .map(
-    (chapter) => `            <li><a class="chapter-nav-link" href="#chapter-${escapeHtml(chapter.category)}">
-              <span class="chapter-nav-numeral">${chineseNumeral(chapter.index)}</span>
-              <span class="chapter-nav-name">${escapeHtml(chapter.category)}</span>
-              <span class="chapter-nav-count">${chapter.items.length}</span>
-            </a></li>`,
-  )
-  .join('\n')}
-          </ol>
-        </nav>
-`
-    : ''
+  const pop = '<div class="search-pop" data-search-pop hidden>\n' +
+    '      <section class="pop-section" data-recent hidden><h3 class="pop-title">最近</h3><div class="pop-chips" data-recent-list></div></section>\n' +
+    '      <section class="pop-section"><h3 class="pop-title">试试</h3><div class="pop-chips">' + pills(tryQueries) + '</div></section>\n' +
+    '      <section class="pop-section"><h3 class="pop-title">标签</h3><div class="pop-chips">' +
+    popularTags(entries).map(([t, n]) => '<button class="pill" type="button" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '<b>' + n + '</b></button>').join('') + '</div></section>\n' +
+    '    </div>'
 
-  const body = `${header({ root: './', search: searchField(), asHeading: true, view: true })}
-<main id="main"${withNav ? ' class="has-rail"' : ''}>
-${concordance()}
-  <div class="tag-filter" data-tag-filter hidden>
-    <span class="tag-filter-label">只看带</span>
-    <span class="tag-filter-tag" data-tag-filter-name></span>
-    <span class="tag-filter-count" data-tag-filter-count></span>
-    <a class="tag-filter-clear" href="./">看全部<b aria-hidden="true"> ↩</b></a>
-  </div>
-
-  <div class="index-body${withNav ? ' has-nav' : ''}" data-browse>
-${nav}        <div class="chapters">
-${sections}
-
-${COLOPHON}
-        </div>
-  </div>
-</main>
-
-<dialog class="peek" data-peek-dialog aria-labelledby="peek-title">
-  <div class="peek-frame">
-    <div class="peek-head">
-      <h2 class="peek-title" id="peek-title" data-peek-title></h2>
-      <button class="peek-close" type="button" data-peek-close aria-label="关闭预览">关闭</button>
-    </div>
-    <div class="peek-stage" data-peek-stage></div>
-    <div class="peek-foot">
-      <p class="peek-why" data-peek-why></p>
-      <span class="peek-actions">
-        <!-- 这一份对话框是全书共用的一个元素，所以 slug 与取址都由 initPeek
-             在打开那一刻填（见 site.js）。属性先占着位、按钮先禁用 ——
-             空着取址还能被点的话，fetch('') 会把当前这一页当咒语送出去。 -->
-        <button class="peek-apply" type="button" data-apply data-apply-url="" data-apply-mode="insert" disabled>应用到对话</button>
-        <a class="peek-more" data-peek-more href="#">看这一条的全文</a>
-      </span>
-    </div>
-  </div>
-</dialog>`
+  const body = iconSprite(['expand', 'copy']) + '\n<header class="topbar">\n' +
+    '  <div class="topbar-row">\n' +
+    '    ' + brand('./') + '\n' +
+    '    <div class="search" role="search">\n' +
+    '      ' + searchField('搜索') + '\n' +
+    '    ' + pop + '\n' +
+    '    </div>\n' +
+    '    <div class="tools">\n' +
+    '      <div class="seg" role="group" aria-label="版式">' +
+    '<button type="button" data-layout="grid" aria-label="卡片" title="卡片" aria-pressed="true">' + icon('grid') + '</button>' +
+    '<button type="button" data-layout="list" aria-label="列表" title="列表" aria-pressed="false">' + icon('list') + '</button></div>\n' +
+    '      ' + themeButton() + '\n' +
+    '    </div>\n' +
+    '  </div>\n' +
+    '  <nav class="chips" aria-label="分类"><div class="chips-scroll">\n      ' + chips + '\n  </div></nav>\n' +
+    '</header>\n' +
+    '<main id="main">\n' +
+    hero(entries, chapters) +
+    '  <div class="filterbar" data-filterbar hidden>\n' +
+    '    <p class="filterbar-text" data-status role="status" aria-live="polite"></p>\n' +
+    '    <span class="filterbar-tag" data-active-tag hidden></span>\n' +
+    '    <button class="link-btn" type="button" data-reset hidden>清除</button>\n' +
+    '  </div>\n' +
+    '  <div class="grid" data-grid>\n' + cards + '\n  </div>\n' +
+    '  <div class="empty" data-empty hidden>\n' +
+    '    <p class="empty-title">无结果</p>\n' +
+    '    <div class="pop-chips">' + pills(tryQueries) + '</div>\n' +
+    '  </div>\n' +
+    '</main>\n' +
+    '<div class="toast" data-toast role="status" aria-live="polite"></div>\n' +
+    '<dialog class="peek" data-peek-dialog aria-labelledby="peek-title">\n' +
+    '  <div class="peek-frame">\n' +
+    '    <div class="peek-head"><h2 class="peek-title" id="peek-title" data-peek-title></h2>' +
+    '<button class="icon-btn" type="button" data-peek-close aria-label="关闭预览">' + icon('close') + '</button></div>\n' +
+    '    <div class="peek-stage" data-peek-stage></div>\n' +
+    '    <div class="peek-foot">\n' +
+    // 全书共用这一份对话框：slug 与取址由 initPeek 在打开那一刻填。取址先留空、按钮先禁用 ——
+    // 空着还能点的话，fetch('') 会把当前这一页当咒语送出去。
+    '      <span class="peek-actions"><button class="btn is-primary" type="button" data-apply data-apply-url="" data-apply-mode="insert" disabled>应用</button>' +
+    '<a class="btn" data-peek-more href="#">全文</a></span>\n' +
+    '    </div>\n' +
+    '  </div>\n' +
+    '</dialog>'
 
   return layout({
-    title: `${SITE_NAME} · ${SITE_TAGLINE}`,
+    title: SITE_NAME + ' · ' + SITE_TAGLINE,
     description: '前端效果库：每条是一段描述加一段可运行的示例代码。',
     body,
     root: './',
+    page: 'page-index',
   })
 }
 
 /* ------------------------------------------------------------------ *
- * 对开页
+ * 条目页
  * ------------------------------------------------------------------ */
 
 function renderControl(param) {
@@ -340,168 +242,131 @@ function renderControl(param) {
   const unit = param.unit ?? ''
 
   if (param.type === 'range') {
-    return `      <label class="control">
-        <span class="control-label">${label}</span>
-        <input type="range" min="${param.min}" max="${param.max}" step="${param.step ?? 1}" value="${param.default}" data-param="${name}" data-unit="${escapeHtml(unit)}">
-        <output class="control-value">${param.default}${escapeHtml(unit)}</output>
-      </label>`
+    return '      <label class="control">\n' +
+      '        <span class="control-label">' + label + '</span>\n' +
+      '        <input type="range" min="' + param.min + '" max="' + param.max + '" step="' + (param.step ?? 1) + '" value="' + param.default + '" data-param="' + name + '" data-unit="' + escapeHtml(unit) + '">\n' +
+      '        <output class="control-value">' + param.default + escapeHtml(unit) + '</output>\n' +
+      '      </label>'
   }
-
   if (param.type === 'color') {
-    return `      <label class="control control-color">
-        <span class="control-label">${label}</span>
-        <input type="color" value="${escapeHtml(param.default)}" data-param="${name}">
-      </label>`
+    return '      <label class="control control-color">\n' +
+      '        <span class="control-label">' + label + '</span>\n' +
+      '        <input type="color" value="' + escapeHtml(param.default) + '" data-param="' + name + '">\n' +
+      '      </label>'
   }
-
   if (param.type === 'select') {
-    return `      <label class="control control-select">
-        <span class="control-label">${label}</span>
-        <select data-param="${name}">
-${(param.options ?? [])
-  .map((option) => `          <option value="${escapeHtml(option)}"${option === param.default ? ' selected' : ''}>${escapeHtml(option)}</option>`)
-  .join('\n')}
-        </select>
-      </label>`
+    return '      <label class="control control-select">\n' +
+      '        <span class="control-label">' + label + '</span>\n' +
+      '        <select data-param="' + name + '">\n' +
+      (param.options ?? []).map((o) => '          <option value="' + escapeHtml(o) + '"' + (o === param.default ? ' selected' : '') + '>' + escapeHtml(o) + '</option>').join('\n') + '\n' +
+      '        </select>\n' +
+      '      </label>'
   }
-
   return ''
 }
 
-function renderPlate(entry, ordinal) {
+function renderPlate(entry) {
   const stage = entry.meta.stage ?? 'plain'
-  const stageInfo = STAGES[stage] ?? { label: stage, note: '' }
   const controls = (entry.meta.params ?? []).map(renderControl).filter(Boolean)
 
-  return `<figure class="plate">
-    <div class="plate-frame">
-      <iframe class="plate-doc" src="demo.html" sandbox="allow-scripts" loading="lazy" title="${escapeHtml(entry.meta.title)}的实时预览"></iframe>
-      <noscript><p class="plate-noscript">实时预览需要 JavaScript。代码在下面，可以直接抄。</p></noscript>
-    </div>
-${controls.length ? `    <div class="plate-controls">
-${controls.join('\n')}
-      <button class="replay" type="button" data-replay>重播</button>
-    </div>` : ''}
-    <figcaption class="plate-caption">
-      <span class="plate-numeral">图版 ${roman(ordinal)}</span>
-      <span class="plate-stage" title="${escapeHtml(stageInfo.note)}">${escapeHtml(stageInfo.label)}</span>
-    </figcaption>
-  </figure>`
+  return '<figure class="plate" data-stage="' + escapeHtml(stage) + '">\n' +
+    '    <div class="plate-frame">\n' +
+    '      <iframe class="plate-doc" src="demo.html" sandbox="allow-scripts" loading="lazy" title="' + escapeHtml(entry.meta.title) + '的实时预览"></iframe>\n' +
+    '      <noscript><p class="plate-noscript">需要 JavaScript</p></noscript>\n' +
+    '    </div>\n' +
+    (controls.length ? '    <div class="plate-controls">\n' + controls.join('\n') + '\n      <button class="btn" type="button" data-replay>重播</button>\n    </div>\n' : '') +
+    '  </figure>'
 }
 
 function renderCodeBlock(block) {
   const lines = block.lines
     .map((line, index) => {
-      const isMechanism = block.mechanismLines.includes(index)
       const content = escapeHtml(line) || '&nbsp;'
-      return isMechanism
-        ? `<span class="line is-mech" data-mech>${content}</span>`
-        : `<span class="line">${content}</span>`
+      return block.mechanismLines.includes(index)
+        ? '<span class="line is-mech" data-mech>' + content + '</span>'
+        : '<span class="line">' + content + '</span>'
     })
     .join('')
 
-  return `    <div class="code-block">
-      <div class="code-head">
-        <span class="code-lang">${escapeHtml(block.lang)}</span>
-        <button class="copy" type="button" data-copy>抄录</button>
-      </div>
-      <pre class="code-body"><code>${lines}</code></pre>
-    </div>`
+  return '    <div class="code-block">\n' +
+    '      <div class="code-head"><span class="code-lang">' + escapeHtml(block.lang) + '</span>' +
+    '<button class="btn is-ghost" type="button" data-copy>' + icon('copy') + '<span>复制</span></button></div>\n' +
+    '      <pre class="code-body"><code>' + lines + '</code></pre>\n' +
+    '    </div>'
 }
 
-export function renderSpell(entry, { ordinal, total, chapter }) {
+function pagerLink(kind, entry) {
+  if (!entry) return '<span class="pager-gap"></span>'
+  return '<a class="pager-link is-' + kind + '" href="../' + encodeURIComponent(entry.meta.slug) + '/">' +
+    (kind === 'prev' ? icon('left') : '') +
+    '<span class="pager-text">' + escapeHtml(entry.meta.title) + '</span>' +
+    (kind === 'next' ? icon('right') : '') + '</a>'
+}
+
+export function renderSpell(entry, { ordinal, prev = null, next = null }) {
   const meta = entry.meta
   const description = (entry.description ?? '').trim()
   const firstSentence = description.split(/(?<=。)/)[0] ?? ''
-  const numeral = roman(ordinal)
 
-  /*
-   * 标签按轴分组显示，每个都是通往目录检索的入口。
-   *
-   * 分组是因为四个轴回答的是四个不同的问题（靠什么做的 / 像什么 / 用在哪 /
-   * 什么让它动），混成一排就看不出哪个是哪个了 —— 而「这是机制还是场合」
-   * 恰恰是读的人要判断的事。
-   *
-   * 做成链接而不是死字：点一下回到目录，查词口已经填好、结果已经列出来。
-   * 标签的价值一半在「这条被标了什么」，另一半在「顺着它能走到哪儿」。
-   */
-  const tagGroups = tagsByAxis(meta.tags ?? [])
-  const tagList = tagGroups
-    .map(
-      (group) => `<div class="tag-group">
-          <span class="tag-axis">${escapeHtml(group.label)}</span>
-          <span class="tag-row">${group.tags
-            .map(
-              (tag) =>
-                `<a class="tag" href="../../?tag=${encodeURIComponent(tag)}" title="看目录里所有带「${escapeHtml(tag)}」标签的咒语">${escapeHtml(tag)}</a>`,
-            )
-            .join('')}</span>
-        </div>`,
-    )
-    .join('\n')
+  // 标签按轴（机制 / 观感 / 场合 / 触发）排好顺序，不写轴名；每个都是回目录筛选的入口。
+  const tagList = tagsByAxis(meta.tags ?? [])
+    .map((group) => group.tags.map((tag) => '<a class="tag" href="../../?tag=' + encodeURIComponent(tag) + '">' + escapeHtml(tag) + '</a>').join(''))
+    .join('')
 
-  const body = `${header({ root: '../../', current: meta.title })}
-<main id="main">
-  <article class="opening">
-    <aside class="marginalia">
-      <p class="marginalia-chapter">第${chineseNumeral(chapter.index)}章<span class="marginalia-chapter-sep">·</span>${escapeHtml(meta.category)}</p>
-      <div class="marginalia-numeral" aria-hidden="true">${numeral}</div>
-      <dl class="marginalia-meta">
-        <div class="meta-pair"><dt>收录</dt><dd>${escapeHtml(meta.since)}</dd></div>
-        <div class="meta-pair"><dt>出处</dt><dd>${escapeHtml(meta.source)}</dd></div>
-      </dl>
-      <div class="marginalia-tags">${tagList}</div>
-      <p class="marginalia-ordinal">第 ${ordinal} / ${total} 条</p>
-    </aside>
+  const section = (name, items) => items.length
+    ? '<section class="notes">\n        <h2 class="section-head">' + name + '</h2>\n        <ul class="notes-list">\n' +
+      items.map((i) => '          <li>' + renderInline(i) + '</li>').join('\n') + '\n        </ul>\n      </section>\n'
+    : ''
 
-    <div class="column">
-      <h1 class="title">${escapeHtml(meta.title)}</h1>
-      <p class="when"><span class="when-label">用于</span>${escapeHtml(meta.when)}</p>
-
-      <!-- 只在被侧边栏嵌进来时出现：自己开标签页看站时没有对话可应用，
-           按钮留着只会骗人。显隐交给 CSS 的 :root[data-embed]，与其余
-           嵌入态样式同一套判据，JS 这边不必再分叉。 -->
-      <div class="apply-bar">
-        <button class="apply" type="button" data-apply="${escapeHtml(meta.slug)}" data-apply-url="prompt.txt" data-apply-mode="insert">应用到对话</button>
-        <button class="apply apply-send" type="button" data-apply="${escapeHtml(meta.slug)}" data-apply-url="prompt.txt" data-apply-mode="send">应用并发送</button>
-      </div>
-
-      <div class="desc">
-${renderParagraphs(description)}
-      </div>
-
-${renderPlate(entry, ordinal)}
-
-      <section class="source">
-        <h2 class="section-head">代码</h2>
-        <p class="section-note">示例，不是必须这么写 —— 它证明这个效果成立，并告诉你机制在哪一行。</p>
-${entry.code.map(renderCodeBlock).join('\n')}
-      </section>
-
-      ${(entry.caveats ?? []).length ? `<section class="notes">
-        <h2 class="section-head">边界</h2>
-        <ul class="notes-list">
-${entry.caveats.map((caveat) => `          <li>${renderInline(caveat)}</li>`).join('\n')}
-        </ul>
-      </section>
-
-      ` : ''}${entry.notes.length ? `<section class="notes">
-        <h2 class="section-head">备注</h2>
-        <ul class="notes-list">
-${entry.notes.map((note) => `          <li>${renderInline(note)}</li>`).join('\n')}
-        </ul>
-      </section>` : ''}
-    </div>
-  </article>
-</main>`
+  const body = '<header class="topbar">\n' +
+    '  <div class="topbar-row">\n' +
+    '    ' + brand('../../') + '\n' +
+    '    <div class="search" role="search">' + searchField('搜索') + '</div>\n' +
+    '    <div class="tools">' + themeButton() + '</div>\n' +
+    '  </div>\n' +
+    '</header>\n' +
+    '<main id="main" class="spell-page">\n' +
+    '  <nav class="crumbs" aria-label="位置"><a href="../../">全部咒语</a>' + icon('right', 'crumb-sep') +
+    '<a href="../../?cat=' + encodeURIComponent(meta.category) + '">' + escapeHtml(meta.category) + '</a></nav>\n' +
+    '  <div class="spell-layout">\n' +
+    '    <article class="spell-main">\n' +
+    '      <header class="spell-head">\n' +
+    '        <p class="eyebrow">' + icon(meta.category, 'eyebrow-icon') + escapeHtml(meta.category) + '<span class="eyebrow-no">' + String(ordinal).padStart(3, '0') + '</span></p>\n' +
+    '        <h1 class="title">' + escapeHtml(meta.title) + '</h1>\n' +
+    '        <p class="when"><span class="when-label">用于</span>' + escapeHtml(meta.when) + '</p>\n' +
+    // 应用按钮只在被侧边栏嵌进来时出现：自己开标签页看站时没有对话可应用，按钮留着只会骗人。
+    // 显隐交给 CSS 的 :root[data-embed]，与其余嵌入态样式同一套判据。
+    '        <div class="spell-actions">\n' +
+    '          <button class="btn is-primary apply" type="button" data-apply="' + escapeHtml(meta.slug) + '" data-apply-url="prompt.txt" data-apply-mode="insert">应用</button>\n' +
+    '          <button class="btn apply" type="button" data-apply="' + escapeHtml(meta.slug) + '" data-apply-url="prompt.txt" data-apply-mode="send">发送</button>\n' +
+    '          <button class="btn" type="button" data-prompt="' + escapeHtml(meta.slug) + '" data-prompt-url="prompt.txt">' + icon('copy') + '<span>复制</span></button>\n' +
+    '        </div>\n' +
+    '      </header>\n\n' +
+    '  ' + renderPlate(entry) + '\n\n' +
+    '      <section class="desc">\n        <h2 class="section-head">机制</h2>\n' + renderParagraphs(description) + '\n      </section>\n\n' +
+    '      <section class="source">\n        <h2 class="section-head">代码</h2>\n' +
+    entry.code.map(renderCodeBlock).join('\n') + '\n      </section>\n\n' +
+    '      ' + section('边界', entry.caveats ?? []) + section('备注', entry.notes ?? []) +
+    '      <nav class="pager" aria-label="相邻咒语">' + pagerLink('prev', prev) + pagerLink('next', next) + '</nav>\n' +
+    '    </article>\n' +
+    '    <aside class="spell-side">\n' +
+    '      <dl class="meta">\n' +
+    '        <div class="meta-pair"><dt>收录</dt><dd>' + escapeHtml(meta.since) + '</dd></div>\n' +
+    '        <div class="meta-pair"><dt>出处</dt><dd>' + escapeHtml(meta.source) + '</dd></div>\n' +
+    '      </dl>\n' +
+    '      <div class="side-tags">' + tagList + '</div>\n' +
+    '    </aside>\n' +
+    '  </div>\n' +
+    '</main>\n' +
+    '<div class="toast" data-toast role="status" aria-live="polite"></div>'
 
   return layout({
-    title: `${meta.title} · ${SITE_NAME}`,
+    title: meta.title + ' · ' + SITE_NAME,
     description: firstSentence || meta.when,
     body,
     root: '../../',
-    isSpell: true,
+    page: 'page-spell',
   })
 }
 
-export { SITE_NAME, SITE_TAGLINE, stripMechanismMarkers }
+export { SITE_NAME, SITE_TAGLINE, stripMechanismMarkers, TRY_QUERIES }

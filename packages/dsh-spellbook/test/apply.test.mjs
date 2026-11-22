@@ -417,9 +417,10 @@ test('每个「抄咒语 / 应用」按钮都必须带上它自己的取址属�
   assert.deepEqual(problems, [], '有按钮没带上取址属性，点下去只会 404')
   assert.ok(checked >= 5, `只扫到 ${checked} 个按钮 —— 扫描本身大概失效了`)
 
-  // 顺带确认真扫到了检索结果那一个（它没进 dist，只在 site.js 模板里）
-  const siteSource = readFileSync(path.join(ROOT, 'src', 'site.js'), 'utf8')
-  assert.match(siteSource, /class="hit-tool hit-apply"[^>]*data-apply-url=/, '检索结果里没有可用的应用按钮')
+  // 检索不再有单独的结果列表（结果就是目录里的卡片），所以应用按钮只在条目页与放大预览里：
+  // 放大预览那一个取址是运行时才填的，所以模板里必须是「裸 data-apply + 空取址 + 禁用」
+  const indexHtml = readFileSync(path.join(ROOT, 'dist', 'index.html'), 'utf8')
+  assert.match(indexHtml, /data-apply data-apply-url="" data-apply-mode="insert" disabled/, '放大预览里的应用按钮不是「先禁用、打开时再填」')
 })
 
 test('产物：embed 跨页记住，应用按钮默认藏着', () => {
@@ -449,14 +450,10 @@ test('产物：embed 跨页记住，应用按钮默认藏着', () => {
 
   // 3. 默认藏着，只在嵌入模式下显示
   const css = readFileSync(path.join(ROOT, 'dist', 'styles', 'spellbook.css'), 'utf8')
-  assert.match(css, /\.apply-bar\s*\{\s*display:\s*none/, '应用按钮默认没有藏起来')
-  assert.match(css, /:root\[data-embed\]\s+\.apply-bar\s*\{\s*display:\s*flex/, '嵌入模式下应用按钮没显示')
-  // 检索结果里的那个也一样：自己开标签页看站时没有对话可应用
-  assert.match(css, /\.hit-apply\s*\{\s*display:\s*none/, '检索结果的应用按钮默认没有藏起来')
-  assert.match(css, /:root\[data-embed\]\s+\.hit-apply\s*\{\s*display:\s*inline-flex/, '嵌入模式下检索结果的应用按钮没显示')
-  // 放大预览对话框里的那个也一样（那个按钮全书共用一份）
-  assert.match(css, /\.peek-apply\s*\{\s*display:\s*none/, '对话框的应用按钮默认没有藏起来')
-  assert.match(css, /:root\[data-embed\]\s+\.peek-apply\s*\{\s*display:\s*inline-flex/, '嵌入模式下对话框的应用按钮没显示')
+  assert.match(css, /\.apply\s*\{\s*display:\s*none/, '应用按钮默认没有藏起来')
+  assert.match(css, /:root\[data-embed\]\s+\.apply\s*\{\s*display:\s*inline-flex/, '嵌入模式下应用按钮没显示')
+  // 放大预览对话框里的那个（全书共用一份）由脚本按 embed 显隐
+  assert.match(readFileSync(path.join(ROOT, 'dist', 'site.js'), 'utf8'), /apply\.hidden = !html\.dataset\.embed/, '放大预览里的应用按钮没有按 embed 显隐')
 
   // 4. 目录页的「抄咒语」也改用模板给的地址
   assert.match(index, /data-prompt-url="spell\/[^"]+\/prompt\.txt"/, '抄咒语没有带咒语地址')
@@ -469,14 +466,11 @@ test('产物：embed 跨页记住，应用按钮默认藏着', () => {
   // 而且不许假承诺：剪贴板失败时必须不带那个后缀 —— 写法上得是条件式的
   assert.match(
     site,
-    /rescued \? `\$\{why\}·已复制` : why/,
+    /rescued \? why \+ ' · 已复制' : why/,
     '「已复制」不是条件文案 —— 剪贴板被拒时会假承诺',
   )
 
-  // 6. 索引页每一行的预览都是一个**活文档**，加载完不会自己放手。
-  //    实测：滚到八成处累计活文档 217 个；有了回收之后是 15 个（视口内的始终在）。
-  //    这里只钉「回收还在，而且用的是 about:blank」——`src = ''` 会被解析成当前页面地址，
-  //    于是每一行都会把整个站点再加载一遍，这个坑静态上就能挡住。
-  assert.match(site, /function initPreviewRecycle/, '看不见的预览没有回收，滚动会一直攒活文档')
-  assert.match(site, /about:blank/, '回收没有用 about:blank（写 src = "" 会把整站再加载一遍）')
+  // 6. 缩略图：首屏没有 iframe，接近视口才挂、远离就卸 —— 不然滚动会一直攒活文档
+  assert.match(site, /function initThumbs/, '缩略图没有按需挂载')
+  assert.match(site, /thumb\.replaceChildren\(\)/, '远离视口的缩略图没有卸载')
 })

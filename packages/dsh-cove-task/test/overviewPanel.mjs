@@ -513,7 +513,7 @@ check('玻璃面：详情栏 / 菜单仍带 backdrop-filter blur(12px) 与玻璃
     assert.ok(body.includes('backdrop-filter'), `${selector} 要有 backdrop-filter`)
     assert.ok(body.includes('-webkit-backdrop-filter'), `${selector} 补一份 -webkit- 前缀`)
   }
-  assert.ok(ruleBody('.fo-graph').includes('border-radius: 16px'), '画布圆角 16px（对齐参考站 rounded-2xl）')
+  assert.ok(ruleBody('.fo-graph').includes('border-radius: var(--fo-radius-card)'), '画布圆角走刻度（与洞察/运行的卡同一档）')
   assert.ok(ruleBody('.fo-node-dom').includes('width: 100%'), '节点容器撑满卡片格')
   assert.ok(ruleBody('.fo-cards-layer').includes('pointer-events: none'), '卡片层空白处不拦画布平移')
   /* 计数胶囊（.fo-chip / .fo-stats）与图头元信息一起删掉了：同一份数只留离对象最近的那处 */
@@ -528,7 +528,7 @@ check('玻璃面：详情栏 / 菜单仍带 backdrop-filter blur(12px) 与玻璃
 check('画布布局：主区纵向 flex、画布/网格铺满，SVG 按 layout 尺寸 1:1 渲染', () => {
   const scroll = ruleBody('.fo-canvas-area')
   assert.ok(scroll.includes('display: flex') && scroll.includes('flex-direction: column'), '画布区纵向 flex')
-  assert.ok(scroll.includes('padding: 10px'))
+  assert.ok(scroll.includes('padding: var(--fo-gutter)'), '页边距走刻度（三页同一档，以前是 10px）')
   assert.ok(scroll.includes('flex: 1 1 auto'), '画布区拿剩余空间')
   const host = ruleBody('.fo-feature-host')
   assert.ok(host.includes('flex: 1 1 auto') && host.includes('min-height: 0'), '功能页宿主撑满')
@@ -539,7 +539,7 @@ check('画布布局：主区纵向 flex、画布/网格铺满，SVG 按 layout �
   const graphs = ruleBody('.fo-graphs')
   assert.ok(graphs.includes('flex: 1 1 auto'), '画布列表撑满主区')
   assert.ok(graphs.includes('display: flex') && graphs.includes('flex-direction: column'))
-  assert.ok(graphs.includes('gap: 12px'))
+  assert.ok(graphs.includes('gap: var(--fo-gap)'), '卡间距走刻度（三页同一档，以前是 12px）')
   const graph = ruleBody('.fo-graph')
   /* task-18：画布高度跟随内容（紧凑打包后 300~900px），不再被 flex 均分压成 220px 迷你窗口。 */
   assert.ok(graph.includes('flex: 0 0 auto'), '每张图按内容占高，不被均分压缩')
@@ -572,13 +572,14 @@ check('画布布局：主区纵向 flex、画布/网格铺满，SVG 按 layout �
   assert.ok(svg.includes('position: relative') && svg.includes('width: auto'))
   assert.ok(svg.includes('overflow: visible'), '放大后内容不能被 SVG 自身边界裁掉')
 })
-check('玻璃分层：三层透明度 92% / 88%（面板底是不透明的 bg-base）', () => {
+check('玻璃分层：卡 92% / 次级面 label 6%（面板底是不透明的 bg-base）', () => {
   const root = ruleBody('.fo-root')
   assert.ok(root.includes('--fo-glass-card: color-mix(in oklab, var(--dsw-alias-bg-layer-1) 92%, transparent)'))
-  assert.ok(root.includes('--fo-glass-sub: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 88%, transparent)'))
-  /* border 令牌带一层「仍是宿主令牌」的回退链，所以这里钉住前缀与百分比，不逐字符比 */
-  assert.ok(root.includes('--fo-glass-line: color-mix(in oklab, var(--dsw-alias-border-l1'))
-  assert.ok(root.includes('65%, transparent)'))
+  /* 亮色下 layer-2 是纯白：次级面改用 label 透明度（亮=黑/暗=白），否则亮色里整块没有底 */
+  assert.ok(root.includes('--fo-glass-sub: color-mix(in oklab, var(--dsw-alias-label-primary) 6%, transparent)'))
+  /* 描边抬到 border-l2：border-l1 在亮色只有 ~2.6% 黑，卡边看不见 */
+  assert.ok(root.includes('--fo-glass-line: color-mix(in oklab, var(--dsw-alias-border-l2'))
+  assert.ok(root.includes('55%, transparent)'))
   assert.ok(root.includes('--fo-glass-line-hover: color-mix(in oklab, var(--dsw-alias-border-l2'))
   assert.ok(root.includes('--fo-glass-shadow: 0 8px 24px color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent)'))
   assert.ok(root.includes('background: var(--dsw-alias-bg-base'), '面板底仍是不透明的 bg-base')
@@ -728,7 +729,7 @@ check('打开页面在左下：与一级项同一条起始线（左对齐）', (
   const foot = ruleBody('.fo-rail-foot')
   assert.ok(foot.includes('border-top: 1px solid color-mix'), '底部区有分隔线（贴着 rail 底）')
 })
-check('功能项：高 44 / 圆角 12 / gap 12 / 图标 20 / 文字 14 / 选中 = 品牌 30% 底 + 50% 描边（cove）', () => {
+check('功能项：高 44 / 圆角 12 / gap 12 / 图标 20 / 文字 14 / 选中 = 品牌 12% 底 + 24% 描边', () => {
   const item = ruleBody('.fo-featnav-item')
   assert.ok(item.includes('height: 44px'))
   assert.ok(item.includes('border-radius: 12px'))
@@ -736,8 +737,9 @@ check('功能项：高 44 / 圆角 12 / gap 12 / 图标 20 / 文字 14 / 选中 
   assert.ok(item.includes('font-size: 14px'), 'font-medium 14px')
   assert.ok(item.includes('color: var(--dsw-alias-label-secondary'), '未选中 label-secondary')
   const active = ruleBody('.fo-featnav-item[data-active="1"]')
-  assert.ok(active.includes('color-mix(in oklab, var(--dsw-alias-brand-primary) 30%'), '选中 = 品牌 30% 底')
-  assert.ok(active.includes('color-mix(in oklab, var(--dsw-alias-brand-primary) 50%'), '选中 = 品牌 50% 描边')
+  /* DSH 的品牌色是黑白：30% 在亮色下就是一块灰块，所以选中态统一走 12%/24% 令牌 */
+  assert.ok(active.includes('background: var(--fo-selected-bg)'), '选中 = 与 rail 行同一组令牌')
+  assert.ok(active.includes('border-color: var(--fo-selected-line)'), '选中描边同源')
   assert.ok(active.includes('font-weight: 500'))
   /* 有二级菜单的一级项是分组：当前页属于它时只留轻底，品牌胶囊在二级页上 */
   const groupActive = ruleBody('.fo-featnav-item[data-expandable="1"][data-active="1"]')
@@ -757,8 +759,8 @@ check('rail 行：高 ≥40px、圆角 ≥12px、padding 0 12px、gap 10px', () 
 })
 check('rail 选中态：品牌 20% 底 + 30% 描边 + 品牌色文字 + 字重 500', () => {
   const root = ruleBody('.fo-root')
-  assert.ok(root.includes('--fo-selected-bg: color-mix(in oklab, var(--dsw-alias-brand-primary) 20%, transparent)'))
-  assert.ok(root.includes('--fo-selected-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 30%, transparent)'))
+  assert.ok(root.includes('--fo-selected-bg: color-mix(in oklab, var(--dsw-alias-brand-primary) 12%, transparent)'))
+  assert.ok(root.includes('--fo-selected-line: color-mix(in oklab, var(--dsw-alias-brand-primary) 24%, transparent)'))
   const selected = ruleBody('.fo-row[aria-selected="true"]')
   assert.ok(selected.includes('background: var(--fo-selected-bg)'))
   assert.ok(selected.includes('border-color: var(--fo-selected-line)'))
@@ -767,7 +769,7 @@ check('rail 选中态：品牌 20% 底 + 30% 描边 + 品牌色文字 + 字重 5
   const hover = ruleBody('.fo-row:hover')
   assert.ok(hover.includes('var(--fo-row-hover-bg)'), 'hover 走 bg-layer-2 55% 的混合')
   assert.ok(hover.includes('color: var(--dsw-alias-label-primary)'), 'hover 文字提亮')
-  assert.ok(root.includes('--fo-row-hover-bg: color-mix(in oklab, var(--dsw-alias-bg-layer-2) 55%, transparent)'))
+  assert.ok(root.includes('--fo-row-hover-bg: color-mix(in oklab, var(--dsw-alias-label-primary) 5%, transparent)'))
 })
 check('Header 搜索/按钮 = cove TopBar 规格（42px 图标 → 320px 胶囊；Capsule 32 全圆角）', () => {
   const wrap = ruleBody('.fo-search-wrap')
@@ -784,13 +786,13 @@ check('Header 搜索/按钮 = cove TopBar 规格（42px 图标 → 320px 胶囊�
   assert.ok(ruleBody('.fo-head-actions').includes('margin-left: auto'), 'Header 右侧动作组在')
 })
 
-check('画布：16px 圆角 + border-l1 35% 描边 + 品牌调渐变底 + 24px 内边距', () => {
+check('画布：卡片圆角 + border-l1 35% 描边 + 品牌调渐变底 + 24px 内边距', () => {
   const graph = ruleBody('.fo-graph')
-  assert.ok(graph.includes('border-radius: 16px'))
+  assert.ok(graph.includes('border-radius: var(--fo-radius-card)'))
   assert.ok(graph.includes('border: 1px solid var(--fo-canvas-line)'))
   assert.ok(graph.includes('background: var(--fo-canvas-bg)'))
   const root = ruleBody('.fo-root')
-  assert.ok(root.includes('--fo-canvas-line: color-mix(in oklab, var(--dsw-alias-border-l1'))
+  assert.ok(root.includes('--fo-canvas-line: color-mix(in oklab, var(--dsw-alias-border-l2'))
   assert.ok(root.includes('--fo-canvas-bg: linear-gradient(135deg,'), '画布渐变底')
   assert.ok(ruleBody('.fo-canvas').includes('padding: 24px'), '画布内边距 24px')
 })
@@ -919,7 +921,7 @@ check('代表性类名没被改坏（节点/图容器/图例/行/详情）', () 
 
 /* ---- task-12：画布 DOM（网格层 + 实心三角箭头）与 rail 搜索框 ---- */
 /* ---- task-14：rail = 功能导航（品牌 / 功能列表 / 底部固定区），树搬进功能页 ---- */
-check('rail 三段 DOM：品牌（两行文字）/ 功能导航 / 底部固定区', () => {
+check('rail 三段 DOM：品牌（logo + 一行名字）/ 功能导航 / 底部固定区', () => {
   const rail = railEl(tree)
   assert.ok(rail, 'rail 在')
   assert.equal(byClass(rail, 'fo-brand').length, 1)
@@ -936,7 +938,9 @@ check('rail 三段 DOM：品牌（两行文字）/ 功能导航 / 底部固定�
   assert.ok(textOf(openBtn).includes('打开'), '按钮文字')
   const brandText = textOf(byClass(rail, 'fo-brand')[0])
   assert.ok(brandText.includes('海湾'), '主标题')
-  assert.ok(brandText.includes('DeepSeek Harness'), '副标题')
+  /* cove 的品牌区是「logo + 一行名字」：副标题不再占第二行，降级成 title 提示 */
+  assert.equal(byClass(rail, 'fo-brand-sub').length, 0, '副标题不再单独占一行')
+  assert.ok(String(byClass(rail, 'fo-brand-text')[0].props.title || '').length > 0, '副标题降级成 title')
   assert.equal(byClass(rail, 'fo-brand-logo').length, 1, 'logo 方块')
   assert.equal(byClass(rail, 'fo-brand-logo')[0].props.type, 'button', 'logo 本身就是折叠按钮')
   assert.ok('aria-expanded' in byClass(rail, 'fo-brand-logo')[0].props, 'logo 带 aria-expanded')
@@ -2053,6 +2057,116 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
 }
 
 {
+  /* 建议范围 = 底部输入里的 @分类：看板页打开自动 @ 当前范围；打 @ 列出看板分类；不选 = 全部任务。 */
+  const backend = makeOrganizeBackend({ restore: organizeBatchFixture() })
+  const fx = await mountPanel({ organizeApi: backend.api, store: makeStore({ selection: { kind: 'project', id: 'wA' } }) })
+  let ft = fx.tree
+  const drawer = () => organizeDrawers(ft)[0]
+  const composerInput = () => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'textarea'
+    && classNameOf(node).split(/\s+/).includes('fo-org-composer-input'))[0]
+  const mentionMenu = () => findAll(drawer(), (node) => node.kind === 'host'
+    && classNameOf(node).split(/\s+/).includes('fo-org-mention-menu'))[0]
+  const scopeChip = () => byClass(drawer(), 'fo-org-composer-scope')[0]
+  const mentionOption = (id) => findAll(drawer(), (node) => node.kind === 'host' && node.type === 'button'
+    && node.props['data-action'] === 'composer-mention-' + id)[0]
+  const menuOptions = () => findAll(mentionMenu(), (node) => node.kind === 'host' && node.type === 'button')
+
+  ORGANIZE_TRIGGER(ft).props.onClick()
+  ft = await fx.mini.act()
+  check('看板的项目页打开建议栏：自动 @ 当前范围，标题不再重复写范围', () => {
+    assert.deepEqual(backend.log.view[0], { kind: 'project', id: 'wA' })
+    assert.ok(scopeChip(), '输入框上方要有 @范围 胶囊')
+    assert.ok(textOf(scopeChip()).includes('项目A'), '@ 的是当前项目')
+    assert.equal(textOf(drawer()).includes('项目 ·'), false, '范围只在输入里出现')
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '@' } })
+  ft = await fx.mini.act()
+  check('输入 @ 列出看板分类（全部任务 + 自定义目录 / 未分类），不是目录下的工作区', () => {
+    const menu = mentionMenu()
+    assert.ok(menu, '打 @ 要出菜单')
+    assert.equal(menu.props.role, 'listbox')
+    /* GROUPS 只有 g1；其余工作区都在「未分类」→ 2 个分类 */
+    assert.equal(menuOptions().length, 1 + 2, '全部任务 + Demo + 未分类')
+    assert.ok(textOf(menuOptions()[0]).includes('全部任务'))
+    assert.ok(textOf(menuOptions()[1]).includes('Demo'))
+    assert.ok(textOf(menuOptions()[2]).includes('未分类'))
+    assert.equal(textOf(mentionMenu()).includes('项目A'), false, '不是目录下的工作区列表')
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '@qv' } })
+  ft = await fx.mini.act()
+  check('@ 后面的字按分类名过滤', () => {
+    assert.equal(menuOptions().length, 1, '只剩匹配的 Demo')
+    assert.equal(menuOptions()[0].props['data-action'], 'composer-mention-g1')
+  })
+
+  mentionOption('g1').props.onClick()
+  ft = await fx.mini.act()
+  check('选分类：胶囊换成 Demo、触发词清掉、按分类范围读建议', () => {
+    assert.ok(textOf(scopeChip()).includes('Demo'))
+    assert.equal(composerInput().props.value, '', '「@qv」不能混进这一轮要求')
+    assert.equal(mentionMenu(), undefined, '选完菜单收起')
+    assert.deepEqual(backend.log.view[backend.log.view.length - 1], { kind: 'group', id: 'g1' })
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '看下前置关系' } })
+  ft = await fx.mini.act()
+  ORGANIZE_RERUN(ft).props.onClick()
+  ft = await fx.mini.act()
+  check('有 @分类 时按这个分类生成，要求里不带触发词', () => {
+    const last = backend.log.organize.length - 1
+    assert.equal(backend.log.organize[last].kind, 'group')
+    assert.equal(backend.log.organize[last].id, 'g1')
+    assert.equal(backend.log.hints[last], '看下前置关系')
+  })
+
+  findAll(scopeChip(), (node) => node.kind === 'host' && node.type === 'button'
+    && node.props['data-action'] === 'composer-scope-clear')[0].props.onClick()
+  ft = await fx.mini.act()
+  check('清掉 @分类 = 全部任务（胶囊消失，按 all 读）', () => {
+    assert.equal(scopeChip(), undefined, '不选就不显示胶囊')
+    assert.deepEqual(backend.log.view[backend.log.view.length - 1], { kind: 'all', id: '' })
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '@' } })
+  ft = await fx.mini.act()
+  const callsBeforeEnter = backend.log.organize.length
+  composerInput().props.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault() {} })
+  ft = await fx.mini.act()
+  check('@ 菜单开着时 Enter 只选分类，不发请求', () => {
+    assert.equal(backend.log.organize.length, callsBeforeEnter, '「@」不是这一轮的要求')
+    assert.equal(scopeChip(), undefined, '高亮的是「全部任务」= 不限定分类')
+  })
+
+  composerInput().props.onChange({ currentTarget: { value: '@qv' } })
+  ft = await fx.mini.act()
+  composerInput().props.onKeyDown({ key: 'Escape', preventDefault() {} })
+  ft = await fx.mini.act()
+  check('Esc 收起 @ 菜单并清掉输入里的「@qv」', () => {
+    assert.equal(mentionMenu(), undefined)
+    assert.equal(composerInput().props.value, '', '放弃选择后不留触发词')
+  })
+}
+
+{
+  /* 运行 / 洞察页看全局：即使树里还选着项目，打开建议栏也不该 @ 它（默认全部任务）。 */
+  const backend = makeOrganizeBackend({ restore: organizeBatchFixture() })
+  const fx = await mountPanel({
+    organizeApi: backend.api,
+    store: makeStore({ feature: 'runs', selection: { kind: 'project', id: 'wA' } }),
+    startFeature: 'runs',
+  })
+  const ft = fx.tree
+  ORGANIZE_TRIGGER(ft).props.onClick()
+  const after = await fx.mini.act()
+  check('非关系页打开建议栏：不带 @，范围是全部任务', () => {
+    assert.deepEqual(backend.log.view[backend.log.view.length - 1], { kind: 'all', id: '' })
+    assert.equal(byClass(organizeDrawers(after)[0], 'fo-org-composer-scope').length, 0, '不显示 @范围 胶囊')
+  })
+}
+
+{
   /* 全部接受（itemIds 传空数组 = 全部待处理）+ 逐条失败汇报 */
   const backend = makeOrganizeBackend({ acceptFails: { 'it-2': '飞书那边超时了' } })
   const fx = await mountPanel({ organizeApi: backend.api })
@@ -2243,7 +2357,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
 }
 
 {
-  /* 范围必须跟着抽屉走：生成、读取、刷新都按同一个 scope，否则项目批次会被 all 轮询顶掉。 */
+  /* 项目页打开面板：自动 @ 这个项目；生成、读取、刷新都按这个范围，否则项目批次会被 all 轮询顶掉。 */
   const projectBatch = { ...organizeBatchFixture(), batchId: 'b-project', scope: { kind: 'project', id: 'wA' } }
   const backend = makeOrganizeBackend({ restore: projectBatch })
   const store = makeStore({ selection: { kind: 'project', id: 'wA' }, organize: { open: true } })
@@ -2264,9 +2378,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(runScope.kind, 'project')
     assert.equal(runScope.id, 'wA')
   })
-  check('生成回包的范围与抽屉一致，下轮读取不会把它替换掉', () => {
-    const saved = fx.store.data.get('organize')
-    assert.deepEqual(saved.scope, { kind: 'project', id: 'wA' })
+  check('生成回包的范围与 @项目 一致，下轮读取不会把它替换掉', () => {
     assert.ok(textOf(organizeDrawers(ft)[0]).includes('待处理 2'))
   })
 }
@@ -2357,7 +2469,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
 }
 
 {
-  /* 持久化范围优先于当前选择：重开面板仍然读上次那个项目，而不是偷偷回 all。 */
+  /* 不选项目 = 全部任务：即使 store 里留着上次的项目范围，也不该偷偷回到那个项目。
+     范围只认底部输入里的 @项目（项目页会被自动 @，见上一段）。 */
   const projectBatch = { ...organizeBatchFixture(), batchId: 'b-project', scope: { kind: 'project', id: 'wA' } }
   const backend = makeOrganizeBackend({ restore: projectBatch })
   const store = makeStore({
@@ -2365,8 +2478,8 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     organize: { open: true, scope: { kind: 'project', id: 'wA' } },
   })
   const fx = await mountPanel({ organizeApi: backend.api, store })
-  check('挂载：恢复 store 里的建议范围', () => {
-    assert.deepEqual(backend.log.view[0], { kind: 'project', id: 'wA' })
+  check('非项目页挂载：默认读 all（不残留上次的项目范围）', () => {
+    assert.deepEqual(backend.log.view[0], { kind: 'all', id: '' })
   })
 }
 

@@ -32,13 +32,15 @@ check('scope 名固定为 tc-scope', () => {
   assert.equal(taskCardStyles(), TASK_CARD_STYLES)
 })
 check('每条规则都挂在 .tc-scope 下（没有裸 .task / .chip）', () => {
-  /* 按大括号深度扫，跳过 @keyframes 里面的 0%/50% 块。 */
+  /* 按大括号深度扫，跳过 @keyframes 里面的 0%/50% 块。
+     先剥掉 CSS 注释：注释不是选择器（映射块的说明文字会被误当成一条裸规则）。 */
+  const scannable = css.replace(/\/\*[\s\S]*?\*\//g, '')
   const selectors = []
   let depth = 0
   let buffer = ''
   let skipping = false
-  for (let i = 0; i < css.length; i += 1) {
-    const ch = css[i]
+  for (let i = 0; i < scannable.length; i += 1) {
+    const ch = scannable[i]
     if (ch === '{') {
       const prelude = buffer.trim()
       if (/^@keyframes/.test(prelude)) skipping = true
@@ -58,13 +60,21 @@ check('关键类都在', () => {
     assert.ok(css.includes('.' + cls), cls)
   }
 })
-check('颜色走 --tc-* 令牌（有 --p-* 兜底）', () => {
-  assert.ok(css.includes('var(--tc-line, var(--p-line))'))
-  /* 先剥掉合法的「--tc-X 回退到 --p-X」，剩下的裸 --p-* 就是没兜底的。 */
-  const stripped = css.replace(/var\(--tc-([a-z0-9-]+), var\(--p-\1\)\)/g, '')
-  /* 只剩「连逗号都没有」的裸 var(--p-x) 才算没兜底；var(--p-x, 兜底) 本身是安全的。 */
-  const noFallback = stripped.match(/var\(--p-[a-z0-9-]+\)/g) || []
-  assert.deepEqual(noFallback, [], '这些 --p-* 没有 fallback：' + noFallback.join(', '))
+check('颜色只走 --tc-*：映射集中在 .tc-scope 一处，且没有 --p-* 死引用', () => {
+  /* 旧写法是 var(--tc-x, var(--p-x))：但 --p-* 是 panel.html 那套调色板，React 面板里从来没定义过，
+     兜底永远解析不到 —— 那 150+ 处是死代码，已删。现在映射只写在 .tc-scope 块里。 */
+  /* 判定只看代码，不看注释（映射块的注释里会提到旧的 --p-* 写法）。 */
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  assert.equal(code.includes('--p-'), false, '不许再出现 --p-*（旧面板调色板）')
+  const mapStart = code.indexOf('.tc-scope {')
+  assert.ok(mapStart >= 0, '.tc-scope 里要有令牌映射块')
+  const map = code.slice(mapStart, code.indexOf('}', mapStart))
+  const used = [...new Set([...code.matchAll(/var\((--tc-[a-z0-9-]+)\)/g)].map((m) => m[1]))]
+  const defined = new Set([...map.matchAll(/(--tc-[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
+  const missing = used.filter((token) => !defined.has(token))
+  /* 这条才是真正防回退的：卡片用到的每个 --tc-* 都必须在映射里定义，否则就是透明/继承色。 */
+  assert.deepEqual(missing, [], '这些 --tc-* 没有在 .tc-scope 映射里定义：' + missing.join(', '))
+  assert.ok(used.length >= 12, '用到的令牌太少（' + used.length + '），映射是不是被删了？')
 })
 check('动画 keyframes 保留（当前对话 / 呼吸灯 / 优先级）', () => {
   assert.ok(css.includes('@keyframes task-current-pulse'))
@@ -74,7 +84,7 @@ check('动画 keyframes 保留（当前对话 / 呼吸灯 / 优先级）', () =>
 check('菜单样式独立作用域（.tc-menu）+ 同套令牌', () => {
   assert.equal(taskMenuStyles(), TASK_MENU_STYLES)
   assert.ok(TASK_MENU_STYLES.includes('.tc-menu'))
-  assert.ok(TASK_MENU_STYLES.includes('var(--tc-line, var(--p-line'))
+  assert.ok(TASK_MENU_STYLES.includes('var(--tc-line)'))
   assert.ok(TASK_MENU_STYLES.includes('.prio-item'))
 })
 check('没有把面板的菜单/筛选样式带进来', () => {

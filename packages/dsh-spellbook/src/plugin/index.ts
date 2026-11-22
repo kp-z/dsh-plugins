@@ -1,12 +1,12 @@
 /**
- * dsh-spellbook host entry —— 把构建好的咒语书静态站挂到宿主路由上。
+ * dsh-spellbook host entry —— 把构建好的「长这样」静态站挂到宿主路由上。
  *
  *    GET /dsh-spellbook/            -> dist/index.html（目录页）
  *    GET /dsh-spellbook/spell/<slug>/ -> 条目页
  *    GET /dsh-spellbook/**          -> dist/ 下的静态文件（CSS / 字体 / 检索索引 / demo）
  *
  * 为什么整站从 dist/ 直出，而不是在插件里再渲染一遍：
- * 咒语书的每个条目都带一个**真在跑**的预览，而那些预览是构建期算好的独立文档
+ * 站里每个条目都带一个**真在跑**的预览，而那些预览是构建期算好的独立文档
  * （dist/spell/<slug>/demo.html，被 sandbox 的 iframe 载入）。站点本身也是构建期的
  * 产物 —— 332 条咒语、检索索引、按条目数算出来的编号栏宽，都是 build.mjs 一次成型。
  * 插件在这里只该做一件事：把那个目录原样端出去。再渲染一遍就等于维护第二套渲染器，
@@ -124,7 +124,7 @@ export function apply(ctx: Context): void {
 					const file = await resolveFile(req.url ?? MOUNT)
 					if (!file) {
 						res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' })
-						res.end(`<h1>404</h1><p>咒语书里没有这一页。<a href="${MOUNT}/">回目录</a>。</p>`)
+						res.end(`<h1>404</h1><p>长这样里没有这一页。<a href="${MOUNT}/">回目录</a>。</p>`)
 						return
 					}
 

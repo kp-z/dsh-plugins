@@ -248,7 +248,7 @@ export function createGraphView(deps) {
 
   return function GraphView(props) {
     const {
-      graphs, selectedId = '', focusedId = '', nodePos, onOpenTask, onFocusTask, onOrganize,
+      graphs, selectedId = '', focusedId = '', nodePos, onOpenTask, onFocusTask,
       onNodeMove, onResetLayout, onBlur, hostReady, hostReason, onOpenSession,
       /* 接受建议命中已完成任务时，面板会临时（3 秒）亮出这批 id —— 优先于本地筛选 */
       revealIds,

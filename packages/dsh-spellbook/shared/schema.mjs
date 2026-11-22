@@ -7,7 +7,7 @@
 
 import { validateTags } from './tags.mjs'
 
-export const CATEGORIES = ['材质', '动效', '排版', '交互', '布局', '图形']
+export const CATEGORIES = ['材质', '动效', '排版', '交互', '布局', '图形', '组件', '风格']
 
 /**
  * 图版的舞台。玻璃、模糊、混合模式在白底上看不出效果，所以舞台是必填项。

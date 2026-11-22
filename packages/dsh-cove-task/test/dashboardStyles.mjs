@@ -141,14 +141,14 @@ console.log(`\ndashboardStyles.js: ${passed} passed, ${failures.length} failed`)
 if (failures.length) process.exit(1)
 /* ---------------- 面板主样式表：主按钮的可读性红线 ---------------- */
 
-check('主按钮的可读口径：不得再用「实心品牌底 + bgBase 文字」', () => {
+check('主按钮的可读口径：实心品牌底 + bg-base 文字（品牌色是底色的反色）', () => {
   const primary = CSS_PANEL.slice(CSS_PANEL.indexOf('.fo-btn[data-variant="primary"]'), CSS_PANEL.indexOf('.fo-btn[data-variant="ghost"]'))
-  assert.equal(/color:\s*var\(--dsw-alias-bg-base/.test(primary), false,
-    'bgBase 在浅色主题是近白、暗色主题是近黑，做「品牌底上的文字」必有一个主题糊掉（用户实测报过）')
-  assert.ok(/color:\s*var\(--dsw-alias-label-primary/.test(primary), '主按钮文字要用 label-primary')
-  /* T.bgBase 展开后带 fallback（`var(--dsw-alias-bg-base, var(--dsw-alias-bg-layer-1))`），所以只锁前缀与比例 */
-  assert.ok(/background:\s*color-mix\(in oklab, var\(--dsw-alias-brand-primary\) \d+%, var\(--dsw-alias-bg-base/.test(primary),
-    '主按钮底色要是「品牌色 + 底色」的混合（实测暗 6.85:1 / 浅 4.33:1）')
+  /* 旧红线是「品牌 62% + 底色 38% + label 文字」，前提是「品牌色在两个主题都是偏亮的中间色」。
+     实测宿主的品牌色是 bluish-1000 / bluish-50（亮 #0f1115 / 暗 #f9fafb）——它是**底色的反色**：
+     那个组合在亮色下变成 #5d5d5d 底压近黑字（≈2.8:1，糊），反色填充才是两个主题都过 AA 的那个。 */
+  assert.ok(/color:\s*var\(--dsw-alias-bg-base/.test(primary), '品牌底上的文字用 bg-base（与品牌色互为反色）')
+  assert.equal(/color:\s*var\(--dsw-alias-label-primary/.test(primary), false, '不能再压 label-primary（亮色下同色系叠同色系）')
+  assert.ok(/background:\s*var\(--dsw-alias-brand-primary\)/.test(primary), '主按钮是实心品牌底')
 })
 
 console.log(failures.length ? `\n${failures.length} 项失败` : '\nDASHBOARD_STYLES_OK')
