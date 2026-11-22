@@ -11,10 +11,11 @@
  * 这个脚本只做两件事：读盘 → 交给库 → 写盘。
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { BindingTable, FileBindingStore } from '../../dsh-slowvale/lib/index.js'
 
-const file = resolve(process.env.XCITY_BINDINGS ?? 'xcity/bindings.json')
+// 工作区按 cove 的做法放在 ~/.dsh/<name>：DSH 的工作区注册表指向那里。
+const file = process.env.XCITY_BINDINGS ?? homedir() + '/.dsh/xcity/bindings.json'
 const store = new FileBindingStore(file)
 const table = store.load()
 
