@@ -11,6 +11,7 @@
  * 架构见 docs/ARCHITECTURE.md，内容模型见 docs/CONTENT.md，协议见 docs/PROTOCOL.md。
  */
 import { appendFileSync, existsSync, renameSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import {
@@ -39,6 +40,7 @@ import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
+import { loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { createPersonaStore } from './persona/store.js'
 import { registerDispatchTool } from './tools/dispatch.js'
 import { registerReportTool } from './tools/report.js'
@@ -407,6 +409,18 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   }, 'agent-world: runtime')
 
   if (resolved.autoStart) runtime.start()
+
+  // **默认激活一个会话**：没有激活会话时，世界不会推进（tick 不动、工单永远没人接）。
+  // 现象很迷惑：派了活、花名册也在，但所有人一直"待命"，看着像派单坏了。
+  // 用 captain 会话兜底——它是这个插件自己创建的，不占用用户的会话。
+  if (resolved.autoStart && state.activeSessionId === null && resolved.captainSessionId !== '') {
+    try {
+      state.activateSession(resolved.captainSessionId)
+      runtime.start()
+    } catch (error: unknown) {
+      logger.warn('[agent-world] 默认会话激活失败：' + String(error))
+    }
+  }
 
   // ── 对话：角色 ↔ DSH Agent 会话（M6-1 / M6-3）─────────────────────────────
   //
@@ -1029,6 +1043,27 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             viewerRoleId: resolved.slowvale.viewerRoleId,
             place: resolved.slowvale.place,
             startDate: resolved.slowvale.startDate,
+          },
+          /**
+           * 短信走会话：收到短信 → 把话送进绑定会话。
+           *
+           * 这里**返回 null 是诚实的**：短信是异步的（收下即回执），
+           * "他回一句"发生在会话里，不是在这个请求里凑一句假回复。
+           */
+          respondSms: async (input: { peerRoleId: string; content: string }) => {
+            const file = join(homedir(), '.dsh', 'xcity', 'bindings.json')
+            const agentsFile = join(homedir(), '.dsh', 'xcity', 'agents.json')
+            const agents = loadAgentMap(agentsFile)
+            const characterId = agents[input.peerRoleId] ?? null
+            if (characterId === null) return null
+            const binding = loadXcityBindings(file).find((row) => row.characterId === characterId)
+            if (binding === undefined) return null
+            if (typeof sessionControllerService?.prompt !== 'function') return null
+            await sessionControllerService.prompt({
+              sessionId: binding.sessionId,
+              content: input.content,
+            } as never)
+            return null
           },
           getWorld: () => state.currentWorld() as unknown as { id: string; name: string; tick: number; paused?: boolean; agents: { id: string; name: string }[] } | null,
           log: (line) => logger.info(line),
