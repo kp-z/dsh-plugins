@@ -15,6 +15,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { REAL_CONFIG } from './data/config.js'
 import { sceneByPlace } from './scene-key.js'
+import type { SmsStore } from './sms.js'
 import { shapeFor } from './shapes.js'
 import type { WorldLike } from './types.js'
 import {
@@ -32,8 +33,31 @@ export interface RouteContext {
   getWorld: () => WorldLike | null
   token: () => string
   log?: (line: string) => void
+  /** 短信线程存储（世界侧，线程不属于会话）。 */
+  sms: SmsStore
   /** SSE 通道的当前连接数（给诊断端点用）。 */
   streamClients?: () => number
+}
+
+/** 短信消息 → 前端字段（前端的行号靠它判断有没有新消息）。 */
+function messageOf(message: {
+  messageRowId: number
+  threadId: string
+  senderRoleId: string
+  senderName: string
+  content: string
+  sentAt: string
+  isSelf: boolean
+}): Record<string, unknown> {
+  return {
+    message_row_id: message.messageRowId,
+    thread_id: message.threadId,
+    sender_role_id: message.senderRoleId,
+    sender_name: message.senderName,
+    content: message.content,
+    sent_at: message.sentAt,
+    is_self: message.isSelf,
+  }
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -232,6 +256,63 @@ export async function handleApi(
     // 前端请求会带 ?scene=<place_id>；照它回，否则它判「快照没覆盖这次切换」并整体重同步
     const requested = url.searchParams.get('scene')
     sendJson(res, 200, projectScene(world, requested === null ? ctx.opts : { ...ctx.opts, scene: requested }))
+    return true
+  }
+  // ── 短信：线程 / 详情 / 发送 ─────────────────────────────────────────────
+  if (path === '/game/phone/sms/threads' && method === 'GET') {
+    // 先按世界里的角色建线程（幂等）：联系人来自世界，不来自会话。
+    const world = ctx.getWorld()
+    for (const agent of world?.agents ?? []) {
+      if (agent.id === ctx.opts.viewerRoleId) continue
+      ctx.sms.ensureThread(agent.id, agent.name)
+    }
+    const threads = ctx.sms.list().map((thread) => ({
+      thread_id: thread.threadId,
+      peer_role_id: thread.peerRoleId,
+      peer_name: thread.peerName,
+      last_message: thread.lastContent,
+      last_sent_at: thread.lastSentAt,
+      unread_count: thread.unread,
+    }))
+    sendJson(res, 200, { threads, unread_total: ctx.sms.unreadTotal() })
+    return true
+  }
+  if (path === '/game/phone/sms/thread' && method === 'GET') {
+    const threadId = url.searchParams.get('thread_id') ?? ''
+    ctx.sms.markRead(threadId)
+    const thread = ctx.sms.get(threadId)
+    if (thread === null) {
+      sendJson(res, 200, { thread_id: threadId, peer_name: null, messages: [], has_more: false, next_before_message_id: null })
+      return true
+    }
+    sendJson(res, 200, {
+      thread_id: thread.threadId,
+      peer_name: thread.peerName,
+      messages: thread.messages.map(messageOf),
+      has_more: false,
+      next_before_message_id: null,
+    })
+    return true
+  }
+  if (path === '/game/player/message' && method === 'POST') {
+    const body = await readBody(req)
+    const threadId = typeof body['thread_id'] === 'string' ? body['thread_id'] : ''
+    const content = typeof body['content'] === 'string' ? body['content'] : ''
+    const world = ctx.getWorld()
+    if (threadId === '' || content.trim() === '' || world === null) {
+      sendJson(res, 200, { ok: false, messages: [] })
+      return true
+    }
+    await ctx.sms.send({
+      threadId,
+      senderRoleId: ctx.opts.viewerRoleId,
+      senderName: '我',
+      content,
+      sentAt: new Date().toISOString(),
+      tick: world.tick,
+    })
+    const thread = ctx.sms.get(threadId)
+    sendJson(res, 200, { ok: true, messages: (thread?.messages ?? []).map(messageOf) })
     return true
   }
   if (path === '/game/player/conversation') {

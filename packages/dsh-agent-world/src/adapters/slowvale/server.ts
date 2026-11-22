@@ -25,6 +25,7 @@ import { serveStatic } from './static.js'
 import { autoEnterScript } from './auto-enter.js'
 import { debugScript } from './debug.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
+import { SmsStore } from './sms.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
 
@@ -85,10 +86,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   let timer: NodeJS.Timeout | null = null
   let closed = false
 
+  // 短信线程挂在世界这一侧：会话可以归档换人，聊天记录不能丢。
+  const sms = new SmsStore()
+
   const ctx: RouteContext = {
     opts: options.opts,
     account: options.account,
     getWorld: options.getWorld,
+    sms,
     token: () => 'local-' + randomUUID(),
     log,
     streamClients: () => clients.size,
