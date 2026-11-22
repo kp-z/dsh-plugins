@@ -10296,3 +10296,16 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 **判据**：7 条单测通过（映射 / 出发判定 / 途中不重复发 / 走完归零）。
 端到端判据（前端接受该 visual 包、无校验错误）要等下一次重启后才能在正式桥上看——已标注，不再要求反复重启。
+
+## 2026-11-23 02:58 · M3 第一块（把「去办公室工作」解析成世界指令）
+
+**做的事**
+
+- 新增 adapters/slowvale/directive.ts：parseDirective(text, places) 返回 {kind, placeId, matched} 或 null；
+  kind = work / rest / visit；地点清单来自 stage.ts 的 DEFAULT_CIRCUIT（前端规则表能命中的那 6 个）；
+  词表 = 地点 label + 每个地点的少量别名（办公室/回家/便利店…），不做二次推断。
+
+**判据**：4 条测试通过——去办公室工作→work+company、回家→rest、去健身房→visit、今天天气不错→null。
+
+**边界（重要）**：匹配不到就返回 null，调用方必须回一句请对方说得具体点，
+绝不能猜一个最近的地点——那会让角色莫名其妙地走去别处。
