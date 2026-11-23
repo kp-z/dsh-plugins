@@ -41,6 +41,7 @@ import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
+import { respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -1138,28 +1139,15 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             runtime.enqueue(command)
             return true
           },
-          respondSms: async (input: { peerRoleId: string; content: string }) => {
-            const file = join(homedir(), '.dsh', 'xcity', 'bindings.json')
-            const agentsFile = join(homedir(), '.dsh', 'xcity', 'agents.json')
-            const agents = loadAgentMap(agentsFile)
-            const characterId = agents[input.peerRoleId] ?? null
-            if (characterId === null) return null
-            const binding = loadXcityBindings(file).find((row) => row.characterId === characterId)
-            if (binding === undefined) return null
-            if (typeof sessionControllerService?.prompt !== 'function') return null
-            // 宿主的 prompt 形状：{requestId, sessionId, mode, content[]} + signal。
-            // 少字段就抛错——之前传的是 {sessionId, content: string}，于是短信接口 500。
-            await sessionControllerService.prompt(
-              {
-                requestId: 'xcity-sms:' + binding.sessionId + ':' + String(Date.now()),
-                sessionId: binding.sessionId,
-                mode: 'queue',
-                content: [{ type: 'text', text: input.content }],
-              } as never,
-              new AbortController().signal,
-            )
-            return null
-          },
+          respondSms: async (input: { peerRoleId: string; content: string }) =>
+            respondViaSession(input, {
+              characterOf: (peerRoleId) => loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))[peerRoleId] ?? null,
+              sessionOf: (characterId) => loadXcityBindings(join(homedir(), '.dsh', 'xcity', 'bindings.json')).find((row) => row.characterId === characterId)?.sessionId ?? null,
+              prompt: async (payload, signal) => {
+                if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
+                await sessionControllerService.prompt(payload as never, signal)
+              },
+            }),
           getWorld: () => state.currentWorld() as unknown as { id: string; name: string; tick: number; paused?: boolean; agents: { id: string; name: string }[] } | null,
           log: (line) => logger.info(line),
         }).then((started) => {

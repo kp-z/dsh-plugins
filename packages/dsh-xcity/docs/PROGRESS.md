@@ -10394,3 +10394,17 @@ assistant/message 上取 text 块写回短信线程；会话->角色的查找补
 
 **附带事实**：三条会话都在 workspace.json 的 sessionIds 里，cwd 为 /Users/demo/.dsh/xcity；
 侧边栏没显示的话先刷新 DSH 窗口（工作区列表在页面加载时取）。
+
+## 2026-11-23 10:58 · 把短信转发器拆出来并加测试（防止同样的 500 再来一次）
+
+**为什么拆**：这段逻辑原来内联在 index.ts 的桥配置里，出错时只能靠重启+手点验证，
+而它恰恰出过错（prompt 参数缺 requestId/mode/content[]/signal -> 500，短信静默丢失）。
+
+**做法**：新增 adapters/slowvale/respond-sms.ts，依赖全部注入（characterOf / sessionOf / prompt），
+index.ts 只负责把文件读取和宿主服务接进去。
+
+**判据**：2 条测试通过——
+1) 形状必须是 {requestId:'xcity-sms:<session>:<ts>', sessionId, mode:'queue', content:[{type:'text',text}]} 且带 AbortSignal；
+2) peer 不存在或没绑会话时一次都不发。
+
+这条测试的意义：同样的错再犯，测试会直接红，而不是等用户点一遍发现没反应。
