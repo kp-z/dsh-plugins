@@ -40,7 +40,7 @@ import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
-import { loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
+import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -50,6 +50,9 @@ import { registerReportTool } from './tools/report.js'
 import { registerWorldTools } from './tools/world.js'
 
 /** Loader entry id（kebab-case，全局唯一，配置覆盖靠它定位）。 */
+/** 会话侧要说话时用的桥句柄（回复方向：会话 → 游戏短信）。 */
+let slowvaleBridgeHandle: Bridge | null = null
+
 export const name = 'xcity'
 
 /**
@@ -795,10 +798,26 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const lead = world.agents.find((agent) => agent.boundAgentId === null)
       const actor = world.agents.find((agent) => agent.boundAgentId === sessionId)
         ?? (sessionId === state.activeSessionId ? lead : undefined)
+        ?? world.agents.find((agent) => {
+          // xcity 绑定：会话 ↔ 角色 ↔ 世界里的 agentId（bindings.json + agents.json）
+          const character = characterOfSession(loadXcityBindings(join(homedir(), '.dsh', 'xcity', 'bindings.json')), sessionId)
+          if (character === null) return false
+          const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
+          return agents[agent.id] === character
+        })
       if (actor === undefined) return
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const blocks = Array.isArray(message?.content) ? message.content : []
       // R364：工具调用 → 去工位；tool/result → 收工。只在游戏模式里映射，普通 profile 不被扰动。
+      // 回复方向：角色在会话里说的话，写回游戏短信线程（不管是不是游戏模式）。
+      if (event.type === 'assistant/message' && slowvaleBridgeHandle !== null) {
+        const said = blocks
+          .filter((block) => (block as Record<string, unknown>)?.['type'] === 'text')
+          .map((block) => String((block as Record<string, unknown>)?.['text'] ?? ''))
+          .join('')
+          .trim()
+        if (said !== '') slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, said)
+      }
       if (gameModeEnabled) {
         if (event.type === 'assistant/message') {
           const toolNames = blocks
@@ -1128,16 +1147,24 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             const binding = loadXcityBindings(file).find((row) => row.characterId === characterId)
             if (binding === undefined) return null
             if (typeof sessionControllerService?.prompt !== 'function') return null
-            await sessionControllerService.prompt({
-              sessionId: binding.sessionId,
-              content: input.content,
-            } as never)
+            // 宿主的 prompt 形状：{requestId, sessionId, mode, content[]} + signal。
+            // 少字段就抛错——之前传的是 {sessionId, content: string}，于是短信接口 500。
+            await sessionControllerService.prompt(
+              {
+                requestId: 'xcity-sms:' + binding.sessionId + ':' + String(Date.now()),
+                sessionId: binding.sessionId,
+                mode: 'queue',
+                content: [{ type: 'text', text: input.content }],
+              } as never,
+              new AbortController().signal,
+            )
             return null
           },
           getWorld: () => state.currentWorld() as unknown as { id: string; name: string; tick: number; paused?: boolean; agents: { id: string; name: string }[] } | null,
           log: (line) => logger.info(line),
         }).then((started) => {
           bridge = started
+          slowvaleBridgeHandle = started
           if (disposed) void started.close()
         }).catch((error: unknown) => {
           logger.warn('[slowvale] 启动失败：' + String(error))
@@ -1145,6 +1172,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         return () => {
           disposed = true
           if (bridge !== null) void bridge.close()
+          slowvaleBridgeHandle = null
         }
       }, 'agent-world: slowvale bridge')
     }

@@ -79,6 +79,8 @@ export interface BridgeOptions {
 export interface Bridge {
   port: number
   close: () => Promise<void>
+  /** 会话侧说的话写回游戏短信线程（回复方向）。 */
+  appendIncoming: (peerRoleId: string, peerName: string, content: string) => boolean
 }
 
 /** 调试脚本：必须最先执行，否则早期日志抓不到。 */
@@ -449,6 +451,20 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       log('[slowvale] http://' + options.host + ':' + String(port) + '/')
       resolvePromise({
         port,
+        appendIncoming: (peerRoleId: string, peerName: string, content: string) => {
+          const text = content.trim()
+          if (text === '' || peerRoleId === '') return false
+          const thread = sms.ensureThread(peerRoleId, peerName)
+          sms.append({
+            threadId: thread.threadId,
+            senderRoleId: peerRoleId,
+            senderName: peerName,
+            content: text,
+            sentAt: new Date().toISOString(),
+            isSelf: false,
+          })
+          return true
+        },
         close: async () => {
           closed = true
           if (timer !== null) clearInterval(timer)

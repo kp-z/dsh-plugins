@@ -10375,3 +10375,22 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 **注意**：登录需要账号（镜像的 mock 后端只认 demo@slowvale.dev / slowvale123），
 人工点一次之后前端会自己记住。
+
+## 2026-11-23 10:45 · 修两条真问题（短信 500 + 回复方向）
+
+**问题一：发短信报 internal error，会话收不到**
+
+实测：POST /api/game/player/message -> internal error，会话文件大小不变。
+根因：respondSms 调 prompt 时传的是 {sessionId, content: string}，宿主要的是
+{requestId, sessionId, mode:queue, content:[{type:text,text}]} + signal。少字段直接抛错 -> 500。
+
+**问题二：回复方向根本没做**
+
+补上：桥新增 appendIncoming(peerRoleId, peerName, content)；index.ts 在 session/event 的
+assistant/message 上取 text 块写回短信线程；会话->角色的查找补了 xcity 绑定路径
+（之前只认 world agent.boundAgentId，而我们的绑定在 bindings.json，永远匹配不上）。
+
+**判据**：tsc 通过；全量 810 条 pass 809 / fail 0。正式桥需重启才载入新代码。
+
+**附带事实**：三条会话都在 workspace.json 的 sessionIds 里，cwd 为 /Users/demo/.dsh/xcity；
+侧边栏没显示的话先刷新 DSH 窗口（工作区列表在页面加载时取）。
