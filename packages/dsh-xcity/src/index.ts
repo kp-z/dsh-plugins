@@ -1068,6 +1068,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           port: resolved.slowvale.port,
           assetsDir: slowvaleRoot,
           pushMs: resolved.slowvale.pushMs,
+          // 只在场景真的变了才推 scene_state：每帧推会让前端反复重启场景（也是它画不出来的原因之一）。
+          sceneStateOnChangeOnly: true,
+          // 谁代表谁：短信线程 -> 绑定角色 -> DSH 会话。不传就用默认 ~/.dsh/xcity/bindings.json。
+          bindingsFile: join(homedir(), '.dsh', 'xcity', 'bindings.json'),
           account: { email: resolved.slowvale.email, password: resolved.slowvale.password },
           opts: {
             worldId: resolved.slowvale.worldId,

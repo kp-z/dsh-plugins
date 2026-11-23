@@ -10562,3 +10562,16 @@ routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对�
 
 **判据**：当前通过；823 条 pass 822 / fail 0。
 **价值**：这类「声明了但没接上」的字段，以后加一个就立刻被这条测试发现，不用等真机现象。
+
+## 2026-11-23 21:05 · 同一道守卫扩到 BridgeOptions（又抓到四个漏传）
+
+新测试 bridge-options-passed.test.js：比对 BridgeOptions 的字段与 index.ts 构造桥时传的键。
+第一次跑就红了：debug、bindingsFile、sceneStateOnChangeOnly、forceVisible 都没传。
+
+**处理**：
+- sceneStateOnChangeOnly 传 true（只在场景真变时推 scene_state——之前每帧推会让前端反复重启场景）；
+- bindingsFile 传 ~/.dsh/xcity/bindings.json（配置化，不再依赖服务端默认值）；
+- debug / forceVisible 进 allow-list 并写明理由：只有 scripts/slowvale-dev.mjs 用，正式进程伪造它们没有意义。
+
+**判据**：824 条 pass 823 / fail 0。
+**教训**：接口可选字段 + 调用点漏传，TypeScript 不报、运行时静默——这类只能靠静态守卫。
