@@ -10575,3 +10575,24 @@ routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对�
 
 **判据**：824 条 pass 823 / fail 0。
 **教训**：接口可选字段 + 调用点漏传，TypeScript 不报、运行时静默——这类只能靠静态守卫。
+
+## 2026-11-23 22:05 · 实测：同一个场景每秒被重推一次
+
+**测量（正式桥，抓 5 秒 SSE）**：
+
+    29598 字节；state x10、scene_state x5、furniture x5
+    scene_state 的 route.scenes 全是 ['company']（一模一样）
+
+也就是说：前端每秒都会收到一次「场景变成 company」，而它明明已经是 company。
+前端收到场景变化会走切换逻辑，重复推就是反复重启场景——这和「贴图排队却不加载」高度吻合。
+
+**原因**：sceneStateOnChangeOnly 这个选项 BridgeOptions 里有、server 也认，
+但 index.ts 从来没传（TypeScript 因为它是可选字段不报错）——上一轮已补传 true。
+
+**判据（本轮新增测试）**：
+- 开去重：600ms 内 scene_state <= 1，同时 state > 1（证明推送确实在跑）；
+- 关去重：scene_state 明显更多。
+测试通过；全量 825 条 pass 824 / fail 0。
+
+**下一步**：重启后重复同一次测量——scene_state 应该从「每秒 1 条」变成「只 1 条」。
+这也是我目前能对 M1 做的、不依赖肉眼的唯一量化判据。
