@@ -93,6 +93,19 @@ function injectDebug(html: string, enabled: boolean): string {
   return html.slice(0, anchor) + tag + '\n    ' + html.slice(anchor)
 }
 
+/** 从 Cookie 里取上次停留的路径（只认 /world/...，别的一律当没有）。 */
+function resumePathOf(req: import('node:http').IncomingMessage): string | null {
+  const raw = req.headers.cookie
+  if (typeof raw !== 'string') return null
+  for (const part of raw.split(';')) {
+    const [key, ...rest] = part.trim().split('=')
+    if (key !== 'xcity_resume') continue
+    const value = decodeURIComponent(rest.join('='))
+    return /^\/world\/[^/]+/.test(value) ? value : null
+  }
+  return null
+}
+
 export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const log = options.log ?? (() => {})
   const clients = new Set<ServerResponse>()
@@ -410,6 +423,19 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
         res.end('{"faces":[]}')
         return
+      }
+
+      // ── 「上次停在哪个页面」──
+      // iframe 被重建时会从 / 重新加载，前端于是退回世界列表（用户体感：又要点一遍）。
+      // 服务端记住最后访问的 /world 路径，下次进 / 时直接重定向回去。
+      const resumePath = resumePathOf(req)
+      if (url.pathname === '/' && resumePath !== null) {
+        res.writeHead(302, { location: resumePath, 'cache-control': 'no-store' })
+        res.end()
+        return
+      }
+      if (/^\/world\/[^/]+$/.test(url.pathname)) {
+        res.setHeader('set-cookie', 'xcity_resume=' + encodeURIComponent(url.pathname + url.search) + '; Path=/; Max-Age=2592000; SameSite=Lax')
       }
 
       serveStatic(

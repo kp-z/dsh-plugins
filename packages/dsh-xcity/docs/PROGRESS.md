@@ -10486,3 +10486,19 @@ participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两
 
 **还没证实的**：用户那边每次切 tab 是 iframe 重挂载导致的。若换稳定 token 后仍复现，
 下一步要查的是 DSH 面板在切换时是否真的卸载了 iframe（这决定了要不要让面板常驻）。
+
+## 2026-11-23 16:05 · 切回来还在原来的页面（resume cookie）
+
+**假设②**：iframe 每次切 tab 被重建 -> 从 / 加载 -> 前端退回世界列表（用户体感：又要点一遍）。
+这一条和我上一轮修的 token 不冲突：token 管「还登录着吗」，resume 管「回到哪个页面」。
+
+**做法（不动前端）**：
+- 访问 /world/... 时由服务端下发 Cookie xcity_resume=<path>（30 天）；
+- iframe 从 / 重建时，若 Cookie 存在就 302 回那个路径。
+前端照常自己的路由，只是入口被换成了上次那个。
+
+**判据**：新增测试通过——访问 /world/w1?role_id=agent-1 拿到 set-cookie，再带 Cookie 请求 / 得到 302 + location 正确。
+全量 817 条 pass 816 / fail 0。
+
+**仍需真机确认**：这两处都要重启才生效；如果重启后还复现，那就不是 iframe 重建，
+而是 DSH 面板每次切换都在新建一个独立 origin 的宿主（那要另做处理）。
