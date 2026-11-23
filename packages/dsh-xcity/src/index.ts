@@ -40,6 +40,7 @@ import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
+import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
@@ -1160,9 +1161,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           // 「有人在看，世界就得活着」：世界曾经因为某个会话被停掉而冻住（tick 不动、指令全排队），
           // 表现就是游戏里所有人杵着不动。这里做一个守卫：只要游戏页还连着，runtime 停了就拉起来。
           watchGameViewers = setInterval(() => {
-            if (disposed || started.clientCount() === 0) return
-            if (!resolved.autoStart) return
-            if (!runtime.running) runtime.start()
+            if (disposed) return
+            if (shouldRestartWorld({ viewers: started.clientCount(), autoStart: resolved.autoStart, running: runtime.running })) {
+              runtime.start()
+            }
           }, 2000)
           watchGameViewers.unref?.()
           if (disposed) void started.close()

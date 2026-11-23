@@ -10522,3 +10522,15 @@ participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两
 
 **判据**：tsc 通过；全量 817 条 pass 816 / fail 0。需重启生效。
 **下一轮**：重启后确认 tick 递增 + 发短信后 agent-1 坐标变化（这两条是用户能直接看到的）。
+
+## 2026-11-23 18:02 · 把「有观众就不许冻」的策略抽出来测
+
+上一轮加的看护逻辑原本写死在 index.ts 的 setInterval 里，只能靠重启+肉眼验证。
+抽成 runtime/watchdog.ts 的 shouldRestartWorld({viewers, autoStart, running})，4 条测试：
+- 有观众 + autoStart + 停着 -> true；
+- 没人看 -> false（不占 CPU）；
+- autoStart=false -> false（配置说了算）；
+- 正在跑 -> false（不打断当前帧）。
+
+**尝试过但没成功的**：想用假 ctx 把整个插件跑在 7798 上做端到端（不用重启 App），
+但 registerWorldTools 依赖真实的 tools 服务，假 ctx 撑不起来。这条路放弃，不再折腾。
