@@ -10434,3 +10434,16 @@ index.ts 只负责把文件读取和宿主服务接进去。
 
 **判据**：新增测试「responder 抛错」——HTTP 仍 200、ok:true、消息仍在返回的 messages 里。
 与上一条合起来 2 条通过；全量见下一轮。
+
+## 2026-11-23 13:58 · M4 第一块（多人同框的数据形状）
+
+**读代码确认的形状**（GameView 的 Sb()）：前端判断一包跟自己有没有关系时用的是
+participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两处必须一致。
+
+**做法**：groupTimeline({epoch, seq, tickMarker, steps}) 由 steps 推导 participants（去重、按首次出现），
+不接受手写 participants —— 手写就会和 tracks 对不上。
+
+**判据**：单测通过（8 条），其中新的一条断言：两拍三步、participants 去重为 [agent-1, agent-2]。
+
+**下一步**：把「两个角色在同一站点（meeting）」这个事实变成一次 group 对话（世界侧触发），
+仍然可以离线验：断言发出的包 participants 与 steps 与站点上的人一致。

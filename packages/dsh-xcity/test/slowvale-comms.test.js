@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SmsStore } from '../lib/adapters/slowvale/sms.js'
 import { loadXcityBindings, characterOfSession } from '../lib/adapters/slowvale/xcity.js'
-import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts } from '../lib/adapters/slowvale/visual.js'
+import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts, groupTimeline } from '../lib/adapters/slowvale/visual.js'
 
 test('短信：没有 responder 时也要收下（回执语义）', async () => {
   const store = new SmsStore()
@@ -111,4 +111,18 @@ test('pickWalkStarts：只在「路径从无到有」时发一次，走路途中
   const third = pickWalkStarts(second.next, [{ id: 'a', path: [] }])
   assert.equal(third.started.length, 0)
   assert.equal(third.next.get('a'), 0, '走完后长度归零，下次再出发才会再发')
+})
+
+test('group 时间轴：participants 必须由 steps 的 tracks 推导，不能手写', () => {
+  const packet = groupTimeline({
+    epoch: 'epoch-w1', seq: 9, tickMarker: 'tick-3',
+    steps: [
+      { tracks: { 'agent-1': { dialogue: { text: '早' } }, 'agent-2': { body: { action: 'idle' } } } },
+      { tracks: { 'agent-1': { body: { action: 'phone', phone_phase: 'lift' } } } },
+    ],
+  })
+  assert.equal(packet.kind, 'group')
+  assert.deepEqual(packet.participants, ['agent-1', 'agent-2'], '去重且按首次出现排序')
+  assert.equal(packet.steps.length, 2)
+  assert.equal(packet.steps[1].tracks['agent-1'].body.action, 'phone')
 })

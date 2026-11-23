@@ -124,3 +124,32 @@ export function pickWalkStarts(
   }
   return { started, next }
 }
+
+/**
+ * 多人同框的一段时间轴（前端 Sb() 那一段读的就是 participants + steps[].tracks）。
+ *
+ * 为什么不自己拼 participants：前端判断"这一包跟我有没有关系"用的是
+ * participants.includes(actorId) 和 steps.some(x => x.tracks[actorId])，
+ * 两处必须一致；由 steps 推导是唯一不会写岔的写法。
+ */
+export function groupTimeline(input: {
+  epoch: string
+  seq: number
+  tickMarker: string
+  steps: { tracks: Record<string, VisualBeat> }[]
+}): Record<string, unknown> {
+  const participants: string[] = []
+  for (const step of input.steps) {
+    for (const actorId of Object.keys(step.tracks)) {
+      if (!participants.includes(actorId)) participants.push(actorId)
+    }
+  }
+  return {
+    epoch: input.epoch,
+    seq: input.seq,
+    tick_marker: input.tickMarker,
+    kind: 'group',
+    participants,
+    steps: input.steps,
+  }
+}
