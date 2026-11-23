@@ -10470,3 +10470,19 @@ participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两
 世界里的名字对不上。要么改 agents.json，要么让短信线程用角色名。
 
 **判据**：815 条 pass 814 / fail 0。
+
+## 2026-11-23 15:55 · 每次切 tab 都要重新登录
+
+**实测能排除的**：我在自己浏览器里带 token 打开 /world/w1?role_id=agent-1 并刷新，路径不变、token 还在，
+说明前端的会话持久化本身是好的（localStorage 存 access_token / user_id / is_admin）。
+
+**找到的一个真 bug**：桥的 token 是 `'local-' + randomUUID()`，**每次调用都换一个**。
+登录拿到 A、随后 /auth/refresh 拿到 B —— 前端一旦做 token 比对，就会当成会话被顶掉，退回登录页。
+单机单账号下 token 本来就该稳定。
+
+**改法**：token 由账号派生（sha1(email) 前 16 位），进程内恒定。
+
+**判据**：新增测试「登录与刷新返回同一个 token」通过；全量 816 条 pass 815 / fail 0。
+
+**还没证实的**：用户那边每次切 tab 是 iframe 重挂载导致的。若换稳定 token 后仍复现，
+下一步要查的是 DSH 面板在切换时是否真的卸载了 iframe（这决定了要不要让面板常驻）。

@@ -86,3 +86,24 @@ test('responder 抛错：短信照样发得出去（不能因为会话那边坏�
     await bridge.close()
   }
 })
+
+test('token 稳定：登录与刷新返回同一个 token（换来换去会被前端当成会话被顶掉）', async () => {
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir, pushMs: 0,
+    account: { email: 'a@b.c', password: 'x' },
+    opts: { worldId: 'w1', viewerRoleId: '', place: 'place:office.tech_company_1', startDate: '2026-01-01' },
+    getWorld: () => world,
+  })
+  try {
+    const base = 'http://127.0.0.1:' + String(bridge.port)
+    const login = await (await fetch(base + '/api/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'a@b.c', password: 'x' }),
+    })).json()
+    const refresh = await (await fetch(base + '/api/auth/refresh')).json()
+    assert.equal(login.access_token, refresh.access_token, '两次拿到的 token 必须一样')
+    assert.ok(String(login.access_token).startsWith('local-'))
+  } finally {
+    await bridge.close()
+  }
+})

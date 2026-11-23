@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { debugScript } from './debug.js'
@@ -99,6 +100,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   let closed = false
 
   // 短信线程挂在世界这一侧：会话可以归档换人，聊天记录不能丢。
+  // 账号固定 + 单机：token 由账号派生，进程生命周期内不变。
+  const localToken = 'local-' + createHash('sha1').update(options.account.email).digest('hex').slice(0, 16)
   const sms = new SmsStore()
   sms.useResponder(options.respondSms ?? null)
 
@@ -107,7 +110,9 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     account: options.account,
     getWorld: options.getWorld,
     sms,
-    token: () => 'local-' + randomUUID(),
+    // 单机单账号：token 必须是稳定的（之前每次都 randomUUID，登录拿 A、刷新拿 B，
+    // 前端一旦比对就当成会话被顶掉，退回登录页）。
+    token: () => localToken,
     log,
     streamClients: () => clients.size,
   }
