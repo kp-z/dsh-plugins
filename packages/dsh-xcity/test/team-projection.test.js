@@ -22,7 +22,11 @@ test('团队投影：只从 agentTeams 服务取，不解析 tool call', () => {
   )
 })
 
-test('旧前端已删除：lib/web 与 client 入口都不在', () => {
+test('旧 web 面板已删除；client 入口只用于 DSH 左侧栏 tab', () => {
+  // 旧面板（lib/web/main.js）是我们自己写的一套网页，已删除，不许回来。
   assert.throws(() => read('lib/web/main.js'), /ENOENT/)
-  assert.doesNotMatch(read('package.json'), /"\.\/client"/)
+  // client 入口现在**是需要的**：DSH 左侧栏 tab 靠它加载（package.json 的 exports[./client]）。
+  // 但它只能是「宿主加载器里注册一个槽位」，不能重新长成一个自带前端的页面。
+  assert.match(read('package.json'), /"\.\/client"/)
+  assert.doesNotMatch(read('lib/client.iife.js'), /document\.body\.appendChild\(\s*document\.createElement\(\s*'div'\s*\)\s*\)/)
 })

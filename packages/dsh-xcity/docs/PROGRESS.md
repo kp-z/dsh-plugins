@@ -10338,3 +10338,23 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
 
 **判据**：编译通过。端到端判据（发短信→该 agent 的 state 变 walking）要等正式桥跑新代码，
 已标注在文档里，不要求反复重启。
+
+## 2026-11-23 10:00 · M3 端到端验通（发短信 → 他真的去上班）
+
+**新增测试** test/slowvale-sms-to-work.test.js：
+
+    parseDirective('你去办公室工作吧')  -> {work, place:office}
+    directiveToCommand(...)            -> agentActivity(work, skill=code)
+    step(world, [command])             -> agent.state = walking, path 非空, targetStation 非空
+    再跑 40 个 tick                     -> 位置坐标确实变了（真的在走，不是站着）
+
+**证据**：该测试通过（8ms）；全量 810 条：pass 809 / fail 0。
+这是第一次把「一句话」到「人在动」这条链在**不需要画布**的前提下自证完毕。
+
+**顺带修了两条守卫测试**（它们挡住了新现实，不是被我删掉）：
+
+- boundaries：新增 src/client/（浏览器侧半体）没登记 -> 加进 notOurCode 并写明理由；
+- team-projection：旧断言是「client 入口不许存在」，但现在左侧栏 tab 正需要它 ->
+  改成「旧面板 lib/web/main.js 不许回来；client 入口必须存在，且不许长成自带前端的页面」。
+
+**仍然没验的**：世界 -> 画面这一段（取决于 M1 是否真的在渲染）。

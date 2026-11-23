@@ -427,7 +427,10 @@ test('目录覆盖：`src/` 下每个一级目录都必须在规则表里登记�
   // **非本插件代码**的目录：`src/vendor/` 放的是第三方资源（three 等），
   // 没有 TS、不参与模块图，所以"登记模块规则"对它没有意义。
   // 但也不能默默放过——列在这里就等于写明"这些文件不是我们写的"。
-  const notOurCode = new Map([['vendor', '第三方 vendored 资源，不参与本插件的模块图（见 src/vendor/README.md）']])
+  const notOurCode = new Map([
+    ['vendor', '第三方 vendored 资源，不参与本插件的模块图（见 src/vendor/README.md）'],
+    ['client', '浏览器侧半体：跑在 DSH 的客户端模块加载器里（不是 Node 模块图，也不该受服务端边界规则约束）'],
+  ])
 
   const unregistered = dirs.filter((d) => !registered.includes(d) && !notOurCode.has(d))
   assert.deepEqual(
