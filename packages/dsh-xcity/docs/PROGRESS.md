@@ -10596,3 +10596,29 @@ routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对�
 
 **下一步**：重启后重复同一次测量——scene_state 应该从「每秒 1 条」变成「只 1 条」。
 这也是我目前能对 M1 做的、不依赖肉眼的唯一量化判据。
+
+## 2026-11-23 23:00 · 深挖（不改代码）：前端是好的；登出只在两种情况下发生
+
+**证据：前端渲染正常**（本地 7799 实测）
+
+    Phaser 画布 1025x804
+    PNG 51 个：ui 43 / portrait 3 / sprites 3 / characters 1 / maps 1
+    地图 JSON：home_public、unit_one_bedroom 各 5 个（objects/collisions/interactions/layers/furniture）
+
+之前「background.png = 0」的判据是错的：地图按「你在哪个地点」加载，
+当时 viewer 在公寓（place:residential.apartment_1 -> scene home_public），所以加载的是 home_public。
+
+**登出（清 token）只在两条路发生**（读 bundle 得到）：
+
+1. `Qa()`：显式登出 / 收到 401 后由拦截器调用 / 刷新被拒；
+2. `RH()` 的会话判定返回非 active：
+   - 有 token 且有 user_id -> active（**不走网络**）；
+   - 否则走 `$T()`(=POST /auth/refresh)。若在原生壳里（He() 为真）且拿不到原生 refresh token，
+     会抛「原生 App 没有可用的 refresh token」-> 非 active -> 被踢去登录。
+
+**我们服务端唯一的 401** 是登录密码错误（routes.ts:165），没有别的地方会 401。
+所以「每次切回来要重新登录」若不是 iframe 存储丢失，就只剩：路由守卫把 game 路由带去了 worldRoles/worlds
+（`if (e.name==='game' && !e.query.role_id) return {name:'worldRoles'}`）——体感就是「又要重新点几下」。
+
+**结论**：需要用户给一个事实（切回来看到哪个页面）才能定位，不再靠猜。
+**已暂停每小时任务**：它在产出无法验证的东西，等真跑通再恢复。
