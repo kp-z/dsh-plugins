@@ -10447,3 +10447,26 @@ participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两
 
 **下一步**：把「两个角色在同一站点（meeting）」这个事实变成一次 group 对话（世界侧触发），
 仍然可以离线验：断言发出的包 participants 与 steps 与站点上的人一致。
+
+## 2026-11-23 14:58 · 真机验通：短信 → 会话 → 角色回话 → 游戏短信
+
+**App 重启后的实测（这是第一次真机跑通）**
+
+    curl -X POST .../api/game/player/message -d '{"thread_id":"thread:agent-1","content":"你现在去办公室工作"}'
+    -> {"ok":true,"messages":[{... "content":"你现在去办公室工作", "is_self":true}]}
+
+    会话文件 6473 -> 7309 字节（真的进了 DSH 会话）
+
+    GET /api/game/phone/sms/thread?thread_id=thread:agent-1
+    -> 两条：我发的 + 工头阿金回的（is_self:false）
+
+**结论**：去 + 回两个方向都通了。
+
+**顺手修的一个坑**：POST 到还没建过的线程会静默丢消息（返回 ok 但 messages 为空）。
+原因是 send 只往已存在的线程里 append。现在发送前会 ensureThread（peer 名字从世界里取）。
+
+**发现的一处语义不一致（待处理）**：world 里 agent-1 叫「工头阿金」，而 agents.json 把 agent-1
+映射成 role.lin（林野）。短信线程按 world agent 建，所以显示的是工头阿金——绑定表里的人和
+世界里的名字对不上。要么改 agents.json，要么让短信线程用角色名。
+
+**判据**：815 条 pass 814 / fail 0。
