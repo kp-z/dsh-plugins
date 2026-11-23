@@ -82,6 +82,8 @@ export interface Bridge {
   close: () => Promise<void>
   /** 会话侧说的话写回游戏短信线程（回复方向）。 */
   appendIncoming: (peerRoleId: string, peerName: string, content: string) => boolean
+  /** 当前 SSE 连接数（有几个观众）。 */
+  clientCount: () => number
 }
 
 /** 调试脚本：必须最先执行，否则早期日志抓不到。 */
@@ -482,6 +484,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       log('[slowvale] http://' + options.host + ':' + String(port) + '/')
       resolvePromise({
         port,
+        clientCount: () => clients.size,
         appendIncoming: (peerRoleId: string, peerName: string, content: string) => {
           const text = content.trim()
           if (text === '' || peerRoleId === '') return false

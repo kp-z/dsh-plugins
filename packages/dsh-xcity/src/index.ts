@@ -1060,6 +1060,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     } else {
       ctx.effect(() => {
         let bridge: Bridge | null = null
+        let watchGameViewers: NodeJS.Timeout | null = null
         let disposed = false
         createSlowvaleBridge({
           host: resolved.slowvale.host,
@@ -1128,13 +1129,16 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             })
           },
           // 玩家给角色发短信：这句话本身就是指令时直接落到世界（不等模型回话）。
-          applyDirective: (roleId: string, text: string) => {
-            const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
-            const agentId = Object.entries(agents).find(([, character]) => character === roleId)?.[0]
-            if (agentId === undefined) return false
+          applyDirective: (peerId: string, text: string) => {
+            // peerId 是短信线程的 peer，也就是**世界里的 agentId**（thread:agent-1）。
+            // 之前这里当成角色 id 去 agents.json 反查，查不到就直接放弃——指令从来没发出去过。
+            if (peerId === '') return false
+            const world = state.currentWorld()
+            if (world === null) return false
+            if (!world.agents.some((agent) => agent.id === peerId)) return false
             const directive = parseDirective(text, DEFAULT_CIRCUIT)
             if (directive === null) return false
-            const command = directiveToCommand(directive, agentId)
+            const command = directiveToCommand(directive, peerId)
             if (command === null) return false
             runtime.enqueue(command)
             return true
@@ -1153,12 +1157,21 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         }).then((started) => {
           bridge = started
           slowvaleBridgeHandle = started
+          // 「有人在看，世界就得活着」：世界曾经因为某个会话被停掉而冻住（tick 不动、指令全排队），
+          // 表现就是游戏里所有人杵着不动。这里做一个守卫：只要游戏页还连着，runtime 停了就拉起来。
+          watchGameViewers = setInterval(() => {
+            if (disposed || started.clientCount() === 0) return
+            if (!resolved.autoStart) return
+            if (!runtime.running) runtime.start()
+          }, 2000)
+          watchGameViewers.unref?.()
           if (disposed) void started.close()
         }).catch((error: unknown) => {
           logger.warn('[slowvale] 启动失败：' + String(error))
         })
         return () => {
           disposed = true
+          if (watchGameViewers !== null) clearInterval(watchGameViewers)
           if (bridge !== null) void bridge.close()
           slowvaleBridgeHandle = null
         }

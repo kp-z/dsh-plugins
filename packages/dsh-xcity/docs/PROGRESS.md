@@ -10502,3 +10502,23 @@ participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两
 
 **仍需真机确认**：这两处都要重启才生效；如果重启后还复现，那就不是 iframe 重建，
 而是 DSH 面板每次切换都在新建一个独立 origin 的宿主（那要另做处理）。
+
+## 2026-11-23 17:05 · 两个真问题：指令发不出去 + 世界不推进
+
+**问题一：短信指令没让 agent 动**
+
+实测：发「你去办公室工作吧」后 14 秒，agent-1 的坐标与 anim 都没变。
+根因：applyDirective 拿到的是**世界 agentId**（thread:agent-1 -> agent-1），
+却当成角色 id 去 agents.json 反查，查不到直接 return false——指令从来没入队。
+已改成直接用 peerId 当 agentId（先校验世界里有这个 agent）。
+
+**问题二：世界根本没有推进**
+
+实测：/agent-world/api/world 返回 runtime.running=false, tick=0，但 diagnostics.ticks=7522、pending=13。
+说明它跑过一阵后被停掉，之后指令全堆在队列里；游戏里表现就是所有人杵着不动。
+
+**改法**：「有人在看，世界就得活着」——桥暴露 clientCount()，index 里每 2 秒检查一次：
+有 SSE 连接、autoStart 开着、runtime 停了，就拉起来。（不猜是谁停的；先保证观众在就不会冻住。）
+
+**判据**：tsc 通过；全量 817 条 pass 816 / fail 0。需重启生效。
+**下一轮**：重启后确认 tick 递增 + 发短信后 agent-1 坐标变化（这两条是用户能直接看到的）。
