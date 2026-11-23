@@ -10550,3 +10550,15 @@ BridgeOptions 收了这个选项，但 ctx 里没有，于是 routes 里 `ctx.ap
 且传的是世界 agentId 而不是角色 id」——这类漏传靠肉眼看不出来。
 
 **判据**：822 条 pass 821 / fail 0。需下次重启生效。
+
+## 2026-11-23 20:05 · 给「漏传字段」这类 bug 加一道静态守卫
+
+上一轮的 bug 是 RouteContext 声明了 applyDirective，但构造 ctx 时没赋值。
+TypeScript 没拦住（因为是可选字段），运行时也不报（可选链静默跳过）。
+
+**新增测试** bridge-context-complete.test.js：读源码，比对
+routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对象实际赋值的键，
+缺一个就红。（同时认 `key: value` 与 ES2015 简写 `key,`。）
+
+**判据**：当前通过；823 条 pass 822 / fail 0。
+**价值**：这类「声明了但没接上」的字段，以后加一个就立刻被这条测试发现，不用等真机现象。
