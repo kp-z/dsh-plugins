@@ -10408,3 +10408,19 @@ index.ts 只负责把文件读取和宿主服务接进去。
 2) peer 不存在或没绑会话时一次都不发。
 
 这条测试的意义：同样的错再犯，测试会直接红，而不是等用户点一遍发现没反应。
+
+## 2026-11-23 11:58 · 桥的短信链路真 HTTP 验通（不依赖宿主）
+
+**新增** test/slowvale-bridge-sms.test.js：起真桥（port 0）→ GET 线程 → POST 消息 → GET 详情。
+
+断言：
+- POST /api/game/player/message 返回 200 + ok:true（不再是 500）；
+- responder 被调用一次，peerRoleId=agent-1、content 原样；
+- bridge.appendIncoming 写入的回复，能在 GET /api/game/phone/sms/thread 里读到。
+
+**过程中确认的两条路由契约**（写测试时踩到的，值得记）：
+- GET /game/phone/sms/threads 会**跳过 viewerRoleId 那个角色**（自己不该出现在联系人里）；
+- 详情路由的参数名是 thread_id，不是 id。
+
+**判据**：813 条 pass 812 / fail 0。
+**剩下的**：宿主那一段（sessionController.prompt）只能真机验，等重启后用 3 条命令确认。
