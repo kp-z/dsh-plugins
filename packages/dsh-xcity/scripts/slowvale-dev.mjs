@@ -68,7 +68,6 @@ const bridge = await createSlowvaleBridge({
   account: { email: 'demo@slowvale.dev', password: 'slowvale123' },
   getWorld: () => world,
   pushMs: Number(process.env.SLOWVALE_PUSH_MS ?? '1000'),
-  autoEnter: true,
   debug: true,
   forceVisible: process.env.SLOWVALE_FORCE_VISIBLE === '1',
   // 谁代表谁：读 DSH 工作区里的绑定表（跟 cove 一样放在 ~/.dsh 下）

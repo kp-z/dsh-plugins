@@ -10358,3 +10358,20 @@ Gd("company") → jf(m) 判 Au(m).tiled === true → 走 new vO(...)；所以 vO
   改成「旧面板 lib/web/main.js 不许回来；client 入口必须存在，且不许长成自带前端的页面」。
 
 **仍然没验的**：世界 -> 画面这一段（取决于 M1 是否真的在渲染）。
+
+## 2026-11-23 10:35 · 去掉自动进入（用户要求：人工点选一次，之后就停在那个状态）
+
+**删掉的东西**
+
+- src/adapters/slowvale/auto-enter.ts（整份删除）：它注入一段脚本，替人去点登录→授权→引导→选角色；
+- server.ts 里 /__slowvale/auto-enter.js 路由、injectAutoEnter()、autoEnter 选项；
+- config.ts 的 autoEnter（schema 与默认值）、index.ts 与 scripts/slowvale-dev.mjs 的传参；
+- web profile 的 autoEnter: true。
+
+**为什么这是对的**：自动进入是我们自己加的便利，不是这个产品的行为。用户要的是「打开就是上次那个状态」，
+而前端本来就用 localStorage 记住登录与选角——注入脚本反而掩盖了真实流程。
+
+**判据**：tsc 通过；全量 810 条 pass 809 / fail 0；grep autoEnter 在 src/scripts 里为 0。
+
+**注意**：登录需要账号（镜像的 mock 后端只认 demo@slowvale.dev / slowvale123），
+人工点一次之后前端会自己记住。

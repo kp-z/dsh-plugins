@@ -1046,7 +1046,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           port: resolved.slowvale.port,
           assetsDir: slowvaleRoot,
           pushMs: resolved.slowvale.pushMs,
-          autoEnter: resolved.slowvale.autoEnter,
           account: { email: resolved.slowvale.email, password: resolved.slowvale.password },
           opts: {
             worldId: resolved.slowvale.worldId,

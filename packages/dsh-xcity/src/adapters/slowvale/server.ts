@@ -24,7 +24,6 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
-import { autoEnterScript } from './auto-enter.js'
 import { debugScript } from './debug.js'
 import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
@@ -44,13 +43,6 @@ export interface BridgeOptions {
   getWorld: () => WorldLike | null
   /** 推送周期（ms）。0 = 不推，只发 connected。 */
   pushMs: number
-  /**
-   * 自动进入（跳过登录/授权/引导）。默认关。
-   *
-   * 打开后适配层会在 index.html 里注入一段脚本，沿着真实流程点一遍。
-   * 这样做的原因见 auto-enter.ts 的注释：静态产物是逐字节固化的，不能改。
-   */
-  autoEnter?: boolean
   /** 注入调试采集脚本（不碰前端产物），排查用。 */
   debug?: boolean
   /**
@@ -95,15 +87,6 @@ function injectDebug(html: string, enabled: boolean): string {
   const tag = '<script src="/__slowvale/debug.js"></script>'
   const anchor = html.indexOf('<script')
   if (anchor < 0) return html.replace('</head>', tag + '</head>')
-  return html.slice(0, anchor) + tag + '\n    ' + html.slice(anchor)
-}
-
-/** 把自动进入脚本插到第一个 module script 之前（必须在应用挂载前跑）。 */
-function injectAutoEnter(html: string): string {
-  const tag = '<script src="/__slowvale/auto-enter.js"></script>'
-  if (html.includes('/__slowvale/auto-enter.js')) return html
-  const anchor = html.indexOf('<script type="module"')
-  if (anchor < 0) return html.replace('</body>', tag + '</body>')
   return html.slice(0, anchor) + tag + '\n    ' + html.slice(anchor)
 }
 
@@ -414,17 +397,6 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res.end(body)
         return
       }
-      if (options.autoEnter === true && url.pathname === '/__slowvale/auto-enter.js') {
-        const body = Buffer.from(autoEnterScript(options.account), 'utf8')
-        res.writeHead(200, {
-          'content-type': 'text/javascript; charset=utf-8',
-          'content-length': body.byteLength,
-          'cache-control': 'no-store',
-        })
-        res.end(body)
-        return
-      }
-
       // 地图目录下的 furniture.json 官方产物里没有（是按家具动态生成的）。
       // 场景 preload 里会去 load.json 它，404 就中断后续贴图加载；这里给一个合法空对象。
       if (/^\/assets\/maps\/[^/]+\/furniture\.json$/.test(url.pathname)) {
@@ -438,11 +410,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         req,
         res,
         url.pathname,
-        options.autoEnter === true
-          ? (html) => injectDebug(injectAutoEnter(html), options.debug === true)
-          : options.debug === true
-            ? (html) => injectDebug(html, true)
-            : undefined,
+        options.debug === true ? (html) => injectDebug(html, true) : undefined,
       )
     })().catch((error: unknown) => {
       log('[slowvale] 请求处理失败 ' + String(error))

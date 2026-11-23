@@ -32,7 +32,6 @@ export interface SlowvaleConfig {
   /** 玩家自己扮演的角色 id；空串 = 取世界里的第一个角色。 */
   viewerRoleId: string
   /** 跳过登录/授权/引导，直接落到场景里（演示与开发用）。 */
-  autoEnter: boolean
 }
 
 export const DEFAULT_SLOWVALE: SlowvaleConfig = {
@@ -49,7 +48,6 @@ export const DEFAULT_SLOWVALE: SlowvaleConfig = {
   email: 'demo@slowvale.dev',
   password: 'slowvale123',
   viewerRoleId: '',
-  autoEnter: true,
 }
 
 export const AgentWorldConfig = z.object({
@@ -181,7 +179,6 @@ export const AgentWorldConfig = z.object({
       email: z.string().default('demo@slowvale.dev'),
       password: z.string().default('slowvale123'),
       viewerRoleId: z.string().default(''),
-      autoEnter: z.boolean().default(true),
     })
     .default(DEFAULT_SLOWVALE),
 })
@@ -246,7 +243,6 @@ function resolveSlowvale(input: Partial<SlowvaleConfig> | undefined): SlowvaleCo
     email: source.email ?? DEFAULT_SLOWVALE.email,
     password: source.password ?? DEFAULT_SLOWVALE.password,
     viewerRoleId: source.viewerRoleId ?? DEFAULT_SLOWVALE.viewerRoleId,
-    autoEnter: source.autoEnter ?? DEFAULT_SLOWVALE.autoEnter,
   }
 }
 
