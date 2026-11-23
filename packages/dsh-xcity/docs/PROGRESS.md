@@ -10424,3 +10424,13 @@ index.ts 只负责把文件读取和宿主服务接进去。
 
 **判据**：813 条 pass 812 / fail 0。
 **剩下的**：宿主那一段（sessionController.prompt）只能真机验，等重启后用 3 条命令确认。
+
+## 2026-11-23 12:58 · 短信不该被会话拖垮（responder 失败隔离）
+
+**问题**：responder 是外部世界（DSH 会话）。它一抛错，POST /game/player/message 就 500，
+玩家看到的是「发送失败」——而消息其实已经落库了。一次宿主故障不该毁掉游戏内的发送。
+
+**做法**：sms.send 里把 responder 包进 try/catch，失败只记 lastResponderError，回执照常返回。
+
+**判据**：新增测试「responder 抛错」——HTTP 仍 200、ok:true、消息仍在返回的 messages 里。
+与上一条合起来 2 条通过；全量见下一轮。

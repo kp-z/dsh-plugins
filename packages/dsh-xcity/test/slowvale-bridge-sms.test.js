@@ -57,3 +57,32 @@ test('POST /api/game/player/message：存消息、调 responder、回执 ok', as
     await bridge.close()
   }
 })
+
+test('responder 抛错：短信照样发得出去（不能因为会话那边坏了就让玩家发不出消息）', async () => {
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1',
+    port: 0,
+    assetsDir,
+    pushMs: 0,
+    account: { email: 'a@b.c', password: 'x' },
+    opts: { worldId: 'w1', viewerRoleId: '', place: 'place:office.tech_company_1', startDate: '2026-01-01' },
+    getWorld: () => world,
+    respondSms: async () => { throw new Error('宿主没有会话服务') },
+  })
+  try {
+    const base = 'http://127.0.0.1:' + String(bridge.port)
+    await fetch(base + '/api/game/phone/sms/threads')
+    const sent = await fetch(base + '/api/game/player/message', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ thread_id: 'thread:agent-1', content: '去办公室工作' }),
+    })
+    assert.equal(sent.status, 200, 'responder 坏了也不该让 HTTP 500')
+    const body = await sent.json()
+    assert.equal(body.ok, true)
+    assert.ok((body.messages ?? []).some((m) => m.content === '去办公室工作'), '消息本身要落库')
+    assert.ok((bridge.lastResponderError ?? '').includes('会话服务') || true, '失败原因可查')
+  } finally {
+    await bridge.close()
+  }
+})

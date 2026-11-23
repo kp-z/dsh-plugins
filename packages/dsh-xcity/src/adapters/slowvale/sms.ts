@@ -52,6 +52,8 @@ export class SmsStore {
   private readonly threads = new Map<string, SmsThreadView>()
   private rowId = 0
   private responder: SmsResponder | null = null
+  /** 最近一次 responder 失败的原因；null = 没失败过。 */
+  lastResponderError: string | null = null
 
   /** 接上"谁会回话"。没接就只会记下消息，不会有回复。 */
   useResponder(responder: SmsResponder | null): void {
@@ -117,13 +119,21 @@ export class SmsStore {
     const message = this.append({ ...input, isSelf: true })
     const thread = this.threads.get(input.threadId)
     if (thread === undefined || this.responder === null) return message
-    const reply = await this.responder({
-      threadId: thread.threadId,
-      peerRoleId: thread.peerRoleId,
-      peerName: thread.peerName,
-      content: input.content,
-      tick: input.tick,
-    })
+    // responder 是**外部世界**（DSH 会话）。它失败不该让玩家的短信发不出去：
+    // 消息已经落库，回执要正常返回；失败只记一笔，等下次重连再说。
+    let reply: string | null = null
+    try {
+      reply = await this.responder({
+        threadId: thread.threadId,
+        peerRoleId: thread.peerRoleId,
+        peerName: thread.peerName,
+        content: input.content,
+        tick: input.tick,
+      })
+    } catch (error: unknown) {
+      this.lastResponderError = error instanceof Error ? error.message : String(error)
+      reply = null
+    }
     if (reply === null || reply.trim() === '') return message
     this.append({
       threadId: thread.threadId,
