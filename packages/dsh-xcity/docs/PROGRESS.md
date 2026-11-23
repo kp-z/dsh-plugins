@@ -10534,3 +10534,19 @@ participants.includes(actorId) 与 steps.some(x => x.tracks[actorId]) —— 两
 
 **尝试过但没成功的**：想用假 ctx 把整个插件跑在 7798 上做端到端（不用重启 App），
 但 registerWorldTools 依赖真实的 tools 服务，假 ctx 撑不起来。这条路放弃，不再折腾。
+
+## 2026-11-23 19:05 · 世界活起来了，但指令还是没落到人身上
+
+**真机（重启后）好消息**：tick 644373 -> 644403（3 秒 30 tick = 10Hz）、running=true、pending=0。
+看护生效，世界不再冻结。
+
+**坏消息**：发「你去办公室工作吧」后 10 秒，agent-1 坐标仍是 (24,-6)、anim 仍 idle。
+
+**根因（读代码定位）**：server.ts 构造 RouteContext 时**漏传了 applyDirective 字段**。
+BridgeOptions 收了这个选项，但 ctx 里没有，于是 routes 里 `ctx.applyDirective?.(...)` 永远走空 ——
+整条指令链静默失效，连日志都没有。
+
+**已修**：ctx 补上 applyDirective；并加了一条测试，专门盯「路由必须真的调用这个端口、
+且传的是世界 agentId 而不是角色 id」——这类漏传靠肉眼看不出来。
+
+**判据**：822 条 pass 821 / fail 0。需下次重启生效。

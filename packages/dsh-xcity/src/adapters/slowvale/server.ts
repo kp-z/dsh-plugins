@@ -130,6 +130,9 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     token: () => localToken,
     log,
     streamClients: () => clients.size,
+    // 这个字段之前漏了：BridgeOptions 收了 applyDirective，却没传给 RouteContext，
+    // 于是 ctx.applyDirective 永远是 undefined，短信指令这条路静默失效。
+    applyDirective: options.applyDirective ?? null,
   }
 
   const writeEvent = (res: ServerResponse, event: string, data: unknown): void => {
