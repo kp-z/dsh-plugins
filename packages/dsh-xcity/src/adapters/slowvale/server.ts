@@ -440,6 +440,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         return
       }
       if (/^\/world\/[^/]+$/.test(url.pathname)) {
+
         res.setHeader('set-cookie', 'xcity_resume=' + encodeURIComponent(url.pathname + url.search) + '; Path=/; Max-Age=2592000; SameSite=Lax')
       }
 

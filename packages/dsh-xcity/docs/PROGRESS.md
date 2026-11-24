@@ -10672,3 +10672,23 @@ devtest 单独装 dsh-xcity（link），slowvale.port=7790，用 dsh --profile d
 旁证：scene.office 引用的 roster.software-team 有 8 个席位。
 
 **教训**：脚本改文件覆盖过手写补丁（ensureThread 就这么丢的）。以后每次编辑后要 grep 确认目标仍在。
+
+## 2026-11-25 00:10 · 「切回来停原处」在 devtest 验通了
+
+**机制（服务端，不碰前端）**
+
+    GET /world/... -> 响应头 set-cookie: xcity_resume=<path>
+    GET /           -> 带上 Cookie 时 302 -> 上次那个 path
+
+**实测（devtest，端口 7790）**
+
+    curl -i /world/w1?role_id=agent-1     -> set-cookie: xcity_resume=%2Fworld%2Fw1%3Frole_id%3Dagent-1
+    curl -i -H 'Cookie: ...' /            -> 302 location: /world/w1?role_id=agent-1
+
+浏览器实测：打开 /world/w1?role_id=agent-1（画布正常），再访问 / ——落点仍是 /world/w1?role_id=agent-1。
+另外验证过：带着 access_token + user_id 刷新两次，不会要求重新登录（RH() 第一行就直接判 active）。
+
+**顺手做减法**：我去掉了一个自己加的 /api/xcity/resume 端点——它在进程里读到的状态始终是 undefined，
+原因没查清，就**不发布**。Cookie 这条路已经验通，客户端保持最简单的静态 src。
+
+**判据**：826 条 pass 825 / fail 0。正式环境要重启后才会带上 Cookie 逻辑。
