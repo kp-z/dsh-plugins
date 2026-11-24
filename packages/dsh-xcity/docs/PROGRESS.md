@@ -10756,3 +10756,27 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
 
 未完成（诚实记录）：日志 tab 正文没能点开（自动化点到的始终是「回顾」侧），条目是否渲染成行未肉眼确认；
 回顾页的「第739617天」是 /game/recap 的天数换算问题，与日志接口无关。
+
+## 2026-11-25 01:40 · 「测试页面没变化」的两个真实原因
+
+**原因一（已修）：客户端 iframe 端口写死 7788**
+
+    lib/client.iife.js: var SRC = 'http://127.0.0.1:7788/'
+
+测试 profile 的桥在 7790，于是测试 profile 的 tab 打开的是**正式环境**的小镇：
+在测试里做的任何修改都看不到效果，因为看的根本不是那套进程。
+
+修法：宿主新增 GET /agent-world/api/bridge -> { base }（端口来自配置），
+客户端先取它再设 iframe src，取不到才退回 7788。实测返回 {base: http://127.0.0.1:7790}。
+
+**原因二（后端本身是通的，已复验）**
+
+    发 {role_id:'agent-1', content:'去办公室工作'} -> ok:true
+    紧接着每 400ms 采样：idle -> work（连续 11 采样都是 work）
+
+也就是说 7790 这条链路真的会让人干活。之前看起来「没生效」，很可能是在 7788 那套旧代码上测的。
+
+**关于「切换 tab 要重新进入」**：仍未定位。已知客户端 tab 现在会连对的端口，
+但面板重建时 iframe 是否保留 localStorage / Cookie，需要在实际 DSH 窗口里点一次才能确认。
+
+判据：830 条 pass 829 / fail 0；/api/bridge 实测返回测试端口。

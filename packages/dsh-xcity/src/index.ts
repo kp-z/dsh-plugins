@@ -1205,6 +1205,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         runtime,
         source: hub,
         tickMs: state.tickMs,
+        // 客户端 iframe 该连哪个端口：由这里告诉它，不写死在客户端里。
+        bridgeBase: 'http://' + resolved.slowvale.host + ':' + String(resolved.slowvale.port),
         maxLiveSessions: resolved.maxLiveSessions,
         dialogue: activeDialoguePort,
         gameMode: { get: () => gameModeEnabled, set: (enabled) => { gameModeEnabled = enabled; const world = state.currentWorld(); if (world !== null) world.gameMode = enabled } },

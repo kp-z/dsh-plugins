@@ -39,6 +39,8 @@ export interface ApiDeps {
   service: WorldServicePort
   runtime: RuntimePort
   tickMs: number
+  /** 小镇桥（Slow Vale 适配层）的地址，如 http://127.0.0.1:7790；客户端 iframe 用它。 */
+  bridgeBase?: string
   /**
    * 这个世界对应的 DSH 会话（队长会话）的**可读名字**（R162）。
    *
@@ -394,6 +396,13 @@ export function applyCommand(deps: ApiDeps, body: unknown): Record<string, unkno
 /** 造 API 路由表。 */
 export function apiRoutes(deps: ApiDeps): RouteEntry[] {
   return [
+    {
+      // 客户端半体（DSH 左侧栏 tab）需要知道小镇桥挂在哪：端口是配置项，
+      // 不能写死在客户端里（测试 profile 用 7790，正式环境 7788）。
+      method: 'GET',
+      pattern: '/api/bridge',
+      handler: () => ({ base: deps.bridgeBase ?? null }),
+    },
     {
       method: 'GET',
       pattern: '/api/world',
