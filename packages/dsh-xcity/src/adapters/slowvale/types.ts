@@ -28,6 +28,8 @@ export interface WorldLike {
   tick: number
   paused?: boolean
   agents: WorldAgentLike[]
+  /** 世界事件流（日志投影的来源）。 */
+  events?: { seq: number; tick: number; type: string; payload: Record<string, unknown> }[]
 }
 
 /** Slow Vale 的协议版本。与请求头 X-TCW-Protocol-Version 是同一个数字。 */

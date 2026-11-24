@@ -10715,3 +10715,26 @@ devtest 单独装 dsh-xcity（link），slowvale.port=7790，用 dsh --profile d
    现在把「干活时长」记在 activityTicks，**到站时重新起算**（movement 的 arrive 分支）。
 
 **判据**：826 条 pass 825 / fail 0；devtest 采样如上（walk 6 秒后 work 6 秒，然后 idle）。
+
+## 2026-11-25 00:35 · 日志接口：从空壳变成真实条目
+
+**先纠正一个事实**：两个日志端点其实**早就有**，但只返回空壳（entries 永远是 []），
+所以面板打开是空的——体感就是「没实现」。
+
+**形状不是猜的**：读 bundle 里两个校验器（mb / Dx）与它们的报错文案，
+得到硬约束：
+
+    信封：outcome='page' / entries[] / card_upserts[] / next_record_entry_id / target_record_entry_id / has_more
+    卡片：card_id / aggregate_id / title / viewer_role∈{initiator,participant,observer} / game_time.current_datetime
+    条目：record_entry_id>0 / card_id / game_time.current_datetime / kind='event' / source_aggregate_id
+
+**实现**：adapters/slowvale/logs.ts 把世界事件（world.events，最近 50 条）投影成卡片+条目；
+routes 的 /game/logs/recent 与 /game/logs/catch-up 都走同一个投影，保证字段同源。
+
+**判据**：
+- 实测 devtest：/api/game/logs/recent 返回 50 条真实条目（record_entry_id 2117…，带 agent.intent 等事件）；
+- 新增 3 条测试（信封字段、条目硬约束、空态），全量 829 条 pass 828 / fail 0。
+
+**一个必须记的坑**：我之前的「重启 devtest」多次没生效——旧进程还占着 7790，新进程绑定失败后静默退出，
+于是我一直在一个**旧进程**上验证（进程启动时间 00:08，而代码是 00:21 才改的）。
+现在固定流程：kill 端口 → 确认 000 → 启动 → 用 ps 看启动时间是否晚于构建时间。

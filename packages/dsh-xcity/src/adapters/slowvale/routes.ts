@@ -17,6 +17,7 @@ import { REAL_CONFIG } from './data/config.js'
 import { sceneByPlace } from './scene-key.js'
 import type { SmsStore } from './sms.js'
 import { shapeFor } from './shapes.js'
+import { logsOf } from './logs.js'
 import type { WorldLike } from './types.js'
 import {
   projectRoleCard,
@@ -297,6 +298,15 @@ export async function handleApi(
     })
     return true
   }
+  // ── 日志（世界动态流）─────────────────────────────────────────────
+  if (path === '/game/logs/recent' && method === 'GET') {
+    sendJson(res, 200, logsBody(ctx, 'recent'))
+    return true
+  }
+  if (path === '/game/logs/catch-up' && method === 'GET') {
+    sendJson(res, 200, logsBody(ctx, 'catchUp'))
+    return true
+  }
   if (path === '/game/player/message' && method === 'POST') {
     const body = await readBody(req)
     // 左下角聊天框发的是 {role_id, content}（前端 Q2），短信界面发的是 {thread_id, content}。
@@ -414,6 +424,15 @@ export async function handleApi(
   return true
 }
 
+/** 日志响应的两种信封都从这里出，保证字段同源。 */
+function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string, unknown> {
+  const world = ctx.getWorld()
+  if (world === null) return which === 'recent' ? { entries: [], card_upserts: [], has_more: false, next_record_entry_id: 0, oldest_day_number: null } : { outcome: 'page', entries: [], card_upserts: [], next_record_entry_id: 0, target_record_entry_id: 0, has_more: false }
+  const snapshot = projectSnapshot(world, ctx.opts)
+  const clock = (snapshot['clock'] ?? {}) as { current_datetime?: string }
+  const body = logsOf({ datetime: typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00', events: world.events ?? [] })
+  return which === 'recent' ? body.recent : body.catchUp
+}
 function sessionBody(ctx: RouteContext): Record<string, unknown> {
   return {
     access_token: ctx.token(),
