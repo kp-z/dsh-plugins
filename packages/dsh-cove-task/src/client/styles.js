@@ -970,8 +970,9 @@ export const CSS = `
    共享卡片样式（src/card/taskCardStyles.js）只消费 --tc-*，不在自己表里定义 ——
    右侧栏老面板 panel.html 也引同一份卡片样式，但它有自己的 .tc-scope 映射（--p-* 调色板）。
    映射一旦写进共享样式表，就会覆盖面板的映射（后注入者赢），面板卡片会整片变黑白。
-   所以映射只在这里：画布节点（.fo-node-dom）、卡片菜单（.fo-menu-scope）、新建任务 dock（.ftc-prio）。 */
-.fo-node-dom, .fo-menu-scope, .ftc-prio {
+   所以映射只在这里：画布节点（.fo-node-dom）、卡片菜单（.fo-menu-scope）——
+   两者都在 .fo-root 子树内。composer 里那条新建任务条不消费 --tc-*，不属于这条规则。 */
+.fo-node-dom, .fo-menu-scope {
   --tc-bg: var(--dsw-alias-bg-base);
   --tc-card: var(--dsw-alias-bg-layer-1);
   --tc-text: var(--dsw-alias-label-primary);

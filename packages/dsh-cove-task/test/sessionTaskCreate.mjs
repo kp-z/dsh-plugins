@@ -29,6 +29,8 @@ assert.ok(block.includes('function sessionTaskView('))
 
 function harness({ cwd = '/work/dsh-plugin', sessionTitle = '新会话', text = '', userText = '', registry = [] } = {}) {
   const created = []
+  const linked = []
+  const notices = []
   const priorities = []
   let aiCalls = 0
   const h = {
@@ -72,6 +74,17 @@ function harness({ cwd = '/work/dsh-plugin', sessionTitle = '新会话', text = 
       h.state.tasks.push(task)
       return { ok: true, taskId: guid, title: task.title }
     },
+    /* 绑定失败时在会话里说一句（生产实现是 notifySession）。 */
+    notifySession: async (sessionId, text) => { notices.push({ sessionId, text }) },
+    /* 「绑定已有任务」的老路径：这里只记录调用，真实实现由 index.js 的 linkTask 负责。 */
+    linkTask: async (taskId, sessionId) => {
+      const task = h.state.tasks.find((item) => item.id === taskId)
+      if (!task) return { ok: false, error: '没找到这条任务' }
+      if (task.sessionId) return { ok: false, error: '这条任务已经绑了会话' }
+      linked.push({ taskId, sessionId })
+      task.sessionId = sessionId
+      return { ok: true, task }
+    },
     resolveTaskCreateTitle,
     deriveTaskDraft,
     leadingEmojiOf,
@@ -79,7 +92,7 @@ function harness({ cwd = '/work/dsh-plugin', sessionTitle = '新会话', text = 
   }
   vm.createContext(h)
   vm.runInContext(block, h)
-  return { h, created, priorities, aiCalls: () => aiCalls, ai: () => aiCalls }
+  return { h, created, linked, notices, priorities, aiCalls: () => aiCalls, ai: () => aiCalls }
 }
 
 /* 1. 人填的任务名优先，且不调模型。 */
@@ -232,6 +245,79 @@ function harness({ cwd = '/work/dsh-plugin', sessionTitle = '新会话', text = 
   assert.equal(created.length, 1)
   assert.equal(created[0].input.title, '🎯 表情任务')
   console.log('✓ emoji：随 intent 保存，创建时放在标题最前')
+}
+
+/* 12. 新会话任务条：下拉选已有任务（未绑定 + 未完成 + 未挂起）。 */
+{
+  const { h, created, linked } = harness()
+  h.state.tasks.push(
+    { id: 'a', no: 11, title: '可接手', done: false, localUpdatedAt: 3 },
+    { id: 'b', no: 12, title: '已绑会话', done: false, sessionId: 'other', localUpdatedAt: 2 },
+    { id: 'c', no: 13, title: '已完成', done: true, localUpdatedAt: 1 },
+    { id: 'd', no: 14, title: '已挂起', done: false, localUpdatedAt: 4 },
+    { id: 'e', no: 15, title: '更新的可接手', done: false, localUpdatedAt: 9 },
+  )
+  h.state.suspensions = { d: { active: true } }
+  const view = h.sessionTaskView('session-n')
+  assert.deepEqual(view.candidates.map((row) => row.id), ['e', 'a'], '只列未绑定+未完成+未挂起，最近的在前')
+  /* 跨 vm realm 的对象原型不同，按字段比（deepStrictEqual 会因原型不同误报） */
+  assert.equal(JSON.stringify(view.candidates[0]), JSON.stringify({ id: 'e', no: 15, title: '更新的可接手', priority: '' }))
+
+  /* 选中后发出第一条消息：走绑定，不新建。 */
+  const set = h.setTaskCreateIntent('session-n', { enabled: true, taskId: 'e' })
+  assert.equal(set.ok, true, set.error)
+  assert.equal(set.intent.taskId, 'e')
+  assert.equal(h.sessionTaskView('session-n').intent.taskId, 'e')
+  await h.autoCreateTaskFromTurn('session-n', '开工吧')
+  assert.equal(created.length, 0, '选了已有任务就不该再新建')
+  assert.deepEqual(linked, [{ taskId: 'e', sessionId: 'session-n' }])
+  assert.equal(h.sessionTaskView('session-n').task.title, '更新的可接手', '绑定后视图改成返回任务摘要')
+  console.log('✓ 选已有任务：候选过滤 + 第一条消息绑定（不新建）')
+}
+
+/* 13. 选了不可绑的任务要明确拒绝，且不落 intent。 */
+{
+  const { h } = harness()
+  h.state.tasks.push(
+    { id: 'bound', no: 21, title: '已绑', done: false, sessionId: 'x' },
+    { id: 'done', no: 22, title: '已完成', done: true },
+    { id: 'held', no: 23, title: '挂起', done: false },
+  )
+  h.state.suspensions = { held: { active: true } }
+  for (const [taskId, pattern] of [['bound', /已经绑/], ['done', /已经完成/], ['held', /挂起/], ['ghost', /没找到/]]) {
+    const result = h.setTaskCreateIntent('session-o', { enabled: true, taskId })
+    assert.equal(result.ok, false, taskId)
+    assert.match(result.error, pattern)
+  }
+  assert.equal(h.sessionTaskView('session-o').intent, null, '拒绝时不能留下 intent')
+  console.log('✓ 不可绑的任务：拒绝且不落 intent')
+}
+
+/* 14. 选中的任务掉出前 50：仍要补进候选，否则界面会显示成「没选」。 */
+{
+  const { h } = harness()
+  for (let i = 0; i < 60; i += 1) {
+    h.state.tasks.push({ id: 't' + i, no: 100 + i, title: '任务' + i, done: false, localUpdatedAt: i })
+  }
+  h.setTaskCreateIntent('session-p', { enabled: true, taskId: 't0' })
+  const view = h.sessionTaskView('session-p')
+  assert.equal(view.candidates.length, 51, '前 50 + 补进来的已选任务')
+  assert.equal(view.candidates[0].id, 't0', '已选任务排在最前')
+  console.log('✓ 已选任务掉出前 50：补回候选列表')
+}
+
+/* 15. 选中后任务被别人绑走：不新建、不静默，在会话里说明。 */
+{
+  const { h, created, linked, notices } = harness()
+  h.state.tasks.push({ id: 'gone', no: 31, title: '会被抢走', done: false, localUpdatedAt: 1 })
+  h.setTaskCreateIntent('session-q', { enabled: true, taskId: 'gone' })
+  h.state.tasks[0].sessionId = 'someone-else'
+  await h.autoCreateTaskFromTurn('session-q')
+  assert.equal(created.length, 0, '不能偷偷改成新建')
+  assert.equal(linked.length, 0)
+  assert.equal(notices.length, 1, '要告诉用户没绑上')
+  assert.match(notices[0].text, /重新选/)
+  console.log('✓ 选中任务被抢走：不新建、不静默')
 }
 
 console.log('SESSION_TASK_CREATE_OK')

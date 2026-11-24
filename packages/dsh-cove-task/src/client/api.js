@@ -54,9 +54,19 @@ export function createApi({ fetchImpl } = {}) {
       const id = encodeURIComponent(String(sessionId || ''));
       return request(`/api/sessions/task?sessionId=${id}`, { headers: { accept: 'application/json' } });
     },
-    /** 勾选/取消「发送后自动建任务」；title 为空 = 发消息时自动命名。 */
-    setTaskCreateIntent(sessionId, enabled, title, priority, emoji) {
-      return post('/api/sessions/task-intent', { sessionId, enabled: enabled === true, title: title || '', priority: priority || '', emoji: emoji || '' });
+    /**
+     * 勾选/取消「发送后自动建任务」；title 为空 = 发消息时自动命名。
+     * taskId 非空 = 绑一条已有任务（发第一条消息时走 linkTask），此时 title/priority/emoji 不适用。
+     */
+    setTaskCreateIntent(sessionId, enabled, title, priority, emoji, taskId) {
+      return post('/api/sessions/task-intent', {
+        sessionId,
+        enabled: enabled === true,
+        title: title || '',
+        priority: priority || '',
+        emoji: emoji || '',
+        taskId: taskId || '',
+      });
     },
     /** 只有 revision（字符串，当不透明值比较即可），用于「变了才刷」。 */
     async revision() {

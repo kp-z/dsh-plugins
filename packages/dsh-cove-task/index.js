@@ -7347,7 +7347,28 @@ function createSyncEngine(ctx) {
       taskCreateIntents.delete(id)
       return null
     }
-    return { enabled: true, title: asString(intent.title), priority: asString(intent.priority), emoji: asString(intent.emoji) }
+    return {
+      enabled: true,
+      taskId: asString(intent.taskId),
+      title: asString(intent.title),
+      priority: asString(intent.priority),
+      emoji: asString(intent.emoji),
+    }
+  }
+
+  /** 候选任务：没绑会话、没完成、没挂起；最近的在前，最多 limit 条（composer 下拉用）。 */
+  function taskCandidateList(limit = 50) {
+    const stamp = (task) => Number(task.localUpdatedAt || task.updatedAt || task.createdAt || 0) || 0
+    return state.tasks
+      .filter((task) => task && !asString(task.sessionId) && task.done !== true && state.suspensions?.[task.id]?.active !== true)
+      .sort((a, b) => stamp(b) - stamp(a))
+      .slice(0, Math.max(1, limit))
+      .map((task) => ({
+        id: task.id,
+        no: Number(task.no) || 0,
+        title: asString(task.title),
+        priority: asString(task.priority),
+      }))
   }
 
   function setTaskCreateIntent(sessionId, input = {}) {
@@ -7360,6 +7381,17 @@ function createSyncEngine(ctx) {
     if (input.enabled !== true) {
       taskCreateIntents.delete(id)
       return { ok: true, sessionId: id, intent: null }
+    }
+    /* 选了已有任务：只记 taskId，标题/优先级/表情都以任务本身为准（第一条消息时走 linkTask）。 */
+    const taskId = asString(input.taskId).trim()
+    if (taskId) {
+      const pick = state.tasks.find((item) => item && item.id === taskId)
+      if (!pick) return { ok: false, error: '没找到这条任务（可能已被下一次同步移除）' }
+      if (asString(pick.sessionId)) return { ok: false, error: '这条任务已经绑了会话' }
+      if (pick.done === true) return { ok: false, error: '这条任务已经完成，不能再绑' }
+      if (state.suspensions?.[pick.id]?.active === true) return { ok: false, error: '这条任务已挂起，请先恢复再绑' }
+      taskCreateIntents.set(id, { taskId, title: '', priority: '', emoji: '', at: nowMs() })
+      return { ok: true, sessionId: id, intent: { enabled: true, taskId, title: '', priority: '', emoji: '' } }
     }
     const title = asString(input.title).replace(/\s+/g, ' ').trim().slice(0, 60)
     const priority = asString(input.priority).trim().toUpperCase()
@@ -7379,9 +7411,17 @@ function createSyncEngine(ctx) {
     taskCreateIntents.delete(id)
     if (state.tasks.some((task) => asString(task.sessionId) === id)) return
     try {
-      const result = await runEngineOperation(promoteSessionToTask, [id, { title: intent.title, priority: intent.priority, emoji: intent.emoji, text }])
-      if (!result?.ok) log(ctx, 'warn', `[task-create] 自动创建失败：${result?.error || '未知错误'}`)
-      else if (result.priorityError) log(ctx, 'warn', `[task-create] 优先级写回失败：${result.priorityError}`)
+      /* 选了已有任务 = 走「绑定即开始」的老路径（写回开始时间 + 会话改名）；没选才新建。 */
+      const result = intent.taskId
+        ? await runEngineOperation(linkTask, [intent.taskId, id, 'composer'])
+        : await runEngineOperation(promoteSessionToTask, [id, { title: intent.title, priority: intent.priority, emoji: intent.emoji, text }])
+      if (!result?.ok) {
+        log(ctx, 'warn', `[task-create] ${intent.taskId ? '绑定已有任务' : '自动创建'}失败：${result?.error || '未知错误'}`)
+        /* 选中了任务却没绑上 = 用户的意图落空了，别静默：在会话里说一句，让他重选或新建。 */
+        if (intent.taskId) {
+          await notifySession(id, `没能把飞书任务绑到本会话：${result?.error || '未知错误'}。任务条里重新选一条，或改回「＋ 新建任务」。`).catch(() => undefined)
+        }
+      } else if (result.priorityError) log(ctx, 'warn', `[task-create] 优先级写回失败：${result.priorityError}`)
     } catch (error) {
       log(ctx, 'warn', `[task-create] 自动创建异常：${error instanceof Error ? error.message : String(error)}`)
     }
@@ -7409,7 +7449,23 @@ function createSyncEngine(ctx) {
         intent: null,
       }
     }
-    return { ok: true, sessionId: id, priorityOptions, task: null, intent: taskCreateIntentOf(id) }
+    const intent = taskCreateIntentOf(id)
+    /* composer 下拉的候选：未绑定 + 未完成 + 未挂起，最近的在前，最多 50 条。
+       已选的那条即使掉出前 50 也要补进来，否则界面会把它显示成「没选」。 */
+    const candidates = taskCandidateList()
+    const pickedId = intent ? asString(intent.taskId) : ''
+    if (pickedId && !candidates.some((row) => row.id === pickedId)) {
+      const picked = state.tasks.find((item) => item && item.id === pickedId)
+      if (picked) {
+        candidates.unshift({
+          id: picked.id,
+          no: Number(picked.no) || 0,
+          title: asString(picked.title),
+          priority: asString(picked.priority),
+        })
+      }
+    }
+    return { ok: true, sessionId: id, priorityOptions, task: null, intent, candidates }
   }
 
   /**
@@ -11623,6 +11679,10 @@ function mountRoutes(ctx, engine) {
             const result = engine.setTaskCreateIntent(asString(body.sessionId), {
               enabled: body.enabled === true,
               title: asString(body.title),
+              priority: asString(body.priority),
+              emoji: asString(body.emoji),
+              /* 选了已有任务时只认 taskId；空串 = 新建 */
+              taskId: asString(body.taskId),
             })
             sendJson(res, result.ok ? 200 : 400, result)
             return
