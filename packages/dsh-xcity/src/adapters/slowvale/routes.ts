@@ -299,7 +299,11 @@ export async function handleApi(
   }
   if (path === '/game/player/message' && method === 'POST') {
     const body = await readBody(req)
-    const threadId = typeof body['thread_id'] === 'string' ? body['thread_id'] : ''
+    // 左下角聊天框发的是 {role_id, content}（前端 Q2），短信界面发的是 {thread_id, content}。
+    // 只认 thread_id 会让左下角的消息**静默丢掉**（返回 ok:false、messages:[]，界面看着像没发出去）。
+    const rawThreadId = typeof body['thread_id'] === 'string' ? body['thread_id'] : ''
+    const rawRoleId = typeof body['role_id'] === 'string' ? body['role_id'] : ''
+    const threadId = rawThreadId !== '' ? rawThreadId : rawRoleId !== '' ? 'thread:' + rawRoleId : ''
     const content = typeof body['content'] === 'string' ? body['content'] : ''
     const world = ctx.getWorld()
     if (threadId === '' || content.trim() === '' || world === null) {

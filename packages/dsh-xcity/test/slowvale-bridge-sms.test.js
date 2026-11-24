@@ -130,3 +130,30 @@ test('applyDirective 端口真的被路由调用了（漏传过一次，指令�
     await bridge.close()
   }
 })
+
+test('左下角聊天框的形状：{role_id, content} 也要走通（前端 Q2 就是这么发的）', async () => {
+  const seen = []
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir, pushMs: 0,
+    account: { email: 'a@b.c', password: 'x' },
+    opts: { worldId: 'w1', viewerRoleId: '', place: 'place:office.tech_company_1', startDate: '2026-01-01' },
+    getWorld: () => world,
+    respondSms: async (input) => { seen.push(input); return null },
+  })
+  try {
+    const base = 'http://127.0.0.1:' + String(bridge.port)
+    await fetch(base + '/api/game/phone/sms/threads')
+    const res = await fetch(base + '/api/game/player/message', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ role_id: 'agent-1', content: '左下角发的话' }),
+    })
+    const body = await res.json()
+    assert.equal(body.ok, true)
+    assert.equal(seen.length, 1, 'responder 必须被调用（消息不能静默丢掉）')
+    assert.equal(seen[0].peerRoleId, 'agent-1')
+    assert.equal(seen[0].content, '左下角发的话')
+    assert.ok((body.messages ?? []).some((m) => m.content === '左下角发的话'), '消息要落进线程')
+  } finally {
+    await bridge.close()
+  }
+})

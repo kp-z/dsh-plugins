@@ -10642,3 +10642,18 @@ routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对�
 **顺带确认的好消息**：短信链路**现在是通的**——我用 HTTP 给 thread:agent-1 发了一条，
 会话文件 98174 -> 160012 字节，并且收到回复「工头阿金：我重新看一下世界状态…」（is_self:false）。
 如果用户在界面里发给**没有绑定会话**的联系人，就只会存在游戏里，不会进 DSH——这是当前行为，不是 bug。
+
+## 2026-11-24 22:55 · 左下角聊天框的消息是 {role_id}，被我们静默丢了
+
+**前端代码（app 包里的 Q2）**：
+
+    Q2 = (e, t) => H.post('/game/player/message', { role_id: e, content: t })
+
+而我们的处理只认 {thread_id, content}。实测（当前运行的桥）：
+
+    POST {role_id:'agent-1'} -> ok:false, messages:[]   （静默丢掉）
+    POST {thread_id:'thread:agent-1'} -> ok:true, messages:[...]  （正常）
+
+**改法**：thread_id 缺省时用 role_id 拼 thread:<role_id>，后续流程不变（落库 -> responder -> applyDirective）。
+
+**判据**：新增测试通过（role_id 形状下 responder 被调用、消息落库）；短信相关 5 条全过。需重启生效。
