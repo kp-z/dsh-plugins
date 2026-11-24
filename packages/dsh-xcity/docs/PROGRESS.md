@@ -10622,3 +10622,23 @@ routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对�
 
 **结论**：需要用户给一个事实（切回来看到哪个页面）才能定位，不再靠猜。
 **已暂停每小时任务**：它在产出无法验证的东西，等真跑通再恢复。
+
+## 2026-11-24 22:45 · 找到「跑不起来」的真正原因：世界被切成只有 1 个人
+
+**实测（正式桥）**：
+
+    GET /agent-world/api/world -> agents = [('agent-1','captain')]   只有 1 个
+    但短信线程列表里还是旧的 8 个线程（内存里留着旧世界的东西）
+
+**原因（读代码）**：createPluginState 的 sessionInitialAgents 默认 'captain'。
+一旦激活某个会话，state.activateSession 会用这个种子**重建世界** —— 于是工位、任务、街区、
+其余角色全没了，只剩队长一个人。游戏里看着就是「人没了、活不干」，而桥一直取 state.currentWorld()。
+
+**改法**：createPluginState(..., { sessionInitialAgents: 'all' }) —— 小镇是一个世界，不按会话切。
+
+**判据**：编译通过；825 条 pass 824 / fail 0。
+**重启后判据**：/agent-world/api/world 的 agents 应该是 8 个（含 工头阿金/小蓝/…），而不是只有 captain。
+
+**顺带确认的好消息**：短信链路**现在是通的**——我用 HTTP 给 thread:agent-1 发了一条，
+会话文件 98174 -> 160012 字节，并且收到回复「工头阿金：我重新看一下世界状态…」（is_self:false）。
+如果用户在界面里发给**没有绑定会话**的联系人，就只会存在游戏里，不会进 DSH——这是当前行为，不是 bug。

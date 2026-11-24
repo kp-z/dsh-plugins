@@ -122,7 +122,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     }
   }
 
-  const state = createPluginState(resolved, { externalRoot: contentRoot.root, storeDir })
+  // 小镇是**一个**世界，不该按会话切成「只有队长一个人」的开局。
+  // 之前用默认 'captain'：一旦激活某条会话，世界被重建，只剩 1 个 agent（工位、任务、街区全没了），
+  // 游戏里看着就是「人没了、活不干」。这里显式要完整开局。
+  const state = createPluginState(resolved, { externalRoot: contentRoot.root, storeDir, sessionInitialAgents: 'all' })
   /** R175：sessionQuery 是软依赖；先 inject 捕获，避免请求时 ctx.get 拿不到。 */
   let sessionQueryService:
     | { readSession?(id: string): Promise<unknown> }
