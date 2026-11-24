@@ -190,10 +190,26 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
       appearance: DEFAULT_APPEARANCE,
       place_id: placeId,
       location: { place_id: placeId, x: typeof position.x === 'number' ? position.x : 0, y: typeof position.z === 'number' ? position.z : 0 },
-      visual_state: { anim: 'idle', facing: facingOf(agent.facing) },
+      // anim 取自内核状态：之前恒为 'idle'，所以就算人在走、在干活，画面上也永远站着不动。
+      visual_state: { anim: animOf(agent), facing: facingOf(agent.facing) },
     }
   }
   return out
+}
+
+/** 内核状态 -> 前端动作名（动作表见 docs/DRIVE-MODEL.md）。 */
+/**
+ * 内核状态 -> 前端动作名（动作表见 docs/DRIVE-MODEL.md）。
+ *
+ * 注意：干活时内核的 state 仍是 idle（活动由 activityKind + activityUntil 维持），
+ * 所以只看 state 会永远显示“站着”。这里把 activityKind 也读进来。
+ */
+function animOf(agent: { state?: string; activityKind?: string | null }): string {
+  if (agent.state === 'walking') return 'walk'
+  if (agent.state === 'sleeping') return 'sleep'
+  if (agent.activityKind === 'work') return 'work'
+  if (agent.activityKind === 'meet') return 'sit'
+  return 'idle'
 }
 
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */

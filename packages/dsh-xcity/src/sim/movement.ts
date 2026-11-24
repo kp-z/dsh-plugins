@@ -84,6 +84,10 @@ export function advanceMovement(world: World): MovementOutcome {
       agent.targetStation = null
       agent.path = []
       agent.state = agent.activityKind === 'meet' ? 'talking' : agent.activityKind === 'rest' ? 'sleeping' : 'working'
+      // 干活时长**从到站开始算**：否则走 6 秒就把 6 秒的活耗光了，人到工位立刻又变回 idle。
+      if (agent.activityKind !== undefined && agent.activityTicks !== undefined) {
+        agent.activityUntil = world.tick + agent.activityTicks
+      }
       arrived.push({ agentId: agent.id, stationId: station.id })
     }
 

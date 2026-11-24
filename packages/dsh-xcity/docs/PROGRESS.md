@@ -10692,3 +10692,26 @@ devtest 单独装 dsh-xcity（link），slowvale.port=7790，用 dsh --profile d
 原因没查清，就**不发布**。Cookie 这条路已经验通，客户端保持最简单的静态 src。
 
 **判据**：826 条 pass 825 / fail 0。正式环境要重启后才会带上 Cookie 逻辑。
+
+## 2026-11-25 00:20 · 这一个人完整跑通：收到短信 -> 走到工位 -> 干活 -> 收工
+
+**devtest（7790）实测，每 2 秒采样一次**：
+
+    before : anim idle | pos 28.6 -14.7
+    t+2s   : anim walk | pos 26   -13.1
+    t+4s   : anim walk | pos 25.9 -9.9
+    t+6s   : anim walk | pos 24   -6.9
+    t+8s   : anim work | pos 24   -6
+    t+10s  : anim work | pos 24   -6
+    t+12s  : anim work | pos 24   -6
+    t+14s  : anim idle | pos 24   -6
+
+**这轮修的两个真问题**
+
+1. **anim 永远是 idle**：actorsOf 把 visual_state.anim 写死成 'idle'，
+   所以就算人在走、在干活，画面上也永远站着。现在按 state + activityKind 投影（walk / work / sit / sleep）。
+2. **走到工位后立刻变 idle**：agentActivity 的 activityUntil = 命令时刻 + ticks，
+   走路那 6 秒把 60 tick 的活全耗光了，人到工位只剩 0 tick。
+   现在把「干活时长」记在 activityTicks，**到站时重新起算**（movement 的 arrive 分支）。
+
+**判据**：826 条 pass 825 / fail 0；devtest 采样如上（walk 6 秒后 work 6 秒，然后 idle）。

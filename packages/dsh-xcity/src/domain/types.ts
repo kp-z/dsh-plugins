@@ -186,6 +186,8 @@ export interface Agent {
   activityKind?: 'work' | 'meet' | 'rest'
   /** 活动结束 tick；到时自动回 idle，释放站点。 */
   activityUntil?: number
+  /** 这次活动要干多少 tick（走到工位后才开始算，见 movement 的到站处理）。 */
+  activityTicks?: number
   llm: AgentLlmRoute
   /** 与真实 subagent 的绑定。模拟模式下为 null。 */
   boundAgentId: string | null

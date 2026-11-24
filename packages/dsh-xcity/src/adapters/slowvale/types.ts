@@ -11,6 +11,8 @@ export interface WorldAgentLike {
   id: string
   name: string
   state?: string
+  /** 正在进行的行为（work / meet / rest）；内核用它维持一段活动。 */
+  activityKind?: string | null
   station?: string | null
   position?: { x?: number; z?: number }
   /** 剩余路径点（内核 sim/movement 用同一套；坐标就是地图像素）。 */

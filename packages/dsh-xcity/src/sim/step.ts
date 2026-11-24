@@ -187,6 +187,8 @@ function ingest(
         agent.targetStation = station.id
         agent.path = path
         agent.activityKind = command.activity
+        agent.activityTicks = Math.max(5, Math.round(command.ticks))
+        // 走路时间不该算进干活时长：到站后由 movement 重新起算（见 arrive 分支）。
         agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
         break
       }
