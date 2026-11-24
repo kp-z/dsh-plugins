@@ -10738,3 +10738,21 @@ routes 的 /game/logs/recent 与 /game/logs/catch-up 都走同一个投影，保
 **一个必须记的坑**：我之前的「重启 devtest」多次没生效——旧进程还占着 7790，新进程绑定失败后静默退出，
 于是我一直在一个**旧进程**上验证（进程启动时间 00:08，而代码是 00:21 才改的）。
 现在固定流程：kill 端口 → 确认 000 → 启动 → 用 ps 看启动时间是否晚于构建时间。
+
+## 2026-11-25 01:10 · 日志面板「加载失败」的真正原因（读前端源码定位）
+
+症状：日志面板永远显示「加载日志失败，请稍后重试」。
+
+定位：在 bundle 里找到 Zn/Pn（recent）与 fb（错误映射）：fb 把任何异常都折成同一句话。
+recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_upserts 数组、has_more 布尔。
+每条 entry：game_time.current_datetime + day_number（正整数）；kind=event 还要 decision 或 phase。
+
+我之前的实现：只有 entries/card_upserts/has_more，条目缺 day_number、用 event 却没有 decision/phase -> 三处抛错。
+
+修法：recent 补 feed_head + realtime_epoch；条目改 standalone + item(system_notice)；补 day_number；
+快照的 feed_head 与日志响应统一（之前写死 0，不一致会触发整体重同步）。
+
+验证：接口 feed_head 4968 / epoch 与快照一致；真机 UI 不再出现「加载日志失败」；单测 4 条；全量 830 pass 829。
+
+未完成（诚实记录）：日志 tab 正文没能点开（自动化点到的始终是「回顾」侧），条目是否渲染成行未肉眼确认；
+回顾页的「第739617天」是 /game/recap 的天数换算问题，与日志接口无关。

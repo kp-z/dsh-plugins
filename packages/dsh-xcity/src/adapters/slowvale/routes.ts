@@ -425,12 +425,18 @@ export async function handleApi(
 }
 
 /** 日志响应的两种信封都从这里出，保证字段同源。 */
+/** 日志响应：recent 与 catch-up 共用同一份投影，保证字段同源。 */
 function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string, unknown> {
   const world = ctx.getWorld()
-  if (world === null) return which === 'recent' ? { entries: [], card_upserts: [], has_more: false, next_record_entry_id: 0, oldest_day_number: null } : { outcome: 'page', entries: [], card_upserts: [], next_record_entry_id: 0, target_record_entry_id: 0, has_more: false }
+  const empty = logsOf({ datetime: ctx.opts.startDate + 'T08:00:00', dayNumber: 1, epoch: 'epoch-' + (world?.id ?? ctx.opts.worldId), events: [] })
+  if (world === null) return which === 'recent' ? empty.recent : empty.catchUp
   const snapshot = projectSnapshot(world, ctx.opts)
-  const clock = (snapshot['clock'] ?? {}) as { current_datetime?: string }
-  const body = logsOf({ datetime: typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00', events: world.events ?? [] })
+  const clock = (snapshot['clock'] ?? {}) as { current_datetime?: string; day_number?: number }
+  const cursor = (snapshot['cursor'] ?? {}) as { epoch?: string }
+  const datetime = typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00'
+  const dayNumber = typeof clock.day_number === 'number' && clock.day_number > 0 ? Math.floor(clock.day_number) : 1
+  const epoch = typeof cursor.epoch === 'string' && cursor.epoch !== '' ? cursor.epoch : 'epoch-' + world.id
+  const body = logsOf({ datetime, dayNumber, epoch, events: world.events ?? [] })
   return which === 'recent' ? body.recent : body.catchUp
 }
 function sessionBody(ctx: RouteContext): Record<string, unknown> {

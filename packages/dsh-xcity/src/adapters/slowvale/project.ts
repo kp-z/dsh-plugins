@@ -197,6 +197,15 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
   return out
 }
 
+/** 日志 head：世界事件里最大的 seq（没有事件就是 0）。 */
+function feedHeadOf(world: WorldLike): number {
+  let head = 0
+  for (const event of world.events ?? []) {
+    if (Number.isSafeInteger(event.seq) && event.seq > head) head = event.seq
+  }
+  return head
+}
+
 /** 内核状态 -> 前端动作名（动作表见 docs/DRIVE-MODEL.md）。 */
 /**
  * 内核状态 -> 前端动作名（动作表见 docs/DRIVE-MODEL.md）。
@@ -258,7 +267,8 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     protocol_version: SLOWVALE_PROTOCOL_VERSION,
     cursor: { epoch: epochOf(world), seq: world.tick },
     viewer_role_id: viewerAgent?.id ?? opts.viewerRoleId,
-    feed_head_record_entry_id: 0,
+    // 快照与 /game/logs/recent 必须报同一个 head：前端靠它对齐日志游标，不一致会被当成整体重同步。
+    feed_head_record_entry_id: feedHeadOf(world),
     role_public_statuses: statuses,
 role_presences: presence,
     place_topology: { places: placesOf(scene, opts.singlePlace === true) },
