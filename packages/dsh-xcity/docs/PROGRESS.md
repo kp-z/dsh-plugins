@@ -10657,3 +10657,18 @@ routes.ts 里 interface RouteContext 的字段 与 server.ts 里 const ctx 对�
 **改法**：thread_id 缺省时用 role_id 拼 thread:<role_id>，后续流程不变（落库 -> responder -> applyDirective）。
 
 **判据**：新增测试通过（role_id 形状下 responder 被调用、消息落库）；短信相关 5 条全过。需重启生效。
+
+## 2026-11-25 23:25 · 在独立 profile（devtest，端口 7790）验证
+
+devtest 单独装 dsh-xcity（link），slowvale.port=7790，用 dsh --profile devtest web 起独立实例。
+
+**验到的**：
+1. `{role_id, content}`：旧代码 ok:false；新代码 ok:true；
+2. 冷启动直接发（线程未建）：ok:true 且 GET thread 能读到 —— 依赖 ensureThread，
+   而它曾被我自己后续的编辑覆盖掉，本轮补回并确认 lib 里也有。
+
+**负结果**：devtest 是全新 profile、无存档世界，起来后 world 仍只有 1 个 agent（captain）。
+所以上一轮 sessionInitialAgents='all' 并没有解决「只剩队长」。
+旁证：scene.office 引用的 roster.software-team 有 8 个席位。
+
+**教训**：脚本改文件覆盖过手写补丁（ensureThread 就这么丢的）。以后每次编辑后要 grep 确认目标仍在。

@@ -310,6 +310,13 @@ export async function handleApi(
       sendJson(res, 200, { ok: false, messages: [] })
       return true
     }
+    // 线程可能还不存在（前端没先拉过列表 / 左下角直接发）。补建一次：
+    // 否则 send 只会往已存在的线程里 append，消息被静默吞掉（接口还返回 ok:true）。
+    const peerId = threadId.startsWith('thread:') ? threadId.slice('thread:'.length) : ''
+    if (peerId !== '') {
+      const peer = world.agents.find((agent) => agent.id === peerId)
+      ctx.sms.ensureThread(peerId, peer?.name ?? peerId)
+    }
     await ctx.sms.send({
       threadId,
       senderRoleId: ctx.opts.viewerRoleId,
