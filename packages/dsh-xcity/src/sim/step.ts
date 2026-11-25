@@ -479,8 +479,7 @@ export function step(
 
   // ── 5.5 activity ──
   // 活动对账放在 emit 之前：这一 tick 结束的活动要能在同一 tick 的事件里被看见。
-  const activitySync = syncActivities(world)
-  for (const activity of activitySync.completed) {
+  for (const activity of syncActivities(world)) {
     events.push(emitEvent(world, 'agent.state', { agentId: activity.agentId, activityId: activity.id, status: 'completed' }))
   }
 

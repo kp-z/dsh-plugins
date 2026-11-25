@@ -57,7 +57,7 @@ export function endActivity(world: World, agent: Agent, status: 'completed' | 'i
   delete agent.activityUntil
   delete agent.activityTicks
   if (activity === undefined) return null
-  if (activity.status !== 'active' && activity.status !== 'paused') return activity
+  if (activity.status !== 'active') return activity
   activity.status = status
   activity.endedAt = world.tick
   return activity
@@ -77,11 +77,10 @@ export function liveActivityOf(world: World, agent: Agent): Activity | null {
  * 第 2 条是过渡期的桥：它让"谁设置活动"这件事只有一个出口，
  * 等老字段彻底退休，这段就可以删。
  */
-export function syncActivities(world: World): { completed: Activity[]; adopted: Activity[] } {
+export function syncActivities(world: World): Activity[] {
   if (world.activities === undefined) world.activities = []
   world.activitySeq = world.activitySeq ?? 0
   const completed: Activity[] = []
-  const adopted: Activity[] = []
   for (const agent of world.agents) {
     const live = liveActivityOf(world, agent)
     const endedByFields = agent.activityKind === undefined || (agent.activityUntil !== undefined && world.tick >= agent.activityUntil)
@@ -110,8 +109,7 @@ export function syncActivities(world: World): { completed: Activity[]; adopted: 
       }
       world.activities.push(record)
       agent.activityId = record.id
-      adopted.push(record)
     }
   }
-  return { completed, adopted }
+  return completed
 }

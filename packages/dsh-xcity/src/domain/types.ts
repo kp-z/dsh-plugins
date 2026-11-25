@@ -224,8 +224,8 @@ export interface Agent {
 }
 
 /** 工单。 */
-/** 活动的生命周期。暂停先留着：现在没人触发，但语义上它和"中断"不同。 */
-export type ActivityStatus = 'active' | 'paused' | 'completed' | 'interrupted'
+/** 活动的生命周期。没有 paused：暂时没有任何东西会产生"暂停"，留着就是假的完备。 */
+export type ActivityStatus = 'active' | 'completed' | 'interrupted'
 
 /**
  * 角色正在做的一件事。
