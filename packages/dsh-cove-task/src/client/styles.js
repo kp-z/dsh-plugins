@@ -1548,17 +1548,22 @@ export const CSS = `
   border: 1px solid color-mix(in oklab, var(--dsw-alias-label-primary) 10%, transparent);
   background: color-mix(in oklab, var(--dsw-alias-bg-layer-1) 82%, var(--dsw-alias-bg-base));
 }
+/* O 编号用**一个固定蓝**，不随明暗模式换色：trajectory-accent 是宿主里唯一单值的强调蓝，
+   两套模式下都是同一块底，白字压在上面即可（实测白字 3.68:1，900 字重的独立编号足够；色块对暗底 4.42:1）。
+   为什么不用 brand：它是中性墨色（亮=近黑/暗=近白），既没有色相可调（原来的 hue-rotate 对无彩色是空操作），
+   当底色时又与字色同值 → 对比度 1.0，数字整个消失。
+   为什么不用紫/绿：宿主给的紫色和绿色在暗模式都会变浅，白字压上去只有 2.72:1 / 1.95:1，等于又看不见；
+   而 seed 的强调蓝是单值不随模式变，蓝就成了两套模式里唯一都成立的选择。 */
 .fo-okr-o-badge {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   width: 56px; height: 56px; padding: 0; border: 0; border-radius: 15px;
-  color: var(--dsw-alias-label-primary); font: inherit; cursor: pointer; overflow: hidden;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--dsw-alias-brand-primary) 82%, var(--dsw-alias-label-primary)), var(--dsw-alias-brand-primary));
-  box-shadow: 0 7px 20px color-mix(in oklab, var(--dsw-alias-brand-primary) 18%, transparent);
-  filter: hue-rotate(42deg) saturate(1.18);
-  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  color: var(--dsw-alias-label-on-color); font: inherit; cursor: pointer; overflow: hidden;
+  background: var(--dsw-alias-trajectory-accent);
+  box-shadow: 0 7px 20px color-mix(in oklab, var(--dsw-alias-trajectory-accent) 30%, transparent);
+  transition: transform .15s ease, box-shadow .15s ease;
 }
-.fo-okr-o-badge:hover { transform: translateY(-1px); box-shadow: 0 9px 24px color-mix(in oklab, var(--dsw-alias-brand-primary) 28%, transparent); }
-.fo-okr-o-badge:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.fo-okr-o-badge:hover { transform: translateY(-1px); box-shadow: 0 9px 24px color-mix(in oklab, var(--dsw-alias-trajectory-accent) 42%, transparent); }
+.fo-okr-o-badge:focus-visible { outline: 2px solid var(--dsw-alias-trajectory-accent); outline-offset: 2px; }
 .fo-okr-o-index { font-size: 14px; font-weight: 900; letter-spacing: -.02em; transition: opacity .15s ease; }
 .fo-okr-o-chevron { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; opacity: 0; transition: opacity .15s ease; }
 .fo-okr-o-badge:hover .fo-okr-o-index { opacity: 0; }

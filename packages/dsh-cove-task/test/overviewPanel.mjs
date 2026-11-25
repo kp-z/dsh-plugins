@@ -3357,11 +3357,12 @@ check('CSS 只引用宿主那 14 个令牌', () => {
     '--dsw-alias-label-primary', '--dsw-alias-label-secondary',
     '--dsw-alias-state-error-primary', '--dsw-alias-state-idle-primary',
     '--dsw-alias-state-success-primary', '--dsw-alias-state-warn-primary',
+    '--dsw-alias-label-on-color', '--dsw-alias-trajectory-accent',
     '--dsw-specific-sidebar-fill',
   ])
   const used = [...new Set(CSS.match(/--dsw-[a-z0-9-]+/g) || [])]
   assert.deepEqual(used.filter((token) => !allowed.has(token)), [])
-  assert.equal(used.length, 14)
+  assert.equal(used.length, 16)
 })
 check('CSS 的选择器都以 fo- 类为根（状态类只作为 .fo-x 的复合修饰，不污染宿主）', () => {
   /* 只看每条选择器的**根类**：.fo-taskcard-host .task-meta 这种「在 fo- 容器里使用宿主类名」
