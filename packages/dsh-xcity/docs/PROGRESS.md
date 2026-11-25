@@ -11031,3 +11031,23 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 实测：无 Cookie 访问 / -> 302 到 /world/w1?role_id=agent-1。
 
 判据：862 条 pass 861。注意：这些改动要重启 DSH 才生效（用户当前 7788 还是旧构建）。
+
+## 2026-11-25 23:45 iframe 保活：切走再久也不重载
+
+先证伪了一个想当然的方案：把 iframe 搬到别的容器再搬回来**并不能保活**。
+实验：iframe.contentWindow.name = 'MARK'，搬家后立刻变成 '1'（子文档重跑），
+说明浏览上下文随节点离开文档而销毁。所以“停车场”写法无效。
+
+可行写法：iframe 只创建一次，挂在 document.body 下的固定定位容器里，**永不离开文档**；
+面板只负责量出自己的矩形并把容器摆过去，卸载时 display:none 而不是删节点。
+
+验证（xcity-test，自动化浏览器）：
+1. 点开 xcity -> GET /api/xcity/diagnostics => documentLoads 1
+2. 切到「插件」再切回 xcity => documentLoads 仍为 1（没有重载）
+3. 容器 rect (280,0,1120x804)，display block，iframe src 仍是同一个
+
+新增诊断端点 GET /api/xcity/diagnostics -> {documentLoads, sseClients}：
+以后「是不是又重载了」不用猜，看这个数。
+
+已知代价：iframe 常驻 -> Phaser 渲染循环与 SSE 持续运行（后台也有 CPU）；
+固定定位覆盖主区，理论上可能与 DSH 的浮层抢层级。若真出现遮挡，再收窄。

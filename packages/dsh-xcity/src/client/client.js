@@ -1,9 +1,22 @@
 /**
  * xcity 客户端半体：DSH 左侧栏 tab，里面是小镇前端（iframe）。
  *
- * 桥的端口是配置项（正式 7788、测试 7790），**不能写死在客户端里**——
- * 之前写死 7788，测试 profile 的 tab 结果打开的是正式环境的小镇，改什么都"没生效"。
- * 现在先问宿主 GET /agent-world/api/bridge 拿 base，拿不到才退回 7788。
+ * ## 为什么 iframe 不放在 React 树里
+ *
+ * DSH 侧栏切 tab 会**卸载**面板组件；iframe 一旦随组件被移除，
+ * 浏览上下文就被销毁——切回来等于整页重载（登录态、打开的抽屉、动画全丢）。
+ *
+ * 实测确认过：把 iframe 从 DOM 里搬到别处再搬回来，同样会重载
+ * （window.name 从 MARK 变成 1，说明子文档重新跑了一遍）。
+ * 所以"停车场"那种挪来挪去的写法是无效的。
+ *
+ * 这里的做法是：iframe 只创建一次，挂在 document.body 下的固定定位容器里，
+ * 永远不离开文档。面板只负责**量出自己该占的矩形**，把容器摆过去；
+ * 面板卸载时把容器 display:none，而不是删节点。于是切走再久，回来还是原来那一帧。
+ *
+ * ## 桥的地址
+ *
+ * 端口是配置项（正式 7788、测试 7790），不能写死，先问宿主 /agent-world/api/bridge。
  */
 (function () {
   window.__ModuleLoader__.load({
@@ -13,26 +26,67 @@
       var h = React.createElement
       var KEY = 'xcity-game'
       var FALLBACK = 'http://127.0.0.1:7788'
-      var cache = null
+
+      var baseCache = null
+      /** iframe 的固定容器：跨面板挂载周期存在，绝不销毁。 */
+      var host = null
+      var frame = null
 
       function useBridgeBase() {
-        var st = React.useState(cache)
+        var st = React.useState(baseCache)
         var base = st[0]
         var setBase = st[1]
         React.useEffect(function () {
-          if (cache !== null) return undefined
+          if (baseCache !== null) return undefined
           var alive = true
           fetch('/agent-world/api/bridge')
             .then(function (r) { return r.ok ? r.json() : null })
             .then(function (d) {
               var next = d && typeof d.base === 'string' && d.base !== '' ? d.base : FALLBACK
-              cache = next
+              baseCache = next
               if (alive) setBase(next)
             })
-            .catch(function () { cache = FALLBACK; if (alive) setBase(FALLBACK) })
+            .catch(function () { baseCache = FALLBACK; if (alive) setBase(FALLBACK) })
           return function () { alive = false }
         }, [])
         return base
+      }
+
+      /** 建一次：容器 + iframe，挂到 body 下。之后的显隐都只改样式。 */
+      function ensureFrame(base) {
+        if (frame !== null) return
+        host = document.createElement('div')
+        host.setAttribute('data-xcity-host', '')
+        host.style.cssText = [
+          'position:fixed',
+          'z-index:1',
+          'display:none',
+          'overflow:hidden',
+          'background:#14131b',
+          'border-radius:0',
+        ].join(';')
+        frame = document.createElement('iframe')
+        frame.src = base + '/'
+        frame.title = 'xcity'
+        frame.setAttribute('allow', 'clipboard-write')
+        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#14131b'
+        host.appendChild(frame)
+        document.body.appendChild(host)
+      }
+
+      /** 把容器摆到面板占的位置上。 */
+      function place(slot) {
+        if (host === null || slot === null) return
+        var rect = slot.getBoundingClientRect()
+        if (rect.width === 0 || rect.height === 0) {
+          host.style.display = 'none'
+          return
+        }
+        host.style.display = 'block'
+        host.style.left = rect.left + 'px'
+        host.style.top = rect.top + 'px'
+        host.style.width = rect.width + 'px'
+        host.style.height = rect.height + 'px'
       }
 
       function Icon() {
@@ -45,11 +99,30 @@
 
       function Panel() {
         var base = useBridgeBase()
-        if (base === null) return h('div', { style: { padding: 12, font: '12px system-ui', opacity: 0.6 } }, '正在连接小镇…')
-        return h('iframe', {
-          src: base + '/',
-          title: 'xcity',
-          style: { display: 'block', width: '100%', height: '100%', border: '0', background: '#14131b' },
+        var slotRef = React.useRef(null)
+
+        React.useLayoutEffect(function () {
+          if (base === null) return undefined
+          ensureFrame(base)
+          var slot = slotRef.current
+          var sync = function () { place(slot) }
+          sync()
+          var observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sync) : null
+          if (observer !== null && slot !== null) observer.observe(slot)
+          window.addEventListener('resize', sync)
+          window.addEventListener('scroll', sync, true)
+          return function () {
+            if (observer !== null) observer.disconnect()
+            window.removeEventListener('resize', sync)
+            window.removeEventListener('scroll', sync, true)
+            // 只隐藏，不销毁：这正是"切走再久也不重载"的关键。
+            if (host !== null) host.style.display = 'none'
+          }
+        }, [base])
+
+        return h('div', {
+          ref: slotRef,
+          style: { position: 'relative', width: '100%', height: '100%' },
         })
       }
 

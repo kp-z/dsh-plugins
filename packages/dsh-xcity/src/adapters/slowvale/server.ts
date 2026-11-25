@@ -121,6 +121,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
    * 单机单人场景下，直接记在进程里最稳。
    */
   let lastWorldPath: string | null = null
+  /** 文档请求计数（/ 与 /world/*）。切 tab 后这个数不变，就说明 iframe 没被重建。 */
+  let documentLoads = 0
 
   // 短信线程挂在世界这一侧：会话可以归档换人，聊天记录不能丢。
   // 账号固定 + 单机：token 由账号派生，进程生命周期内不变。
@@ -404,6 +406,12 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res.end(body)
         return
       }
+      if (url.pathname === '/api/xcity/diagnostics' && req.method === 'GET') {
+        const payload = Buffer.from(JSON.stringify({ documentLoads, sseClients: clients.size }), 'utf8')
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': payload.byteLength })
+        res.end(payload)
+        return
+      }
       if (url.pathname === '/api/xcity/bindings' && req.method === 'GET') {
         // 默认就去 DSH 的工作区约定位置找（跟 cove 一样放在 ~/.dsh 下）。
         const file = options.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json')
@@ -449,6 +457,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         res.end()
         return
       }
+      if (/^\/world\/[^/]+$/.test(url.pathname) || url.pathname === '/') documentLoads += 1
       if (/^\/world\/[^/]+$/.test(url.pathname)) {
         lastWorldPath = url.pathname + url.search
         res.setHeader('set-cookie', 'xcity_resume=' + encodeURIComponent(url.pathname + url.search) + '; Path=/; Max-Age=2592000; SameSite=Lax')
