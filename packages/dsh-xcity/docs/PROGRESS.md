@@ -10820,3 +10820,24 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
 会话里能检索到 8 次 xcity-reply（模型确实按协议回了）；但游戏线程仍没有 is_self:false 的回复。
 
 卡点：turn/end reason 是 aborted/disposed。下一轮在钩子里打 console.warn，确认 assistant/message 是否带 text 块。
+
+## 2026-11-25 13:45 回复打通（真机两条实测）
+
+三处真因，全部由日志定位，不是猜：
+
+1. **钩子被气泡通道挡住**：session/event 回调开头有 `if (mainDialogueChannel === null) return`，
+   没打开对话气泡通道时，短信回复根本走不到写回那一步。改成只在真正 publish 气泡前挡。
+2. **过早销账**：一轮回复里有多条 assistant/message（工具调用、过程话），
+   原来第一条就把 pendingSmsReply 删了，最后那条真正的回复反而写不回去。改成写入成功才销账。
+3. **模型把回复写在思考块里**：assistant/message 常常只有 reasoning + tool-call，没有 text 块。
+   - prompt 增加第 4 条：必须是普通文本消息，工具之后要补文本；
+   - 兜底：思考块里**带 <xcity-reply> 标记**时才采用（没有标记的思考是私货，不能当短信发出去）。
+
+实测（xcity-test，7790）：
+- 发「到办公室了吗？回我一句就行」→ 回复「没到，我还在广场，过不去。」
+- 发「晚上一起吃个饭？」→ 回复「想吃，但我出不了广场，别等我了。」
+
+两条都是 is_self:false、几十字以内，和手机短信界面是同一套前端能力。
+
+遗留：回复里说的是「出不了广场」——世界层面的移动/站位限制，属于下一个问题；
+线程里显示的名字还是早期的 captain（老线程建的时候就定了名），新线程会用角色名。

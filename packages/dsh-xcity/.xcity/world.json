@@ -1,6 +1,6 @@
 {
   "fileVersion": 1,
-  "savedAtTick": 58,
+  "savedAtTick": 0,
   "content": [
     {
       "id": "pack.default",
@@ -27,8 +27,8 @@
     "id": "world-1nb10jy-b",
     "name": "Agent World",
     "seed": 3586027534,
-    "tick": 58,
-    "createdAt": "2026-11-25T03:06:19.024Z",
+    "tick": 0,
+    "createdAt": "2026-11-25T05:35:30.212Z",
     "paused": false,
     "agentModel": "model.agent.mv-tom",
     "mode": "simulated",
@@ -1587,7 +1587,7 @@
     "agents": [
       {
         "id": "agent-1",
-        "name": "工头阿金",
+        "name": "captain",
         "role": "lead",
         "palette": "skin.role.lead",
         "modelId": "model.agent.mv-tom",
@@ -1804,7 +1804,7 @@
     ],
     "tasks": [],
     "messages": [],
-    "seq": 23,
+    "seq": 1,
     "messageSeq": 1
   }
 }

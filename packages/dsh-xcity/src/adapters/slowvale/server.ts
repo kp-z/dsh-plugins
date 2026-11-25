@@ -497,7 +497,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
           sms.append({
             threadId: thread.threadId,
             senderRoleId: peerRoleId,
-            senderName: peerName,
+            // 用线程里已有的名字：世界内部可能把 agent 改名，玩家看到的联系人名不该跟着变。
+            senderName: thread.peerName !== '' ? thread.peerName : peerName,
             content: text,
             sentAt: new Date().toISOString(),
             isSelf: false,

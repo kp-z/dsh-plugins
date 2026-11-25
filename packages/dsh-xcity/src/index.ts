@@ -43,7 +43,7 @@ import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
-import { extractFrontendReply } from './adapters/slowvale/reply.js'
+import { extractFrontendReply, REPLY_OPEN } from './adapters/slowvale/reply.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -798,7 +798,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   const turnBySession = new Map<string, string>()
   if (typeof listen === 'function') {
     const disposeDialogue = listen('session/event', (session, event) => {
-      if (mainDialogueChannel === null) return
       if (event.type !== 'user/message' && event.type !== 'assistant/message' && event.type !== 'tool/result') return
       const world = state.currentWorld()
       if (world === null) return
@@ -823,15 +822,23 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         const askedAt = pendingSmsReply.get(actor.id)
         const fresh = askedAt !== undefined && Date.now() - askedAt < 10 * 60 * 1000
         if (fresh) {
-          pendingSmsReply.delete(actor.id)
-          const said = blocks
-            .filter((block) => (block as Record<string, unknown>)?.['type'] === 'text')
+          const pick = (kind: string): string => blocks
+            .filter((block) => (block as Record<string, unknown>)?.['type'] === kind)
             .map((block) => String((block as Record<string, unknown>)?.['text'] ?? ''))
             .join('')
             .trim()
+          // 思考块只能当"模型把带标记的回复写错了地方"的兜底：
+          // 没标记的思考是私货，不能当短信发给玩家。
+          const thinking = pick('reasoning')
+          const said = pick('text') !== '' ? pick('text') : thinking.includes(REPLY_OPEN) ? thinking : ''
           // 前端只要一句：标记内的内容优先，没有标记退回第一句并截断。
           const short = extractFrontendReply(said)
-          if (short !== null) slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)
+          if (short !== null) {
+            // 只有真的写进去了才销账：一轮回复里常有多条 assistant/message（工具调用、过程话），
+            // 提前销账会让最后那条真正的回复永远写不回游戏。
+            slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)
+            pendingSmsReply.delete(actor.id)
+          }
         }
       }
       if (gameModeEnabled) {
@@ -847,6 +854,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           runtime.enqueue({ kind: 'agentActivity', agentId: actor.id, activity: 'idle', ticks: 0 })
         }
       }
+      // 只有气泡发布需要通道；短信写回与工具映射不受它影响。
+      if (mainDialogueChannel === null) return
       const text = blocks
         .filter((block): block is { type: string; text: string } => {
           const b = block as Record<string, unknown>
