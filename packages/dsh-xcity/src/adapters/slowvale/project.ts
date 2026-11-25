@@ -272,7 +272,7 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
   return out
 }
 
-function feedHeadOf(world: WorldLike): number {
+export function feedHeadOf(world: WorldLike): number {
   return logHeadOf(world.activities ?? [], logNoticesOf(world.events ?? []), world.logSeq)
 }
 

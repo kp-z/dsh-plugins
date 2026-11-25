@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { debugScript } from './debug.js'
-import { epochOf, projectPhone, projectScene, projectSnapshot, type ProjectOptions } from './project.js'
+import { epochOf, feedHeadOf, projectPhone, projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
 import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat } from './visual.js'
@@ -351,6 +351,32 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     pushStatePart('role_phone', roleId, projectPhone(signal), { role_ids: [roleId], scenes: [] })
   }
 
+  // The original client recovers logs through catch-up without a world resync.
+  let lastLogHead: { epoch: string; roleId: string; head: number } | null = null
+  const signalLogHead = (initial = false): void => {
+    const world = options.getWorld()
+    if (world === null || clients.size === 0) return
+    const roleId = world.agents.find((agent) => agent.id === options.opts.viewerRoleId)?.id ?? world.agents[0]?.id
+    if (!roleId) return
+    const epoch = epochOf(world)
+    const head = feedHeadOf(world)
+    if (lastLogHead?.head === head && lastLogHead.epoch === epoch && lastLogHead.roleId === roleId) return
+    lastLogHead = { epoch, roleId, head }
+    if (initial || head === 0) return
+    const cursor = { epoch, seq: ++envelopeSeq }
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      prev: lastCursor,
+      tick_marker: 'tick-' + String(world.tick),
+      kind: 'log_resync',
+      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [roleId], scenes: [] },
+      payload_gz: null,
+    }
+    lastCursor = cursor
+    for (const res of clients) writeEvent(res, 'update', envelope)
+  }
+
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://' + options.host + ':' + String(options.port))
@@ -370,6 +396,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
           // connected 会重置基线；紧跟着发一次 resync 建立 cursor 链的起点
           writeEvent(res, 'connected', projectSnapshot(world, { ...options.opts, phone: sms.signal() }))
           pushSnapshot('resync')
+          if (clients.size === 1) signalLogHead(true)
         }
         req.on('close', () => {
           clients.delete(res)
@@ -495,6 +522,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       try {
         pushSceneState()
         pushSceneContent()
+        signalLogHead()
         // 世界侧驱动：谁开始移动，就给谁发一拍 walk（路径点来自内核 sim/pathfind）
         const world = options.getWorld()
         if (world !== null && clients.size > 0) {

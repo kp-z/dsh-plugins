@@ -192,3 +192,54 @@ test('裁剪和晚完成不会重编号，冻结目标不会误吃后续记录',
   assert.deepEqual(next.entries.map((e) => e.phase.items[0].lifecycle), ['complete'])
   assert.equal(next.next_record_entry_id, recent.feed_head_record_entry_id)
 })
+
+test('持有 SSE 的客户端可在日志水位变化后按游标补拉', async () => {
+  const world = { id: 'internal-town', name: '测试', tick: 40, agents: [{ id: 'agent-1', name: '阿金' }], activities: [] }
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir: '.', pushMs: 20,
+    account: { email: 'test@example.invalid', password: 'test' },
+    opts: { worldId: 'w1', viewerRoleId: 'agent-1', place: 'company', startDate: base.startDate },
+    getWorld: () => world,
+  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 3000)
+  const root = 'http://127.0.0.1:' + bridge.port + '/api/game/'
+  try {
+    const response = await fetch(root + 'stream', { signal: controller.signal })
+    assert.equal(response.status, 200)
+    let input = ''
+    let lastCursor
+    let logSignal
+    for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
+      input += chunk
+      let end
+      while ((end = input.indexOf('\n\n')) >= 0) {
+        const frame = input.slice(0, end)
+        input = input.slice(end + 2)
+        if (!frame.startsWith('event: ')) continue
+        const [name, body] = frame.split('\n')
+        const data = JSON.parse(body.slice(6))
+        if (name === 'event: resync') {
+          assert.equal(data.feed_head_record_entry_id, 0)
+          world.activities.push(activity({ startedLogSeq: 1, endedLogSeq: 2 }))
+        }
+        if (data.kind === 'log_resync') {
+          assert.deepEqual(data.prev, lastCursor)
+          logSignal = data
+          break
+        }
+        lastCursor = data.cursor
+      }
+      if (logSignal !== undefined) break
+    }
+    assert.deepEqual(logSignal.route, { world_id: 'w1', broadcast: false, role_ids: ['agent-1'], scenes: [] })
+    assert.equal(logSignal.payload_gz, null)
+    const query = new URLSearchParams({ role_id: 'agent-1', realtime_epoch: logSignal.cursor.epoch, after_record_entry_id: '0' })
+    const page = await (await fetch(root + 'logs/catch-up?' + query)).json()
+    assert.deepEqual(page.entries.map((entry) => entry.phase.items[0].lifecycle), ['start', 'complete'])
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
+    await bridge.close()
+  }
+})
