@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { extractFrontendReply, REPLY_MAX_CHARS } from '../lib/adapters/slowvale/reply.js'
+import { extractFrontendReply, pickReplyText, REPLY_MAX_CHARS } from '../lib/adapters/slowvale/reply.js'
 
 test('有标记：只取标记里的内容，标记外的详细分析不进前端', () => {
   const text = '我查了一下工位排期，今天下午有三个会。\n<xcity-reply>我这就去工位，十分钟后开工。</xcity-reply>\n另外注意 B 区还没清空。'
@@ -28,4 +28,18 @@ test('过长会截断到上限（前端要短）', () => {
 
 test('空文本返回 null', () => {
   assert.equal(extractFrontendReply('   '), null)
+})
+
+const textBlock = (text) => ({ type: 'text', text })
+const thinkBlock = (text) => ({ type: 'reasoning', text })
+
+test('挑回复：有正文就用正文', () => {
+  assert.equal(pickReplyText([thinkBlock('想一下'), textBlock('马上到')]), '马上到')
+})
+
+/** 模型常把回复写进思考块；没标记的思考是私货，不能发给玩家。 */
+test('挑回复：正文为空时只接受带标记的思考', () => {
+  assert.equal(pickReplyText([thinkBlock('我在想 <xcity-reply>这就去</xcity-reply>')]), '我在想 <xcity-reply>这就去</xcity-reply>')
+  assert.equal(pickReplyText([thinkBlock('纯思考，没标记')]), '')
+  assert.equal(pickReplyText([]), '')
 })

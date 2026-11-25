@@ -426,17 +426,23 @@ export async function handleApi(
 
 /** 日志响应的两种信封都从这里出，保证字段同源。 */
 /** 日志响应：recent 与 catch-up 共用同一份投影，保证字段同源。 */
+/**
+ * 日志响应。
+ *
+ * recent 与 catch-up 用同一份投影（同源字段），世界还没起来时给一份合法空态：
+ * 前端 recent 路径硬要求 feed_head_record_entry_id 与 realtime_epoch，缺任一个整块失败。
+ */
 function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string, unknown> {
   const world = ctx.getWorld()
-  const empty = logsOf({ datetime: ctx.opts.startDate + 'T08:00:00', dayNumber: 1, epoch: 'epoch-' + (world?.id ?? ctx.opts.worldId), events: [] })
-  if (world === null) return which === 'recent' ? empty.recent : empty.catchUp
-  const snapshot = projectSnapshot(world, ctx.opts)
-  const clock = (snapshot['clock'] ?? {}) as { current_datetime?: string; day_number?: number }
-  const cursor = (snapshot['cursor'] ?? {}) as { epoch?: string }
-  const datetime = typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00'
-  const dayNumber = typeof clock.day_number === 'number' && clock.day_number > 0 ? Math.floor(clock.day_number) : 1
-  const epoch = typeof cursor.epoch === 'string' && cursor.epoch !== '' ? cursor.epoch : 'epoch-' + world.id
-  const body = logsOf({ datetime, dayNumber, epoch, events: world.events ?? [] })
+  const snapshot = world === null ? null : projectSnapshot(world, ctx.opts)
+  const clock = (snapshot?.['clock'] ?? {}) as { current_datetime?: string; day_number?: number }
+  const cursor = (snapshot?.['cursor'] ?? {}) as { epoch?: string }
+  const body = logsOf({
+    datetime: typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00',
+    dayNumber: typeof clock.day_number === 'number' && clock.day_number > 0 ? Math.floor(clock.day_number) : 1,
+    epoch: typeof cursor.epoch === 'string' && cursor.epoch !== '' ? cursor.epoch : 'epoch-' + (world?.id ?? ctx.opts.worldId),
+    events: world?.events ?? [],
+  })
   return which === 'recent' ? body.recent : body.catchUp
 }
 function sessionBody(ctx: RouteContext): Record<string, unknown> {

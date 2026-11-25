@@ -10862,3 +10862,21 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
 
 顺带确认：直接下发 agentActivity 命令时，findPath 能走完 18 步到工位，
 说明移动系统本身没问题，之前的「杵着不动」纯粹是世界停摆。
+
+## 2026-11-25 14:00 review 收敛（简化 + 去掉诊断残留）
+
+几处「能跑但不够干净」的地方，逐条收掉：
+
+1. **build 缺资产**：`rm -rf lib && npm run build` 之后 lib 里没有 vendor/easystar 和 client.iife.js，
+   测试直接 ERR_MODULE_NOT_FOUND（838 -> 562，32 失败）。这两份以前是手工拷的，问题一直藏着。
+   现在 scripts/build-assets.mjs 在 build 后同步 vendor 并生成 client.iife.js —— 少维护一份重复文件。
+2. **viewers 参数**：watchdog 已经不看观众数了，接口里还留着 viewers 字段是自相矛盾，删掉。
+3. **启动诊断**：「[slowvale] responder 已接」这类定位用的日志，用完就该摘掉，避免噪音。
+4. **逐条 info**：「[xcity-sms] 已投递」每条短信打一行没意义，只保留失败时的 warn。
+5. **重复兜底**：`bindingsFile ?? join(homedir(), …)` 在三处重复，config 已有默认值，收敛成直接读配置。
+6. **钩子里的取词逻辑**：内联的 pick(text/reasoning) 抽成 reply.ts 的 pickReplyText，可单测
+   （新增 2 条：有正文用正文；正文为空只接受带标记的思考）。
+7. **配置 schema 漏字段**：bindingsFile 只有 type、没有 schemastery 声明，配置键会被丢掉；
+   默认值也写死了某个人的家目录，改成 homedir()。
+
+判据：`rm -rf lib && npm run build && node --test test/` -> 838 条 pass 837 / fail 0。

@@ -56,3 +56,25 @@ function firstSentence(text: string): string {
   const match = line.match(/^[^。！？!?]*(?:[。！？!?]|$)/)
   return (match?.[0] ?? line).trim()
 }
+
+/** 消息块里取文本（前端只关心正文，别的块一律忽略）。 */
+function joinText(blocks: readonly unknown[], kind: string): string {
+  return blocks
+    .filter((block) => (block as Record<string, unknown>)?.['type'] === kind)
+    .map((block) => String((block as Record<string, unknown>)?.['text'] ?? ''))
+    .join('')
+    .trim()
+}
+
+/**
+ * 从一条 assistant 消息里挑出「要写回游戏的那段」。
+ *
+ * 优先 text 块；模型偶尔把带标记的回复写进 reasoning，这时才用 reasoning 兜底——
+ * 没标记的 reasoning 是思考私货，绝不能发给玩家。
+ */
+export function pickReplyText(blocks: readonly unknown[]): string {
+  const text = joinText(blocks, 'text')
+  if (text !== '') return text
+  const thinking = joinText(blocks, 'reasoning')
+  return thinking.includes(REPLY_OPEN) ? thinking : ''
+}

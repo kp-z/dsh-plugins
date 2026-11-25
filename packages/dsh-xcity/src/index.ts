@@ -43,7 +43,7 @@ import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
-import { extractFrontendReply, REPLY_OPEN } from './adapters/slowvale/reply.js'
+import { extractFrontendReply, pickReplyText } from './adapters/slowvale/reply.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -791,8 +791,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
    * 这里把同一个 active session（以及 subagent session）的 user/assistant 消息
    * 注入 dialogue SSE，气泡/状态就不再只对场景搭话生效。
    */
-  /** 已经转进会话、正等着把回话写回游戏的短信（peerId -> 时间戳）。 */
+  /** 已经转进会话、正等着把回话写回游戏的短信（peerId -> 转发的时刻）。 */
   const pendingSmsReply = new Map<string, number>()
+  /** 等回复的有效期：超过它就不再把这轮对话当成短信回执。 */
+  const SMS_REPLY_TTL_MS = 10 * 60 * 1000
   let mainDialogueChannel: DialogueChannel | null = null
   let mainTurnSeq = 0
   const turnBySession = new Map<string, string>()
@@ -820,19 +822,9 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       if (event.type === 'assistant/message' && slowvaleBridgeHandle !== null) {
         // 只把「正在等回话」的那一条写回游戏：否则每次普通对话都会给玩家塞一条短信。
         const askedAt = pendingSmsReply.get(actor.id)
-        const fresh = askedAt !== undefined && Date.now() - askedAt < 10 * 60 * 1000
-        if (fresh) {
-          const pick = (kind: string): string => blocks
-            .filter((block) => (block as Record<string, unknown>)?.['type'] === kind)
-            .map((block) => String((block as Record<string, unknown>)?.['text'] ?? ''))
-            .join('')
-            .trim()
-          // 思考块只能当"模型把带标记的回复写错了地方"的兜底：
-          // 没标记的思考是私货，不能当短信发给玩家。
-          const thinking = pick('reasoning')
-          const said = pick('text') !== '' ? pick('text') : thinking.includes(REPLY_OPEN) ? thinking : ''
+        if (askedAt !== undefined && Date.now() - askedAt < SMS_REPLY_TTL_MS) {
           // 前端只要一句：标记内的内容优先，没有标记退回第一句并截断。
-          const short = extractFrontendReply(said)
+          const short = extractFrontendReply(pickReplyText(blocks))
           if (short !== null) {
             // 只有真的写进去了才销账：一轮回复里常有多条 assistant/message（工具调用、过程话），
             // 提前销账会让最后那条真正的回复永远写不回游戏。
@@ -1094,7 +1086,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           // 只在场景真的变了才推 scene_state：每帧推会让前端反复重启场景（也是它画不出来的原因之一）。
           sceneStateOnChangeOnly: true,
           // 谁代表谁：短信线程 -> 绑定角色 -> DSH 会话。不传就用默认 ~/.dsh/xcity/bindings.json。
-          bindingsFile: resolved.slowvale.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json'),
+          bindingsFile: resolved.slowvale.bindingsFile,
           account: { email: resolved.slowvale.email, password: resolved.slowvale.password },
           opts: {
             worldId: resolved.slowvale.worldId,
@@ -1174,13 +1166,12 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           respondSms: async (input: { peerRoleId: string; content: string }) => {
             try {
               return await respondViaSession(input, {
-              onForward: (peerId) => pendingSmsReply.set(peerId, Date.now()),
+                onForward: (peerId) => pendingSmsReply.set(peerId, Date.now()),
               characterOf: (peerRoleId) => loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))[peerRoleId] ?? null,
-              sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json')).find((row) => row.characterId === characterId)?.sessionId ?? null,
+              sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === characterId)?.sessionId ?? null,
               prompt: async (payload, signal) => {
                 if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
                 await sessionControllerService.prompt(payload as never, signal)
-                logger.info('[xcity-sms] 已投递 session=' + String((payload as { sessionId?: string }).sessionId))
               },
               })
             } catch (error: unknown) {
@@ -1198,7 +1189,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           // 表现就是游戏里所有人杵着不动。这里做一个守卫：只要游戏页还连着，runtime 停了就拉起来。
           watchGameViewers = setInterval(() => {
             if (disposed) return
-            if (shouldRestartWorld({ viewers: started.clientCount(), autoStart: resolved.autoStart, running: runtime.running })) {
+            if (shouldRestartWorld({ autoStart: resolved.autoStart, running: runtime.running })) {
               runtime.start()
             }
           }, 2000)

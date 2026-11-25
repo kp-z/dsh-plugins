@@ -6,6 +6,9 @@
  *    所以 `apply` 必须走 `resolveConfig()` 用 `??` 兜底，否则没配的字段直接读会 TypeError。
  * 2. schemastery 没有 `z.infer`，用全局命名空间 `Schemastery.TypeT`。
  */
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
 import z from '@deepseek-ai/schemastery'
 
 /**
@@ -37,7 +40,7 @@ export interface SlowvaleConfig {
 }
 
 export const DEFAULT_SLOWVALE: SlowvaleConfig = {
-  bindingsFile: '/Users/demo/.dsh/xcity/bindings.json',
+  bindingsFile: join(homedir(), '.dsh', 'xcity', 'bindings.json'),
   // 默认关闭：适配层要占一个端口，测试与 headless 场景都不该被它影响。
   // 打开方式见 cordis.patch.yml（slowvale.enabled: true）。
   enabled: false,
@@ -182,6 +185,8 @@ export const AgentWorldConfig = z.object({
       email: z.string().default('demo@slowvale.dev'),
       password: z.string().default('slowvale123'),
       viewerRoleId: z.string().default(''),
+      /** 绑定表路径（谁代表谁）。不配就用 ~/.dsh/xcity/bindings.json。 */
+      bindingsFile: z.string().default(join(homedir(), '.dsh', 'xcity', 'bindings.json')),
     })
     .default(DEFAULT_SLOWVALE),
 })
