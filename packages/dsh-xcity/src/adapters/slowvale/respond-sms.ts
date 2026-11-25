@@ -6,6 +6,7 @@
  * 拆出来之后依赖全部注入，可以直接断言"到底用什么形状调了宿主"。
  */
 
+import { randomUUID } from 'node:crypto'
 import { REPLY_CLOSE, REPLY_OPEN } from './reply.js'
 
 export interface RespondSmsDeps {
@@ -15,7 +16,7 @@ export interface RespondSmsDeps {
   sessionOf: (characterId: string) => string | null
   /** 宿主的会话投递。 */
   /** 已经真的把这条短信投进会话了（用来标记「下一次回复要写回游戏」）。 */
-  onForward?: (peerRoleId: string) => void
+  onForward?: (peerRoleId: string, sessionId: string, text: string) => (() => void) | void
   prompt: (input: {
     requestId: string
     sessionId: string
@@ -38,22 +39,21 @@ export interface RespondSmsInput {
 export async function respondViaSession(
   input: RespondSmsInput,
   deps: RespondSmsDeps,
-  now: () => number = Date.now,
+  nonce: () => string = randomUUID,
 ): Promise<null> {
   const characterId = deps.characterOf(input.peerRoleId)
   if (characterId === null) return null
   const sessionId = deps.sessionOf(characterId)
   if (sessionId === null) return null
-  deps.onForward?.(input.peerRoleId)
-  await deps.prompt(
-    {
-      requestId: 'xcity-sms:' + sessionId + ':' + String(now()),
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'text', text: promptText(input.content) }],
-    },
-    new AbortController().signal,
-  )
+  const requestId = 'xcity-sms:' + sessionId + ':' + nonce()
+  const text = promptText(input.content) + '\n\n短信投递编号：' + requestId
+  const cancel = deps.onForward?.(input.peerRoleId, sessionId, text)
+  try {
+    await deps.prompt({ requestId, sessionId, mode: 'queue', content: [{ type: 'text', text }] }, new AbortController().signal)
+  } catch (error) {
+    cancel?.()
+    throw error
+  }
   return null
 }
 

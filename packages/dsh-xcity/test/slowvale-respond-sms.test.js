@@ -27,7 +27,7 @@ function deps(overrides = {}) {
 
 test('短信投进会话：形状必须是 {requestId, sessionId, mode:queue, content:[text]} + signal', async () => {
   const { calls, deps: d } = deps()
-  const result = await respondViaSession({ peerRoleId: 'agent-1', content: '去办公室工作' }, d, () => 42)
+  const result = await respondViaSession({ peerRoleId: 'agent-1', content: '去办公室工作' }, d, () => '42')
 
   assert.equal(result, null, '请求里不编假回复')
   assert.equal(calls.length, 1)
@@ -38,6 +38,7 @@ test('短信投进会话：形状必须是 {requestId, sessionId, mode:queue, co
   assert.ok(payload.content[0].text.includes('去办公室工作'), '原话要在投递文本里')
   assert.ok(payload.content[0].text.includes('<xcity-reply>'), '还要带回复格式要求')
   assert.equal(payload.requestId, 'xcity-sms:xcity-lin-1:42', 'requestId 要能唯一定位这次投递')
+  assert.ok(payload.content[0].text.endsWith(payload.requestId))
   assert.equal(hasSignal, true, '必须带 AbortSignal，宿主缺了会抛错')
 })
 
@@ -72,4 +73,14 @@ test('转发成功后标记「这条在等回复」；没绑会话就不标记',
     { ...d, characterOf: () => null, onForward: (peer) => none.push(peer) },
   )
   assert.deepEqual(none, [], '没有绑定就不该等回复')
+})
+
+test('宿主拒绝投递时撤回待回执登记', async () => {
+  let cancelled = false
+  const { deps: d } = deps({
+    onForward: () => () => { cancelled = true },
+    prompt: async () => { throw new Error('会话不可用') },
+  })
+  await assert.rejects(respondViaSession({ peerRoleId: 'agent-1', content: '你好' }, d), /会话不可用/)
+  assert.equal(cancelled, true)
 })

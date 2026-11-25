@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import {
   actorForSession,
   activityForEvent,
-  smsReplyOf,
+  createSmsReplyTracker,
   textOfBlocks,
 } from '../lib/adapters/slowvale/session-events.js'
 
@@ -43,19 +43,28 @@ test('气泡文本：多段用空行分开，空段丢掉', () => {
   assert.equal(textOfBlocks([{ type: 'reasoning', text: '想' }]), '')
 })
 
-test('短信回执：只有在等回复且没过期才写回', () => {
-  const blocks = [text('<xcity-reply>我这就去</xcity-reply>')]
-  assert.equal(smsReplyOf({ blocks, askedAt: 1000, now: 2000, ttlMs: 5000 }), '我这就去')
-  assert.equal(smsReplyOf({ blocks, askedAt: undefined, now: 2000, ttlMs: 5000 }), null)
-  assert.equal(smsReplyOf({ blocks, askedAt: 1000, now: 9000, ttlMs: 5000 }), null)
+test('短信只关联实际投递轮次：同角色旧轮次和隐藏块均不能串线', () => {
+  const tracker = createSmsReplyTracker(5000, () => 0)
+  tracker.track('agent-1', 'lin', '短信一')
+  tracker.track('agent-2', 'mei', '短信二')
+  const reply = [text('<xcity-reply>已到。</xcity-reply>')]
+  assert.equal(tracker.observe('lin', 'assistant/message', { turn: 1 }, reply), null)
+  assert.equal(tracker.observe('mei', 'assistant/message', { turn: 2 }, reply), null)
+  tracker.observe('lin', 'step/start', { turn: 2 }, [])
+  assert.deepEqual(tracker.observe('lin', 'user/message', {}, [text('短信一')]), { reply: null })
+  assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, [{ type: 'reasoning', text: reply[0].text }]), { reply: null })
+  assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, reply), { reply: { peerRoleId: 'agent-1', text: '已到。' } })
+  assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, reply), { reply: null })
+  tracker.observe('lin', 'turn/end', { turn: 2 }, [])
+  assert.equal(tracker.observe('lin', 'assistant/message', { turn: 3 }, reply), null)
 })
 
-test('短信回执绝不读取思考、工具输出或未明确给玩家的正文', () => {
-  const tagged = '<xcity-reply>这句不能从思考块发出</xcity-reply>'
-  const input = { askedAt: 1000, now: 2000, ttlMs: 5000 }
-  const hidden = [{ type: 'reasoning', text: tagged }, { type: 'tool-result', text: tagged }, text('私有正文。')]
-  assert.equal(smsReplyOf({ ...input, blocks: hidden }), null)
-  assert.equal(smsReplyOf({ ...input, blocks: [...hidden, text('<xcity-reply>已到。</xcity-reply>')] }), '已到。')
+test('另一条用户消息拼入同一轮后，后续回复不算前一条短信', () => {
+  const tracker = createSmsReplyTracker(5000, () => 0)
+  tracker.track('agent-1', 'lin', '已登记短信')
+  tracker.observe('lin', 'user/message', { turn: 2 }, [text('已登记短信')])
+  tracker.observe('lin', 'user/message', { turn: 2 }, [text('非短信的另一个请求')])
+  assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, [text('<xcity-reply>另一条回答</xcity-reply>')]), { reply: null })
 })
 
 test('干活映射：工具调用去工位、工具返回收工、别的什么都不做', () => {

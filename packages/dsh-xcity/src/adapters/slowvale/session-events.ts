@@ -62,22 +62,6 @@ export function textOfBlocks(blocks: readonly unknown[]): string {
     .trim()
 }
 
-/**
- * 这条 assistant 消息该不该当成短信回执写回游戏？写什么？
- *
- * 只认"确实有一条短信在等回复"且没超时的那一条——否则每次普通对话都会往玩家手机里塞消息。
- */
-export function smsReplyOf(input: {
-  blocks: readonly unknown[]
-  /** 这条短信被转发进会话的时刻；undefined = 没有在等回复。 */
-  askedAt: number | undefined
-  now: number
-  ttlMs: number
-}): string | null {
-  const { askedAt } = input
-  if (askedAt === undefined || input.now - askedAt >= input.ttlMs) return null
-  return extractFrontendReply(textOfBlocks(input.blocks))
-}
 
 /**
  * 会话事件要不要顺手让角色走一步？
@@ -99,4 +83,61 @@ export function activityForEvent(input: {
   if (tool === undefined) return null
   const name = String((tool as Record<string, unknown>)['name'] ?? '')
   return { kind: 'agentActivity', agentId: input.agentId, activity: 'work', ticks: 60, skill: input.skillOf(name) }
+}
+
+/** Bind a delivered SMS prompt to the DSH turn that consumed it. */
+export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
+  type Pending = { peerRoleId: string; expiresAt: number }
+  type State = { queued: Map<string, Pending>; turn?: number; smsTurn?: number; pending?: Pending | undefined }
+  const sessions = new Map<string, State>()
+  const prune = (sessionId: string, state: State): void => {
+    for (const [text, pending] of state.queued) {
+      if (now() >= pending.expiresAt) state.queued.delete(text)
+    }
+    if (state.queued.size === 0 && state.smsTurn === undefined) sessions.delete(sessionId)
+  }
+  return {
+    track(peerRoleId: string, sessionId: string, text: string): () => void {
+      const state = sessions.get(sessionId) ?? { queued: new Map<string, Pending>() }
+      const pending = { peerRoleId, expiresAt: now() + ttlMs }
+      state.queued.set(text, pending)
+      sessions.set(sessionId, state)
+      return () => {
+        state.queued.delete(text)
+        if (state.pending === pending) delete state.pending
+        prune(sessionId, state)
+      }
+    },
+    observe(sessionId: string, type: string | undefined, data: Record<string, unknown> | undefined, blocks: readonly unknown[]) {
+      const state = sessions.get(sessionId)
+      if (state === undefined) return null
+      const eventTurn = data?.['turn']
+      if (typeof eventTurn === 'number' && type !== 'turn/end') state.turn = eventTurn
+      if (type === 'turn/end' && typeof eventTurn === 'number' && eventTurn === state.smsTurn) {
+        delete state.smsTurn
+        delete state.pending
+        prune(sessionId, state)
+        return null
+      }
+      if (type === 'user/message') {
+        const text = textOfBlocks(blocks)
+        const pending = state.queued.get(text)
+        if (pending !== undefined && state.turn !== undefined) {
+          state.queued.delete(text)
+          state.smsTurn = state.turn
+          state.pending = pending
+        } else if (state.smsTurn === state.turn && (data?.['source'] as { kind?: unknown } | undefined)?.kind !== 'runtime-context') {
+          state.pending = undefined
+        }
+      }
+      prune(sessionId, state)
+      if (state.smsTurn === undefined || state.turn !== state.smsTurn) return null
+      const pending = state.pending
+      const text = type === 'assistant/message' && pending && now() < pending.expiresAt
+        ? extractFrontendReply(textOfBlocks(blocks)) : null
+      if (text === null || pending === undefined) return { reply: null }
+      state.pending = undefined
+      return { reply: { peerRoleId: pending.peerRoleId, text } }
+    },
+  }
 }

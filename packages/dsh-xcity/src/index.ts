@@ -43,7 +43,7 @@ import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
-import { actorForSession, activityForEvent, smsReplyOf, textOfBlocks } from './adapters/slowvale/session-events.js'
+import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT, spawnOf } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -768,19 +768,24 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   const listen = (ctx as unknown as {
     on?: (name: string, handler: (session: { id?: string }, event: { type?: string; data?: Record<string, unknown> }) => void) => unknown
   }).on
-  /** 已经转进会话、正等着把回话写回游戏的短信（peerId -> 转发的时刻）。 */
-  const pendingSmsReply = new Map<string, number>()
-  /** 等回复的有效期：超过它就不再把这轮对话当成短信回执。 */
-  const SMS_REPLY_TTL_MS = 10 * 60 * 1000
+  const smsReplies = createSmsReplyTracker(10 * 60 * 1000)
   let mainDialogueChannel: DialogueChannel | null = null
   let mainTurnSeq = 0
   const turnBySession = new Map<string, string>()
   if (typeof listen === 'function') {
     const disposeDialogue = listen('session/event', (session, event) => {
+      const sessionId = typeof session?.id === 'string' ? session.id : ''
+      const message = event.data?.['message'] as { content?: unknown } | undefined
+      const content = event.type === 'user/message' ? event.data?.['content'] ?? message?.content : message?.content
+      const blocks = Array.isArray(content) ? content : []
+      const sms = smsReplies.observe(sessionId, event.type, event.data, blocks)
       if (event.type !== 'user/message' && event.type !== 'assistant/message' && event.type !== 'tool/result') return
       const world = state.currentWorld()
       if (world === null) return
-      const sessionId = typeof session?.id === 'string' ? session.id : ''
+      if (sms?.reply) {
+        const peer = world.agents.find((agent) => agent.id === sms.reply.peerRoleId)
+        if (peer !== undefined) slowvaleBridgeHandle?.appendIncoming(peer.id, peer.name, sms.reply.text)
+      }
       // 谁代表这条会话：显式绑定 > 当前激活会话的队长 > xcity 绑定表（规则见 runtime/session-events.ts）。
       const actor = actorForSession({
         agents: world.agents,
@@ -793,21 +798,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         },
       })
       if (actor === null) return
-      const message = event.data?.['message'] as { content?: unknown } | undefined
-      const blocks = Array.isArray(message?.content) ? message.content : []
-
-      // 短信往返不走下面的通用气泡，避免把提示词或标记以外的正文另发一次。
-      const now = Date.now()
-      const askedAt = pendingSmsReply.get(actor.id)
-      const smsPending = askedAt !== undefined && now - askedAt < SMS_REPLY_TTL_MS
-      if (event.type === 'assistant/message' && slowvaleBridgeHandle !== null) {
-        const short = smsReplyOf({ blocks, askedAt, now, ttlMs: SMS_REPLY_TTL_MS })
-        if (short !== null) {
-          // 只有真的写进去了才销账：一轮回复里常有多条 assistant/message（工具调用、过程话），
-          // 提前销账会让最后那条真正的回复永远写不回游戏。
-          if (slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)) pendingSmsReply.delete(actor.id)
-        }
-      }
 
       // ② 看起来在干活：工具调用 → 去工位，工具返回 → 收工。只在游戏模式里做。
       if (gameModeEnabled) {
@@ -816,7 +806,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       }
 
       // ③ 对话气泡：只有它需要通道，前两件事不受影响。
-      if (mainDialogueChannel === null || smsPending) return
+      if (mainDialogueChannel === null || sms !== null) return
       const text = textOfBlocks(blocks)
       if (text === '') return
       if (event.type === 'user/message') {
@@ -1131,7 +1121,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           respondSms: async (input: { peerRoleId: string; content: string }) => {
             try {
               return await respondViaSession(input, {
-                onForward: (peerId) => pendingSmsReply.set(peerId, Date.now()),
+                onForward: smsReplies.track,
               characterOf: (peerRoleId) => loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))[peerRoleId] ?? null,
               sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === characterId)?.sessionId ?? null,
               prompt: async (payload, signal) => {
