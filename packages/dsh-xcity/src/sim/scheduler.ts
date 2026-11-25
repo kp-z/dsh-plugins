@@ -212,6 +212,8 @@ export function claimTasks(world: World): SchedulerOutcome {
     task.progress = 0
 
     agent.carrying = task.id
+    // 触发来源是这张工单：日志里的 decision 会写它的标题，不编理由。
+    agent.activityTrigger = { kind: 'task', text: '接了工单「' + task.title + '」' }
     agent.targetStation = chosen.station.id
     agent.station = null
     // R64 物理：**绕障路径**，不再是一个终点（那会直线穿墙）。

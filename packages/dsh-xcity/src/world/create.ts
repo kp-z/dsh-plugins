@@ -45,6 +45,8 @@ export interface CreateWorldOptions {
    * - `captain`：只放第一位（队长），其余等真实 subagent 出现再投影（R166）。
    */
   initialAgents?: 'all' | 'captain'
+  /** 游戏模式：开启后心跳才会安排开会/休息。 */
+  gameMode?: boolean | undefined
   /** 城市里的场所；不给就从场景推导一个。第一个是默认场所。 */
   places?: readonly Place[] | undefined
 }
@@ -163,7 +165,7 @@ export function createWorld(options: CreateWorldOptions): World {
     defaultPlaceId,
     stations,
     nav,
-    gameMode: false,
+    gameMode: options.gameMode ?? false,
     agents,
     activities: [],
     activitySeq: 0,

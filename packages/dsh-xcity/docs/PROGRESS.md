@@ -10993,3 +10993,20 @@ world tick 11929 running=true。
 - 没有生产者的 paused 状态、没人消费的 adopted 返回值 —— 仍是过度，保持删除。
 
 判据：860 条 pass 859 / fail 0。
+
+## 2026-11-25 20:50 决定的多样性：工单与作息也带理由了
+
+之前 decision 只有玩家原话一种来源，世界自己发起的事没有理由。现在补上两条真实来源：
+
+- 领工单（scheduler）：trigger = {kind:'task', text:'接了工单「<标题>」'}；
+- 作息（heartbeat）：开会 `到了开会的点`、休息/找人聊 `想歇一会儿`/`想找人聊聊`，kind:'schedule'。
+
+发现的真问题：createWorld 里写死 gameMode: false，而配置项 gameMode 默认 true——
+这个开关从来没生效过，所以心跳的“开会/休息”分支在真机上永远不跑。
+现在它是 createWorld 的选项（不传仍是 false，行为不变）。
+
+要不要默认打开是产品决定：打开后角色会自己开会产生走动，会和玩家指令抢时间。
+这一步没有擅自默认开启。
+
+判据：862 条 pass 861 / fail 0；玩家来源的 decision 已真机验过（reason=去海滩），
+工单/作息来源由单测覆盖（test/activity-trigger.test.js）。
