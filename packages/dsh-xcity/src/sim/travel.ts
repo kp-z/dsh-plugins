@@ -20,6 +20,8 @@ export interface PendingActivity {
   kind: 'work' | 'rest' | 'meet' | 'visit'
   ticks: number
   skill?: string | undefined
+  /** 触发来源：落地重放时要继续带着，否则日志里的 decision 会丢。 */
+  trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
 }
 
 /** 让角色开始前往某个场所。已经在那儿就不动。 */

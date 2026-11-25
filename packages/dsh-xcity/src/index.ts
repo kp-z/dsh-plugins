@@ -1120,8 +1120,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             if (!world.agents.some((agent) => agent.id === peerId)) return false
             const directive = parseDirective(text, DEFAULT_CIRCUIT)
             if (directive === null) return false
-            const command = directiveToCommand(directive, peerId)
-            if (command === null) return false
+            const base = directiveToCommand(directive, peerId)
+            if (base === null) return false
+            // 玩家的原话就是这次活动的触发来源：日志里的 decision 条目用它，不加工、不编。
+            const command = { ...base, trigger: { kind: 'player' as const, text } }
             runtime.enqueue(command)
             return true
           },

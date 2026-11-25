@@ -439,15 +439,26 @@ export async function handleApi(
  * 每段活动就是一条 event 条目，带 phase（activity_id/type/name/status）。
  * 空世界也给一份合法空态——前端 recent 路径硬要求 feed_head 与 realtime_epoch。
  */
+/** 哪些世界事件算公告。 */
+const NOTICE_EVENTS = new Set(['world.reset', 'world.paused'])
+
+/** 公告文案：只写事实，不编故事。 */
+function noticeTextOf(type: string): string {
+  if (type === 'world.reset') return '小镇重新开始了。'
+  if (type === 'world.paused') return '小镇暂停了一阵。'
+  return type
+}
+
 function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string, unknown> {
   const world = ctx.getWorld()
   const snapshot = world === null ? null : projectSnapshot(world, ctx.opts)
   const clock = (snapshot?.['clock'] ?? {}) as { current_datetime?: string; day_number?: number }
   const cursor = (snapshot?.['cursor'] ?? {}) as { epoch?: string }
   const worldLike = world as unknown as {
-    activities?: { id: string; agentId: string; kind: string; skill?: string; placeId: string; status: string; startedAt: number; endsAt: number; endedAt?: number }[]
+    activities?: { id: string; agentId: string; kind: string; skill?: string; placeId: string; status: string; startedAt: number; endsAt: number; endedAt?: number; trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string } }[]
     places?: { id: string; name: string; asset: string }[]
     agents?: { id: string; name: string }[]
+    events?: { seq: number; tick: number; type: string; payload: Record<string, unknown> }[]
   } | null
   const body = logsOf({
     datetime: typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00',
@@ -455,6 +466,11 @@ function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string
     epoch: typeof cursor.epoch === 'string' && cursor.epoch !== '' ? cursor.epoch : 'epoch-' + (world?.id ?? ctx.opts.worldId),
     startDate: ctx.opts.startDate,
     activities: worldLike?.activities ?? [],
+    // 公告只取"世界级"的那些事件；逐条角色状态不是公告，别把日志刷成流水账。
+    notices: (worldLike?.events ?? [])
+      .filter((event) => NOTICE_EVENTS.has(event.type))
+      .slice(-20)
+      .map((event) => ({ seq: event.seq, tick: event.tick, type: event.type, text: noticeTextOf(event.type) })),
     nameOf: (agentId) => worldLike?.agents?.find((agent) => agent.id === agentId)?.name ?? agentId,
     placeOf: (placeId) => {
       const place = worldLike?.places?.find((item) => item.id === placeId)

@@ -10975,3 +10975,21 @@ world tick 11929 running=true。
     logs: 1 entry, phase={activity_id:"act-1", activity_type:"ProgrammerActivity", ...}
 
 判据：858 条 pass 857 / fail 0。
+
+## 2026-11-25 20:40 decision 与 notice 都接上（更正上一轮的判断）
+
+上一轮把 decision 判成过度设计，理由是“没有决策数据源”。这个判断是错的：
+数据源一直在——玩家发来的原话就是触发的理由。
+
+现在：
+- Activity.trigger = {kind, text}，从指令一路带进活动（含出行重放），不编造；
+- 日志三类条目齐了：decision（有 trigger 才有，reason 用原话）/ phase（每段活动）/ notice（world.reset、world.paused）；
+- 条目 id 按时间连续分配（1..N），重复投影稳定不漂移。
+
+真机（发“去海滩”）：entries 9，含 DECISION {record_id: act-7, reason: 去海滩, source: player}。
+
+区分开的两件事（上一轮错在把两者混为一谈）：
+- 有真实来源的 decision —— 该做；
+- 没有生产者的 paused 状态、没人消费的 adopted 返回值 —— 仍是过度，保持删除。
+
+判据：860 条 pass 859 / fail 0。

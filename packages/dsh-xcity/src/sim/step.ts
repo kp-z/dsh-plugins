@@ -197,6 +197,7 @@ function ingest(
                   : 'work',
             ticks: Math.max(5, Math.round(command.ticks)),
             skill: command.skill,
+            trigger: command.trigger,
           })
           break
         }
@@ -205,7 +206,7 @@ function ingest(
           agent.station = null
           agent.targetStation = null
           agent.path = []
-          startActivity(world, agent, { kind: 'visit', ticks: Math.max(5, Math.round(command.ticks)) })
+          startActivity(world, agent, { kind: 'visit', ticks: Math.max(5, Math.round(command.ticks)), trigger: command.trigger })
           break
         }
         const station = world.stations.find((candidate) =>
@@ -221,6 +222,7 @@ function ingest(
         // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
         // 用老字段承载，syncActivities 会在下一 tick 采纳成正式活动。
         agent.activityKind = command.activity
+        agent.activityTrigger = command.trigger
         agent.activityTicks = Math.max(5, Math.round(command.ticks))
         // 走路时间不该算进干活时长：到站后由 movement 重新起算（见 arrive 分支）。
         agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
@@ -402,6 +404,7 @@ export function step(
       activity: pending.kind,
       ticks: pending.ticks,
       ...(pending.skill === undefined ? {} : { skill: pending.skill as 'code' | 'review' | 'research' | 'compute' }),
+      ...(pending.trigger === undefined ? {} : { trigger: pending.trigger }),
     })
     events.push(emitEvent(world, 'agent.moved', { agentId, placeId: agent.placeId, travel: true }))
   }

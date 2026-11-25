@@ -20,6 +20,7 @@ export interface StartActivityInput {
   ticks: number
   skill?: string | undefined
   stationId?: string | null
+  trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
 }
 
 /** 开始一个活动：写进世界、挂到人身上，并把老字段同步好（旧机制还在读它们）。 */
@@ -34,6 +35,7 @@ export function startActivity(world: World, agent: Agent, input: StartActivityIn
     skill: input.skill,
     placeId: agent.placeId,
     stationId: input.stationId ?? null,
+    trigger: input.trigger,
     status: 'active',
     startedAt: world.tick,
     endsAt: world.tick + Math.max(1, Math.round(input.ticks)),
@@ -99,7 +101,8 @@ export function syncActivities(world: World): Activity[] {
       const record: Activity = {
         id: 'act-' + String(world.activitySeq),
         agentId: agent.id,
-        kind: agent.activityKind === 'meet' ? 'meet' : agent.activityKind === 'rest' ? 'rest' : 'work',
+        kind: agent.activityKind === 'meet' ? 'meet' : agent.activityKind === 'rest' ? 'rest' : agent.activityKind === 'visit' ? 'visit' : 'work',
+        trigger: agent.activityTrigger,
         skill: undefined,
         placeId: agent.placeId,
         stationId: agent.station,
@@ -109,6 +112,7 @@ export function syncActivities(world: World): Activity[] {
       }
       world.activities.push(record)
       agent.activityId = record.id
+      agent.activityTrigger = undefined
     }
   }
   return completed

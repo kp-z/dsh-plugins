@@ -187,7 +187,7 @@ export interface Agent {
   /** 出行到达的 tick（state === 'traveling' 时有效）。 */
   travelUntil?: number | undefined
   /** 到了目的地要做什么（出行途中暂存，落地后立刻执行）。 */
-  pendingActivity?: { kind: 'work' | 'rest' | 'meet' | 'visit'; ticks: number; skill?: string | undefined } | undefined
+  pendingActivity?: { kind: 'work' | 'rest' | 'meet' | 'visit'; ticks: number; skill?: string | undefined; trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined } | undefined
   /** 当前位置（相对当前场所，俯视平面）。 */
   position: Vec2
   /** 朝向（弧度），渲染层直接用于 yaw。 */
@@ -214,6 +214,8 @@ export interface Agent {
   /** 当前活动的 id（活动的唯一身份；老字段只是它的投影）。 */
   activityId?: string | undefined
   activityKind?: 'work' | 'meet' | 'rest' | 'visit' | undefined
+  /** 过渡字段：命令带来的触发来源，由 syncActivities 采纳进 Activity.trigger。 */
+  activityTrigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
   /** 活动结束 tick；到时自动回 idle，释放站点。 */
   activityUntil?: number | undefined
   /** 这次活动要干多少 tick（走到工位后才开始算，见 movement 的到站处理）。 */
@@ -239,6 +241,8 @@ export interface Activity {
   skill?: string | undefined
   placeId: string
   stationId: string | null
+  /** 谁触发了这件事。日志里的 decision 条目就写它——有真实来源才写，不编。 */
+  trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
   status: ActivityStatus
   /** 开始 tick。 */
   startedAt: number
