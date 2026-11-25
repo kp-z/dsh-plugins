@@ -102,13 +102,52 @@ function activityTypeOf(kind: string, skill?: string | null): string {
 }
 
 /** 角色头顶的「正在做什么」；没有活动就不给字段（前端据此决定画不画徽章）。 */
-function activeActivityOf(world: WorldLike, agent: WorldAgentLike): Record<string, unknown> | undefined {
-  const activities = (world as { activities?: { id: string; agentId: string; kind: string; skill?: string; status: string }[] }).activities
+/** tick -> 游戏时间（ISO）。1 tick = 1 游戏分钟，与 clockOf 同一套换算。 */
+function gameTimeAt(startDate: string, tick: number): string {
+  const minutes = Math.floor(tick)
+  const dayIndex = Math.floor(minutes / 1440)
+  const minuteOfDay = minutes % 1440
+  const date = new Date(new Date(startDate + 'T00:00:00Z').getTime() + dayIndex * 86400000)
+  const yyyy = String(date.getUTCFullYear()).padStart(4, '0')
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(date.getUTCDate()).padStart(2, '0')
+  const hh = String(Math.floor(minuteOfDay / 60)).padStart(2, '0')
+  const mi = String(minuteOfDay % 60).padStart(2, '0')
+  return yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + mi + ':00'
+}
+
+/**
+ * 角色头顶的「正在做什么」。
+ *
+ * 进度是**前端自己算的**（bundle 里的 ev()）：
+ *   progress = clamp((progress_elapsed_seconds + (now - anchor)/1000) / duration_seconds)
+ * 所以这里只要把三个锚点字段给对，进度条就会自己动——不需要额外的推送。
+ */
+function activeActivityOf(world: WorldLike, agent: WorldAgentLike, startDate: string): Record<string, unknown> | undefined {
+  const activities = (world as { activities?: { id: string; agentId: string; kind: string; skill?: string; status: string; startedAt: number; endsAt: number }[] }).activities
   if (activities === undefined) return undefined
   const id = (agent as { activityId?: string }).activityId
   const live = activities.find((item) => item.id === id && item.status === 'active')
   if (live === undefined) return undefined
-  return { activity_type: activityTypeOf(live.kind, live.skill) }
+  // 1 tick = 1 游戏分钟 = 60 游戏秒。
+  const durationSeconds = Math.max(1, (live.endsAt - live.startedAt) * 60)
+  return {
+    activity_type: activityTypeOf(live.kind, live.skill),
+    name: activityLabelOf(live.kind),
+    duration_seconds: durationSeconds,
+    progress_elapsed_seconds: 0,
+    progress_anchor_game_time: gameTimeAt(startDate, live.startedAt),
+  }
+}
+
+/** 活动的中文标签（前端的忙碌文案会用它）。 */
+function activityLabelOf(kind: string): string {
+  if (kind === 'work') return '干活'
+  if (kind === 'rest') return '休息'
+  if (kind === 'meet') return '交谈'
+  if (kind === 'visit') return '待着'
+  if (kind === 'sleep') return '睡觉'
+  return '忙'
 }
 /** 场所 id -> 前端场景资源键（presence.scene 必须是资源键，不是 place id）。 */
 function assetOfPlace(world: WorldLike, placeId: string): string {
@@ -263,7 +302,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     presence[agent.id] = presenceOf(agent, agentPlace, assetOfPlace(world, agentPlace))
     // 头顶徽章：只有真的有活动才是 online，否则就是 offline（前端据此不画）。
     const status: Record<string, unknown> = { status: 'offline' }
-    const active = activeActivityOf(world, agent)
+    const active = activeActivityOf(world, agent, opts.startDate)
     if (active !== undefined) {
       status['status'] = 'online'
       status['active_activity'] = active

@@ -432,16 +432,34 @@ export async function handleApi(
  * recent 与 catch-up 用同一份投影（同源字段），世界还没起来时给一份合法空态：
  * 前端 recent 路径硬要求 feed_head_record_entry_id 与 realtime_epoch，缺任一个整块失败。
  */
+/**
+ * 日志响应。
+ *
+ * recent 与 catch-up 用同一份投影（同源字段）。内容来自**活动**：
+ * 每段活动就是一条 event 条目，带 phase（activity_id/type/name/status）。
+ * 空世界也给一份合法空态——前端 recent 路径硬要求 feed_head 与 realtime_epoch。
+ */
 function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string, unknown> {
   const world = ctx.getWorld()
   const snapshot = world === null ? null : projectSnapshot(world, ctx.opts)
   const clock = (snapshot?.['clock'] ?? {}) as { current_datetime?: string; day_number?: number }
   const cursor = (snapshot?.['cursor'] ?? {}) as { epoch?: string }
+  const worldLike = world as unknown as {
+    activities?: { id: string; agentId: string; kind: string; skill?: string; placeId: string; status: string; startedAt: number; endsAt: number; endedAt?: number }[]
+    places?: { id: string; name: string; asset: string }[]
+    agents?: { id: string; name: string }[]
+  } | null
   const body = logsOf({
     datetime: typeof clock.current_datetime === 'string' ? clock.current_datetime : ctx.opts.startDate + 'T08:00:00',
     dayNumber: typeof clock.day_number === 'number' && clock.day_number > 0 ? Math.floor(clock.day_number) : 1,
     epoch: typeof cursor.epoch === 'string' && cursor.epoch !== '' ? cursor.epoch : 'epoch-' + (world?.id ?? ctx.opts.worldId),
-    events: world?.events ?? [],
+    startDate: ctx.opts.startDate,
+    activities: worldLike?.activities ?? [],
+    nameOf: (agentId) => worldLike?.agents?.find((agent) => agent.id === agentId)?.name ?? agentId,
+    placeOf: (placeId) => {
+      const place = worldLike?.places?.find((item) => item.id === placeId)
+      return place === undefined ? null : { asset: place.asset, name: place.name }
+    },
   })
   return which === 'recent' ? body.recent : body.catchUp
 }

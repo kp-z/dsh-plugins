@@ -3,60 +3,66 @@ import { test } from 'node:test'
 
 import { logsOf } from '../lib/adapters/slowvale/logs.js'
 
-const input = {
-  datetime: '2026-01-05T13:51:00',
-  dayNumber: 7,
+const base = {
+  datetime: '2026-01-01T08:00:00',
+  dayNumber: 1,
   epoch: 'epoch-w1',
-  events: [
-    { seq: 11, tick: 100, type: 'agent.intent', payload: { agentId: 'agent-1' } },
-    { seq: 12, tick: 101, type: 'task.changed', payload: {} },
-  ],
+  startDate: '2026-01-01',
+  nameOf: (id) => (id === 'agent-1' ? '阿金' : id),
+  placeOf: (id) => (id === 'place:office.tech_company_1' ? { asset: 'company', name: '科技公司 · 办公室' } : null),
 }
 
-/** 前端 Zn/Pn 的硬校验：缺 feed_head / realtime_epoch 就整块失败。 */
-test('recent 必须带 feed_head_record_entry_id 与 realtime_epoch', () => {
-  const { recent } = logsOf(input)
-  assert.ok(Number.isSafeInteger(recent.feed_head_record_entry_id))
-  assert.ok(Number(recent.feed_head_record_entry_id) >= 0)
-  assert.equal(typeof recent.realtime_epoch, 'string')
-  assert.ok(String(recent.realtime_epoch).length > 0)
-  assert.equal(recent.realtime_epoch, 'epoch-w1')
-  assert.ok(Array.isArray(recent.entries))
-  assert.ok(Array.isArray(recent.card_upserts))
-  assert.equal(recent.has_more, false)
+test('一段活动就是一条 event 条目，带 phase（前端要求的形状）', () => {
+  const { recent } = logsOf({
+    ...base,
+    activities: [
+      { id: 'act-7', agentId: 'agent-1', kind: 'work', skill: 'code', placeId: 'place:office.tech_company_1', status: 'completed', startedAt: 10, endsAt: 40, endedAt: 40 },
+    ],
+  })
+  const entry = recent.entries[0]
+  assert.ok(entry.record_entry_id > 0)
+  assert.equal(entry.kind, 'event')
+  assert.equal(entry.phase.kind, 'activity')
+  assert.equal(entry.phase.activity_id, 'act-7')
+  assert.equal(entry.phase.activity_type, 'ProgrammerActivity')
+  assert.equal(entry.phase.status, 'completed')
+  assert.equal(typeof entry.phase.is_viewer_activity, 'boolean')
+  assert.ok(entry.game_time.current_datetime)
+  assert.ok(entry.game_time.day_number > 0)
 })
 
-/** 前端 eb()：game_time.day_number 必须是正整数，否则「缺少有效 day_number」。 */
-test('每条 entry 与每张 card 都要有正整数 day_number', () => {
-  const { recent } = logsOf(input)
-  for (const entry of recent.entries) {
-    assert.equal(entry.game_time.current_datetime, input.datetime)
-    assert.ok(Number.isSafeInteger(entry.game_time.day_number))
-    assert.ok(Number(entry.game_time.day_number) > 0)
-  }
-  for (const card of recent.card_upserts) {
-    assert.equal(card.game_time.current_datetime, input.datetime)
-    assert.ok(Number(card.game_time.day_number) > 0)
-  }
+test('卡片按场所切，标题用场所名', () => {
+  const { recent } = logsOf({
+    ...base,
+    activities: [
+      { id: 'act-1', agentId: 'agent-1', kind: 'work', placeId: 'place:office.tech_company_1', status: 'completed', startedAt: 0, endsAt: 10 },
+    ],
+  })
+  assert.equal(recent.card_upserts[0].card_id, 'card.place.company')
+  assert.equal(recent.card_upserts[0].title, '科技公司 · 办公室')
 })
 
-/** 我们的世界事件没有 decision/phase，所以必须走 standalone（event 会被要求二选一）。 */
-test('条目用 standalone + notice，避开前端对 event 的 decision/phase 要求', () => {
-  const { recent } = logsOf(input)
-  for (const entry of recent.entries) {
-    assert.equal(entry.kind, 'standalone')
-    assert.equal(typeof entry.item, 'object')
-    assert.equal(entry.item.record_type, 'system_notice')
-    assert.equal(typeof entry.item.content, 'string')
-    assert.ok(!('decision' in entry))
-    assert.ok(!('phase' in entry))
-  }
+test('条目 id 由活动身份派生：同一条活动重复投影得到同一个 id', () => {
+  const activity = { id: 'act-42', agentId: 'agent-1', kind: 'visit', placeId: 'place:office.tech_company_1', status: 'active', startedAt: 5, endsAt: 60 }
+  const first = logsOf({ ...base, activities: [activity] }).recent.entries[0].record_entry_id
+  const second = logsOf({ ...base, activities: [{ ...activity }] }).recent.entries[0].record_entry_id
+  assert.equal(first, 42)
+  assert.equal(second, 42)
 })
 
-test('没有事件时给合法空态，但两个硬字段仍在', () => {
-  const { recent, catchUp } = logsOf({ ...input, events: [] })
+test('时间按 tick 换算：1 tick = 1 游戏分钟', () => {
+  const { recent } = logsOf({
+    ...base,
+    activities: [
+      { id: 'act-60', agentId: 'agent-1', kind: 'work', placeId: 'place:office.tech_company_1', status: 'completed', startedAt: 60, endsAt: 90 },
+    ],
+  })
+  assert.equal(recent.entries[0].game_time.current_datetime, '2026-01-01T01:00:00')
+})
+
+test('空世界：合法空态，但两个硬字段仍在', () => {
+  const { recent, catchUp } = logsOf({ ...base, activities: [] })
   assert.deepEqual(recent.entries, [])
-  assert.deepEqual(recent.card_upserts, [])
   assert.equal(recent.feed_head_record_entry_id, 0)
   assert.equal(recent.realtime_epoch, 'epoch-w1')
   assert.equal(catchUp.outcome, 'page')

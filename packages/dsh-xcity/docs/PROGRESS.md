@@ -10945,3 +10945,33 @@ world tick 11929 running=true。
   agent-1 status: {"status":"online","active_activity":{"activity_type":"WaitActivity"}}
 
 判据：857 条 pass 856 / fail 0（新增活动 5 条 + 投影 3 条）。
+
+## 2026-11-25 19:10 进度条与日志都接上了（数据模型层面）
+
+**进度**：前端的进度条是**它自己算的**（bundle 里的 ev()）：
+
+    progress = clamp((progress_elapsed_seconds + (now_game_time - anchor)/1000) / duration_seconds)
+
+所以服务端只要给对三个锚点字段，进度条就会动——不需要额外推送：
+    active_activity.duration_seconds        = (endsAt - startedAt) * 60   // 1 tick = 1 游戏分钟
+    active_activity.progress_elapsed_seconds = 0
+    active_activity.progress_anchor_game_time = 活动开始的游戏时间(ISO)
+另外补了 name（中文标签），前端的忙碌文案会用。
+
+**日志**：不再降级成 standalone 公告。每段活动就是一条 event 条目：
+    kind=event, card_id=card.place.<asset>, phase={activity_id, activity_type, name, status, is_viewer_activity}
+-record_entry_id 由活动身份派生（act-17 -> 17），同一段活动每次投影 id 不变
+-卡片按场所切（card.place.company，标题用场所名），时间按 tick 换算
+
+**顺带修的坑**：场所落点来自前端地图的像素坐标（480,800），而领域坐标是网格单位
+（37x21 格 x 2 = [-37,37]）。落点不折算就站在没有路的地方，findPath 永远返回空——
+表现是"到了某地之后什么都不干"。现在到达时与读档时都会 snapIntoNav 收进可行走格。
+
+实测（xcity-test）：
+    state walking | aid act-1
+    status: {"status":"online","active_activity":{"activity_type":"ProgrammerActivity",
+             "name":"干活","duration_seconds":18000,"progress_elapsed_seconds":0,
+             "progress_anchor_game_time":"2026-01-12T05:46:00"}}
+    logs: 1 entry, phase={activity_id:"act-1", activity_type:"ProgrammerActivity", ...}
+
+判据：858 条 pass 857 / fail 0。

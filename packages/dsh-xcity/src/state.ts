@@ -42,6 +42,7 @@ import { DEFAULT_MIN_GAP, hangoutsForWorld } from './world/hangouts.js'
 import { join } from 'node:path'
 import { createWorldStore, loadWorldSync } from './store/index.js'
 import { reconcileWorld } from './world/reconcile.js'
+import { snapIntoNav } from './sim/travel.js'
 import { createWorld } from './world/create.js'
 
 /** 建插件状态的选项。 */
@@ -311,6 +312,9 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     }
     for (const agent of world.agents ?? []) {
       if (agent.placeId === undefined || agent.placeId === '') agent.placeId = world.defaultPlaceId
+      // 站在地图外的人（老档把前端像素当坐标时就是这样）收进可行走网格，
+      // 否则 findPath 永远返回空，指令全部静默失效。
+      if (agent.position !== undefined) agent.position = snapIntoNav(world, agent.position)
     }
     return world
   }

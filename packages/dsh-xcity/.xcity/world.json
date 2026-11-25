@@ -1,6 +1,6 @@
 {
   "fileVersion": 1,
-  "savedAtTick": 13916,
+  "savedAtTick": 16500,
   "content": [
     {
       "id": "pack.default",
@@ -27,7 +27,7 @@
     "id": "world-1nb10jy-b",
     "name": "Agent World",
     "seed": 3586027534,
-    "tick": 13916,
+    "tick": 16500,
     "createdAt": "2026-11-25T05:35:30.212Z",
     "paused": false,
     "agentModel": "model.agent.mv-tom",
@@ -1615,13 +1615,13 @@
         "role": "lead",
         "palette": "skin.role.lead",
         "modelId": "model.agent.mv-tom",
-        "state": "idle",
+        "state": "working",
         "position": {
-          "x": 9,
-          "z": 249
+          "x": 24,
+          "z": -6
         },
-        "facing": -2.045196209586804,
-        "station": null,
+        "facing": -2.0032041023654332,
+        "station": "station.seat-04",
         "targetStation": null,
         "path": [],
         "carrying": null,
@@ -1635,8 +1635,11 @@
           "reasoningEffort": null
         },
         "boundAgentId": null,
-        "placeId": "place:outdoor.sunset_beach",
-        "activityTicks": 60
+        "placeId": "place:office.tech_company_1",
+        "activityTicks": 300,
+        "activityKind": "work",
+        "activityUntil": 16645,
+        "activityId": "act-1"
       },
       {
         "id": "agent-2",
@@ -1646,8 +1649,8 @@
         "modelId": "model.agent.mv-lea",
         "state": "idle",
         "position": {
-          "x": -20.6,
-          "z": -17.8
+          "x": -20,
+          "z": -18
         },
         "facing": 0.7126103147935232,
         "station": null,
@@ -1674,8 +1677,8 @@
         "modelId": "model.agent.mv-jack",
         "state": "idle",
         "position": {
-          "x": 23.114285714285714,
-          "z": 14.6
+          "x": 24,
+          "z": 14
         },
         "facing": -2.5782298869590408,
         "station": null,
@@ -1702,8 +1705,8 @@
         "modelId": "model.agent.mv-joe",
         "state": "idle",
         "position": {
-          "x": 28.6,
-          "z": -14.685714285714287
+          "x": 28,
+          "z": -14
         },
         "facing": 2.667214136949625,
         "station": null,
@@ -1730,8 +1733,8 @@
         "modelId": "model.agent.mv-stephen",
         "state": "idle",
         "position": {
-          "x": 9.4,
-          "z": -0.1999999999999975
+          "x": 10,
+          "z": 0
         },
         "facing": 3.120319267565732,
         "station": null,
@@ -1758,8 +1761,8 @@
         "modelId": "model.agent.mv-alice",
         "state": "idle",
         "position": {
-          "x": -10.6,
-          "z": -4.6
+          "x": -10,
+          "z": -4
         },
         "facing": 0.40943720952614265,
         "station": null,
@@ -1786,8 +1789,8 @@
         "modelId": "model.agent.mv-grace",
         "state": "idle",
         "position": {
-          "x": -31.4,
-          "z": 14.6
+          "x": -32,
+          "z": 14
         },
         "facing": -0.4352314873073315,
         "station": null,
@@ -1814,8 +1817,8 @@
         "modelId": "model.agent.mv-monica",
         "state": "idle",
         "position": {
-          "x": -31.4,
-          "z": 1.7999999999999998
+          "x": -32,
+          "z": 2
         },
         "facing": -0.05726217184740964,
         "station": null,
@@ -1837,7 +1840,7 @@
     ],
     "tasks": [],
     "messages": [],
-    "seq": 5569,
+    "seq": 6765,
     "messageSeq": 1,
     "places": [
       {
@@ -1895,6 +1898,19 @@
         }
       }
     ],
-    "defaultPlaceId": "place:office.tech_company_1"
+    "defaultPlaceId": "place:office.tech_company_1",
+    "activities": [
+      {
+        "id": "act-1",
+        "agentId": "agent-1",
+        "kind": "work",
+        "placeId": "place:office.tech_company_1",
+        "stationId": null,
+        "status": "active",
+        "startedAt": 16186,
+        "endsAt": 16486
+      }
+    ],
+    "activitySeq": 1
   }
 }
