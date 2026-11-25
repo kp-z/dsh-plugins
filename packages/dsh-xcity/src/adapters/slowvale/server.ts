@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { debugScript } from './debug.js'
-import { epochOf, projectScene, projectSnapshot, type ProjectOptions } from './project.js'
+import { epochOf, projectPhone, projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
 import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat } from './visual.js'
@@ -163,7 +163,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const pushSnapshot = (event: string): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
-    const payload = projectSnapshot(world, options.opts)
+    const payload = projectSnapshot(world, { ...options.opts, phone: sms.signal() })
     envelopeSeq += 1
     const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const withCursor = { ...payload, cursor }
@@ -192,14 +192,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     lastPushedScene = scene
     envelopeSeq += 1
     const cursor = { epoch: epochOf(world), seq: envelopeSeq }
-    const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: world.id, scene }))).toString('base64')
+    const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: options.opts.worldId, scene }))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
       cursor,
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'scene_state',
-      route: { world_id: world.id, broadcast: false, role_ids: [], scenes: [scene] },
+      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [], scenes: [scene] },
       payload_gz: payloadGz,
     }
     lastCursor = cursor
@@ -218,7 +218,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
    * - place_runtime 的 payload.place_id 必须等于 key；
    * - place_topology 的 payload.id 必须等于 key。
    */
-  const pushStatePart = (part: string, key: string, payload: Record<string, unknown>, scene: string): void => {
+  const pushStatePart = (part: string, key: string, payload: Record<string, unknown>, route: { role_ids: string[]; scenes: string[] }): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
     envelopeSeq += 1
@@ -230,7 +230,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'state',
-      route: { world_id: world.id, broadcast: false, role_ids: [], scenes: [scene] },
+      route: { world_id: options.opts.worldId, broadcast: false, ...route },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -264,7 +264,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: tickMarker,
       kind: 'visual',
-      route: { world_id: world.id, broadcast: false, role_ids: [actorId], scenes: [scene] },
+      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -289,7 +289,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: tickMarker,
       kind: 'visual',
-      route: { world_id: world.id, broadcast: false, role_ids: [actorId], scenes: [scene] },
+      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -314,7 +314,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'furniture',
-      route: { world_id: world.id, broadcast: false, role_ids: [], scenes: [scene] },
+      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [], scenes: [scene] },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -329,15 +329,26 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const scene = snapshot.scene
     if (typeof scene !== 'string' || scene === '') return
     const place = options.opts.place
-    pushStatePart('place_runtime', place, { place_id: place, furniture: [], installed_appliances: [] }, scene)
+    pushStatePart('place_runtime', place, { place_id: place, furniture: [], installed_appliances: [] }, { role_ids: [], scenes: [scene] })
     // furniture 信封：场景家具（这里先空）。前端把它当作场景可交互层的屏障事件。
     pushFurniture()
     pushStatePart(
       'place_topology',
       place,
       { id: place, place_id: place, scene, name: String(place), place_type: 'building', parent_id: null },
-      scene,
+      { role_ids: [], scenes: [scene] },
     )
+  }
+
+  let lastPhone = sms.signal()
+  const pushPhoneIfChanged = (): void => {
+    const signal = sms.signal()
+    if (signal.rowId === lastPhone.rowId && signal.unread === lastPhone.unread) return
+    lastPhone = signal
+    const world = options.getWorld()
+    const roleId = world?.agents.find((agent) => agent.id === options.opts.viewerRoleId)?.id ?? world?.agents[0]?.id
+    if (!roleId) return
+    pushStatePart('role_phone', roleId, projectPhone(signal), { role_ids: [roleId], scenes: [] })
   }
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -357,7 +368,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         const world = options.getWorld()
         if (world !== null) {
           // connected 会重置基线；紧跟着发一次 resync 建立 cursor 链的起点
-          writeEvent(res, 'connected', projectSnapshot(world, options.opts))
+          writeEvent(res, 'connected', projectSnapshot(world, { ...options.opts, phone: sms.signal() }))
           pushSnapshot('resync')
         }
         req.on('close', () => {
@@ -430,6 +441,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       }
       if (url.pathname.startsWith('/api/')) {
         await handleApi(ctx, req, res, url)
+        if (url.pathname === '/api/game/player/message' || url.pathname === '/api/game/phone/sms/thread') pushPhoneIfChanged()
         return
       }
 
@@ -521,6 +533,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
             sentAt: new Date().toISOString(),
             isSelf: false,
           })
+          pushPhoneIfChanged()
           return true
         },
         close: async () => {

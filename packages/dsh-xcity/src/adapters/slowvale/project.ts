@@ -291,6 +291,11 @@ function animOf(agent: { state?: string; activityKind?: string | null }): string
   return 'idle'
 }
 
+/** 原版 role_phone replace 与整份快照共用相同形状。 */
+export function projectPhone(signal: ProjectOptions['phone']) {
+  return { sms: { player_thread_message_row_id: signal?.rowId || null, player_thread_unread_count: signal?.unread ?? 0, latest_message_row_id: signal?.rowId || null, total_unread_count: signal?.unread ?? 0 }, wallet: { balance: 128000, currency: 'CNY' }, money: 128000, bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 } }
+}
+
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */
 export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<string, unknown> {
   // 世界快照永远用配置里的默认场景；请求级的场景切换由 projectScene 处理
@@ -390,7 +395,7 @@ role_presences: presence,
       attributes: { sources: [], totals: {}, rows: [] },
       attribute_effects: { sources: [], totals: {}, rows: [] },
       package: { money: 128000, items: [], entries: [] },
-      phone: { sms: { player_thread_message_row_id: opts.phone?.rowId ?? null, player_thread_unread_count: opts.phone?.unread ?? 0, total_unread_count: opts.phone?.unread ?? 0 }, wallet: { balance: 128000, currency: 'CNY' }, money: 128000, bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 } },
+      phone: projectPhone(opts.phone),
       housing: {},
       farm: null,
       money: 128000,

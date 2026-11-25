@@ -6,6 +6,7 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { gunzipSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -154,6 +155,60 @@ test('左下角聊天框的形状：{role_id, content} 也要走通（前端 Q2 
     assert.equal(seen[0].content, '左下角发的话')
     assert.ok((body.messages ?? []).some((m) => m.content === '左下角发的话'), '消息要落进线程')
   } finally {
+    await bridge.close()
+  }
+})
+
+test('入站短信通过 SSE 推送私有手机状态，新连接收到同一行号', async () => {
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir, pushMs: 0,
+    account: { email: 'a@b.c', password: 'x' },
+    opts: { worldId: 'public-town', viewerRoleId: 'agent-1', place: 'company', startDate: '2026-01-01' },
+    getWorld: () => world,
+  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 3000)
+  const url = 'http://127.0.0.1:' + bridge.port + '/api/game/stream'
+  const events = async function* () {
+    const response = await fetch(url, { signal: controller.signal })
+    assert.equal(response.status, 200)
+    let buffer = ''
+    for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
+      buffer += chunk
+      let end
+      while ((end = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, end)
+        buffer = buffer.slice(end + 2)
+        if (frame.startsWith('event: ')) {
+          const [name, json] = frame.split('\n')
+          yield [name.slice(7), JSON.parse(json.slice(6))]
+        }
+      }
+    }
+  }
+  try {
+    const stream = events()
+    const { value: [initialName, initial] } = await stream.next()
+    assert.equal(initialName, 'connected')
+    assert.equal(initial.viewer.phone.sms.player_thread_message_row_id, null)
+    const { value: [baselineName, baseline] } = await stream.next()
+    assert.equal(baselineName, 'resync')
+    assert.equal(bridge.appendIncoming('agent-2', '小满', '收到'), true)
+    const { value: [event, update] } = await stream.next()
+    assert.equal(event, 'update')
+    assert.deepEqual(update.prev, baseline.cursor)
+    assert.deepEqual(update.route, { world_id: 'public-town', broadcast: false, role_ids: ['agent-1'], scenes: [] })
+    const body = JSON.parse(gunzipSync(Buffer.from(update.payload_gz, 'base64')).toString())
+    assert.equal(body.part, 'role_phone')
+    assert.equal(body.operation, 'replace')
+    assert.equal(body.key, 'agent-1')
+    assert.equal(body.payload.sms.player_thread_message_row_id, 1)
+    assert.equal(body.payload.sms.player_thread_unread_count, 1)
+    const { value: [, connected] } = await events().next()
+    assert.deepEqual(connected.viewer.phone, body.payload)
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
     await bridge.close()
   }
 })
