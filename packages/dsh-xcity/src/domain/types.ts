@@ -211,17 +211,43 @@ export interface Agent {
    */
   hangout: Vec2 | null
   /** R363：主动活动（开会/休息）的类型；普通任务为 null/undefined。 */
-  activityKind?: 'work' | 'meet' | 'rest' | 'visit'
+  /** 当前活动的 id（活动的唯一身份；老字段只是它的投影）。 */
+  activityId?: string | undefined
+  activityKind?: 'work' | 'meet' | 'rest' | 'visit' | undefined
   /** 活动结束 tick；到时自动回 idle，释放站点。 */
-  activityUntil?: number
+  activityUntil?: number | undefined
   /** 这次活动要干多少 tick（走到工位后才开始算，见 movement 的到站处理）。 */
-  activityTicks?: number
+  activityTicks?: number | undefined
   llm: AgentLlmRoute
   /** 与真实 subagent 的绑定。模拟模式下为 null。 */
   boundAgentId: string | null
 }
 
 /** 工单。 */
+/** 活动的生命周期。暂停先留着：现在没人触发，但语义上它和"中断"不同。 */
+export type ActivityStatus = 'active' | 'paused' | 'completed' | 'interrupted'
+
+/**
+ * 角色正在做的一件事。
+ *
+ * 领域概念，不认识前端词表：kind/skill 由适配层翻成 ProgrammerActivity 这类类型名。
+ */
+export interface Activity {
+  id: string
+  agentId: string
+  kind: 'work' | 'rest' | 'meet' | 'visit' | 'sleep'
+  skill?: string | undefined
+  placeId: string
+  stationId: string | null
+  status: ActivityStatus
+  /** 开始 tick。 */
+  startedAt: number
+  /** 预计结束 tick。 */
+  endsAt: number
+  /** 真正的结束 tick（完成/中断时写）。 */
+  endedAt?: number | undefined
+}
+
 export interface Task {
   id: string
   /** 在来源任务集内的 key。回指内容库用（HUD 分组、诊断"这张单出自哪条流水线"）。 */
@@ -393,6 +419,10 @@ export interface World {
   /** R369：已经为哪一批任务做过开工会议（按最新任务 createdAtTick 去重）。 */
   briefingForTick?: number
   agents: Agent[]
+  /** 活动记录（环形，最近 ACTIVITY_KEEP 条）。 */
+  activities: Activity[]
+  /** 活动 id 序列号。 */
+  activitySeq: number
   tasks: Task[]
   messages: Message[]
   /** 事件环形缓冲（只保留最近 N 条，见 constants.EVENT_RING_SIZE）。 */

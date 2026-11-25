@@ -1,6 +1,6 @@
 {
   "fileVersion": 1,
-  "savedAtTick": 2100,
+  "savedAtTick": 13916,
   "content": [
     {
       "id": "pack.default",
@@ -27,7 +27,7 @@
     "id": "world-1nb10jy-b",
     "name": "Agent World",
     "seed": 3586027534,
-    "tick": 2100,
+    "tick": 13916,
     "createdAt": "2026-11-25T05:35:30.212Z",
     "paused": false,
     "agentModel": "model.agent.mv-tom",
@@ -1837,7 +1837,7 @@
     ],
     "tasks": [],
     "messages": [],
-    "seq": 843,
+    "seq": 5569,
     "messageSeq": 1,
     "places": [
       {

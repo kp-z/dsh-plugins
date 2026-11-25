@@ -165,6 +165,8 @@ export function createWorld(options: CreateWorldOptions): World {
     nav,
     gameMode: false,
     agents,
+    activities: [],
+    activitySeq: 0,
     tasks,
     messages: [],
     events: [],

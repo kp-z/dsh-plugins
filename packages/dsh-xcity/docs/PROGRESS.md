@@ -10924,3 +10924,24 @@ world tick 11929 running=true。
 - 发「去海滩散步」→ 从 gym 出发 → sunset_beach
 
 判据：849 条 pass 848 / fail 0。
+
+## 2026-11-25 18:00 活动身份化（用户选 B：上实体，不做临时映射）
+
+领域新增 Activity：
+
+    Activity { id, agentId, kind, skill?, placeId, stationId, status, startedAt, endsAt, endedAt? }
+    ActivityStatus = active | paused | completed | interrupted
+
+- 活动有**身份**（act-N）、有起止、有中断语义：新活动开始会把旧活动记成 interrupted，
+  而不是"字段被覆盖，谁也说不清刚才在干什么"。
+- 老字段 activityKind/activityUntil 保留为**投影**：心跳、调度器、以及若干测试仍在写它们，
+  syncActivities 每 tick 把它们采纳成正式活动——所以"谁设置活动"仍然只有一个出口。
+- 到点自动 completed；emit 之前对账，所以同一 tick 的事件里能看见活动的结束。
+- 前端槽位终于填上了：role_public_statuses[id].active_activity = { activity_type }，
+  类型名必须落在前端徽章表里（ProgrammerActivity / RestActivity / SpeakActivity /
+  WaitActivity / SleepActivity / SkillStudyActivity），编一个名字前端只会记警告不画。
+
+实测（xcity-test）：
+  agent-1 status: {"status":"online","active_activity":{"activity_type":"WaitActivity"}}
+
+判据：857 条 pass 856 / fail 0（新增活动 5 条 + 投影 3 条）。

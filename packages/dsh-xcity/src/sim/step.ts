@@ -41,6 +41,7 @@ import type {
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { advanceMovement } from './movement.js'
 import { arriveTravelers, beginTravel } from './travel.js'
+import { endActivity, startActivity, syncActivities } from './activity.js'
 import { advanceWork } from './interaction.js'
 import { advanceIdle } from './idle.js'
 import { recoverStalledTasks } from './recovery.js'
@@ -173,8 +174,7 @@ function ingest(
           agent.station = null
           agent.targetStation = null
           agent.path = []
-          delete agent.activityKind
-          delete agent.activityUntil
+          endActivity(world, agent, 'completed')
           break
         }
         // "去某地待着"不需要工位：场所里没有椅子也该能站着（内容没建模的地方多得是）。
@@ -205,9 +205,7 @@ function ingest(
           agent.station = null
           agent.targetStation = null
           agent.path = []
-          agent.activityKind = 'visit'
-          agent.activityTicks = Math.max(5, Math.round(command.ticks))
-          agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
+          startActivity(world, agent, { kind: 'visit', ticks: Math.max(5, Math.round(command.ticks)) })
           break
         }
         const station = world.stations.find((candidate) =>
@@ -220,6 +218,8 @@ function ingest(
         agent.station = null
         agent.targetStation = station.id
         agent.path = path
+        // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
+        // 用老字段承载，syncActivities 会在下一 tick 采纳成正式活动。
         agent.activityKind = command.activity
         agent.activityTicks = Math.max(5, Math.round(command.ticks))
         // 走路时间不该算进干活时长：到站后由 movement 重新起算（见 arrive 分支）。
@@ -476,6 +476,13 @@ export function step(
   // 这一段的职责是把"在进行中却没人推进"的单**退回 ready**（理由见 `recovery.ts` 头注释）。
   // 它和 `idle.ts` 入口那条"押着单的人不算空闲"是一对：那条防再犯，这条收已经卡住的。
   const recovery = recoverStalledTasks(world)
+
+  // ── 5.5 activity ──
+  // 活动对账放在 emit 之前：这一 tick 结束的活动要能在同一 tick 的事件里被看见。
+  const activitySync = syncActivities(world)
+  for (const activity of activitySync.completed) {
+    events.push(emitEvent(world, 'agent.state', { agentId: activity.agentId, activityId: activity.id, status: 'completed' }))
+  }
 
   // ── 6. emit ──
   events.push(...intentEvents, ...emitPhaseEvents(world, { ready, scheduler: scheduled, movement, idle, work, comms: allMessages }))

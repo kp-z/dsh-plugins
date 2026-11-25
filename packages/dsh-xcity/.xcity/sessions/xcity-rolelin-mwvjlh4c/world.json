@@ -1,6 +1,6 @@
 {
   "fileVersion": 1,
-  "savedAtTick": 1577,
+  "savedAtTick": 13916,
   "content": [
     {
       "id": "pack.default",
@@ -188,7 +188,7 @@
     "id": "world-1nb10jy-b",
     "name": "Agent World",
     "seed": 3586027534,
-    "tick": 1577,
+    "tick": 13916,
     "createdAt": "2026-11-25T05:35:30.212Z",
     "paused": false,
     "agentModel": "model.agent.mv-tom",
@@ -1778,8 +1778,8 @@
         "modelId": "model.agent.mv-tom",
         "state": "idle",
         "position": {
-          "x": 3.8000000000000025,
-          "z": 7.4
+          "x": 9,
+          "z": 249
         },
         "facing": -2.045196209586804,
         "station": null,
@@ -1796,7 +1796,7 @@
           "reasoningEffort": null
         },
         "boundAgentId": null,
-        "placeId": "place:office.tech_company_1",
+        "placeId": "place:outdoor.sunset_beach",
         "activityTicks": 60
       },
       {
@@ -1998,7 +1998,7 @@
     ],
     "tasks": [],
     "messages": [],
-    "seq": 631,
+    "seq": 5569,
     "messageSeq": 1,
     "places": [
       {
