@@ -150,10 +150,13 @@ test('真实 HTTP 日志路由：历史分页、快照水位及旧 epoch 重置'
       return res.json()
     }
     const snapshot = await get('state/world?role_id=agent-1')
+    assert.equal(snapshot.clock.game_time.current_datetime, '2026-01-01T00:40:00')
     const first = await get('logs/recent?role_id=agent-1&limit=1')
     assert.equal(first.realtime_epoch, snapshot.cursor.epoch)
     assert.equal(first.feed_head_record_entry_id, snapshot.feed_head_record_entry_id)
     assert.equal(first.entries[0].phase_id, 'act-7')
+    assert.deepEqual(first.card_upserts[0].game_time, first.entries[0].game_time)
+    assert.equal(first.card_upserts[0].game_time.modern_time, '00:10')
     assert.equal(first.has_more, true)
     const query = new URLSearchParams({ role_id: 'agent-1', realtime_epoch: first.realtime_epoch,
       after_record_entry_id: String(first.page_end_record_entry_id) })

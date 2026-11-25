@@ -57,7 +57,7 @@ const TOWN_CARD = 'card.town'
 const TOWN_AGGREGATE = 'aggregate.town'
 
 /** tick -> 游戏时间（1 tick = 1 游戏分钟，与 clockOf 同一换算）。 */
-function timeOfTick(startDate: string, tick: number): { datetime: string; dayNumber: number } {
+function timeOfTick(startDate: string, tick: number) {
   const minutes = Math.floor(tick)
   const dayIndex = Math.floor(minutes / 1440)
   const minuteOfDay = minutes % 1440
@@ -67,7 +67,8 @@ function timeOfTick(startDate: string, tick: number): { datetime: string; dayNum
   const dd = String(date.getUTCDate()).padStart(2, '0')
   const hh = String(Math.floor(minuteOfDay / 60)).padStart(2, '0')
   const mi = String(minuteOfDay % 60).padStart(2, '0')
-  return { datetime: yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + mi + ':00', dayNumber: dayIndex + 1 }
+  const modern_time = hh + ':' + mi
+  return { current_datetime: yyyy + '-' + mm + '-' + dd + 'T' + modern_time + ':00', day_number: dayIndex + 1, modern_time }
 }
 
 /** 前端徽章白名单里的活动类型名。 */
@@ -110,7 +111,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
   const drafts: Draft[] = []
   const cards = new Map<string, Record<string, unknown>>()
 
-  const cardFor = (cardId: string, aggregateId: string, title: string, initiator: string, gameTime: { current_datetime: string; day_number: number }): void => {
+  const cardFor = (cardId: string, aggregateId: string, title: string, initiator: string, gameTime: ReturnType<typeof timeOfTick>): void => {
     if (cards.has(cardId)) return
     cards.set(cardId, { card_id: cardId, aggregate_id: aggregateId, title, viewer_role: 'participant', initiator_name: initiator, game_time: gameTime })
   }
@@ -122,8 +123,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     const aggregateId = 'aggregate.' + activity.id
     const at = timeOfTick(input.startDate, activity.startedAt)
     const name = input.nameOf(activity.agentId)
-    const gameTime = { current_datetime: at.datetime, day_number: at.dayNumber }
-    cardFor(cardId, aggregateId, place?.name ?? '小镇', name, gameTime)
+    cardFor(cardId, aggregateId, place?.name ?? '小镇', name, at)
 
     // 有触发来源才有 decision：reason 用原话，不加工。
     if (activity.trigger?.text !== undefined && activity.trigger.text.trim() !== '') {
@@ -173,10 +173,9 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
 
   for (const notice of input.notices) {
     const at = timeOfTick(input.startDate, notice.tick)
-    const gameTime = { current_datetime: at.datetime, day_number: at.dayNumber }
     const cardId = TOWN_CARD + '.' + notice.seq
     const aggregateId = TOWN_AGGREGATE + '.' + notice.seq
-    cardFor(cardId, aggregateId, '小镇公告', '小镇', gameTime)
+    cardFor(cardId, aggregateId, '小镇公告', '小镇', at)
     drafts.push({
       at: notice.tick,
       order: 2,
@@ -196,7 +195,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
       record_entry_id: index + 1,
       card_id: draft.cardId,
       source_aggregate_id: draft.aggregateId,
-      game_time: { current_datetime: at.datetime, day_number: at.dayNumber, modern_time: at.datetime.slice(11, 16) },
+      game_time: at,
       ...draft.body,
     }
   })

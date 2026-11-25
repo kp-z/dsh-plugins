@@ -63,6 +63,7 @@ export function clockOf(world: WorldLike, startDate: string): {
   const dd = String(date.getUTCDate()).padStart(2, '0')
   const hh = String(Math.floor(minuteOfDay / 60)).padStart(2, '0')
   const mi = String(minuteOfDay % 60).padStart(2, '0')
+  const current_datetime = yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + mi + ':00'
   return {
     paused: world.paused === true,
     day_number: dayIndex + 1,
@@ -73,9 +74,10 @@ export function clockOf(world: WorldLike, startDate: string): {
       day_of_week: (dayIndex + 4) % 7,
       modern_time: hh + ':' + mi,
       minute_of_day: minuteOfDay,
+      current_datetime,
     },
     modern_time: hh + ':' + mi,
-    current_datetime: yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + mi + ':00',
+    current_datetime,
     minute: minuteOfDay,
   }
 }
