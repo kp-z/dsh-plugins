@@ -16,6 +16,8 @@ import { createPluginState } from '../lib/state.js'
 import { resolveConfig } from '../lib/config.js'
 import { createRuntime } from '../lib/runtime/index.js'
 import { emitEvent } from '../lib/sim/journal.js'
+import { startActivity, endActivity } from '../lib/sim/activity.js'
+import { logHeadOf, logNoticesOf } from '../lib/adapters/slowvale/logs.js'
 import {
   WORLD_FILE,
   WORLD_FILE_VERSION,
@@ -72,6 +74,25 @@ test('存档：存了能读回来，且**不带事件环形缓冲**（历史在 
   const onDisk = JSON.parse(await readFile(join(dir, WORLD_FILE), 'utf8'))
   assert.equal(onDisk.world.events, undefined, '快照里不该有事件环形缓冲')
   assert.equal(onDisk.fileVersion, WORLD_FILE_VERSION)
+})
+
+test('存档：公告缓冲清空后日志水位仍保留，下一次活动继续向前', async () => {
+  const store = createWorldStore(await tempDir())
+  const world = makeWorld()
+  const activity = startActivity(world, world.agents[0], { kind: 'visit', ticks: 1 })
+  endActivity(world, world.agents[0], 'completed')
+  emitEvent(world, 'world.paused', { paused: true })
+  const head = (w) => logHeadOf(w.activities, logNoticesOf(w.events), w.logSeq)
+  const previous = head(world)
+  await store.saveWorld(world, PACKS)
+  const result = await store.load()
+  assert.ok(result && 'ok' in result)
+  const loaded = result.ok.world
+  assert.equal(head(loaded), previous)
+  assert.deepEqual(loaded.activities[0], JSON.parse(JSON.stringify(activity)))
+  const next = startActivity(loaded, loaded.agents[0], { kind: 'visit', ticks: 1 })
+  assert.ok(next.startedLogSeq > activity.endedLogSeq)
+  assert.ok(head(loaded) > previous)
 })
 
 test('存档：同一个世界存两次 → **逐字节相同**（文件里没有墙上时间）', async () => {

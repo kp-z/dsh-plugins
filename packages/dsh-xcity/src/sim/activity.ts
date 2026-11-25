@@ -11,6 +11,7 @@
  * ProgrammerActivity / GymExerciseActivity 这类前端类型名。
  */
 import type { Activity, Agent, World } from '../domain/types.js'
+import { nextLogSeq } from './journal.js'
 
 /** 活动环形缓冲：只留最近这些条，世界不该因为活动记录无限膨胀。 */
 export const ACTIVITY_KEEP = 64
@@ -38,10 +39,10 @@ export function startActivity(world: World, agent: Agent, input: StartActivityIn
     trigger: input.trigger,
     status: 'active',
     startedAt: world.tick,
+    startedLogSeq: nextLogSeq(world),
     endsAt: world.tick + Math.max(1, Math.round(input.ticks)),
   }
   world.activities.push(activity)
-  if (world.activities.length > ACTIVITY_KEEP) world.activities.splice(0, world.activities.length - ACTIVITY_KEEP)
   agent.activityId = activity.id
   agent.activityKind = input.kind === 'sleep' ? 'rest' : input.kind
   agent.activityUntil = activity.endsAt
@@ -62,6 +63,7 @@ export function endActivity(world: World, agent: Agent, status: 'completed' | 'i
   if (activity.status !== 'active') return activity
   activity.status = status
   activity.endedAt = world.tick
+  activity.endedLogSeq = nextLogSeq(world)
   return activity
 }
 
@@ -89,6 +91,7 @@ export function syncActivities(world: World): Activity[] {
     if (live !== null && endedByFields && live.status === 'active') {
       live.status = 'completed'
       live.endedAt = world.tick
+      live.endedLogSeq = nextLogSeq(world)
       agent.activityId = undefined
       agent.activityKind = undefined
       agent.activityUntil = undefined
@@ -108,12 +111,18 @@ export function syncActivities(world: World): Activity[] {
         stationId: agent.station,
         status: 'active',
         startedAt: world.tick,
+        startedLogSeq: nextLogSeq(world),
         endsAt: agent.activityUntil ?? world.tick + 1,
       }
       world.activities.push(record)
       agent.activityId = record.id
       agent.activityTrigger = undefined
     }
+  }
+  const excess = world.activities.filter((activity) => activity.status !== 'active').length - ACTIVITY_KEEP
+  if (excess > 0) {
+    let remaining = excess
+    world.activities = world.activities.filter((activity) => activity.status === 'active' || remaining-- <= 0)
   }
   return completed
 }

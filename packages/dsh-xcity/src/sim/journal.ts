@@ -12,6 +12,12 @@ import { taskPatch } from './patches.js'
 import { EVENT_RING_SIZE } from '../domain/constants.js'
 import type { World, WorldEvent, WorldEventType } from '../domain/types.js'
 
+/** Allocate an ordering token only when a feed record is produced. */
+export function nextLogSeq(world: World): number {
+  world.logSeq = (world.logSeq ?? 0) + 1
+  return world.logSeq
+}
+
 /**
  * 记一条事件：取当前 `world.seq` 当序号、自增、写进环形缓冲。
  *
@@ -25,6 +31,7 @@ export function emitEvent(
   type: WorldEventType,
   payload: Record<string, unknown>,
 ): WorldEvent {
+  if (type === 'world.reset' || type === 'world.paused') payload = { ...payload, logSeq: nextLogSeq(world) }
   const event: WorldEvent = { seq: world.seq, tick: world.tick, type, payload }
   world.seq += 1
   world.events.push(event)

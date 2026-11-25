@@ -244,6 +244,9 @@ export interface Activity {
   /** 谁触发了这件事。日志里的 decision 条目就写它——有真实来源才写，不编。 */
   trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
   status: ActivityStatus
+  /** 持久化的日志顺序；老存档没有该字段。 */
+  startedLogSeq?: number
+  endedLogSeq?: number
   /** 开始 tick。 */
   startedAt: number
   /** 预计结束 tick。 */
@@ -427,6 +430,8 @@ export interface World {
   activities: Activity[]
   /** 活动 id 序列号。 */
   activitySeq: number
+  /** 活动阶段和公告共享的日志水位。 */
+  logSeq?: number
   tasks: Task[]
   messages: Message[]
   /** 事件环形缓冲（只保留最近 N 条，见 constants.EVENT_RING_SIZE）。 */

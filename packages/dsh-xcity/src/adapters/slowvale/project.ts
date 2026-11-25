@@ -40,7 +40,7 @@ export interface ProjectOptions {
 
 /** 日志条目布局变更时，旧游标不能继续使用。HTTP 和 SSE 共用此值。 */
 export function epochOf(world: Pick<WorldLike, 'id'>): string {
-  return 'epoch-' + world.id + '-feed2'
+  return 'epoch-' + world.id + '-feed3'
 }
 
 /** 由 tick 推游戏时间。一天 = MINUTES_PER_DAY 个 tick。 */
@@ -273,7 +273,7 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
 }
 
 function feedHeadOf(world: WorldLike): number {
-  return logHeadOf(world.activities ?? [], logNoticesOf(world.events ?? []))
+  return logHeadOf(world.activities ?? [], logNoticesOf(world.events ?? []), world.logSeq)
 }
 
 /** 内核状态 -> 前端动作名（动作表见 docs/DRIVE-MODEL.md）。 */

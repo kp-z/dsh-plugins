@@ -30,6 +30,8 @@ export interface LogActivity {
   placeId: string
   status: string
   startedAt: number
+  startedLogSeq?: number
+  endedLogSeq?: number
   endsAt: number
   endedAt?: number | undefined
   trigger?: LogTrigger | undefined
@@ -37,6 +39,7 @@ export interface LogActivity {
 
 export interface LogNotice {
   seq: number
+  logSeq?: number
   tick: number
   type: string
   text: string
@@ -49,6 +52,7 @@ export interface LogInput {
   activities: readonly LogActivity[]
   notices: readonly LogNotice[]
   query?: URLSearchParams
+  logSeq?: number | undefined
   nameOf: (agentId: string) => string
   placeOf: (placeId: string) => { asset: string; name: string } | null
 }
@@ -87,22 +91,33 @@ const ACTIVITY_LABEL: Record<string, string> = {
 
 interface Draft {
   at: number
-  /** 同一时刻的稳定次序：decision 先于 phase。 */
-  order: number
+  id: number
   cardId: string
   aggregateId: string
   body: Record<string, unknown>
 }
 
-export function logHeadOf(activities: readonly LogActivity[], notices: readonly LogNotice[]): number {
-  return notices.length + activities.reduce((head, activity) =>
-    head + 1 + Number(!!activity.trigger?.text?.trim()) + Number(activity.status !== 'active'), 0)
+// 旧存档保留历史，但不能让旧编号进入新记录的序列。
+const LEGACY_LIMIT = 2 ** 32
+const sequenceId = (seq: number): number => LEGACY_LIMIT + seq * 2
+const activityStartId = (activity: LogActivity): number => activity.startedLogSeq === undefined
+  ? Number(activity.id.slice(4)) * 4 + 2 : sequenceId(activity.startedLogSeq)
+const activityEndId = (activity: LogActivity): number => activity.endedLogSeq === undefined
+  ? activityStartId(activity) + 1 : sequenceId(activity.endedLogSeq)
+const noticeId = (notice: LogNotice): number => notice.logSeq === undefined ? notice.seq * 4 + 4 : sequenceId(notice.logSeq)
+
+export function logHeadOf(activities: readonly LogActivity[], notices: readonly LogNotice[], logSeq?: number): number {
+  let head = logSeq ? sequenceId(logSeq) : 0
+  for (const activity of activities) head = Math.max(head, activity.status === 'active' ? activityStartId(activity) : activityEndId(activity))
+  for (const notice of notices) head = Math.max(head, noticeId(notice))
+  return head
 }
 
 export function logNoticesOf(events: readonly { seq: number; tick: number; type: string; payload: Record<string, unknown> }[]): LogNotice[] {
   return events.flatMap(({ seq, tick, type, payload }) => {
-    if (type === 'world.reset') return [{ seq, tick, type, text: '小镇重新开始了。' }]
-    if (type === 'world.paused') return [{ seq, tick, type, text: payload['paused'] === false ? '小镇恢复运行。' : '小镇暂停了。' }]
+    const logSeq = typeof payload['logSeq'] === 'number' ? { logSeq: payload['logSeq'] } : {}
+    if (type === 'world.reset') return [{ seq, tick, type, ...logSeq, text: '小镇重新开始了。' }]
+    if (type === 'world.paused') return [{ seq, tick, type, ...logSeq, text: payload['paused'] === false ? '小镇恢复运行。' : '小镇暂停了。' }]
     return []
   }).slice(-20)
 }
@@ -129,7 +144,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     if (activity.trigger?.text !== undefined && activity.trigger.text.trim() !== '') {
       drafts.push({
         at: activity.startedAt,
-        order: 0,
+        id: activityStartId(activity) - 1,
         cardId,
         aggregateId,
         body: {
@@ -148,7 +163,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     const phase = (tick: number, lifecycle: 'start' | 'complete' | 'interrupt'): void => {
       drafts.push({
         at: tick,
-        order: lifecycle === 'start' ? 1 : 2,
+        id: lifecycle === 'start' ? activityStartId(activity) : activityEndId(activity),
         cardId,
         aggregateId,
         body: {
@@ -178,7 +193,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     cardFor(cardId, aggregateId, '小镇公告', '小镇', at)
     drafts.push({
       at: notice.tick,
-      order: 2,
+      id: noticeId(notice),
       cardId,
       aggregateId,
       body: {
@@ -188,11 +203,11 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     })
   }
 
-  drafts.sort((a, b) => a.at - b.at || a.order - b.order)
-  const normalized = drafts.map((draft, index) => {
+  drafts.sort((a, b) => a.at - b.at || a.id - b.id)
+  const normalized = drafts.map((draft) => {
     const at = timeOfTick(input.startDate, draft.at)
     return {
-      record_entry_id: index + 1,
+      record_entry_id: draft.id,
       card_id: draft.cardId,
       source_aggregate_id: draft.aggregateId,
       game_time: at,
@@ -200,7 +215,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     }
   })
 
-  const head = normalized.length
+  const head = logHeadOf(input.activities, input.notices, input.logSeq)
   const query = input.query
   const numberParam = (key: string, fallback: number): number => {
     const value = query?.get(key)
@@ -227,6 +242,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
   const after = numberParam('after_record_entry_id', 0)
   const target = Math.max(after, numberParam('target_record_entry_id', head))
   const updates = normalized.filter((entry) => entry.record_entry_id > after && entry.record_entry_id <= target)
+  updates.sort((a, b) => a.record_entry_id - b.record_entry_id)
   const batch = updates.slice(0, limit)
   const hasMore = updates.length > batch.length
   const epoch = query?.get('realtime_epoch')

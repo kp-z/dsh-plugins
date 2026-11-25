@@ -36,6 +36,7 @@ export interface WorldLike {
   paused?: boolean
   agents: WorldAgentLike[]
   activities?: readonly LogActivity[]
+  logSeq?: number
   /** 世界事件流（日志投影的来源）。 */
   events?: { seq: number; tick: number; type: string; payload: Record<string, unknown> }[]
 }

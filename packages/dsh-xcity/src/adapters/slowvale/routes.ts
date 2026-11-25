@@ -446,6 +446,7 @@ function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp', query: URLSear
     epoch: epochOf(world ?? { id: ctx.opts.worldId }),
     startDate: ctx.opts.startDate,
     activities: world?.activities ?? [],
+    logSeq: world?.logSeq,
     notices: logNoticesOf(world?.events ?? []),
     nameOf: (agentId) => world?.agents.find((agent) => agent.id === agentId)?.name ?? agentId,
     placeOf: (placeId) => world?.places?.find((place) => place.id === placeId) ?? null,

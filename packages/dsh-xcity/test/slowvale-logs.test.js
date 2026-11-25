@@ -77,19 +77,19 @@ test('公告是 standalone 条目（notice），卡片在小镇公告', () => {
   assert.equal(entry.card_id, 'card.town.3')
 })
 
-test('三类条目按时间排，id 连续且稳定', () => {
+test('三类条目按时间排，旧记录 id 独立于数组位置', () => {
   const input = {
     ...base,
     activities: [activity({ id: 'act-9', startedAt: 100, endsAt: 130, endedAt: 130, trigger: { kind: 'player', text: '去上班' } })],
     notices: [{ seq: 1, tick: 10, type: 'world.reset', text: '小镇重新开始了。' }],
   }
   const first = logsOf(input).recent.entries
-  assert.deepEqual(first.map((entry) => entry.record_entry_id), [1, 2, 3, 4], '公告在前，决策与阶段在后')
+  assert.deepEqual(first.map((entry) => entry.record_entry_id), [8, 37, 38, 39], '公告在前，决策与阶段在后')
   assert.equal(first[0].kind, 'standalone')
   assert.ok(first[1].decision !== undefined)
   assert.ok(first[2].phase !== undefined)
   const again = logsOf(input).recent.entries
-  assert.deepEqual(again.map((entry) => entry.record_entry_id), [1, 2, 3, 4], '重复投影 id 不变')
+  assert.deepEqual(again.map((entry) => entry.record_entry_id), [8, 37, 38, 39], '重复投影 id 不变')
 })
 
 test('时间按 tick 换算：1 tick = 1 游戏分钟', () => {
@@ -171,4 +171,24 @@ test('真实 HTTP 日志路由：历史分页、快照水位及旧 epoch 重置'
   } finally {
     await bridge.close()
   }
+})
+
+test('裁剪和晚完成不会重编号，冻结目标不会误吃后续记录', () => {
+  const prior = activity({ id: 'act-6', startedLogSeq: 1, endedLogSeq: 2, startedAt: 1, endedAt: 3 })
+  const current = activity({ status: 'active', startedLogSeq: 3 })
+  const before = logsOf({ ...base, activities: [prior, current], logSeq: 3 }).recent
+  const later = activity({ id: 'act-8', status: 'active', startedAt: 40, startedLogSeq: 4 })
+  const completed = { ...current, status: 'completed', endedAt: 40, endedLogSeq: 5 }
+  const input = { ...base, activities: [completed, later], logSeq: 6 }
+  const { recent, catchUp } = logsOf({ ...input, query: new URLSearchParams({
+    after_record_entry_id: String(before.feed_head_record_entry_id), limit: '1',
+  }) })
+  assert.deepEqual(recent.entries[0], before.entries.at(-1))
+  assert.equal(catchUp.entries[0].phase_id, 'act-8')
+  assert.equal(catchUp.has_more, true)
+  const next = logsOf({ ...input, activities: [...input.activities, activity({ id: 'act-9', status: 'active', startedAt: 41, startedLogSeq: 7 })], logSeq: 7,
+    query: new URLSearchParams({ after_record_entry_id: String(catchUp.next_record_entry_id), target_record_entry_id: String(catchUp.target_record_entry_id) }),
+  }).catchUp
+  assert.deepEqual(next.entries.map((e) => e.phase.items[0].lifecycle), ['complete'])
+  assert.equal(next.next_record_entry_id, recent.feed_head_record_entry_id)
 })
