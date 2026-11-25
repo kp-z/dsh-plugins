@@ -808,7 +808,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         ?? (sessionId === state.activeSessionId ? lead : undefined)
         ?? world.agents.find((agent) => {
           // xcity 绑定：会话 ↔ 角色 ↔ 世界里的 agentId（bindings.json + agents.json）
-          const character = characterOfSession(loadXcityBindings(join(homedir(), '.dsh', 'xcity', 'bindings.json')), sessionId)
+          const character = characterOfSession(loadXcityBindings(resolved.slowvale.bindingsFile), sessionId)
           if (character === null) return false
           const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
           return agents[agent.id] === character
@@ -1085,7 +1085,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           // 只在场景真的变了才推 scene_state：每帧推会让前端反复重启场景（也是它画不出来的原因之一）。
           sceneStateOnChangeOnly: true,
           // 谁代表谁：短信线程 -> 绑定角色 -> DSH 会话。不传就用默认 ~/.dsh/xcity/bindings.json。
-          bindingsFile: join(homedir(), '.dsh', 'xcity', 'bindings.json'),
+          bindingsFile: resolved.slowvale.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json'),
           account: { email: resolved.slowvale.email, password: resolved.slowvale.password },
           opts: {
             worldId: resolved.slowvale.worldId,
@@ -1167,7 +1167,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
               return await respondViaSession(input, {
               onForward: (peerId) => pendingSmsReply.set(peerId, Date.now()),
               characterOf: (peerRoleId) => loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))[peerRoleId] ?? null,
-              sessionOf: (characterId) => loadXcityBindings(join(homedir(), '.dsh', 'xcity', 'bindings.json')).find((row) => row.characterId === characterId)?.sessionId ?? null,
+              sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json')).find((row) => row.characterId === characterId)?.sessionId ?? null,
               prompt: async (payload, signal) => {
                 if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
                 await sessionControllerService.prompt(payload as never, signal)

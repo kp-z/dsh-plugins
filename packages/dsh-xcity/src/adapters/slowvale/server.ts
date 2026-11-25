@@ -119,6 +119,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const localToken = 'local-' + createHash('sha1').update(options.account.email).digest('hex').slice(0, 16)
   const sms = new SmsStore()
   sms.useResponder(options.respondSms ?? null)
+  log('[slowvale] responder ' + (typeof options.respondSms === 'function' ? '已接' : '为空'))
 
   const ctx: RouteContext = {
     opts: options.opts,

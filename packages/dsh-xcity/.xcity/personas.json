@@ -1,0 +1,124 @@
+{
+  "personas": {
+    "agent-1": {
+      "id": "agent-1",
+      "name": "工头阿金",
+      "role": "lead",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "协调",
+        "计划"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826154
+    },
+    "agent-2": {
+      "id": "agent-2",
+      "name": "小蓝",
+      "role": "engineer",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "写代码",
+        "调试"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826155
+    },
+    "agent-3": {
+      "id": "agent-3",
+      "name": "小铁",
+      "role": "engineer",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "写代码",
+        "调试"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826156
+    },
+    "agent-4": {
+      "id": "agent-4",
+      "name": "小绿",
+      "role": "engineer",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "写代码",
+        "调试"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826156
+    },
+    "agent-5": {
+      "id": "agent-5",
+      "name": "小紫",
+      "role": "reviewer",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "评审",
+        "验收"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826157
+    },
+    "agent-6": {
+      "id": "agent-6",
+      "name": "小青",
+      "role": "researcher",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "检索",
+        "分析"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826159
+    },
+    "agent-7": {
+      "id": "agent-7",
+      "name": "小绯",
+      "role": "ops",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "部署",
+        "监控"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826161
+    },
+    "agent-8": {
+      "id": "agent-8",
+      "name": "小雯",
+      "role": "docs",
+      "level": 1,
+      "xp": 0,
+      "skills": [
+        "写作",
+        "整理"
+      ],
+      "taskIds": [],
+      "awardedTaskIds": [],
+      "prompt": "",
+      "updatedAt": 1795575826164
+    }
+  }
+}

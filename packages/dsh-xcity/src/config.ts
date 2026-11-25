@@ -29,12 +29,15 @@ export interface SlowvaleConfig {
   startDate: string
   email: string
   password: string
+  /** 绑定表路径（谁代表谁）。不配就用 ~/.dsh/xcity/bindings.json。 */
+  bindingsFile: string
   /** 玩家自己扮演的角色 id；空串 = 取世界里的第一个角色。 */
   viewerRoleId: string
   /** 跳过登录/授权/引导，直接落到场景里（演示与开发用）。 */
 }
 
 export const DEFAULT_SLOWVALE: SlowvaleConfig = {
+  bindingsFile: '/Users/demo/.dsh/xcity/bindings.json',
   // 默认关闭：适配层要占一个端口，测试与 headless 场景都不该被它影响。
   // 打开方式见 cordis.patch.yml（slowvale.enabled: true）。
   enabled: false,
@@ -243,6 +246,7 @@ function resolveSlowvale(input: Partial<SlowvaleConfig> | undefined): SlowvaleCo
     email: source.email ?? DEFAULT_SLOWVALE.email,
     password: source.password ?? DEFAULT_SLOWVALE.password,
     viewerRoleId: source.viewerRoleId ?? DEFAULT_SLOWVALE.viewerRoleId,
+    bindingsFile: source.bindingsFile ?? DEFAULT_SLOWVALE.bindingsFile,
   }
 }
 

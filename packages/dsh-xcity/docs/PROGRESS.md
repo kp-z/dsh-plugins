@@ -10802,3 +10802,21 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
 会话文件 30 秒内没有任何增长，且日志里连 '[xcity-sms]' 都没有——说明 respondSms 根本没被调用，
 而不是 prompt 抛错。静态检查显示桥确实把 options.respondSms 传给了 sms.useResponder，
 所以下一轮要做的是在桥创建处打一行运行时断言（respondSms 是不是函数），再决定改哪里。
+
+## 2026-11-25 11:15 reply 真因：DSH session 单写者
+
+把 console.warn 加在转发失败分支后，一次就看见了：
+
+    [xcity-sms] 转发失败 peer=agent-1：
+      RemoteError: session xcity-rolelin-mwro03yz is already owned by an active write handle
+
+那条 session 被正式环境（另一个进程）占着写句柄，测试实例写不进去。同一 session 只允许一个写者。
+
+顺带修的两件事：
+1. slowvale.bindingsFile 变配置项（默认 ~/.dsh/xcity/bindings.json），测试 profile 用 ~/.dsh/xcity-test/bindings.json；
+2. 会话->角色查找（写回要用）原来写死读正式绑定表，改成读配置那张。
+
+修完实测：spawn 新建会话并绑定 role.lin 后，发短信 -> 会话 723 字节长到 149807；
+会话里能检索到 8 次 xcity-reply（模型确实按协议回了）；但游戏线程仍没有 is_self:false 的回复。
+
+卡点：turn/end reason 是 aborted/disposed。下一轮在钩子里打 console.warn，确认 assistant/message 是否带 text 块。
