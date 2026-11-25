@@ -30,7 +30,7 @@ const ICON_PATHS = {
   sync: ['M20 12a8 8 0 1 1-2.3-5.7', 'M20 4v5h-5'],
   /* 底部对话框的模式按钮（对齐 cove 的 agent 输入框图标语义） */
   target: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'],
-  /* @ 菜单里的项目图标（文件夹）；「全部任务」沿用 sparkles。 */
+  /* @ 菜单里的分类图标（文件夹）；「全部任务」沿用 sparkles。 */
   folder: ['M3.5 7a2 2 0 0 1 2-2h4.2l2 2h8.3a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2z'],
   link: ['M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1', 'M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1'],
   send: ['M4 12l16-8-6 8 6 8z'],
@@ -441,7 +441,7 @@ export function createOrganizeDrawer(deps) {
      */
     const submitHint = () => {
       if (running) return
-      /* 菜单开着时末尾的「@关键词」只是选项目的触发器，不能混进这一轮要求。 */
+      /* 菜单开着时末尾的「@关键词」只是选分类的触发器，不能混进这一轮要求。 */
       const raw = mentionOpen ? model.str(hintText).replace(/@[^\s@]*$/u, '') : model.str(hintText)
       const text = raw.trim()
       if (typeof p.onHintSubmit === 'function') {
@@ -493,7 +493,7 @@ export function createOrganizeDrawer(deps) {
         onPointerDown: beginResize,
       }),
       h('div', { className: 'fo-org-head' },
-        /* 范围不在标题上显示：底部输入里的 @项目 才是范围的唯一表达。 */
+        /* 范围不在标题上显示：底部输入里的 @分类 才是范围的唯一表达。 */
         h('div', { className: 'fo-org-head-main' },
           h('span', { className: 'fo-org-title' }, '建议'),
         ),
@@ -613,7 +613,7 @@ export function createOrganizeDrawer(deps) {
                   row.id === activeMode.id ? h('span', { className: 'fo-org-composer-menu-dot', 'aria-hidden': 'true' }) : null,
                 ))) : null,
             ),
-            /* 输入框 + 打 @ 弹出的项目菜单（菜单挂在输入框上方，宽度跟随输入框）。 */
+            /* 输入框 + 打 @ 弹出的分类菜单（菜单挂在输入框上方，宽度跟随输入框）。 */
             h('div', { className: 'fo-org-composer-field', ref: mentionMenuRef },
               mentionOpen
                 ? h('div', { className: 'fo-org-composer-menu fo-org-mention-menu', role: 'listbox', 'aria-label': '选择分类' },

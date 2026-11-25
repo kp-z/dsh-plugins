@@ -2150,6 +2150,21 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
 }
 
 {
+  /* 看板分类页打开建议栏：自动 @ 这个分类，来回切换分类时范围跟着变。 */
+  const backend = makeOrganizeBackend({ restore: organizeBatchFixture() })
+  const fx = await mountPanel({ organizeApi: backend.api, store: makeStore({ selection: { kind: 'group', id: 'g1' } }) })
+  const ft = fx.tree
+  ORGANIZE_TRIGGER(ft).props.onClick()
+  const after = await fx.mini.act()
+  check('看板分类页打开建议栏：自动 @ 这个分类', () => {
+    assert.deepEqual(backend.log.view[0], { kind: 'group', id: 'g1' })
+    const chip = byClass(organizeDrawers(after)[0], 'fo-org-composer-scope')[0]
+    assert.ok(chip, '要显示 @分类 胶囊')
+    assert.ok(textOf(chip).includes('Demo'), '@ 的是当前分类')
+  })
+}
+
+{
   /* 运行 / 洞察页看全局：即使树里还选着项目，打开建议栏也不该 @ 它（默认全部任务）。 */
   const backend = makeOrganizeBackend({ restore: organizeBatchFixture() })
   const fx = await mountPanel({
