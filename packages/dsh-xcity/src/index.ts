@@ -796,15 +796,16 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const blocks = Array.isArray(message?.content) ? message.content : []
 
-      // ① 回复方向：角色在会话里说的话，写回游戏短信线程。
+      // 短信往返不走下面的通用气泡，避免把提示词或标记以外的正文另发一次。
+      const now = Date.now()
+      const askedAt = pendingSmsReply.get(actor.id)
+      const smsPending = askedAt !== undefined && now - askedAt < SMS_REPLY_TTL_MS
       if (event.type === 'assistant/message' && slowvaleBridgeHandle !== null) {
-        const askedAt = pendingSmsReply.get(actor.id)
-        const short = smsReplyOf({ blocks, askedAt, now: Date.now(), ttlMs: SMS_REPLY_TTL_MS })
+        const short = smsReplyOf({ blocks, askedAt, now, ttlMs: SMS_REPLY_TTL_MS })
         if (short !== null) {
           // 只有真的写进去了才销账：一轮回复里常有多条 assistant/message（工具调用、过程话），
           // 提前销账会让最后那条真正的回复永远写不回游戏。
-          slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)
-          pendingSmsReply.delete(actor.id)
+          if (slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)) pendingSmsReply.delete(actor.id)
         }
       }
 
@@ -815,7 +816,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       }
 
       // ③ 对话气泡：只有它需要通道，前两件事不受影响。
-      if (mainDialogueChannel === null) return
+      if (mainDialogueChannel === null || smsPending) return
       const text = textOfBlocks(blocks)
       if (text === '') return
       if (event.type === 'user/message') {

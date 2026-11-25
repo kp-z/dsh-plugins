@@ -9,7 +9,7 @@
  * 副作用（appendIncoming / runtime.enqueue / channel.publish）留在调用方。
  */
 
-import { extractFrontendReply, pickReplyText } from './reply.js'
+import { extractFrontendReply } from './reply.js'
 
 /** 世界上能被认出"是谁"的最小形状。 */
 export interface SessionActor {
@@ -76,7 +76,7 @@ export function smsReplyOf(input: {
 }): string | null {
   const { askedAt } = input
   if (askedAt === undefined || input.now - askedAt >= input.ttlMs) return null
-  return extractFrontendReply(pickReplyText(input.blocks))
+  return extractFrontendReply(textOfBlocks(input.blocks))
 }
 
 /**

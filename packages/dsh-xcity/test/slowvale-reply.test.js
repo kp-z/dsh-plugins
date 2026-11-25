@@ -1,45 +1,20 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { extractFrontendReply, pickReplyText, REPLY_MAX_CHARS } from '../lib/adapters/slowvale/reply.js'
+import { extractFrontendReply, REPLY_MAX_CHARS } from '../lib/adapters/slowvale/reply.js'
 
-test('有标记：只取标记里的内容，标记外的详细分析不进前端', () => {
-  const text = '我查了一下工位排期，今天下午有三个会。\n<xcity-reply>我这就去工位，十分钟后开工。</xcity-reply>\n另外注意 B 区还没清空。'
-  assert.equal(extractFrontendReply(text), '我这就去工位，十分钟后开工。')
+test('只取完整标记里的正文，不发送周围的详细说明', () => {
+  const text = '内部说明。\n<xcity-reply>我这就去工位。\n到了通知你。</xcity-reply>\n另一段内部说明。'
+  assert.equal(extractFrontendReply(text), '我这就去工位。 到了通知你。')
 })
 
-test('没有标记：退回第一句（不让玩家的短信石沉大海）', () => {
-  assert.equal(extractFrontendReply('好的，我马上过去。前面还有两件事我先说清楚……'), '好的，我马上过去。')
-  assert.equal(extractFrontendReply('收到\n我这就去'), '收到')
+test('没有标记、空白、未闭合或嵌套标记时不发短信', () => {
+  for (const text of ['私有说明。', ' ', '<xcity-reply>尚未闭合', '<xcity-reply> </xcity-reply>内部说明', '<xcity-reply>内部说明<xcity-reply>公开回复</xcity-reply>']) {
+    assert.equal(extractFrontendReply(text), null)
+  }
 })
 
-test('标记没闭合也能用；空白标记当作没有', () => {
-  assert.equal(extractFrontendReply('<xcity-reply>我在路上了'), '我在路上了')
-  assert.equal(extractFrontendReply('<xcity-reply>   </xcity-reply>\n我在忙'), '我在忙')
-})
-
-test('过长会截断到上限（前端要短）', () => {
-  const long = '啊'.repeat(200)
-  const got = extractFrontendReply(long)
-  assert.ok(got !== null)
-  assert.ok(got.length <= REPLY_MAX_CHARS + 1)
-  assert.ok(got.endsWith('…'))
-})
-
-test('空文本返回 null', () => {
-  assert.equal(extractFrontendReply('   '), null)
-})
-
-const textBlock = (text) => ({ type: 'text', text })
-const thinkBlock = (text) => ({ type: 'reasoning', text })
-
-test('挑回复：有正文就用正文', () => {
-  assert.equal(pickReplyText([thinkBlock('想一下'), textBlock('马上到')]), '马上到')
-})
-
-/** 模型常把回复写进思考块；没标记的思考是私货，不能发给玩家。 */
-test('挑回复：正文为空时只接受带标记的思考', () => {
-  assert.equal(pickReplyText([thinkBlock('我在想 <xcity-reply>这就去</xcity-reply>')]), '我在想 <xcity-reply>这就去</xcity-reply>')
-  assert.equal(pickReplyText([thinkBlock('纯思考，没标记')]), '')
-  assert.equal(pickReplyText([]), '')
+test('短信总长包含省略号且不截断 Unicode 字符', () => {
+  const got = extractFrontendReply('<xcity-reply>' + '🙂'.repeat(200) + '</xcity-reply>')
+  assert.equal(got, '🙂'.repeat(REPLY_MAX_CHARS - 1) + '…')
 })

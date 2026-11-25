@@ -50,6 +50,14 @@ test('短信回执：只有在等回复且没过期才写回', () => {
   assert.equal(smsReplyOf({ blocks, askedAt: 1000, now: 9000, ttlMs: 5000 }), null)
 })
 
+test('短信回执绝不读取思考、工具输出或未明确给玩家的正文', () => {
+  const tagged = '<xcity-reply>这句不能从思考块发出</xcity-reply>'
+  const input = { askedAt: 1000, now: 2000, ttlMs: 5000 }
+  const hidden = [{ type: 'reasoning', text: tagged }, { type: 'tool-result', text: tagged }, text('私有正文。')]
+  assert.equal(smsReplyOf({ ...input, blocks: hidden }), null)
+  assert.equal(smsReplyOf({ ...input, blocks: [...hidden, text('<xcity-reply>已到。</xcity-reply>')] }), '已到。')
+})
+
 test('干活映射：工具调用去工位、工具返回收工、别的什么都不做', () => {
   const call = activityForEvent({ type: 'assistant/message', blocks: [{ type: 'tool-call', name: 'read_file' }], agentId: 'agent-1', skillOf: () => 'research' })
   assert.deepEqual(call, { kind: 'agentActivity', agentId: 'agent-1', activity: 'work', ticks: 60, skill: 'research' })
