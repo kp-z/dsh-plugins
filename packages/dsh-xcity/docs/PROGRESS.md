@@ -10780,3 +10780,25 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
 但面板重建时 iframe 是否保留 localStorage / Cookie，需要在实际 DSH 窗口里点一次才能确认。
 
 判据：830 条 pass 829 / fail 0；/api/bridge 实测返回测试端口。
+
+## 2026-11-25 11:05 · 回复方向：标记协议（已实现并单测，真机投递仍未确认）
+
+**用户要求**：复用的既有前端能力；DSH 里详细、前端精简；在绑定会话里注入可识别格式来判断哪段是给前端的回复。
+
+**实现**
+
+1. 转发短信时，投进会话的文本带上格式要求（respond-sms.ts 的 promptText）：
+   给玩家的话放进 <xcity-reply>…</xcity-reply>，一句、≤30 字；标记外只给 DSH 看，不进游戏。
+2. 新增 adapters/slowvale/reply.ts 的 extractFrontendReply：
+   - 有标记取标记内；标记未闭合也取；
+   - 没有标记退回第一句（去标记后按行取首句），再截到 60 字；
+   - 空文本返回 null。
+3. index.ts 的 assistant/message 钩子：只对「确实有一条短信在等回复」的角色写回（pendingSmsReply，10 分钟有效），
+   并且只写 extractFrontendReply 的结果——不再把整段分析灌进游戏。
+
+**判据**：reply 5 条 + respond-sms 4 条测试通过；全量 837 条 pass 836 / fail 0。
+
+**真机验证（负结果，必须记）**：在 xcity-test（7790）发短信后，
+会话文件 30 秒内没有任何增长，且日志里连 '[xcity-sms]' 都没有——说明 respondSms 根本没被调用，
+而不是 prompt 抛错。静态检查显示桥确实把 options.respondSms 传给了 sms.useResponder，
+所以下一轮要做的是在桥创建处打一行运行时断言（respondSms 是不是函数），再决定改哪里。

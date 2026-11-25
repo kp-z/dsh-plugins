@@ -43,6 +43,7 @@ import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
+import { extractFrontendReply } from './adapters/slowvale/reply.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -790,6 +791,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
    * 这里把同一个 active session（以及 subagent session）的 user/assistant 消息
    * 注入 dialogue SSE，气泡/状态就不再只对场景搭话生效。
    */
+  /** 已经转进会话、正等着把回话写回游戏的短信（peerId -> 时间戳）。 */
+  const pendingSmsReply = new Map<string, number>()
   let mainDialogueChannel: DialogueChannel | null = null
   let mainTurnSeq = 0
   const turnBySession = new Map<string, string>()
@@ -816,12 +819,20 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       // R364：工具调用 → 去工位；tool/result → 收工。只在游戏模式里映射，普通 profile 不被扰动。
       // 回复方向：角色在会话里说的话，写回游戏短信线程（不管是不是游戏模式）。
       if (event.type === 'assistant/message' && slowvaleBridgeHandle !== null) {
-        const said = blocks
-          .filter((block) => (block as Record<string, unknown>)?.['type'] === 'text')
-          .map((block) => String((block as Record<string, unknown>)?.['text'] ?? ''))
-          .join('')
-          .trim()
-        if (said !== '') slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, said)
+        // 只把「正在等回话」的那一条写回游戏：否则每次普通对话都会给玩家塞一条短信。
+        const askedAt = pendingSmsReply.get(actor.id)
+        const fresh = askedAt !== undefined && Date.now() - askedAt < 10 * 60 * 1000
+        if (fresh) {
+          pendingSmsReply.delete(actor.id)
+          const said = blocks
+            .filter((block) => (block as Record<string, unknown>)?.['type'] === 'text')
+            .map((block) => String((block as Record<string, unknown>)?.['text'] ?? ''))
+            .join('')
+            .trim()
+          // 前端只要一句：标记内的内容优先，没有标记退回第一句并截断。
+          const short = extractFrontendReply(said)
+          if (short !== null) slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)
+        }
       }
       if (gameModeEnabled) {
         if (event.type === 'assistant/message') {
@@ -1151,15 +1162,24 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             runtime.enqueue(command)
             return true
           },
-          respondSms: async (input: { peerRoleId: string; content: string }) =>
-            respondViaSession(input, {
+          respondSms: async (input: { peerRoleId: string; content: string }) => {
+            try {
+              return await respondViaSession(input, {
+              onForward: (peerId) => pendingSmsReply.set(peerId, Date.now()),
               characterOf: (peerRoleId) => loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))[peerRoleId] ?? null,
               sessionOf: (characterId) => loadXcityBindings(join(homedir(), '.dsh', 'xcity', 'bindings.json')).find((row) => row.characterId === characterId)?.sessionId ?? null,
               prompt: async (payload, signal) => {
                 if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
                 await sessionControllerService.prompt(payload as never, signal)
+                logger.info('[xcity-sms] 已投递 session=' + String((payload as { sessionId?: string }).sessionId))
               },
-            }),
+              })
+            } catch (error: unknown) {
+              // 转发失败不能只留在内存里：写日志，否则玩家看到的只是"没有回复"。
+              logger.warn('[xcity-sms] 转发失败 peer=' + input.peerRoleId + '：' + String(error))
+              return null
+            }
+          },
           getWorld: () => state.currentWorld() as unknown as { id: string; name: string; tick: number; paused?: boolean; agents: { id: string; name: string }[] } | null,
           log: (line) => logger.info(line),
         }).then((started) => {
