@@ -43,7 +43,7 @@ import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
-import { extractFrontendReply, pickReplyText } from './adapters/slowvale/reply.js'
+import { actorForSession, activityForEvent, smsReplyOf, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
@@ -752,45 +752,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   const listen = (ctx as unknown as {
     on?: (name: string, handler: (session: { id?: string }, event: { type?: string; data?: Record<string, unknown> }) => void) => unknown
   }).on
-  if (typeof listen === 'function') {
-    const dispose = listen('session/event', (session, event) => {
-      if (event.type !== 'assistant/message') return
-      const sessionId = typeof session?.id === 'string' ? session.id : ''
-      const waiters = replyWaiters.get(sessionId)
-      if (waiters === undefined || waiters.length === 0) return
-      const message = event.data?.['message'] as { content?: unknown } | undefined
-      const blocks = Array.isArray(message?.content) ? message.content : []
-      const texts = blocks
-        .filter((block): block is { type: string; text: string } => {
-          const b = block as Record<string, unknown>
-          return b?.['type'] === 'text' && typeof b['text'] === 'string' && b['text'].trim() !== ''
-        })
-        .map((block) => block.text)
-      const text = texts.join('\n\n').trim()
-      if (text === '') return
-      const waiter = waiters.shift()
-      if (waiter === undefined) return
-      clearTimeout(waiter.timer)
-      waiter.resolve(text)
-      if (waiters.length === 0) replyWaiters.delete(sessionId)
-    })
-    // 会话 feed 可能在插件已失活后才被创建（例如新建会话立刻开工）。
-    // cordis 会拒绝在 inactive context 上注册 effect；此时不需要 cleanup，
-    // 直接释放订阅即可，不能让一个开工按钮被 cleanup 注册失败打断。
-    try {
-      ctx.effect(() => () => { (dispose as (() => void) | undefined)?.() })
-    } catch (error) {
-      if (!(error instanceof Error) || !/inactive context/i.test(error.message)) throw error
-      ;(dispose as (() => void) | undefined)?.()
-    }
-  }
-  /**
-   * R340：主会话事件 → 世界的对话气泡。
-   *
-   * 场景里搭话走 `/api/say`，但用户在**主界面**直接对话时没有经过这条链；
-   * 这里把同一个 active session（以及 subagent session）的 user/assistant 消息
-   * 注入 dialogue SSE，气泡/状态就不再只对场景搭话生效。
-   */
   /** 已经转进会话、正等着把回话写回游戏的短信（peerId -> 转发的时刻）。 */
   const pendingSmsReply = new Map<string, number>()
   /** 等回复的有效期：超过它就不再把这轮对话当成短信回执。 */
@@ -804,63 +765,48 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const world = state.currentWorld()
       if (world === null) return
       const sessionId = typeof session?.id === 'string' ? session.id : ''
-      const lead = world.agents.find((agent) => agent.boundAgentId === null)
-      const actor = world.agents.find((agent) => agent.boundAgentId === sessionId)
-        ?? (sessionId === state.activeSessionId ? lead : undefined)
-        ?? world.agents.find((agent) => {
-          // xcity 绑定：会话 ↔ 角色 ↔ 世界里的 agentId（bindings.json + agents.json）
-          const character = characterOfSession(loadXcityBindings(resolved.slowvale.bindingsFile), sessionId)
-          if (character === null) return false
+      // 谁代表这条会话：显式绑定 > 当前激活会话的队长 > xcity 绑定表（规则见 runtime/session-events.ts）。
+      const actor = actorForSession({
+        agents: world.agents,
+        sessionId,
+        activeSessionId: state.activeSessionId,
+        characterOfSession: (id) => characterOfSession(loadXcityBindings(resolved.slowvale.bindingsFile), id),
+        agentOfCharacter: (character) => {
           const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
-          return agents[agent.id] === character
-        })
-      if (actor === undefined) return
+          return Object.keys(agents).find((agentId) => agents[agentId] === character) ?? null
+        },
+      })
+      if (actor === null) return
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const blocks = Array.isArray(message?.content) ? message.content : []
-      // R364：工具调用 → 去工位；tool/result → 收工。只在游戏模式里映射，普通 profile 不被扰动。
-      // 回复方向：角色在会话里说的话，写回游戏短信线程（不管是不是游戏模式）。
+
+      // ① 回复方向：角色在会话里说的话，写回游戏短信线程。
       if (event.type === 'assistant/message' && slowvaleBridgeHandle !== null) {
-        // 只把「正在等回话」的那一条写回游戏：否则每次普通对话都会给玩家塞一条短信。
         const askedAt = pendingSmsReply.get(actor.id)
-        if (askedAt !== undefined && Date.now() - askedAt < SMS_REPLY_TTL_MS) {
-          // 前端只要一句：标记内的内容优先，没有标记退回第一句并截断。
-          const short = extractFrontendReply(pickReplyText(blocks))
-          if (short !== null) {
-            // 只有真的写进去了才销账：一轮回复里常有多条 assistant/message（工具调用、过程话），
-            // 提前销账会让最后那条真正的回复永远写不回游戏。
-            slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)
-            pendingSmsReply.delete(actor.id)
-          }
+        const short = smsReplyOf({ blocks, askedAt, now: Date.now(), ttlMs: SMS_REPLY_TTL_MS })
+        if (short !== null) {
+          // 只有真的写进去了才销账：一轮回复里常有多条 assistant/message（工具调用、过程话），
+          // 提前销账会让最后那条真正的回复永远写不回游戏。
+          slowvaleBridgeHandle.appendIncoming(actor.id, actor.name, short)
+          pendingSmsReply.delete(actor.id)
         }
       }
+
+      // ② 看起来在干活：工具调用 → 去工位，工具返回 → 收工。只在游戏模式里做。
       if (gameModeEnabled) {
-        if (event.type === 'assistant/message') {
-          const toolNames = blocks
-            .filter((block) => (block as Record<string, unknown>)?.['type'] === 'tool-call')
-            .map((block) => String((block as Record<string, unknown>)?.['name'] ?? ''))
-          if (toolNames.length > 0) {
-            const name = toolNames[0] ?? ''
-            runtime.enqueue({ kind: 'agentActivity', agentId: actor.id, activity: 'work', ticks: 60, skill: skillForTool(name) })
-          }
-        } else if (event.type === 'tool/result') {
-          runtime.enqueue({ kind: 'agentActivity', agentId: actor.id, activity: 'idle', ticks: 0 })
-        }
+        const activity = activityForEvent({ type: event.type, blocks, agentId: actor.id, skillOf: skillForTool })
+        if (activity !== null) runtime.enqueue(activity as never)
       }
-      // 只有气泡发布需要通道；短信写回与工具映射不受它影响。
+
+      // ③ 对话气泡：只有它需要通道，前两件事不受影响。
       if (mainDialogueChannel === null) return
-      const text = blocks
-        .filter((block): block is { type: string; text: string } => {
-          const b = block as Record<string, unknown>
-          return b?.['type'] === 'text' && typeof b['text'] === 'string' && b['text'].trim() !== ''
-        })
-        .map((block) => block.text).join('\n\n').trim()
+      const text = textOfBlocks(blocks)
       if (text === '') return
-      const tick = world.tick
       if (event.type === 'user/message') {
         const turnId = `main-${String(++mainTurnSeq)}`
         turnBySession.set(sessionId, turnId)
         mainDialogueChannel.publish({
-          turnId, tick, phase: 'thinking',
+          turnId, tick: world.tick, phase: 'thinking',
           from: { kind: 'god' }, to: { kind: 'agent', id: actor.id }, text,
         })
         return
@@ -869,7 +815,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       turnBySession.delete(sessionId)
       mainDialogueChannel.publish({
         turnId: replyTurn,
-        tick, phase: 'replied',
+        tick: world.tick, phase: 'replied',
         from: { kind: 'agent', id: actor.id }, to: { kind: 'god' }, text,
       })
     })

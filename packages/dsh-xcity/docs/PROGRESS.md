@@ -10880,3 +10880,23 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
    默认值也写死了某个人的家目录，改成 homedir()。
 
 判据：`rm -rf lib && npm run build && node --test test/` -> 838 条 pass 837 / fail 0。
+
+## 2026-11-25 14:12 继续收敛：把会话事件的三件事拆开
+
+原来 session/event 回调同时干三件事（短信回执、工具→工位、对话气泡），共用一坨内联逻辑，
+改一处怕碰坏另一处，且哪条都没法单独断言。
+
+现在规则搬进 adapters/slowvale/session-events.ts，四个纯函数：
+- actorForSession：这条会话是小世界里的谁（显式绑定 > 激活会话队长 > xcity 绑定表；认不出就是 null）
+- smsReplyOf：这条回复该不该写回短信（有在等且没过期才写，内容走 xcity-reply 协议）
+- activityForEvent：工具调用去工位、工具返回收工，其余返回 null
+- textOfBlocks：气泡文本（多段空行分隔）
+
+副作用（appendIncoming / runtime.enqueue / channel.publish）留在 index.ts，
+钩子从 ~70 行降到 ~35 行，且分工一眼能看出①②③。
+
+边界：这个文件放在 adapters 而不是 runtime —— 架构测试明确禁止 runtime 依赖 adapters，
+而这些规则本身就是"会话 → 小镇"的适配逻辑，放这里是它该在的位置。
+
+判据：844 条 pass 843 / fail 0；真机复测（发「你在忙吗？」）回复「不忙，在广场闲着，有事你说。」，
+world tick 11929 running=true。
