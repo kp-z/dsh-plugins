@@ -77,12 +77,29 @@ const snapshotJson = SNAPSHOT_FILE ? await readFile(SNAPSHOT_FILE, 'utf8') : ''
 /* 洞察 tab 的历史指标：同一目录下的 insight.json（curl /api/insight/stats 存下来）也一起直出。 */
 const statsFile = SNAPSHOT_FILE ? SNAPSHOT_FILE.replace(/[^/]+$/, 'insight.json') : ''
 const statsJson = statsFile ? await readFile(statsFile, 'utf8').catch(() => '') : ''
+/* --insight <file>：喂一份诊断结果，用来在浏览器里看「有 AI 结论时」的面板长什么样。
+   只影响本地预览宿主，不参与宿主真实路由。 */
+const insightFile = process.argv.includes('--insight') ? process.argv[process.argv.indexOf('--insight') + 1] : ''
+const insightJson = insightFile ? await readFile(insightFile, 'utf8').catch(() => '') : ''
+/* --local <file>：单独喂一份真实的 local（引擎本地统计），用来验证左栏「数据」区。
+   留空时左栏会退化到看板总数——这也是老宿主的真实表现。 */
+const localFile = process.argv.includes('--local') ? process.argv[process.argv.indexOf('--local') + 1] : ''
+const localJson = localFile ? await readFile(localFile, 'utf8').catch(() => '') : ''
 const server = createServer((req, res) => {
   if (snapshotJson && req.url && req.url.startsWith('/dsh-cove-task/api/overview')) {
     const live = JSON.parse(snapshotJson)
     live.now = Date.now()
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
     res.end(JSON.stringify(live))
+    return
+  }
+  if (insightJson && req.url && /^\/dsh-cove-task\/api\/insight(\?|$)/.test(req.url)) {
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({
+      ok: true,
+      ...(localJson ? { local: JSON.parse(localJson) } : {}),
+      ai: JSON.parse(insightJson),
+    }))
     return
   }
   if (statsJson && req.url && req.url.startsWith('/dsh-cove-task/api/insight/stats')) {

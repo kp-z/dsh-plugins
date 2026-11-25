@@ -16,6 +16,7 @@
   },
   "files": [
     "lib",
+    "assets",
     "index.js",
     "activity.js",
     "navChannel.js",
@@ -124,7 +125,7 @@
     "test:create-task": "node test/taskCreateDock.mjs && node test/sessionTaskCreate.mjs",
     "test:workspace-groups": "node test/workspaceGroups.mjs",
     "test:organize": "node test/organizeSuggestions.mjs && node test/organizeRoute.mjs && node test/organizeTemporal.mjs",
-    "test:dashboard": "node test/dashboardStyles.mjs && node test/insightView.mjs && node test/runsView.mjs"
+    "test:dashboard": "node test/dashboardStyles.mjs && node test/aiMascot.mjs && node test/insightView.mjs && node test/runsView.mjs"
   },
   "devDependencies": {
     "dagre-d3-es": "^7.0.14",

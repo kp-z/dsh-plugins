@@ -73,6 +73,12 @@ function adaptApi(raw) {
     /* 历史指标（task-21）：洞察页要「更全面」时用它取 /api/insight/stats；
        旧宿主没有这个方法就是 null —— 洞察页自己降级成「只有快照口径」，不报错。 */
     insightStats: fn('insightStats'),
+    /* AI 诊断（洞察页顶部）：读上次结果 / 触发后台诊断 / 轮询 / 把一条结论写回评论。
+       漏一项就等于页面看不到对应按钮（白名单不做兜底探测）。 */
+    insight: fn('insight'),
+    insightDiagnose: fn('insightDiagnose'),
+    insightAi: fn('insightAi'),
+    insightExport: fn('insightExport'),
     /* 项目图标（纯本地展示）：旧宿主没有就退化成 null，气泡回退到任务编号 */
     setWorkspaceLogo: fn('setWorkspaceLogo'),
     /* 系统健康（运行页的「系统健康」卡）：featureCtx.api 传的是**这个白名单对象**，

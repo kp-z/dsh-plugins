@@ -247,7 +247,7 @@ export const CSS = `
 .fd-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .fd-kv-item {
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
-  padding: 8px 10px; border-radius: 10px;
+  padding: 8px 10px; border-radius: 12px;
   background: var(--fd-sunken); border: 1px solid var(--fd-line);
 }
 .fd-kv-label { font-size: 10px; color: var(--fd-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -747,6 +747,195 @@ export const CSS = `
 .fr-empty-body { font-size: 12px; max-width: 420px; }
 .fr-empty-line { font-size: 11px; color: var(--fr-dim); padding: 4px 0; }
 
+/* ============ AI 诊断：小助手 + 一句话判断 + 结论卡 ============ */
+/* 这张卡是洞察页的视觉锚点：柔和的品牌色晕、圆润的小人、结论按卡排。
+   所有颜色只走 --fd-*（最终仍是宿主的 14 个令牌），亮暗两套都不用改。 */
+.fd-panel[data-mod="ai"] {
+  border-color: color-mix(in oklab, var(--fd-brand) 24%, var(--fd-line));
+  background:
+    radial-gradient(140% 120% at 0% 0%, color-mix(in oklab, var(--fd-brand) 7%, transparent), transparent 58%),
+    var(--fd-surface);
+}
+.fd-panel[data-mod="ai"]:hover { border-color: color-mix(in oklab, var(--fd-brand) 45%, var(--fd-line-strong)); }
+.fd-panel[data-mod="ai"] .fd-panel-body { gap: 0; }
+/* 标题贴顶：去掉副标题占位与多余间距，标题直接对齐卡片上沿 */
+/* 洞察卡没有标题，也不再为它单独调内边距/字号——卡片的壳与其他卡片完全一致。 */
+/* 右上角只放一个「重新判断」：它是刷新动作，不该混在正文底部 */
+.fd-panel[data-mod="ai"] { position: relative; }
+.fd-ins-corner { position: absolute; top: 12px; right: 14px; z-index: 2; }
+.fd-ins-headline { padding-right: 92px; }
+
+/* 两栏：左=状态（上）+ 人物（下），右=判断与明细。 */
+.fd-ins {
+  display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 18px 22px;
+  min-height: 0; align-items: stretch;
+}
+.fd-ins-rail {
+  display: flex; flex-direction: column; justify-content: space-between; gap: 16px;
+  min-width: 0; padding-right: 18px; border-right: 1px solid var(--fd-line);
+}
+.fd-ins-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.fd-ins-status { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.fd-ins-status-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; letter-spacing: .08em; color: var(--fd-dim);
+}
+.fd-ins-status-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--fd-ok);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--fd-ok) 18%, transparent);
+}
+.fd-ins-status-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10px; line-height: 1.5; color: var(--fd-dim); }
+.fd-ins-figure { display: flex; justify-content: center; align-items: flex-end; }
+/* 3D 层：加载好之后盖在 SVG 上；没加载好就什么都不显示，SVG 继续当着 */
+/* 动图自带透明通道：按原始比例摆，不加底色/外框/圆角，也不裁切。
+   SVG 兜底与动图叠在同一格里，否则两者相加会把左栏撑高。 */
+.fd-figure { display: grid; grid-template-areas: 'fig'; place-items: center; }
+.fd-figure > .fd-bot { grid-area: fig; }
+.fd-figure-img {
+  grid-area: fig; display: block; width: 168px; max-width: 100%; height: auto;
+  border: 0; border-radius: 0; background: none;
+  pointer-events: none;
+  /* 不用淡入：真实浏览器里 opacity 过渡会卡在 0（CSSTransition currentTime 恒为 0），
+     结果就是「图加载了但看不见」。改成加载完直接显示，宁可少一个淡入。 */
+  display: none;
+}
+.fd-figure[data-ready="1"] .fd-figure-img { display: block; }
+.fd-figure[data-ready="1"] .fd-bot { display: none; }
+
+/* SVG 兜底时居中；动图有透明底，这一层不需要任何底色、圆角或透视 */
+.fd-ins-face { display: grid; place-items: center; }
+.fd-ins-headline { font-size: 19px; font-weight: 650; letter-spacing: -.015em; line-height: 1.35; color: var(--fd-text); }
+.fd-ins-summary { font-size: 12.5px; line-height: 1.75; color: var(--fd-dim); max-width: 72ch; }
+.fd-ins-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.fd-ins-facts { display: flex; flex-direction: column; gap: 8px; }
+.fd-ins-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fd-ins-fact-label { font-size: 10px; letter-spacing: .02em; color: var(--fd-dim); }
+.fd-ins-fact-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fd-text); }
+.fd-ins-fact-bar { height: 3px; border-radius: 999px; background: var(--fd-sunken); overflow: hidden; }
+.fd-ins-fact-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--fd-brand); }
+.fd-ins-next > .fd-ai-jump { flex: 0 0 auto; margin-left: auto; }
+
+/* ---- 下一步：全卡唯一一块强调色，不与结论抢注意力 ---- */
+.fd-ins-next {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px;
+  background: color-mix(in oklab, var(--fd-brand) 8%, var(--fd-surface-2));
+  border: 1px solid color-mix(in oklab, var(--fd-brand) 30%, var(--fd-line));
+}
+.fd-ins-next-tag {
+  flex: 0 0 auto; margin-top: 1px; padding: 1px 8px; border-radius: 999px; font-size: 10px;
+  color: var(--fd-brand); background: color-mix(in oklab, var(--fd-brand) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--fd-brand) 34%, transparent);
+}
+.fd-ins-next-text { margin: 0; font-size: 13px; line-height: 1.7; color: var(--fd-text); }
+
+/* ---- 结论两栏：左「要处理」右「做得对」；行不套框，靠左侧色条分区 ---- */
+.fd-ins-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.fd-ins-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fd-ins-block-head { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .08em; color: var(--fd-dim); }
+.fd-ins-block-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--fd-tone, var(--fd-brand)); }
+.fd-ins-block-head > b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fd-dim); }
+.fd-ins-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fd-ins-row {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px 8px 9px;
+  border-radius: 10px; border-left: 2px solid var(--fd-tone, var(--fd-line));
+  background: var(--fd-surface-2);
+}
+.fd-ins-mark {
+  flex: 0 0 16px; height: 16px; margin-top: 1px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; font-variant-numeric: tabular-nums;
+  color: var(--fd-tone, var(--fd-brand));
+  background: color-mix(in oklab, var(--fd-tone, var(--fd-brand)) 16%, transparent);
+}
+.fd-ins-row-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+.fd-ins-row-text {
+  font-size: 12px; line-height: 1.6; color: var(--fd-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fd-ins-row-ev {
+  font-size: 10px; line-height: 1.5; color: var(--fd-dim);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fd-ins-acts { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+/* ---- 脚注：改法 / 履约 / 延期，尽量轻，不占主视线 ---- */
+.fd-ins-foot { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--fd-line); }
+.fd-ins-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fd-ins-chip {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px; cursor: default;
+  color: var(--fd-text); background: var(--fd-sunken); border: 1px solid var(--fd-line);
+}
+.fd-ins-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; line-height: 1.6; color: var(--fd-dim); }
+.fd-ins-meta-item { cursor: default; }
+
+/* 窄容器：左右两栏改成上下——状态与人物并排在上，判断与明细在下 */
+@container fdpage (max-width: 819px) {
+  .fd-ins { grid-template-columns: minmax(0, 1fr); }
+  .fd-ins-rail {
+    flex-direction: row; align-items: flex-end; justify-content: space-between;
+    gap: 16px; padding: 0 0 12px; border-right: 0; border-bottom: 1px solid var(--fd-line);
+  }
+  .fd-ins-status { flex: 1 1 auto; }
+  .fd-figure-img { width: 132px; }
+}
+
+.fd-ai-write { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--fd-dim); }
+.fd-ai-write.fd-tone-ok { color: var(--fd-ok); }
+.fd-ai-write.fd-tone-danger { color: var(--fd-danger); }
+.fd-ai-jump {
+  flex: 0 0 auto; font-size: 10px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+  color: var(--fd-dim); background: transparent; border: 1px solid var(--fd-line);
+}
+.fd-ai-jump:hover { color: var(--fd-text); border-color: var(--fd-line-strong); }
+.fd-ai-btn {
+  font-size: 11px; padding: 4px 11px; border-radius: 8px; cursor: pointer;
+  color: var(--fd-text); background: var(--fd-surface-2); border: 1px solid var(--fd-line);
+}
+.fd-ai-btn:hover:not(:disabled) { border-color: var(--fd-line-strong); background: var(--fd-sunken); }
+.fd-ai-btn:disabled { cursor: default; opacity: .55; }
+
+/* ---- 小助手本体：线条只描不填色，跟着主题走 ---- */
+.fd-bot { width: 66px; height: 66px; overflow: visible; animation: fd-bot-bob 5s ease-in-out infinite; }
+.fd-bot-head {
+  fill: color-mix(in oklab, var(--fd-brand) 10%, var(--fd-surface));
+  stroke: color-mix(in oklab, var(--fd-brand) 44%, var(--fd-line-strong));
+  stroke-width: 1.4;
+}
+.fd-bot-glint { fill: none; stroke: color-mix(in oklab, var(--fd-text) 22%, transparent); stroke-width: 2.4; stroke-linecap: round; }
+.fd-bot-cheek { fill: var(--fd-brand); opacity: .2; }
+.fd-bot-eye { fill: var(--fd-text); }
+.fd-bot-eye-arc { fill: none; stroke: var(--fd-text); stroke-width: 2.2; stroke-linecap: round; }
+.fd-bot-brows { fill: none; stroke: var(--fd-warn); stroke-width: 1.8; stroke-linecap: round; }
+.fd-bot-mouth { fill: none; stroke: var(--fd-text); stroke-width: 2; stroke-linecap: round; }
+.fd-bot-mouth.is-shape { fill: var(--fd-text); stroke: none; }
+.fd-bot-antenna { fill: none; stroke: var(--fd-line-strong); stroke-width: 1.6; stroke-linecap: round; }
+.fd-bot-bulb { fill: var(--fd-brand); animation: fd-bot-bulb 3.4s ease-in-out infinite; }
+.fd-bot-ring {
+  fill: none; stroke: var(--fd-brand); stroke-width: 1.2; stroke-dasharray: 5 11;
+  opacity: 0; transform-box: fill-box; transform-origin: center;
+}
+.fd-bot-think { fill: var(--fd-brand); opacity: 0; }
+.fd-bot-shadow { fill: var(--fd-text); opacity: .07; }
+.fd-bot.is-thinking .fd-bot-ring { opacity: .45; animation: fd-bot-spin 7s linear infinite; }
+.fd-bot.is-thinking .fd-bot-bulb { animation-duration: 1.1s; }
+.fd-bot.is-thinking .fd-bot-think { opacity: .9; animation: fd-bot-float 2.4s ease-in-out infinite; }
+.fd-bot.is-alert .fd-bot-bulb { fill: var(--fd-warn); }
+.fd-bot.is-happy .fd-bot-bulb { animation-duration: 5s; }
+
+@keyframes fd-bot-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@keyframes fd-bot-bulb { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@keyframes fd-bot-spin { to { transform: rotate(360deg); } }
+@keyframes fd-bot-float { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+/* 页面一致性：每张卡的标题前加一个小色点，和诊断卡的标签同一套节奏 */
+.fd-panel-title::before {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px;
+  border-radius: 50%; vertical-align: 1px;
+  background: color-mix(in oklab, var(--fd-brand) 55%, transparent);
+}
+
 /* ============ 尊重系统「减少动态效果」 ============ */
 /* 减少动效：一律 !important —— 不能靠「块在文件最后 + 同特异度」生效，
    否则以后任何追加的动画规则（或特异度更高的选择器）会静默压过它（复核 R3）。
@@ -759,6 +948,8 @@ export const CSS = `
   /* 水位条：入场动画关掉后宽度直接落位（width 变量），横扫高光也停 */
   .fr-water-fill, .fr-water-shine { animation: none !important; }
   .fr-bubble:hover { transform: none !important; }
+  /* 洞察的小人：漂浮、眨眼、天线闪、虚线圈转、轨道绕行，全部停 */
+  .fd-bot, .fd-bot-bulb, .fd-bot-ring, .fd-bot-think { animation: none !important; }
   /* 气泡墙：漂浮与呼吸都停，避免前庭敏感用户看到一直晃的元素 */
   .fr-bubble-slot { animation: none !important; }
   .fr-bubble-orb.is-running { animation: none !important; }

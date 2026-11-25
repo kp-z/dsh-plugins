@@ -251,7 +251,7 @@ function pluginVersion() {
  * 输出固定 JSON，面板直接渲染，不做二次解析。
  */
 /* 提示词版本：改了默认提示词就把这个数 +1，旧版会被自动替换成新的（用户改过的也换，说明见 PR） */
-export const PROMPT_REV = 15
+export const PROMPT_REV = 17
 
 /**
  * 早会同步专用提示词。
@@ -384,7 +384,7 @@ export const DEFAULT_INSIGHT_PROMPT = `你是团队早会的诊断助手。根�
 {"summary":"一段话总结（2-3 句，不超过 70 字）：现在最该注意的是什么、为什么","headline":"一句话总结当前推进状态（不超过 24 字）",
  "today":"一句话说今天实际做了什么（不超过 50 字，基于任务与对话摘要，不要编造）",
  "issues":[{"taskNo":12,"level":"info|warn|bad","text":"问题（不超过 30 字，以 T12「任务名」开头）","evidence":"一句话证据（不超过 40 字，写你凭什么这么说：哪条记录/哪次提交/哪个状态；不是下一步该做什么）"}],
- "advice":"下一步建议（不超过 60 字）",
+ "advice":"今天先做什么：必须点名 T 号（或具体对象），写清「做什么 + 到什么算完成 + 什么时候」，不超过 60 字",
  "commentary":"你自己想补充的一句判断（不超过 80 字，可以说趋势/风险/悖论）",
  "charts":[{"type":"bar|line|pie|sunburst","dataset":"done_by_day_7|started_by_day_7|wip_by_day_14|state_distribution|workspace_distribution","title":"图表标题（不超过 14 字）","why":"为什么用这张图（不超过 20 字）"}],
 
@@ -392,11 +392,15 @@ export const DEFAULT_INSIGHT_PROMPT = `你是团队早会的诊断助手。根�
 
  "fulfillmentComment":"一句话评价履约（不超过 50 字，说判断、不要抄数字）",
  "delayPatterns":[{"bucket":"dependency|scope|interrupt|estimate|environment|review|other","comment":"这类延期在你这批任务里具体长什么样（不超过 30 字）","advice":"下一轮怎么改（不超过 40 字，要能落地）"}],
+ "strengths":[{"taskNo":12,"text":"做得对的地方（不超过 30 字，以 T12「任务名」开头）","evidence":"一句话证据（不超过 40 字：哪条记录/哪次收口/哪个状态）"}],
  "improve":[{"title":"改进点（不超过 14 字）","detail":"具体做法（不超过 40 字）"}]}
 
 规则：
 - 只依据给到的信息，不要编造没出现的任务或数字。
 - issues 最多 3 条，优先「卡住 / 长时间没动 / 反复返工」的。
+- **strengths 0-2 条，和 issues 对称**：只写有证据的正向事实（收口快、依赖时间确认得准、记录完整、重承诺少）。
+  没有就留空数组——不要为了凑对称硬夸，也不要把「没出问题」当成优点。用户需要知道自己哪套做法有效，
+  只挑毛病会让人不知道该保留什么。
 - **把优先级当考量条件**：任务行里的「优先级=P0/P1/P2/P3」是用户手动排的（P0 最急，缺失=没排过）。
   P0 出问题必须进 issues；P1 的问题排在未排过的之前；P2/P3 的小毛病别占名额。
   高优先级却长期没动的，直接把「P1 挂了 N 天」当成问题写出来。
@@ -422,6 +426,12 @@ export const DEFAULT_INSIGHT_PROMPT = `你是团队早会的诊断助手。根�
   估时不准→承诺时加一半缓冲并拆到两天；依赖等待→先确认上游时间再承诺；被打断→每天只留一个主任务。
 - 【improve】2-3 条，必须可执行（加缓冲 / 拆任务 / 先做依赖 / 减少并行 / 给验收留时间），
   不要「提高效率」「加强沟通」这种空话。
+- 【advice 只给一件事】点名 T 号（没有合适的任务时，就说清是对哪一类任务做什么），
+  并且写清「做什么 + 到什么算完成 + 什么时候」。**换个项目也成立的话一律不要写**——
+  「提高效率 / 加强沟通 / 注意风险 / 合理安排时间」这类视为空话，等于没给建议。
+  实在没有可执行的下一步，就写「先补预期」或「先确认依赖」，并指名是哪条。
+- 【improve 必须能对上证据】每条改法要么指向一条具体任务，要么指向一个具体数字（例如「3 条逾期里有 2 条卡在依赖」）；
+  对不上的删掉，宁少勿凑。
 - 还没有履约数据（没有任何预期记录）时：fulfillmentComment 说明「先给在跑的任务设预期」，
   delayPatterns 与 improve 可以留空，不要编造延期。
 - 中文，句子短，不说场面话。`
@@ -8299,7 +8309,14 @@ function createSyncEngine(ctx) {
       const hay = `${task.title ?? ''} ${task.workspaceTitle ?? ''} ${task.workspaceName ?? ''}`.toLowerCase()
       return !ignore.some((word) => hay.includes(word))
     })
-    for (const task of kept.slice(0, 15)) {
+    /* 任务多时只展开前 N 条：这是样本，不是全集。正文里必须说清范围，
+       否则模型会把「只看到 15 条」当成「全部任务」，比截断本身更危险。 */
+    const DETAIL_LIMIT = 15
+    const detailed = kept.slice(0, DETAIL_LIMIT)
+    /* 关系是「连点成线」的材料：只给任务本身，模型只能看到一堆孤立条目。
+       统计与单任务关系都复用 relations.js，不在这里另算一套。 */
+    const relStats = relationStats(state.relations, state.tasks)
+    for (const task of detailed) {
       /* 开工 = 已经有一条会话在推进这条任务（有 sessionId）。
          飞书那边的 started 标记经常没打上，不能拿它当唯一依据，否则「正在聊」会被判成「零开工」。 */
       const status = task.done
@@ -8325,6 +8342,13 @@ function createSyncEngine(ctx) {
       bits.push(`最后活动=${idle <= 0 ? '今天' : `${idle} 天前`}`)
       if (Array.isArray(task.docs) && task.docs.length) bits.push(`文档=${task.docs.length}`)
       if (task.lastPushAt) bits.push('有进展评论')
+      const link = projectRelations(state.relations, state.tasks, task.id)
+      const relBits = []
+      if (link.predecessors.length) relBits.push(`前置 ${link.predecessors.length}（未完成 ${link.blockedBy.length}）`)
+      if (link.successors.length) relBits.push(`后继 ${link.successors.length}`)
+      if (link.sourceTasks.length) relBits.push(`来源 ${link.sourceTasks.length}`)
+      if (link.derivedTasks.length) relBits.push(`派生 ${link.derivedTasks.length}`)
+      bits.push(`关系=${relBits.length ? relBits.join('，') : '无'}`)
       if (Number(task.expectedAt)) {
         const view = classifyFulfillment(task, now)
         bits.push(`预期=${formatEta(Number(task.expectedAt), settings.schedule?.timeZone)}（${view.label}）`)
@@ -8341,6 +8365,26 @@ function createSyncEngine(ctx) {
         }
       }
       lines.push(bits.join(' | '))
+    }
+    if (kept.length > detailed.length) {
+      lines.push(
+        '',
+        `任务清单只展开前 ${detailed.length} 条（共 ${kept.length} 条，还有 ${kept.length - detailed.length} 条未展开）。`,
+        '未展开的任务同样存在：不要把它们当成不存在，也不要对它们下具体结论；需要时可以建议用户缩小范围。',
+      )
+    }
+    if (relStats.dependencyEdges || relStats.provenanceEdges || relStats.temporalEdges) {
+      lines.push(
+        '',
+        `关系概览：依赖 ${relStats.dependencyEdges} 条 · 来源 ${relStats.provenanceEdges} 条 · 时间先后 ${relStats.temporalEdges} 条 · 当前被阻塞 ${relStats.blockedTasks} 条`,
+      )
+      /* 孤岛 = 未完成且一条关系都没有：主线管理最直接的缺口信号。 */
+      const linked = new Set()
+      for (const edge of state.relations) { linked.add(edge.from); linked.add(edge.to) }
+      const isolated = kept.filter((task) => !task.done && !linked.has(task.id)).length
+      if (isolated) {
+        lines.push(`其中 ${isolated} 条未完成任务没有任何关系（孤岛）：可以建议连进主线，或明确它就是独立事项。`)
+      }
     }
     /* 未绑定任务的对话也要看：这是「今日洞察」不看会漏掉的一半信息 */
     let unboundCount = 0
@@ -8373,7 +8417,15 @@ function createSyncEngine(ctx) {
     const brief = fulfillmentBrief(now)
     if (brief.lines.length) lines.push('', ...brief.lines)
     /* tasks 是数量（老字段），taskList 是这批任务本体：上层要拿标题做「T13「任务名」」的兜底 */
-    return { text: lines.join('\n'), tasks: kept.length, taskList: kept, unbound: unboundCount, brief }
+    return {
+      text: lines.join('\n'),
+      tasks: kept.length,
+      /* detailed 是模型真正看到的条数；tasks 是范围内总数。两者不能混用。 */
+      detailed: detailed.length,
+      taskList: kept,
+      unbound: unboundCount,
+      brief,
+    }
   }
 
   /* ---------------- 逾期自动归因 ---------------- */
@@ -8525,12 +8577,17 @@ bucket 只能从枚举里选：
   function insightSignature() {
     /* 承诺与延期也要进签名：改一次预期、多一条延期记录，诊断的输入就变了，
        不能因为「任务标题/活动时间没变」就命中昨天的缓存。 */
-    const raw = state.tasks
+    /* 提示词/忽略词变了，同一批任务也可能得出不同结论，所以一起进签名。 */
+    const raw = `${asString(settings.insightPlaybook)}|${(settings.insightIgnore ?? []).join(',')}|` + state.tasks
       .map((task) => {
         const delays = Array.isArray(task.delayLog) ? task.delayLog.length : 0
-        return `${task.id}:${task.title}:${task.done ? 1 : 0}:${taskActivityAt(task)}:${Number(task.expectedAt) || 0}:${delays}`
+        /* 最近一次延期的时刻也进签名：补记一条延期会改变模型该看到的东西。 */
+        const lastDelay = delays ? Number(task.delayLog[delays - 1]?.at) || 0 : 0
+        return `${task.id}:${task.title}:${task.done ? 1 : 0}:${taskActivityAt(task)}:${Number(task.expectedAt) || 0}:${delays}:${lastDelay}:${task.priority ?? ''}`
       })
       .join('|')
+      /* 连边/断边同样改变材料：不加进来，刚整理完的关系仍会命中旧诊断。 */
+      + `|${state.relations.map((edge) => `${edge.kind}:${edge.from}>${edge.to}`).join(',')}`
     let hash = 0
     for (let i = 0; i < raw.length; i += 1) hash = (hash * 31 + raw.charCodeAt(i)) % 2_147_483_647
     return `${dayStart(0)}-${hash}`
@@ -8667,6 +8724,16 @@ bucket 只能从枚举里选：
         text: withTaskName(item?.taskNo, item?.text).slice(0, 88),
         evidence: asString(item?.evidence).slice(0, 120),
       })),
+      /* 优点与问题同源同格式：都带任务号和证据，面板才能用同一套行渲染。
+         早会模式不需要（它回答「今天先做哪一件」），所以和 improve 一样留空。 */
+      strengths: mode === 'morning' ? [] : (Array.isArray(parsed.strengths) ? parsed.strengths : [])
+        .slice(0, 2)
+        .map((item) => ({
+          taskNo: Number(item?.taskNo) || 0,
+          text: withTaskName(item?.taskNo, item?.text).slice(0, 88),
+          evidence: asString(item?.evidence).slice(0, 120),
+        }))
+        .filter((item) => item.text),
       advice: asString(parsed.advice).slice(0, 160),
       commentary: asString(parsed.commentary).slice(0, 200),
       charts: (Array.isArray(parsed.charts) ? parsed.charts : [])
@@ -8701,7 +8768,12 @@ bucket 只能从枚举里选：
       /* 这份结果是用哪种 tab 生成的（morning / diagnose），面板据此挂到对应 tab 下 */
       mode: mode === 'morning' ? 'morning' : 'diagnose',
       promptHead: asString(systemPrompt).replace(/\s+/g, ' ').slice(0, 60),
-      ctxStats: { tasks: ctxPack.tasks, unbound: ctxPack.unbound, chars: context.length },
+      ctxStats: {
+        tasks: ctxPack.tasks,
+        detailed: ctxPack.detailed,
+        unbound: ctxPack.unbound,
+        chars: context.length,
+      },
     }
     state.insight = data
     state.insightSignature = signature
@@ -9052,11 +9124,19 @@ bucket 只能从枚举里选：
     let lastError = ''
     for (const budget of [maxTokens, Math.max(maxTokens, 2400)]) {
       try {
+        /* 宿主侧 12000 字符上限：截在行边界并留下标记，
+           让模型知道「后面还有」，而不是把半份材料当成全部。 */
+        const full = asString(text)
+        let prompt = full
+        if (full.length > 12000) {
+          const cut = full.lastIndexOf('\n', 12000)
+          prompt = `${full.slice(0, cut > 0 ? cut : 12000)}\n（材料因长度限制在此截断，后面还有内容未提供）`
+        }
         const stream = llm.stream({
           provider: selection.provider,
           model: selection.model,
           system,
-          messages: [{ role: 'user', content: [{ type: 'text', text: asString(text).slice(0, 12000) }] }],
+          messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
           maxTokens: budget,
           temperature: 0.2,
           purpose: 'session-title',
@@ -11138,6 +11218,9 @@ function mountRoutes(ctx, engine) {
             /* 品牌标：客户端组件（侧栏 logo）用它，放在插件根下，
                与「独立任务页地址」区分开 —— 客户端源码里不该出现 /tasks 前缀。 */
             '/logo.png': [join(HERE, 'logo.png'), 'image/png'],
+            /* 洞察卡上的头像：用户 blog-cn 仓库 profile 页那张动图（animated WebP，55 帧）。
+               扩展名是 .webp、内容是动图——按 image/webp 出，浏览器自己会播。 */
+            '/tasks/assets/kp-avatar.webp': [join(HERE, 'assets', 'img', 'kp-avatar.webp'), 'image/webp'],
             /* 官方 React（vendor 在 lib/vendor），面板组件跑在它上面 */
             '/tasks/vendor/react.js': [join(HERE, 'lib', 'vendor', 'react.production.min.js'), 'text/javascript; charset=utf-8'],
             '/tasks/vendor/react-dom.js': [join(HERE, 'lib', 'vendor', 'react-dom.production.min.js'), 'text/javascript; charset=utf-8'],

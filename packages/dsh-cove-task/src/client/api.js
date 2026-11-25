@@ -176,6 +176,27 @@ export function createApi({ fetchImpl } = {}) {
     health() {
       return request('/api/health', { headers: { accept: 'application/json' } });
     },
+    /** 上次的诊断结果（含 local 统计）。只读，不触发模型。 */
+    insight() {
+      return request('/api/insight', { headers: { accept: 'application/json' } });
+    },
+    /** 触发一次诊断：默认后台跑，立刻返回；结果用 insightAi 轮询。 */
+    insightDiagnose(options) {
+      const o = options || {};
+      return post('/api/insight/diagnose', {
+        force: o.force === true,
+        ...(o.prompt ? { prompt: String(o.prompt) } : {}),
+        ...(o.mode ? { mode: String(o.mode) } : {}),
+      });
+    },
+    /** 把一段结论写进某条任务的飞书评论（用户确认后才调）。 */
+    insightExport(taskId, text) {
+      return post('/api/insight/export', { taskId: String(taskId || ''), text: String(text || '') });
+    },
+    /** 后台诊断任务的状态：{ running, error, data, jobId }。 */
+    insightAi() {
+      return request('/api/insight/ai', { headers: { accept: 'application/json' } });
+    },
     insightStats(days) {
       const span = Number(days) > 0 ? Math.min(365, Math.floor(Number(days))) : 14;
       return request(`/api/insight/stats?days=${span}`, { headers: { accept: 'application/json' } });
