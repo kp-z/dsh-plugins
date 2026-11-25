@@ -107,6 +107,22 @@ export class SmsStore {
     return message
   }
 
+  /**
+   * 前端判断「有没有新消息」的两个值：最后一条的行号 + 未读总数。
+   *
+   * 为什么需要它：前端不轮询短信，它看快照里 viewer.phone.sms 的这两个值变没变，
+   * 变了才重拉当前线程。我们之前没投影这两个值，于是「消息到了但界面不动」。
+   */
+  signal(): { rowId: number; unread: number } {
+    let rowId = 0
+    let unread = 0
+    for (const thread of this.threads.values()) {
+      rowId = Math.max(rowId, thread.messages[thread.messages.length - 1]?.messageRowId ?? 0)
+      unread += thread.unread
+    }
+    return { rowId, unread }
+  }
+
   /** 我发一条：先落库（回执），再问 responder 要不要回。 */
   async send(input: {
     threadId: string

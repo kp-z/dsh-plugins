@@ -11010,3 +11010,24 @@ world tick 11929 running=true。
 
 判据：862 条 pass 861 / fail 0；玩家来源的 decision 已真机验过（reason=去海滩），
 工单/作息来源由单测覆盖（test/activity-trigger.test.js）。
+
+## 2026-11-25 23:35 短信不刷新 / iframe 切回就重进 —— 两个服务端修复
+
+### 1) 短信回复到了但界面不动
+
+前端不轮询短信：它比对快照里 viewer.phone.sms 的
+player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线程。
+我们的投影里 phone 只有 wallet/money/bank，这两个值恒为 0 -> 永远“没变化”。
+
+现在 SmsStore.signal() 提供 {rowId, unread}，投影进 viewer.phone.sms。
+实测：发「在吗」-> row_id 0->1；对方回「在呢，有事你说。」-> row_id 2，unread 1。
+
+顺带确认：前端没有任何 typing/加载态（bundle 里 0 命中），所以等待期间安静是它的设计。
+
+### 2) iframe 切 tab 要重新进入
+
+原来只靠 xcity_resume Cookie 把 / 重定向回上次的世界；iframe 重建时 Cookie 可能被丢，
+于是落到角色选择页。现在进程内也记 lastWorldPath（Cookie 优先、记忆兜底）。
+实测：无 Cookie 访问 / -> 302 到 /world/w1?role_id=agent-1。
+
+判据：862 条 pass 861。注意：这些改动要重启 DSH 才生效（用户当前 7788 还是旧构建）。

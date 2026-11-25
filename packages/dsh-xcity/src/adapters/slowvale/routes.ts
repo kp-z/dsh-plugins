@@ -247,7 +247,7 @@ export async function handleApi(
       sendJson(res, 503, { detail: { code: 'no_world', message: '世界还没起来' } })
       return true
     }
-    sendJson(res, 200, projectSnapshot(world, ctx.opts))
+    sendJson(res, 200, projectSnapshot(world, { ...ctx.opts, phone: ctx.sms.signal() }))
     return true
   }
   if (path === '/game/state/scene') {
@@ -259,7 +259,7 @@ export async function handleApi(
     const requested = url.searchParams.get('scene')
     const rawAfter = Number(url.searchParams.get('after_seq') ?? '0')
     const baseOpts = requested === null ? ctx.opts : { ...ctx.opts, scene: requested }
-    sendJson(res, 200, projectScene(world, { ...baseOpts, afterSeq: Number.isFinite(rawAfter) ? rawAfter : 0 }))
+    sendJson(res, 200, projectScene(world, { ...baseOpts, phone: ctx.sms.signal(), afterSeq: Number.isFinite(rawAfter) ? rawAfter : 0 }))
     return true
   }
   // ── 短信：线程 / 详情 / 发送 ─────────────────────────────────────────────
@@ -451,7 +451,7 @@ function noticeTextOf(type: string): string {
 
 function logsBody(ctx: RouteContext, which: 'recent' | 'catchUp'): Record<string, unknown> {
   const world = ctx.getWorld()
-  const snapshot = world === null ? null : projectSnapshot(world, ctx.opts)
+  const snapshot = world === null ? null : projectSnapshot(world, { ...ctx.opts, phone: ctx.sms.signal() })
   const clock = (snapshot?.['clock'] ?? {}) as { current_datetime?: string; day_number?: number }
   const cursor = (snapshot?.['cursor'] ?? {}) as { epoch?: string }
   const worldLike = world as unknown as {

@@ -33,6 +33,8 @@ export interface ProjectOptions {
   singlePlace?: boolean
   /** 客户端请求的 after_seq：快照 cursor.seq 不能小于它，否则前端判"没覆盖这次切换"。 */
   afterSeq?: number
+  /** 短信信号：最后一条消息行号与未读数（前端靠它们判断要不要重拉线程）。 */
+  phone?: { rowId: number; unread: number } | undefined
 }
 
 /** 一 epoch 的含义：世界重启一次换一个。 */
@@ -390,7 +392,7 @@ role_presences: presence,
       attributes: { sources: [], totals: {}, rows: [] },
       attribute_effects: { sources: [], totals: {}, rows: [] },
       package: { money: 128000, items: [], entries: [] },
-      phone: { wallet: { balance: 128000, currency: 'CNY' }, money: 128000, bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 } },
+      phone: { sms: { player_thread_message_row_id: opts.phone?.rowId ?? null, player_thread_unread_count: opts.phone?.unread ?? 0, total_unread_count: opts.phone?.unread ?? 0 }, wallet: { balance: 128000, currency: 'CNY' }, money: 128000, bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 } },
       housing: {},
       farm: null,
       money: 128000,

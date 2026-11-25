@@ -113,6 +113,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const clients = new Set<ServerResponse>()
   let timer: NodeJS.Timeout | null = null
   let closed = false
+  /**
+   * 上次停在哪个世界（进程内记忆）。
+   *
+   * 为什么不只靠 Cookie：DSH 把小镇放在 iframe 里，切 tab 会重建 iframe；
+   * 某些环境里第三方 Cookie 被丢，于是回到 "/" 只会看到角色选择页。
+   * 单机单人场景下，直接记在进程里最稳。
+   */
+  let lastWorldPath: string | null = null
 
   // 短信线程挂在世界这一侧：会话可以归档换人，聊天记录不能丢。
   // 账号固定 + 单机：token 由账号派生，进程生命周期内不变。
@@ -434,14 +442,15 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       // ── 「上次停在哪个页面」──
       // iframe 被重建时会从 / 重新加载，前端于是退回世界列表（用户体感：又要点一遍）。
       // 服务端记住最后访问的 /world 路径，下次进 / 时直接重定向回去。
-      const resumePath = resumePathOf(req)
+      // Cookie 优先（多浏览器场景），进程内记忆兜底（iframe 里 Cookie 可能被丢）。
+      const resumePath = resumePathOf(req) ?? lastWorldPath
       if (url.pathname === '/' && resumePath !== null) {
         res.writeHead(302, { location: resumePath, 'cache-control': 'no-store' })
         res.end()
         return
       }
       if (/^\/world\/[^/]+$/.test(url.pathname)) {
-
+        lastWorldPath = url.pathname + url.search
         res.setHeader('set-cookie', 'xcity_resume=' + encodeURIComponent(url.pathname + url.search) + '; Path=/; Max-Age=2592000; SameSite=Lax')
       }
 
