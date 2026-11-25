@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { debugScript } from './debug.js'
-import { projectScene, projectSnapshot, type ProjectOptions } from './project.js'
+import { epochOf, projectScene, projectSnapshot, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
 import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat } from './visual.js'
@@ -165,7 +165,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (world === null || clients.size === 0) return
     const payload = projectSnapshot(world, options.opts)
     envelopeSeq += 1
-    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const withCursor = { ...payload, cursor }
     lastCursor = cursor
     for (const res of clients) writeEvent(res, event, withCursor)
@@ -191,7 +191,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (options.sceneStateOnChangeOnly === true && scene === lastPushedScene) return
     lastPushedScene = scene
     envelopeSeq += 1
-    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: world.id, scene }))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -222,7 +222,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
     envelopeSeq += 1
-    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const body = gzipSync(Buffer.from(JSON.stringify({ part, operation: 'replace', key, payload }))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -249,7 +249,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (typeof scene !== 'string' || scene === '') return false
     envelopeSeq += 1
     const tickMarker = 'tick-' + String(world.tick)
-    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const packet = independentDialogue({
       epoch: cursor.epoch,
       seq: envelopeSeq,
@@ -280,7 +280,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (typeof scene !== 'string' || scene === '') return false
     envelopeSeq += 1
     const tickMarker = 'tick-' + String(world.tick)
-    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const packet = independentTimeline({ epoch: cursor.epoch, seq: envelopeSeq, tickMarker, actorId, beats: beats as never })
     const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
     const envelope = {
@@ -305,7 +305,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const scene = snapshot.scene
     if (typeof scene !== 'string' || scene === '') return
     envelopeSeq += 1
-    const cursor = { epoch: 'epoch-' + world.id, seq: envelopeSeq }
+    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const payload = { place_id: options.opts.place, furniture: [] }
     const body = gzipSync(Buffer.from(JSON.stringify(payload))).toString('base64')
     const envelope = {

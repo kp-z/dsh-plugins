@@ -18,6 +18,7 @@
  * - clock 必须带 day_number 与 current_datetime（前端拿它推日期）。
  */
 import type { WorldAgentLike, WorldLike } from './types.js'
+import { logHeadOf, logNoticesOf } from './logs.js'
 import { DEFAULT_CIRCUIT } from './stage.js'
 import { sceneKeyOf } from './scene-key.js'
 import { MINUTES_PER_DAY, SLOWVALE_PROTOCOL_VERSION, TICKS_PER_GAME_MINUTE } from './types.js'
@@ -37,9 +38,9 @@ export interface ProjectOptions {
   phone?: { rowId: number; unread: number } | undefined
 }
 
-/** 一 epoch 的含义：世界重启一次换一个。 */
-export function epochOf(world: WorldLike): string {
-  return 'epoch-' + world.id
+/** 日志条目布局变更时，旧游标不能继续使用。HTTP 和 SSE 共用此值。 */
+export function epochOf(world: Pick<WorldLike, 'id'>): string {
+  return 'epoch-' + world.id + '-feed2'
 }
 
 /** 由 tick 推游戏时间。一天 = MINUTES_PER_DAY 个 tick。 */
@@ -126,7 +127,7 @@ function gameTimeAt(startDate: string, tick: number): string {
  * 所以这里只要把三个锚点字段给对，进度条就会自己动——不需要额外的推送。
  */
 function activeActivityOf(world: WorldLike, agent: WorldAgentLike, startDate: string): Record<string, unknown> | undefined {
-  const activities = (world as { activities?: { id: string; agentId: string; kind: string; skill?: string; status: string; startedAt: number; endsAt: number }[] }).activities
+  const activities = world.activities
   if (activities === undefined) return undefined
   const id = (agent as { activityId?: string }).activityId
   const live = activities.find((item) => item.id === id && item.status === 'active')
@@ -269,13 +270,8 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
   return out
 }
 
-/** 日志 head：世界事件里最大的 seq（没有事件就是 0）。 */
 function feedHeadOf(world: WorldLike): number {
-  let head = 0
-  for (const event of world.events ?? []) {
-    if (Number.isSafeInteger(event.seq) && event.seq > head) head = event.seq
-  }
-  return head
+  return logHeadOf(world.activities ?? [], logNoticesOf(world.events ?? []))
 }
 
 /** 内核状态 -> 前端动作名（动作表见 docs/DRIVE-MODEL.md）。 */

@@ -43,13 +43,12 @@ export interface LogNotice {
 }
 
 export interface LogInput {
-  datetime: string
-  dayNumber: number
   epoch: string
   /** 世界起点日期（YYYY-MM-DD）：tick -> 游戏时间要用它。 */
   startDate: string
   activities: readonly LogActivity[]
   notices: readonly LogNotice[]
+  query?: URLSearchParams
   nameOf: (agentId: string) => string
   placeOf: (placeId: string) => { asset: string; name: string } | null
 }
@@ -94,6 +93,19 @@ interface Draft {
   body: Record<string, unknown>
 }
 
+export function logHeadOf(activities: readonly LogActivity[], notices: readonly LogNotice[]): number {
+  return notices.length + activities.reduce((head, activity) =>
+    head + 1 + Number(!!activity.trigger?.text?.trim()) + Number(activity.status !== 'active'), 0)
+}
+
+export function logNoticesOf(events: readonly { seq: number; tick: number; type: string; payload: Record<string, unknown> }[]): LogNotice[] {
+  return events.flatMap(({ seq, tick, type, payload }) => {
+    if (type === 'world.reset') return [{ seq, tick, type, text: '小镇重新开始了。' }]
+    if (type === 'world.paused') return [{ seq, tick, type, text: payload['paused'] === false ? '小镇恢复运行。' : '小镇暂停了。' }]
+    return []
+  }).slice(-20)
+}
+
 export function logsOf(input: LogInput): { recent: Record<string, unknown>; catchUp: Record<string, unknown> } {
   const drafts: Draft[] = []
   const cards = new Map<string, Record<string, unknown>>()
@@ -106,8 +118,8 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
   for (const activity of input.activities) {
     const place = input.placeOf(activity.placeId)
     const asset = place?.asset ?? 'company'
-    const cardId = 'card.place.' + asset
-    const aggregateId = 'aggregate.place.' + asset
+    const cardId = 'card.place.' + asset + '.' + activity.id
+    const aggregateId = 'aggregate.' + activity.id
     const at = timeOfTick(input.startDate, activity.startedAt)
     const name = input.nameOf(activity.agentId)
     const gameTime = { current_datetime: at.datetime, day_number: at.dayNumber }
@@ -132,34 +144,44 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
       })
     }
 
-    drafts.push({
-      at: activity.startedAt,
-      order: 1,
-      cardId,
-      aggregateId,
-      body: {
-        kind: 'event',
-        phase: {
-          kind: 'activity',
-          activity_id: activity.id,
-          activity_type: activityTypeOf(activity.kind, activity.skill),
-          name: (ACTIVITY_LABEL[activity.kind] ?? activity.kind) + ' · ' + name,
-          status: activity.status,
-          is_viewer_activity: false,
+    const label = ACTIVITY_LABEL[activity.kind] ?? activity.kind
+    const phase = (tick: number, lifecycle: 'start' | 'complete' | 'interrupt'): void => {
+      drafts.push({
+        at: tick,
+        order: lifecycle === 'start' ? 1 : 2,
+        cardId,
+        aggregateId,
+        body: {
+          kind: 'event',
+          phase_id: activity.id,
+          phase: {
+            kind: 'activity',
+            activity_id: activity.id,
+            activity_type: activityTypeOf(activity.kind, activity.skill),
+            name: label + ' · ' + name,
+            is_viewer_activity: activity.agentId === input.query?.get('role_id'),
+            items: [{ lifecycle, content: label }],
+          },
         },
-      },
-    })
+      })
+    }
+    phase(activity.startedAt, 'start')
+    if (activity.status !== 'active') {
+      phase(activity.endedAt ?? activity.endsAt, activity.status === 'completed' ? 'complete' : 'interrupt')
+    }
   }
 
   for (const notice of input.notices) {
     const at = timeOfTick(input.startDate, notice.tick)
     const gameTime = { current_datetime: at.datetime, day_number: at.dayNumber }
-    cardFor(TOWN_CARD, TOWN_AGGREGATE, '小镇公告', '小镇', gameTime)
+    const cardId = TOWN_CARD + '.' + notice.seq
+    const aggregateId = TOWN_AGGREGATE + '.' + notice.seq
+    cardFor(cardId, aggregateId, '小镇公告', '小镇', gameTime)
     drafts.push({
       at: notice.tick,
       order: 2,
-      cardId: TOWN_CARD,
-      aggregateId: TOWN_AGGREGATE,
+      cardId,
+      aggregateId,
       body: {
         kind: 'standalone',
         item: { record_type: 'system_notice', category: 'system', content: notice.text },
@@ -174,15 +196,53 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
       record_entry_id: index + 1,
       card_id: draft.cardId,
       source_aggregate_id: draft.aggregateId,
-      game_time: { current_datetime: at.datetime, day_number: at.dayNumber },
+      game_time: { current_datetime: at.datetime, day_number: at.dayNumber, modern_time: at.datetime.slice(11, 16) },
       ...draft.body,
     }
   })
 
-  const head = normalized.length > 0 ? Number(normalized[normalized.length - 1]?.['record_entry_id'] ?? 0) : 0
-  const body = { entries: normalized, card_upserts: [...cards.values()] }
+  const head = normalized.length
+  const query = input.query
+  const numberParam = (key: string, fallback: number): number => {
+    const value = query?.get(key)
+    const n = value ? Number(value) : fallback
+    return Number.isSafeInteger(n) && n >= 0 ? n : fallback
+  }
+  const limit = Math.max(1, Math.min(500, numberParam('limit', 500)))
+  const bodyOf = (entries: typeof normalized) => ({
+    entries,
+    card_upserts: [...new Set(entries.map((entry) => entry.card_id))].map((id) => cards.get(id)!),
+    realtime_epoch: input.epoch,
+  })
+  const from = query?.get('from_game_time')
+  const before = query?.get('before_game_time')
+  const since = query?.get('since_game_time')
+  const sinceId = numberParam('since_record_entry_id', 0)
+  const eligible = normalized.filter((entry) => {
+    const at = entry.game_time.current_datetime
+    return (!from || at >= from) && (!before || at < before) &&
+      (!since || at > since || (at === since && entry.record_entry_id > sinceId))
+  })
+  const page = eligible.slice(0, limit)
+  const last = page.at(-1)
+  const after = numberParam('after_record_entry_id', 0)
+  const target = Math.max(after, numberParam('target_record_entry_id', head))
+  const updates = normalized.filter((entry) => entry.record_entry_id > after && entry.record_entry_id <= target)
+  const batch = updates.slice(0, limit)
+  const hasMore = updates.length > batch.length
+  const epoch = query?.get('realtime_epoch')
+  const reset = !!epoch && epoch !== input.epoch
   return {
-    recent: { ...body, has_more: false, feed_head_record_entry_id: head, realtime_epoch: input.epoch, oldest_available_game_time: null },
-    catchUp: { outcome: 'page', ...body, next_record_entry_id: head, target_record_entry_id: head, has_more: false },
+    recent: {
+      ...bodyOf(page),
+      has_more: eligible.length > page.length,
+      feed_head_record_entry_id: head,
+      oldest_available_game_time: normalized[0]?.game_time.current_datetime ?? null,
+      updated_until_game_time: last?.game_time.current_datetime ?? null,
+      page_end_record_entry_id: last?.record_entry_id ?? null,
+    },
+    catchUp: reset
+      ? { outcome: 'reset_required', ...bodyOf([]), next_record_entry_id: head, target_record_entry_id: head, has_more: false }
+      : { outcome: 'page', ...bodyOf(batch), next_record_entry_id: hasMore ? batch.at(-1)!.record_entry_id : target, target_record_entry_id: target, has_more: hasMore },
   }
 }

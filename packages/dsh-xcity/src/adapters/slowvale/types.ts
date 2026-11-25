@@ -6,6 +6,8 @@
  * "为什么必须是这个名字"（来源：GameView.js 的 an() 校验器与 applyPayload()）。
  */
 
+import type { LogActivity } from './logs.js'
+
 /** world 内核里我们读到的角色。字段名来自 content/instantiate.ts。 */
 export interface WorldAgentLike {
   /** 角色所在场所（world.places 的 id）。 */
@@ -33,6 +35,7 @@ export interface WorldLike {
   tick: number
   paused?: boolean
   agents: WorldAgentLike[]
+  activities?: readonly LogActivity[]
   /** 世界事件流（日志投影的来源）。 */
   events?: { seq: number; tick: number; type: string; payload: Record<string, unknown> }[]
 }

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { logsOf } from '../lib/adapters/slowvale/logs.js'
+import { createSlowvaleBridge } from '../lib/adapters/slowvale/server.js'
+import { projectSnapshot } from '../lib/adapters/slowvale/project.js'
 
 const base = {
   datetime: '2026-01-01T08:00:00',
@@ -26,7 +28,7 @@ const activity = (extra = {}) => ({
   ...extra,
 })
 
-test('一段活动就是一条 event 条目，带 phase（前端要求的形状）', () => {
+test('活动开始和完成分别有前端可消费的 phase', () => {
   const { recent } = logsOf({ ...base, activities: [activity()] })
   const entry = recent.entries[0]
   assert.ok(entry.record_entry_id > 0)
@@ -34,7 +36,9 @@ test('一段活动就是一条 event 条目，带 phase（前端要求的形状�
   assert.equal(entry.phase.kind, 'activity')
   assert.equal(entry.phase.activity_id, 'act-7')
   assert.equal(entry.phase.activity_type, 'ProgrammerActivity')
-  assert.equal(entry.phase.status, 'completed')
+  assert.equal(entry.phase_id, 'act-7')
+  assert.equal(entry.phase.items[0].lifecycle, 'start')
+  assert.equal(recent.entries[1].phase.items[0].lifecycle, 'complete')
   assert.equal(typeof entry.phase.is_viewer_activity, 'boolean')
   assert.ok(entry.game_time.current_datetime)
   assert.ok(entry.game_time.day_number > 0)
@@ -70,26 +74,26 @@ test('公告是 standalone 条目（notice），卡片在小镇公告', () => {
   assert.equal(entry.kind, 'standalone')
   assert.equal(entry.item.record_type, 'system_notice')
   assert.equal(entry.item.content, '小镇重新开始了。')
-  assert.equal(entry.card_id, 'card.town')
+  assert.equal(entry.card_id, 'card.town.3')
 })
 
 test('三类条目按时间排，id 连续且稳定', () => {
   const input = {
     ...base,
-    activities: [activity({ id: 'act-9', startedAt: 100, endsAt: 130, trigger: { kind: 'player', text: '去上班' } })],
+    activities: [activity({ id: 'act-9', startedAt: 100, endsAt: 130, endedAt: 130, trigger: { kind: 'player', text: '去上班' } })],
     notices: [{ seq: 1, tick: 10, type: 'world.reset', text: '小镇重新开始了。' }],
   }
   const first = logsOf(input).recent.entries
-  assert.deepEqual(first.map((entry) => entry.record_entry_id), [1, 2, 3], '公告在前，决策与阶段在后')
+  assert.deepEqual(first.map((entry) => entry.record_entry_id), [1, 2, 3, 4], '公告在前，决策与阶段在后')
   assert.equal(first[0].kind, 'standalone')
   assert.ok(first[1].decision !== undefined)
   assert.ok(first[2].phase !== undefined)
   const again = logsOf(input).recent.entries
-  assert.deepEqual(again.map((entry) => entry.record_entry_id), [1, 2, 3], '重复投影 id 不变')
+  assert.deepEqual(again.map((entry) => entry.record_entry_id), [1, 2, 3, 4], '重复投影 id 不变')
 })
 
 test('时间按 tick 换算：1 tick = 1 游戏分钟', () => {
-  const { recent } = logsOf({ ...base, activities: [activity({ id: 'act-60', startedAt: 60, endsAt: 90 })] })
+  const { recent } = logsOf({ ...base, activities: [activity({ id: 'act-60', startedAt: 60, endsAt: 90, endedAt: 90 })] })
   assert.equal(recent.entries[0].game_time.current_datetime, '2026-01-01T01:00:00')
 })
 
@@ -99,4 +103,69 @@ test('空世界：合法空态，但两个硬字段仍在', () => {
   assert.equal(recent.feed_head_record_entry_id, 0)
   assert.equal(recent.realtime_epoch, 'epoch-w1')
   assert.equal(catchUp.outcome, 'page')
+})
+
+test('补拉不改写开始记录，快照与日志使用同一水位', () => {
+  const active = logsOf({ ...base, activities: [activity({ status: 'active' })] }).recent
+  const world = { id: 'w1', name: '测试', tick: 40, agents: [], activities: [activity()] }
+  const { recent, catchUp } = logsOf({ ...base, ...world, query: new URLSearchParams({
+    after_record_entry_id: String(active.feed_head_record_entry_id), realtime_epoch: base.epoch,
+  }) })
+  assert.deepEqual(recent.entries[0], active.entries[0])
+  assert.equal(catchUp.realtime_epoch, base.epoch)
+  assert.deepEqual(catchUp.entries, [recent.entries[1]])
+  assert.equal(catchUp.next_record_entry_id, recent.feed_head_record_entry_id)
+  assert.equal(projectSnapshot(world, {
+    worldId: 'w1', viewerRoleId: '', place: 'company', startDate: base.startDate,
+  }).feed_head_record_entry_id, recent.feed_head_record_entry_id)
+})
+
+test('历史查询按日期窗口和复合游标翻页', () => {
+  const input = { ...base, activities: [activity({ trigger: { kind: 'task', text: '巡检' } })] }
+  const first = logsOf({ ...input, query: new URLSearchParams({
+    from_game_time: '2026-01-01T00:00:00', before_game_time: '2026-01-01T00:30:00', limit: '1',
+  }) }).recent
+  const second = logsOf({ ...input, query: new URLSearchParams({
+    since_game_time: first.updated_until_game_time,
+    since_record_entry_id: String(first.page_end_record_entry_id), before_game_time: '2026-01-01T00:30:00',
+  }) }).recent
+  assert.equal(first.has_more, true)
+  assert.ok(first.entries[0].decision)
+  assert.deepEqual(second.entries.map((e) => e.phase.items[0].lifecycle), ['start'])
+  assert.equal(second.has_more, false)
+})
+
+test('真实 HTTP 日志路由：历史分页、快照水位及旧 epoch 重置', async () => {
+  const world = { id: 'w1', name: '测试', tick: 40, agents: [{ id: 'agent-1', name: '阿金' }], activities: [activity()] }
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir: '.', pushMs: 0,
+    account: { email: 'test@example.invalid', password: 'test' },
+    opts: { worldId: 'w1', viewerRoleId: 'agent-1', place: 'company', startDate: base.startDate },
+    getWorld: () => world,
+  })
+  try {
+    const get = async (path) => {
+      const res = await fetch('http://127.0.0.1:' + bridge.port + '/api/game/' + path)
+      assert.equal(res.status, 200)
+      return res.json()
+    }
+    const snapshot = await get('state/world?role_id=agent-1')
+    const first = await get('logs/recent?role_id=agent-1&limit=1')
+    assert.equal(first.realtime_epoch, snapshot.cursor.epoch)
+    assert.equal(first.feed_head_record_entry_id, snapshot.feed_head_record_entry_id)
+    assert.equal(first.entries[0].phase_id, 'act-7')
+    assert.equal(first.has_more, true)
+    const query = new URLSearchParams({ role_id: 'agent-1', realtime_epoch: first.realtime_epoch,
+      after_record_entry_id: String(first.page_end_record_entry_id) })
+    const next = await get('logs/catch-up?' + query)
+    assert.deepEqual(next.entries.map((e) => e.phase.items[0].lifecycle), ['complete'])
+    assert.equal(next.next_record_entry_id, first.feed_head_record_entry_id)
+    query.set('realtime_epoch', base.epoch)
+    const stale = await get('logs/catch-up?' + query)
+    assert.equal(stale.outcome, 'reset_required')
+    assert.equal(stale.realtime_epoch, snapshot.cursor.epoch)
+    assert.deepEqual(stale.entries, [])
+  } finally {
+    await bridge.close()
+  }
 })
