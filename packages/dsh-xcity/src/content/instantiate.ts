@@ -52,7 +52,7 @@ export function instantiateDistrict(entry: DistrictEntry): District {
  * 地块不存在时**抛错**而不是悄悄按绝对值处理——那样站点会跑到地图外面，
  * 而报错里能直接说清是哪个地块没找到。
  */
-export function instantiateStation(entry: StationEntry, districts: ReadonlyMap<string, District>): Station {
+export function instantiateStation(entry: StationEntry, districts: ReadonlyMap<string, District>, placeId: string): Station {
   let anchor: Vec2 = { ...entry.anchor }
   if (entry.relativeTo !== null) {
     const home = districts.get(entry.relativeTo)
@@ -89,6 +89,7 @@ export function instantiateStation(entry: StationEntry, districts: ReadonlyMap<s
     id: entry.id,
     name: entry.name,
     kind: entry.kind,
+    placeId,
     district: entry.district,
     anchor,
     capacity: entry.capacity,
@@ -113,11 +114,14 @@ export function instantiateAgents(
   rng: Rng,
   /** 场景默认外观（`SceneEntry.agentModel`）。席位自己声明了 `appearance` 就用它自己的。 */
   defaultAppearance: string,
+  /** 这批角色所在的场所。 */
+  placeId: string,
 ): Agent[] {
   const seats = roster.seats.slice(0, Math.max(0, maxAgents))
   return seats.map((seat, i) => ({
     id: `agent-${i + 1}`,
     name: seat.name,
+    placeId,
     role: seat.role,
     palette: seat.palette,
     // 席位声明的外观优先；没声明就用场景默认。于是"某个人换一张脸"是改内容。

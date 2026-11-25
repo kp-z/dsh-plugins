@@ -8,6 +8,8 @@
 
 /** world 内核里我们读到的角色。字段名来自 content/instantiate.ts。 */
 export interface WorldAgentLike {
+  /** 角色所在场所（world.places 的 id）。 */
+  placeId?: string
   id: string
   name: string
   state?: string
@@ -24,6 +26,9 @@ export interface WorldAgentLike {
 /** world 内核的世界快照。我们只读这几个字段。 */
 export interface WorldLike {
   id: string
+  /** 城市里的场所（有它就能按场所投影在场与场景）。 */
+  places?: { id: string; name: string; asset: string; spawn: { x: number; z: number } }[]
+  defaultPlaceId?: string
   name: string
   tick: number
   paused?: boolean

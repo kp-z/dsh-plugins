@@ -87,9 +87,16 @@ function facingOf(radians: number | undefined): string {
 }
 
 /** 角色在城里的落点。没有 station 的人先放在默认地点。 */
-function presenceOf(agent: WorldAgentLike, place: string): Record<string, unknown> {
+/** 场所 id -> 前端场景资源键（presence.scene 必须是资源键，不是 place id）。 */
+function assetOfPlace(world: WorldLike, placeId: string): string {
+  const place = world.places?.find((candidate) => candidate.id === placeId)
+  return place === undefined ? sceneKeyOf(placeId) : place.asset
+}
+
+function presenceOf(agent: WorldAgentLike, place: string, asset: string = sceneKeyOf(place)): Record<string, unknown> {
   const position = agent.position ?? {}
-  const placeId = typeof agent.station === 'string' && agent.station !== '' ? agent.station : place
+  // 场所是角色自己的属性：之前拿工位 id 冒充，导致所有人在同一个"地点"里。
+  const placeId = agent.placeId ?? place
   // HUD 的同场景列表直接读 presence 上的 name/gender/appearance/titles，
   // 少任何一个都会在渲染时抛（"reading 'map'" 就是 titles 缺失）。
   return {
@@ -98,7 +105,7 @@ function presenceOf(agent: WorldAgentLike, place: string): Record<string, unknow
     gender: 'male',
     appearance: DEFAULT_APPEARANCE,
     titles: [],
-    scene: placeId,
+    scene: asset,
     location: {
       place_id: placeId,
       x: typeof position.x === 'number' ? position.x : 0,
@@ -180,7 +187,8 @@ function actorsOf(world: WorldLike, place: string): Record<string, Record<string
   const out: Record<string, Record<string, unknown>> = {}
   for (const agent of world.agents) {
     const position = agent.position ?? {}
-    const placeId = typeof agent.station === 'string' && agent.station !== '' ? agent.station : place
+    // 场所是角色自己的属性；坐标是相对该场所的。
+    const placeId = agent.placeId ?? place
     out[agent.id] = {
       actor_id: agent.id,
       role_id: agent.id,
@@ -228,7 +236,8 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
   for (const agent of world.agents) {
-    presence[agent.id] = presenceOf(agent, opts.place)
+    const agentPlace = agent.placeId ?? opts.place
+    presence[agent.id] = presenceOf(agent, agentPlace, assetOfPlace(world, agentPlace))
     statuses[agent.id] = publicStatusOf(agent)
   }
   const viewerAgent = world.agents.find((a) => a.id === opts.viewerRoleId) ?? world.agents[0]

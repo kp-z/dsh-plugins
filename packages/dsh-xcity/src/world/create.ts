@@ -18,7 +18,7 @@ import type { ContentRegistry } from '../content/registry.js'
 import { MAX_AGENTS } from '../domain/constants.js'
 import { angleTo } from '../domain/geometry.js'
 import { createRng, seedFromString } from '../domain/rng.js'
-import type { Task, World } from '../domain/types.js'
+import type { Place, Task, World } from '../domain/types.js'
 import { DEFAULT_MIN_GAP, hangoutsForWorld } from './hangouts.js'
 import { navFromMap, nearestWalkablePoint } from './nav.js'
 
@@ -45,6 +45,8 @@ export interface CreateWorldOptions {
    * - `captain`：只放第一位（队长），其余等真实 subagent 出现再投影（R166）。
    */
   initialAgents?: 'all' | 'captain'
+  /** 城市里的场所；不给就从场景推导一个。第一个是默认场所。 */
+  places?: readonly Place[] | undefined
 }
 
 /** 世界 id：名字 + 种子，保证可复现（同样输入 → 同样 id）。 */
@@ -70,12 +72,28 @@ export function createWorld(options: CreateWorldOptions): World {
     instantiateDistrict(content.require('districts', id, `场景 ${scene.id} 引用的地块`)),
   )
   const districtById = new Map(districts.map((d) => [d.id, d]))
+
+  // 场所：城市的一等公民。调用方没给就退化成"这个场景自己算一个场所"，
+  // 于是老内容包（只有一张办公室地图）行为不变。
+  const places: Place[] =
+    options.places !== undefined && options.places.length > 0
+      ? options.places.map((place) => ({ ...place }))
+      : [
+          {
+            id: typeof scene.place === 'string' && scene.place !== '' ? scene.place : scene.id,
+            name: scene.name,
+            asset: typeof scene.map === 'string' ? scene.map : scene.id,
+            spawn: { ...scene.spawn },
+          },
+        ]
+  const defaultPlaceId = places[0]!.id
+
   const stations = scene.stations.map((id) =>
-    instantiateStation(content.require('stations', id, `场景 ${scene.id} 引用的站点`), districtById),
+    instantiateStation(content.require('stations', id, `场景 ${scene.id} 引用的站点`), districtById, defaultPlaceId),
   )
 
   const roster = content.require('rosters', scene.roster, `场景 ${scene.id} 引用的花名册`)
-  const seeded = instantiateAgents(roster, scene.spawn, maxAgents, rng, scene.agentModel)
+  const seeded = instantiateAgents(roster, scene.spawn, maxAgents, rng, scene.agentModel, defaultPlaceId)
   const agents = options.initialAgents === 'captain' ? seeded.slice(0, 1) : seeded
 
   // 导航网格（R64 物理）：从内容的地图派生。**必须在算歇脚点之前**——
@@ -141,6 +159,8 @@ export function createWorld(options: CreateWorldOptions): World {
     mode: 'simulated',
     origin: { scene: scene.id, packs: content.packIds, taskSets },
     districts,
+    places,
+    defaultPlaceId,
     stations,
     nav,
     gameMode: false,

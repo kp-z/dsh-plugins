@@ -1,6 +1,6 @@
 {
   "fileVersion": 1,
-  "savedAtTick": 0,
+  "savedAtTick": 1577,
   "content": [
     {
       "id": "pack.default",
@@ -188,7 +188,7 @@
     "id": "world-1nb10jy-b",
     "name": "Agent World",
     "seed": 3586027534,
-    "tick": 0,
+    "tick": 1577,
     "createdAt": "2026-11-25T05:35:30.212Z",
     "paused": false,
     "agentModel": "model.agent.mv-tom",
@@ -364,6 +364,7 @@
         "id": "station.seat-01",
         "name": "接待处座位 1",
         "kind": "mailroom",
+        "placeId": "place:office.tech_company_1",
         "district": "district.7",
         "anchor": {
           "x": -19.5,
@@ -387,6 +388,7 @@
         "id": "station.seat-02",
         "name": "HR办公室座位 2",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.1",
         "anchor": {
           "x": -30,
@@ -411,6 +413,7 @@
         "id": "station.seat-03",
         "name": "HR办公室座位 3",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.1",
         "anchor": {
           "x": -34,
@@ -435,6 +438,7 @@
         "id": "station.seat-04",
         "name": "办公室座位 4",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 24,
@@ -467,6 +471,7 @@
         "id": "station.seat-05",
         "name": "办公室座位 5",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 18,
@@ -499,6 +504,7 @@
         "id": "station.seat-06",
         "name": "办公室座位 6",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 12,
@@ -523,6 +529,7 @@
         "id": "station.seat-07",
         "name": "办公室座位 7",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 6,
@@ -547,6 +554,7 @@
         "id": "station.seat-08",
         "name": "办公室座位 8",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 8,
@@ -571,6 +579,7 @@
         "id": "station.seat-09",
         "name": "办公室座位 9",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 14,
@@ -595,6 +604,7 @@
         "id": "station.seat-10",
         "name": "办公室座位 10",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 20,
@@ -619,6 +629,7 @@
         "id": "station.seat-11",
         "name": "会议室座位 11",
         "kind": "meeting",
+        "placeId": "place:office.tech_company_1",
         "district": "district.0",
         "anchor": {
           "x": -13,
@@ -641,6 +652,7 @@
         "id": "station.seat-12",
         "name": "会议室座位 12",
         "kind": "meeting",
+        "placeId": "place:office.tech_company_1",
         "district": "district.0",
         "anchor": {
           "x": -13,
@@ -663,6 +675,7 @@
         "id": "station.seat-13",
         "name": "会议室座位 13",
         "kind": "meeting",
+        "placeId": "place:office.tech_company_1",
         "district": "district.0",
         "anchor": {
           "x": -3,
@@ -685,6 +698,7 @@
         "id": "station.seat-14",
         "name": "会议室座位 14",
         "kind": "meeting",
+        "placeId": "place:office.tech_company_1",
         "district": "district.0",
         "anchor": {
           "x": -3,
@@ -707,6 +721,7 @@
         "id": "station.seat-15",
         "name": "办公室座位 15",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 26,
@@ -739,6 +754,7 @@
         "id": "station.seat-16",
         "name": "办公室座位 16",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 20,
@@ -771,6 +787,7 @@
         "id": "station.seat-17",
         "name": "办公室座位 17",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 14,
@@ -795,6 +812,7 @@
         "id": "station.seat-18",
         "name": "办公室座位 18",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 8,
@@ -819,6 +837,7 @@
         "id": "station.seat-19",
         "name": "办公室座位 19",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 10,
@@ -843,6 +862,7 @@
         "id": "station.seat-20",
         "name": "办公室座位 20",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 16,
@@ -867,6 +887,7 @@
         "id": "station.seat-21",
         "name": "办公室座位 21",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.4",
         "anchor": {
           "x": 22,
@@ -891,6 +912,7 @@
         "id": "station.seat-22",
         "name": "HR办公室座位 22",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.1",
         "anchor": {
           "x": -28,
@@ -915,6 +937,7 @@
         "id": "station.seat-23",
         "name": "老板办公室座位 23",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.3",
         "anchor": {
           "x": 30,
@@ -938,6 +961,7 @@
         "id": "station.seat-24",
         "name": "老板办公室座位 24",
         "kind": "desk",
+        "placeId": "place:office.tech_company_1",
         "district": "district.3",
         "anchor": {
           "x": 18,
@@ -1771,7 +1795,9 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1",
+        "activityTicks": 60
       },
       {
         "id": "agent-2",
@@ -1798,7 +1824,8 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       },
       {
         "id": "agent-3",
@@ -1825,7 +1852,8 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       },
       {
         "id": "agent-4",
@@ -1852,7 +1880,8 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       },
       {
         "id": "agent-5",
@@ -1879,7 +1908,8 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       },
       {
         "id": "agent-6",
@@ -1906,7 +1936,8 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       },
       {
         "id": "agent-7",
@@ -1933,7 +1964,8 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       },
       {
         "id": "agent-8",
@@ -1960,12 +1992,70 @@
           "model": "",
           "reasoningEffort": null
         },
-        "boundAgentId": null
+        "boundAgentId": null,
+        "placeId": "place:office.tech_company_1"
       }
     ],
     "tasks": [],
     "messages": [],
-    "seq": 1,
-    "messageSeq": 1
+    "seq": 631,
+    "messageSeq": 1,
+    "places": [
+      {
+        "id": "place:office.tech_company_1",
+        "name": "科技公司 · 办公室",
+        "asset": "company",
+        "spawn": {
+          "x": 480,
+          "z": 800
+        }
+      },
+      {
+        "id": "place:residential.apartment_1",
+        "name": "公寓",
+        "asset": "home_public",
+        "spawn": {
+          "x": 223,
+          "z": 604
+        }
+      },
+      {
+        "id": "place:residential.mini_market",
+        "name": "便利店",
+        "asset": "convenience_store",
+        "spawn": {
+          "x": 143,
+          "z": 470
+        }
+      },
+      {
+        "id": "place:commercial.city_restaurant",
+        "name": "餐馆",
+        "asset": "restaurant",
+        "spawn": {
+          "x": 256,
+          "z": 404
+        }
+      },
+      {
+        "id": "place:downtown.city_gym",
+        "name": "健身房",
+        "asset": "gym",
+        "spawn": {
+          "x": 399,
+          "z": 410
+        }
+      },
+      {
+        "id": "place:outdoor.sunset_beach",
+        "name": "海滩",
+        "asset": "beach",
+        "spawn": {
+          "x": 9,
+          "z": 249
+        }
+      }
+    ],
+    "defaultPlaceId": "place:office.tech_company_1"
   }
 }

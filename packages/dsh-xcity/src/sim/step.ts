@@ -40,6 +40,7 @@ import type {
   WorldEventType, AgentRole, World, WorldEvent } from '../domain/types.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { advanceMovement } from './movement.js'
+import { arriveTravelers, beginTravel } from './travel.js'
 import { advanceWork } from './interaction.js'
 import { advanceIdle } from './idle.js'
 import { recoverStalledTasks } from './recovery.js'
@@ -176,8 +177,41 @@ function ingest(
           delete agent.activityUntil
           break
         }
+        // "去某地待着"不需要工位：场所里没有椅子也该能站着（内容没建模的地方多得是）。
         const wants = command.activity === 'meet' ? ['converse'] : command.activity === 'rest' ? ['rest'] : [command.skill ?? 'code']
+        // 场所：命令没说就用角色当前所在地；说了但这个世界没有那个场所，
+        // 就就地做（老档/单场所世界不该因为一个陌生 id 把人派到虚空里）。
+        // 跨场所 = 先出行，到了再重放这次活动。
+        const places = world.places ?? []
+        const requested = command.placeId ?? agent.placeId
+        // 没有场所表的老世界：当作"只有一处"，也不按场所过滤站点。
+        const placeId = places.length === 0 || places.some((place) => place.id === requested) ? requested : agent.placeId
+        if (placeId !== agent.placeId) {
+          beginTravel(world, agent, placeId, {
+            kind: command.activity === 'meet'
+              ? 'meet'
+              : command.activity === 'rest'
+                ? 'rest'
+                : command.activity === 'visit'
+                  ? 'visit'
+                  : 'work',
+            ticks: Math.max(5, Math.round(command.ticks)),
+            skill: command.skill,
+          })
+          break
+        }
+        if (command.activity === 'visit') {
+          agent.state = 'idle'
+          agent.station = null
+          agent.targetStation = null
+          agent.path = []
+          agent.activityKind = 'visit'
+          agent.activityTicks = Math.max(5, Math.round(command.ticks))
+          agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
+          break
+        }
         const station = world.stations.find((candidate) =>
+          (places.length === 0 || candidate.placeId === placeId) &&
           candidate.capabilities.some((capability) => wants.includes(capability)) && occupancyOf(world, candidate.id) < candidate.capacity)
         if (station === undefined) break
         const path = findPath(world.nav, agent.position, stationSlot(station, occupancyOf(world, station.id)))
@@ -352,9 +386,30 @@ export function step(
   const requests = emptyRequests()
   const events: WorldEvent[] = []
 
+  // ── 0. travel ──
+  // 到点的出行先落地：换场所 + 清掉路上状态，然后把攒下的活动当成这一 tick 的命令重放。
+  // 放在 ingest 前，所以“落地当 tick 就开始干活”，和工位到站语义一致。
+  const arrivedNow = arriveTravelers(world)
+  const replay: WorldCommand[] = []
+  for (const agentId of arrivedNow) {
+    const agent = world.agents.find((item) => item.id === agentId)
+    const pending = agent?.pendingActivity
+    if (agent === undefined || pending === undefined) continue
+    agent.pendingActivity = undefined
+    replay.push({
+      kind: 'agentActivity',
+      agentId,
+      activity: pending.kind,
+      ticks: pending.ticks,
+      ...(pending.skill === undefined ? {} : { skill: pending.skill as 'code' | 'review' | 'research' | 'compute' }),
+    })
+    events.push(emitEvent(world, 'agent.moved', { agentId, placeId: agent.placeId, travel: true }))
+  }
+  const allCommands: readonly WorldCommand[] = replay.length > 0 ? [...commands, ...replay] : commands
+
   // ── 1. ingest ──
   // 先处理命令：暂停时**也要**能收到 resume，所以这一段在暂停判断之前。
-  for (const item of ingest(world, commands, requests)) {
+  for (const item of ingest(world, allCommands, requests)) {
     events.push(emitEvent(world, item.type, item.payload))
   }
 

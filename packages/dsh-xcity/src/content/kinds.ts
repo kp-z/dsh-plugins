@@ -230,6 +230,8 @@ export interface StationPropEntry {
 export interface SceneEntry {
   id: string
   name: string
+  /** 这个场景对应前端的地点 id（place:office.tech_company_1）。不写就用场景 id。 */
+  place?: string
   /** 引用地块 id。 */
   districts: string[]
   /** 引用站点 id。 */

@@ -10900,3 +10900,27 @@ recent 硬校验：feed_head_record_entry_id、realtime_epoch、entries/card_ups
 
 判据：844 条 pass 843 / fail 0；真机复测（发「你在忙吗？」）回复「不忙，在广场闲着，有事你说。」，
 world tick 11929 running=true。
+
+## 2026-11-25 17:30 城市第一步：场所成为一等公民
+
+之前"场所"是伪造的：`placeId = agent.station ?? 默认place`——所有地点挤在同一张办公室网格里。
+现在它进了领域模型：
+
+- `Place {id, name, asset, spawn}`；`World.places` + `defaultPlaceId`
+- `Station.placeId`、`Agent.placeId`（坐标是**相对该场所**的）
+- `AgentState` 增加 `traveling`：跨场所 = 一段有耗时的过程，到点换场所、落在入口，
+  然后把攒下的活动（`pendingActivity`）当成同一 tick 的命令重放
+- 新增 `visit` 活动："去某地待着"不需要工位——内容没建模椅子，人也该能站着
+- 指令层不再只认办公室：去健身房/海滩都是合法的 visit
+- 旧存档迁移：读回来没有 places / placeId 的世界会被补齐，不迁移就会出现
+  "一切正常但一个场景都认不出来"
+
+入口点不是编的：从镜像站 `assets/maps/<asset>/interactions.json` 的 `class:"spawn"` 读。
+编坐标会让角色一进场站在墙里——不报错，只是看起来卡住。
+
+实测（xcity-test）：
+- 世界有 6 个场所，入口点分别 company(480,800) / home_public(223,604) / convenience_store(143,470) …
+- 发「去健身房」→ traveling 30 tick → 场所切到 city_gym
+- 发「去海滩散步」→ 从 gym 出发 → sunset_beach
+
+判据：849 条 pass 848 / fail 0。

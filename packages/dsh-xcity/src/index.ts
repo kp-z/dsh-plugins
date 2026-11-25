@@ -45,7 +45,7 @@ import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { actorForSession, activityForEvent, smsReplyOf, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
-import { DEFAULT_CIRCUIT } from './adapters/slowvale/stage.js'
+import { DEFAULT_CIRCUIT, spawnOf } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
 import { createPersonaStore } from './persona/store.js'
 import { registerDispatchTool } from './tools/dispatch.js'
@@ -126,7 +126,23 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   // 小镇是**一个**世界，不该按会话切成「只有队长一个人」的开局。
   // 之前用默认 'captain'：一旦激活某条会话，世界被重建，只剩 1 个 agent（工位、任务、街区全没了），
   // 游戏里看着就是「人没了、活不干」。这里显式要完整开局。
-  const state = createPluginState(resolved, { externalRoot: contentRoot.root, storeDir, sessionInitialAgents: 'all' })
+  // 城市：地点表来自前端规则表能命中的那些 place id，入口点来自镜像地图。
+  // 没有入口点的（地图里没标 spawn）退回场景原点——宁可站在 0,0，也不要少一个地点。
+  // 入口点从**镜像站**的地图里读（assets/maps/<asset>/interactions.json 的 class:"spawn"），
+  // 不是内容包目录——那是两回事。
+  const slowvaleAssets = resolve(process.cwd(), resolved.slowvale.assetsDir)
+  const cityPlaces = DEFAULT_CIRCUIT.map((spec) => ({
+    id: spec.id,
+    name: spec.label,
+    asset: spec.asset,
+    spawn: spawnOf(slowvaleAssets, spec.asset) ?? { x: 0, z: 0 },
+  }))
+  const state = createPluginState(resolved, {
+    externalRoot: contentRoot.root,
+    storeDir,
+    sessionInitialAgents: 'all',
+    places: cityPlaces,
+  })
   /** R175：sessionQuery 是软依赖；先 inject 捕获，避免请求时 ctx.get 拿不到。 */
   let sessionQueryService:
     | { readSession?(id: string): Promise<unknown> }

@@ -31,10 +31,19 @@ test('认不出来就返回 null，不瞎猜', () => {
 test('去办公室工作 -> agentActivity(work, skill=code)；世界已有这条命令，不新造语义', () => {
   const d = parseDirective('去办公室工作', places)
   const cmd = directiveToCommand(d, 'agent-1')
-  assert.deepEqual(cmd, { kind: 'agentActivity', agentId: 'agent-1', activity: 'work', ticks: 60, skill: 'code' })
+  assert.deepEqual(cmd, { kind: 'agentActivity', agentId: 'agent-1', activity: 'work', ticks: 60, skill: 'code', placeId: 'place:office.tech_company_1' })
 })
 
-test('世界还没建模的地点（健身房/海滩）不假装能去', () => {
+test('城市里任何地点都能去：健身房是 visit，并带上场所', () => {
   const d = parseDirective('去健身房', places)
-  assert.equal(directiveToCommand(d, 'agent-1'), null)
+  const command = directiveToCommand(d, 'agent-1')
+  assert.equal(command.activity, 'visit')
+  assert.equal(command.placeId, 'place:downtown.city_gym')
+})
+
+test('回家是 rest，带上场所', () => {
+  const d = parseDirective('回家', places)
+  const command = directiveToCommand(d, 'agent-1')
+  assert.equal(command.activity, 'rest')
+  assert.equal(command.placeId, 'place:residential.apartment_1')
 })

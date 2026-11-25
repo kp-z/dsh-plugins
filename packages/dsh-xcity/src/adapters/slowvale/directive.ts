@@ -68,9 +68,15 @@ export function directiveToCommand(
   directive: Directive,
   agentId: string,
   ticks = 60,
-): { kind: 'agentActivity'; agentId: string; activity: 'work' | 'rest'; ticks: number; skill?: 'code' } | null {
-  if (directive.placeId !== 'place:office.tech_company_1') return null
-  if (directive.kind === 'work') return { kind: 'agentActivity', agentId, activity: 'work', ticks, skill: 'code' }
-  if (directive.kind === 'rest') return { kind: 'agentActivity', agentId, activity: 'rest', ticks }
-  return null
+): { kind: 'agentActivity'; agentId: string; activity: 'work' | 'rest' | 'visit'; ticks: number; skill?: 'code'; placeId?: string | undefined } {
+  // 城市里"去某地"是一等行为：任何地点都能去，到了就待着（必要时干活/休息）。
+  // 之前只认办公室，别的地点一律 null——于是"去健身房"静默失效。
+  const placeId = directive.placeId
+  if (directive.kind === 'work' && placeId === 'place:office.tech_company_1') {
+    return { kind: 'agentActivity', agentId, activity: 'work', ticks, skill: 'code', placeId }
+  }
+  if (directive.kind === 'rest') {
+    return { kind: 'agentActivity', agentId, activity: 'rest', ticks, placeId }
+  }
+  return { kind: 'agentActivity', agentId, activity: 'visit', ticks, placeId }
 }

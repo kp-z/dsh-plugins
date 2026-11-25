@@ -32,6 +32,24 @@ export interface PlaceSpec {
  * place:residential.mini_market → convenience_store、place:commercial.city_restaurant → restaurant、
  * place:downtown.city_gym → gym、place:outdoor.sunset_beach → beach。
  */
+/**
+ * 从镜像地图里读一个场所的入口点。
+ *
+ * 为什么不自己编坐标：入口点是内容（interactions.json 的 class: spawn），
+ * 编一个点会让角色一进场就站在墙里——这种错不会报错，只会看起来"人卡住了"。
+ */
+export function spawnOf(assetsDir: string, asset: string): { x: number; z: number } | null {
+  try {
+    const raw = readFileSync(join(assetsDir, 'assets', 'maps', asset, 'interactions.json'), 'utf8')
+    const points = JSON.parse(raw) as { class?: string; x?: number; y?: number }[]
+    const spawn = points.find((point) => point.class === 'spawn')
+    if (spawn === undefined || typeof spawn.x !== 'number' || typeof spawn.y !== 'number') return null
+    return { x: spawn.x, z: spawn.y }
+  } catch {
+    return null
+  }
+}
+
 export const DEFAULT_CIRCUIT: readonly PlaceSpec[] = [
   { id: 'place:office.tech_company_1', asset: 'company', label: '科技公司 · 办公室' },
   { id: 'place:residential.apartment_1', asset: 'home_public', label: '公寓' },

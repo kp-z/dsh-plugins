@@ -30,6 +30,7 @@ export type AgentState =
   | 'blocked'
   | 'celebrating'
   | 'sleeping'
+  | 'traveling'
 
 /**
  * 工单状态机。
@@ -101,8 +102,27 @@ export interface District {
 }
 
 /** 站点：工位或设施，是任务的落脚点，也是角色走路的目的地。 */
+/**
+ * 一个场所（城市里的一处地点）。
+ *
+ * 前端有 32 张地图，角色"在哪儿"是渲染与交互的前提。
+ * 之前拿工位 id 冒充场所，所有地点挤在同一张办公室网格里，
+ * "去办公室"只是坐标上的一个角落。
+ */
+export interface Place {
+  /** 前端认的地点 id（place:office.tech_company_1）。 */
+  id: string
+  name: string
+  /** assets/maps 下的目录名，前端按它取底图。 */
+  asset: string
+  /** 进入该场所时的落点（场所内坐标）。 */
+  spawn: Vec2
+}
+
 export interface Station {
   id: string
+  /** 这个站点属于哪个场所（world.places 的 id）。 */
+  placeId: string
   name: string
   kind: StationKind
   district: string
@@ -160,7 +180,15 @@ export interface Agent {
    */
   modelId: string
   state: AgentState
-  /** 当前位置（俯视平面）。 */
+  /** 角色当前所在场所（world.places 的 id）。 */
+  placeId: string
+  /** 出行目标场所；不在路上时为 undefined。 */
+  travelTo?: string | undefined
+  /** 出行到达的 tick（state === 'traveling' 时有效）。 */
+  travelUntil?: number | undefined
+  /** 到了目的地要做什么（出行途中暂存，落地后立刻执行）。 */
+  pendingActivity?: { kind: 'work' | 'rest' | 'meet' | 'visit'; ticks: number; skill?: string | undefined } | undefined
+  /** 当前位置（相对当前场所，俯视平面）。 */
   position: Vec2
   /** 朝向（弧度），渲染层直接用于 yaw。 */
   facing: number
@@ -183,7 +211,7 @@ export interface Agent {
    */
   hangout: Vec2 | null
   /** R363：主动活动（开会/休息）的类型；普通任务为 null/undefined。 */
-  activityKind?: 'work' | 'meet' | 'rest'
+  activityKind?: 'work' | 'meet' | 'rest' | 'visit'
   /** 活动结束 tick；到时自动回 idle，释放站点。 */
   activityUntil?: number
   /** 这次活动要干多少 tick（走到工位后才开始算，见 movement 的到站处理）。 */
@@ -351,6 +379,10 @@ export interface World {
   /** 这个世界的来源。没有它就没法"用同样的内容重开一局"。 */
   origin: WorldOrigin
   districts: District[]
+  /** 城市里的场所。第一个是默认场所（建世界时的场景）。 */
+  places: Place[]
+  /** 默认场所 id：没有显式 placeId 的命令落到这里。 */
+  defaultPlaceId: string
   stations: Station[]
   /** 导航网格（R64 物理）。**派生量**：由内容的地图在建世界/读档时算出。null = 没有地图（退回直线走）。 */
   nav: NavGrid | null

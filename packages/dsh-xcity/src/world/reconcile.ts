@@ -186,7 +186,8 @@ export function reconcileWorld(world: World, content: ContentRegistry): Reconcil
       continue
     }
     try {
-      const fresh = instantiateStation(entry, districtById)
+      const priorPlaceId = world.stations.find((station) => station.id === id)?.placeId ?? world.defaultPlaceId
+      const fresh = instantiateStation(entry, districtById, priorPlaceId)
       stations.push(fresh)
       refreshed.push(id)
       partsTotal += fresh.parts.length

@@ -47,6 +47,11 @@ import { createWorld } from './world/create.js'
 /** 建插件状态的选项。 */
 export interface PluginStateOptions {
   /**
+   * 城市里的场所（来自适配层的地点表）。不给就用场景推导一个。
+   * 领域只管"有哪些地方、入口在哪"，不知道它们对应哪张地图——那是适配层的事。
+   */
+  places?: readonly { id: string; name: string; asset: string; spawn: { x: number; z: number } }[]
+  /**
    * 开局铺几个角色：`all`（默认，旧 demo/测试）或 `captain`（只放队长，R166）。
    */
   initialAgents?: 'all' | 'captain'
@@ -147,6 +152,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     return createWorld({
       content: registry,
       scene: config.scene,
+      places: options.places,
       name,
       createdAt: new Date().toISOString(),
       maxAgents: config.maxAgents,
@@ -283,6 +289,32 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     storeDir === null ? null : join(storeDir, 'sessions', encodeURIComponent(sessionId))
 
   /** 载入某个会话自己的世界；没有/坏了就返回 null，由调用方新开一局。 */
+  /**
+   * 旧存档补新概念：场所。
+   *
+   * 为什么要有它：places 是后加的，读回来的世界没有这个字段——
+   * 于是所有角色 placeId 为 undefined、前端一个场景都认不出来。
+   * 迁移只补"缺的"，不覆盖已有的（存档里的场所优先）。
+   */
+  function migrateWorld(world: World, places: PluginStateOptions['places']): World {
+    if (world.places === undefined || world.places.length === 0) {
+      const fallback = places ?? [
+        { id: world.id + ':default', name: world.name, asset: 'company', spawn: { x: 0, z: 0 } },
+      ]
+      world.places = fallback.map((place) => ({ ...place }))
+    }
+    if (world.defaultPlaceId === undefined || world.defaultPlaceId === '') {
+      world.defaultPlaceId = world.places[0]!.id
+    }
+    for (const station of world.stations ?? []) {
+      if (station.placeId === undefined || station.placeId === '') station.placeId = world.defaultPlaceId
+    }
+    for (const agent of world.agents ?? []) {
+      if (agent.placeId === undefined || agent.placeId === '') agent.placeId = world.defaultPlaceId
+    }
+    return world
+  }
+
   function loadSession(sessionId: string): World | null {
     const dir = sessionDir(sessionId)
     if (dir === null) return null
@@ -321,7 +353,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     open(name?: string): World {
       // 注意：这里**不**保留旧世界的任何东西。归档是 M7 的事；
       // 现在丢掉就是丢掉，避免"以为还在"的错觉。
-      state.world = build(name ?? config.worldName)
+      state.world = migrateWorld(build(name ?? config.worldName), options.places)
       return state.world
     },
 
@@ -378,7 +410,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
       if (activeSessionId === sessionId && state.world !== null) return state.world
       saveActive()
       activeSessionId = sessionId
-      state.world = loadSession(sessionId) ?? build(config.worldName, sessionInitialAgents)
+      state.world = migrateWorld(loadSession(sessionId) ?? build(config.worldName, sessionInitialAgents), options.places)
       const captain = state.world.agents[0]
       if (captain !== undefined) {
         // R171：队长的显示名固定为 `captain`，不继承内容花名册的人名（工头阿金等），
@@ -436,7 +468,8 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
           palette: captainSeat?.palette ?? '#f2c14e',
           modelId: captainSeat?.appearance ?? scene.agentModel,
           state: 'idle', position: { ...scene.spawn }, facing: Math.PI / 2,
-          station: null, targetStation: null, path: [], carrying: null, hangout: null,
+          station: null, targetStation: null, path: [], placeId: world.defaultPlaceId,
+          carrying: null, hangout: null,
           llm: captainSeat?.model ?? { provider: '', model: '', reasoningEffort: null },
           boundAgentId: null,
         })
@@ -464,6 +497,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
           modelId: seat?.appearance ?? scene.agentModel,
           state: 'idle', position: { ...scene.spawn }, facing: Math.PI / 2,
           station: null, targetStation: null, path: [], carrying: null, hangout: null,
+          placeId: world.defaultPlaceId,
           llm: seat?.model ?? { provider: '', model: '', reasoningEffort: null },
           boundAgentId: member.id,
         })
@@ -486,7 +520,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     // ── 组合根用的额外能力 ──
     ensureWorld(): World {
       if (state.world) return state.world
-      state.world = tryRestore() ?? build(config.worldName)
+      state.world = migrateWorld(tryRestore() ?? build(config.worldName), options.places)
       return state.world
     },
 
