@@ -252,6 +252,7 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - [x] 不泄露内部 id：测试断言不含 `agent-`/`station.`/`task-`。
 - [x] 跨午夜：08:30 的真实仿真里能看到「00:00–07:35 在东侧休息区睡觉」+「现在在东侧休息区吃饭」。
 - [x] 空世界：`summarizeDay` 返回 `[]`，prompt 不加“你今天…”段。
+- [x] 摘要失败不拖垮短信：`dayContext` 抛错时退回“无摘要”，短信照常投递（有测试）。
 - [ ] 真实会话发短信核对：正式进程仍是旧构建，留 H7 独立宿主统一验（不假装验过）。
 - 已知限制：活动记录是环形缓冲，裁掉的就少说；玩家指令的 trigger.text 可能不含“吃/睡/学/聊”，退回 kind 标签。
 
@@ -447,4 +448,4 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   修正：走路期间不再起算活动时长（远端通勤不再半路耗光）；已在站点上直接开始（不再空转 90 tick）；`WALK_SPEED` 0.18→0.9；idle 残留路径清理；pace 半径至少 3 步。
   证据：`test/life-choice.test.js` 11 条；全量 885 条，884 通过、1 跳过；`person-lab --hours 72`：sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43。投影：meal→EatActivity/eat、sleep→SleepActivity/sleep、rest→RestActivity/sit（不再是“吃饭画成睡觉”）。
 - 2026-11-27 02:05 · **H3 完成**。新增 `sim/day-summary.ts`：当天 + 跨午夜活动（起点夹到 00:00），最多 5 行、≤300 字、无内部 id；短信 prompt 注入“你今天到目前为止：…”；活动记录改为**到站后**才采纳（修 stationId=null / startedAt=出发时刻）。
-  证据：`test/day-summary.test.js` 10 条；全量 895 条，894 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。
+  证据：`test/day-summary.test.js` 11 条；全量 896 条，895 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。

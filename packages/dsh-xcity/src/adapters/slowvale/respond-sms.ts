@@ -48,7 +48,13 @@ export async function respondViaSession(
   const sessionId = deps.sessionOf(characterId)
   if (sessionId === null) return null
   const requestId = 'xcity-sms:' + sessionId + ':' + nonce()
-  const dayLines = deps.dayContext?.(input.peerRoleId) ?? []
+  // 摘要失败不能把短信也弄丢：世界取不到/老存档异常时退回"没有摘要"。
+  let dayLines: string[] = []
+  try {
+    dayLines = deps.dayContext?.(input.peerRoleId) ?? []
+  } catch {
+    dayLines = []
+  }
   const text = promptText(input.content, dayLines) + '\n\n短信投递编号：' + requestId
   const cancel = deps.onForward?.(input.peerRoleId, sessionId, text)
   try {

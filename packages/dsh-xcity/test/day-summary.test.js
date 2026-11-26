@@ -161,6 +161,26 @@ test('prompt：有摘要才加“你今天”，没有就不加', () => {
   assert.ok(!text.includes('agent-'))
 })
 
+test('dayContext 抛错也不能把短信弄丢（退回无摘要）', async () => {
+  let sent = null
+  await respondViaSession(
+    { peerRoleId: 'agent-1', content: '在吗' },
+    {
+      characterOf: () => 'agent-1',
+      sessionOf: () => 'session-1',
+      dayContext: () => {
+        throw new Error('world gone')
+      },
+      prompt: async (payload) => {
+        sent = payload.content[0].text
+      },
+    },
+    () => 'nonce',
+  )
+  assert.ok(sent.includes('你在 xcity 小镇里'))
+  assert.ok(!sent.includes('你今天到目前为止'))
+})
+
 test('respondViaSession 把 dayContext 的摘要带进真正投递的文本', async () => {
   let sent = null
   await respondViaSession(

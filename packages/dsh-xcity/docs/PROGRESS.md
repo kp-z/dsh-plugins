@@ -11208,5 +11208,5 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 新增 `sim/day-summary.ts`：读当天活动（含跨午夜，起点夹到 00:00），最多 5 行、≤300 字、不出现 `agent-`/`station.`/`task-`；没有记录返回空数组，不编。
 - `respond-sms.ts`：`promptText(content, dayLines)` 只在有摘要时加“你今天到目前为止：…”；`respondViaSession` 从 `dayContext` 取；`index.ts` 用 `state.currentWorld()` 注入。
 - 修 `sim/activity.ts`：活动记录改为**到站后**才采纳（`targetStation === null`），否则 stationId 为 null、startedAt 是出发时刻，摘要会出现没有地点的“08:00–09:43 学习”。
-- 证据：`test/day-summary.test.js` 10 条；全量 895 条，894 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。
+- 证据：`test/day-summary.test.js` 11 条；全量 896 条，895 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。
 - 真机发短信核对：正式进程仍旧构建，留 H7 独立宿主；不假装验过。
