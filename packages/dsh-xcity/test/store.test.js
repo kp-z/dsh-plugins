@@ -53,6 +53,24 @@ const PACKS = [{ id: 'pack.default', version: '1.0.0' }]
 
 // ── 存档本身 ────────────────────────────────────────────────────────────────
 
+test('R480：主动短信限频字段随存档往返（重启不刷屏）', async () => {
+  const dir = await tempDir()
+  const store = createWorldStore(dir)
+  const world = makeWorld()
+  const agent = world.agents[0]
+  agent.lastInitiatedSmsTick = 600
+  agent.initiatedSmsDay = 0
+  agent.initiatedSmsCount = 2
+
+  await store.saveWorld(world, PACKS)
+  const loaded = await store.load()
+  assert.ok(loaded && 'ok' in loaded)
+  const read = loaded.ok.world.agents.find((item) => item.id === agent.id)
+  assert.equal(read.lastInitiatedSmsTick, 600)
+  assert.equal(read.initiatedSmsDay, 0)
+  assert.equal(read.initiatedSmsCount, 2)
+})
+
 test('存档：存了能读回来，且**不带事件环形缓冲**（历史在 jsonl 里，不在快照里）', async () => {
   const dir = await tempDir()
   const store = createWorldStore(dir)

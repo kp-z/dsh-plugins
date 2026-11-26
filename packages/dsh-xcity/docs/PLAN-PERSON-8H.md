@@ -310,7 +310,7 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 
 ### 5.4 加固清单与实测（2026-11-27 03:05）
 - [x] 不串线：tracker 的登记项带 kind；测试同时跑 initiative 与 player-sms 两条路径。
-- [x] 限频字段随存档（Agent 字段），换天重置；重启不会立刻重复。
+- [x] 限频字段随存档（Agent 字段），换天重置；`store.test.js` 有“存了再读”的往返用例，重启不会立刻重复。
 - [x] 72h 仿真（8 角色）：37 条意图 / 4 个日历日，**单角色单日最多 2 条**，全部落在 07:00–22:00，没有间隔 <180 tick 的违例。
 - [x] 已知取舍：限频是“每人 ≤2/天”，8 人理论上最多 16/天（实测约 9/天）；正式世界目前只有 1 个角色，就是 ≤2/天。若以后多人世界嫌吵，再加“全镇每日上限”。
 - [ ] 真机/会话日志看到主动短信的 prompt 与回复：正式进程仍旧构建，留 H7 独立宿主；不假装验过。
@@ -463,4 +463,4 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 2026-11-27 02:05 · **H3 完成**。新增 `sim/day-summary.ts`：当天 + 跨午夜活动（起点夹到 00:00），最多 5 行、≤300 字、无内部 id；短信 prompt 注入“你今天到目前为止：…”；活动记录改为**到站后**才采纳（修 stationId=null / startedAt=出发时刻）。
   证据：`test/day-summary.test.js` 11 条；全量 896 条，895 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。
 - 2026-11-27 03:05 · **H4 完成**。`sim/initiative.ts` 在 sim 里决定“想不想发”并写限频字段（07:00–23:00、3h 间隔、每人每天 ≤2、睡着/对话/手上有单不发）；`step` 发 `agent.initiative` 事件；`index.ts` 订阅事件、找角色会话、用唯一编号投递；tracker 登记项带 kind，和玩家短信回执分开。
-  证据：`test/initiative.test.js` 9 条 + `test/deliver-initiative.test.js` 4 条；全量 909 条，908 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例；单角色 48h：day0 22:19、day1 08:24/11:24、day2 07:54，间隔均 ≥3h。主动短信 prompt 也带上了当天经历（H3 的摘要），不是空泛的“在吗”。真机投递留 H7。
+  证据：`test/initiative.test.js` 9 条 + `test/deliver-initiative.test.js` 4 条 + 存档往返 1 条；全量 910 条，909 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例；单角色 48h：day0 22:19、day1 08:24/11:24、day2 07:54，间隔均 ≥3h。主动短信 prompt 也带上了当天经历（H3 的摘要），不是空泛的“在吗”。真机投递留 H7。
