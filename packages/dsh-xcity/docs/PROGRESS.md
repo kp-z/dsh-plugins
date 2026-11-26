@@ -11199,5 +11199,6 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 不新增 Activity kind/AgentState：吃饭/睡觉复用 `rest`，学习复用 `work + skill`，只用 `activityPurpose` 标签区分恢复方向；命令加 `stationId` 指定落点。
 - 内容：办公室补 `station.breakroom-01`（4 座）与 `station.lounge-01`（6 座），否则 8 个角色夜里一半没地方睡（实测需求到 0）。
 - 修正三处尺度问题：走路期间不计活动时长；已在站点上直接开始；`WALK_SPEED` 0.18→0.9（1 tick=1 分钟下，横穿办公室从 6.5 小时降到 78 分钟）。另修 idle 残留路径、pace 半径下限。
-- 证据：`test/life-choice.test.js` 9 条；全量 882 条，881 通过、1 跳过；`node tools/person-lab.mjs --hours 72` → sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、生活活动切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43，最低 h 5–16 / s 7–18。
-- 已知取舍：吃饭暂时显示成 RestActivity；夜里睡休息区（还没有“家”）。留给后续小时。
+- 证据：`test/life-choice.test.js` 11 条；全量 885 条，884 通过、1 跳过；`node tools/person-lab.mjs --hours 72` → sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、生活活动切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43，最低 h 5–16 / s 7–18。
+- 投影：吃饭→EatActivity/eat、睡觉→SleepActivity/sleep、小憩→RestActivity/sit（原先吃饭会播睡眠带，已修）。
+- 已知取舍：夜里睡休息区（还没有“家”）。留给后续小时。

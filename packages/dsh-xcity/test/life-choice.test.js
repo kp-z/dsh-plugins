@@ -156,6 +156,30 @@ test('吃饭恢复饥饿，睡觉不补饥饿；都只在到站后生效', () =>
   assert.ok(eater.needs.hunger <= before, '在路上不该恢复饥饿')
 })
 
+test('stationId 被占时退回能力搜索，不硬挤进去', () => {
+  const world = atMinute(makeWorld(), 10 * 60)
+  const agent = world.agents[0]
+  const full = world.stations.find((station) => station.capacity === 1 && station.capabilities.includes('code'))
+  assert.ok(full)
+  const other = world.agents[1]
+  other.state = 'working'
+  other.station = full.id
+  other.activityKind = 'work'
+
+  step(world, [{ kind: 'agentActivity', agentId: agent.id, activity: 'work', ticks: 30, skill: 'code', stationId: full.id }])
+  assert.notEqual(agent.targetStation, full.id, '满员的站点不能再被指定')
+})
+
+test('命令的 purpose 会落到角色身上（吃饭不是普通 rest）', () => {
+  const world = atMinute(makeWorld(), 10 * 60)
+  const agent = world.agents[0]
+  const room = world.stations.find((station) => station.kind === 'breakroom')
+  assert.ok(room)
+  step(world, [{ kind: 'agentActivity', agentId: agent.id, activity: 'rest', ticks: 40, purpose: 'meal', stationId: room.id }])
+  assert.equal(agent.activityPurpose, 'meal')
+  assert.equal(agent.activityKind, 'rest')
+})
+
 test('命令真的会走到站点：selfLifeCommands → step → walking', () => {
   const world = atMinute(makeWorld(), 10 * 60)
   for (const agent of world.agents) agent.needs = { hunger: 90, energy: 90, social: 90 }

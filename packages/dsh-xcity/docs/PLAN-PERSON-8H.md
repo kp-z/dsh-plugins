@@ -431,5 +431,5 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 2026-11-26 23:57 · H1 完成（见第 10 节证据）。
 - 2026-11-27 01:25 · **H2 完成**。`chooseLife` 按“饿 > 夜里睡 > 累 > 社交 > 上班 > 学习”选择；活动用 `purpose` 标签区分 meal/sleep/rest/social/study/work，只影响需求恢复（不新增 kind/状态）；命令带 `stationId` 指定茶水间/休息区；办公室补 4 座茶水间 + 6 座东侧休息区。
   修正：走路期间不再起算活动时长（远端通勤不再半路耗光）；已在站点上直接开始（不再空转 90 tick）；`WALK_SPEED` 0.18→0.9；idle 残留路径清理；pace 半径至少 3 步。
-  证据：`test/life-choice.test.js` 9 条；全量 882 条，881 通过、1 跳过；`person-lab --hours 72`：sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43。
+  证据：`test/life-choice.test.js` 11 条；全量 885 条，884 通过、1 跳过；`person-lab --hours 72`：sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43。投影：meal→EatActivity/eat、sleep→SleepActivity/sleep、rest→RestActivity/sit（不再是“吃饭画成睡觉”）。
 - 2026-11-27 00:07 · 计划 v3：五轮评审；修掉缺指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛、H6 配对、H7 超时、夜里睡歇脚点（非站点）、H4 app 改世界（改回 sim 决策 + 事件）；补基线、提交规则。基线提交 `bb1efc2`。下一小时 H2。

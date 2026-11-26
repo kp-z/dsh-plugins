@@ -11,7 +11,7 @@
  * 只在**到站之后**（`station !== null`）按用途恢复——走路去吃饭的路上不该算吃过了。
  */
 import { DEFAULT_NEEDS } from '../domain/types.js'
-import type { AgentNeeds, AgentState, World } from '../domain/types.js'
+import type { ActivityPurpose, AgentNeeds, AgentState, World } from '../domain/types.js'
 
 /** 满值。所有量都夹在 [0, NEED_MAX]。 */
 export const NEED_MAX = 100
@@ -44,7 +44,7 @@ const STATE_RATE: Record<AgentState, { energy: number; hunger: number; social: n
  * - 睡 480 tick 补 ~146 体力（会夹到 100），够撑一天；
  * - 聊 40 tick 补 ~22 社交，一天两次略缺，正好推动主动短信。
  */
-const PURPOSE_RATE: Record<NonNullable<World['agents'][number]['activityPurpose']>, { energy: number; hunger: number; social: number }> = {
+const PURPOSE_RATE: Record<ActivityPurpose, { energy: number; hunger: number; social: number }> = {
   meal: { energy: 0.05, hunger: 1.2, social: 0 },
   sleep: { energy: 0.35, hunger: -0.02, social: 0 },
   rest: { energy: 0.35, hunger: -0.02, social: 0 },
@@ -62,7 +62,7 @@ export function needsOf(agent: { needs?: AgentNeeds | undefined }): AgentNeeds {
   return agent.needs ?? { ...DEFAULT_NEEDS }
 }
 
-function rateFor(agent: { state: AgentState; station: string | null; activityPurpose?: NonNullable<World['agents'][number]['activityPurpose']> | undefined }): { energy: number; hunger: number; social: number } {
+function rateFor(agent: { state: AgentState; station: string | null; activityPurpose?: ActivityPurpose | undefined }): { energy: number; hunger: number; social: number } {
   // 只在到站后按用途恢复：走路去吃饭的路上不算吃过。
   if (agent.station !== null && agent.activityPurpose !== undefined) {
     return PURPOSE_RATE[agent.activityPurpose] ?? STATE_RATE[agent.state] ?? STATE_RATE.idle

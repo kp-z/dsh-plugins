@@ -97,7 +97,10 @@ function facingOf(radians: number | undefined): string {
  * 前端只认它自己那 61 个活动类名（ProgrammerActivity 之类），查不到会记一条
  * badge.activity_type 警告然后什么都不画。所以这是白名单，不是自由字符串。
  */
-function activityTypeOf(kind: string, skill?: string | null): string {
+function activityTypeOf(kind: string, skill?: string | null, purpose?: string | null): string {
+  // R478：吃饭/睡觉都复用 rest 活动，用 purpose 决定徽章，别把吃饭画成 RestActivity。
+  if (purpose === 'meal') return 'EatActivity'
+  if (purpose === 'sleep') return 'SleepActivity'
   if (kind === 'sleep') return 'SleepActivity'
   if (kind === 'rest') return 'RestActivity'
   if (kind === 'meet') return 'SpeakActivity'
@@ -134,9 +137,9 @@ function activeActivityOf(world: WorldLike, agent: WorldAgentLike, startDate: st
   const id = (agent as { activityId?: string }).activityId
   const live = activities.find((item) => item.id === id && item.status === 'active')
   if (live === undefined) return undefined
-  const label = activityLabelOf(live.kind)
+  const label = activityLabelOf(live.kind, agent.activityPurpose)
   const activity = {
-    activity_type: activityTypeOf(live.kind, live.skill),
+    activity_type: activityTypeOf(live.kind, live.skill, agent.activityPurpose),
     name: label,
     description: live.taskAttemptId === undefined ? label : live.trigger?.text ?? label,
   }
@@ -157,7 +160,11 @@ export function publicStatusOf(world: WorldLike, agent: WorldAgentLike, startDat
 }
 
 /** 活动的中文标签（前端的忙碌文案会用它）。 */
-function activityLabelOf(kind: string): string {
+function activityLabelOf(kind: string, purpose?: string | null): string {
+  if (purpose === 'meal') return '吃饭'
+  if (purpose === 'sleep') return '睡觉'
+  if (purpose === 'study') return '学习'
+  if (purpose === 'social') return '聊天'
   if (kind === 'work') return '干活'
   if (kind === 'rest') return '休息'
   if (kind === 'meet') return '交谈'
@@ -289,8 +296,12 @@ export function feedHeadOf(world: WorldLike): number {
  * 注意：干活时内核的 state 仍是 idle（活动由 activityKind + activityUntil 维持），
  * 所以只看 state 会永远显示“站着”。这里把 activityKind 也读进来。
  */
-function animOf(agent: { state?: string; activityKind?: string | null }): string {
+function animOf(agent: { state?: string; activityKind?: string | null; activityPurpose?: string | null }): string {
   if (agent.state === 'walking') return 'walk'
+  // R478：吃饭播 eat、睡觉播 sleep、小憩坐着（sit）；没有用途的老活动仍按状态兜底。
+  if (agent.activityPurpose === 'meal') return 'eat'
+  if (agent.activityPurpose === 'sleep') return 'sleep'
+  if (agent.activityPurpose === 'rest') return 'sit'
   if (agent.state === 'sleeping') return 'sleep'
   if (agent.activityKind === 'work') return 'work'
   if (agent.activityKind === 'meet') return 'sit'

@@ -35,6 +35,27 @@ test('锚点随开始时间变化：不同开始时间给出不同 ISO', () => {
   assert.equal(snapshot.role_public_statuses['agent-1'].active_activity.progress_anchor_game_time, '2026-01-02T00:00:00')
 })
 
+test('R478：吃饭/睡觉沿用 rest 活动，但徽章与动作要分开', () => {
+  const meal = worldWith('rest')
+  meal.agents[0].activityPurpose = 'meal'
+  const mealSnap = projectSnapshot(meal, opts)
+  assert.equal(mealSnap.role_public_statuses['agent-1'].active_activity.activity_type, 'EatActivity')
+  assert.equal(mealSnap.role_public_statuses['agent-1'].active_activity.name, '吃饭')
+  assert.equal(mealSnap.actors['agent-1'].visual_state.anim, 'eat')
+
+  const sleep = worldWith('rest')
+  sleep.agents[0].activityPurpose = 'sleep'
+  const sleepSnap = projectSnapshot(sleep, opts)
+  assert.equal(sleepSnap.role_public_statuses['agent-1'].active_activity.activity_type, 'SleepActivity')
+  assert.equal(sleepSnap.actors['agent-1'].visual_state.anim, 'sleep')
+
+  const nap = worldWith('rest')
+  nap.agents[0].activityPurpose = 'rest'
+  const napSnap = projectSnapshot(nap, opts)
+  assert.equal(napSnap.role_public_statuses['agent-1'].active_activity.activity_type, 'RestActivity')
+  assert.equal(napSnap.actors['agent-1'].visual_state.anim, 'sit')
+})
+
 test('没有活动时不给这些字段', () => {
   const world = worldWith('work')
   world.agents[0].activityId = undefined
