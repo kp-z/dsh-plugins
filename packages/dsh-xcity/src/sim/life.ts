@@ -145,8 +145,16 @@ function socialStationId(world: World, agent: Agent): string | null {
     .sort((a, b) => affinityOf(agent, b.id) - affinityOf(agent, a.id))
   const target = others[0]
   if (target === undefined) return null
-  const station = freeStation(world, agent, ['converse'], undefined, target.position) ?? freeStation(world, agent, ['converse'])
-  return station?.id ?? null
+  // 两人都用"中点"选房间：A 和 B 算出同一个中点、落到同一个 district，
+  // 才不会一个去东屋一个去西屋（之前 25 次 meet 只有 10 对关系就是这么来的）。
+  const midpoint = {
+    x: (agent.position.x + target.position.x) / 2,
+    z: (agent.position.z + target.position.z) / 2,
+  }
+  const near = freeStation(world, agent, ['converse'], undefined, midpoint)
+  if (near === null) return null
+  const seat = freeStation(world, agent, ['converse'], (candidate) => candidate.district === near.district)
+  return (seat ?? near).id
 }
 
 /**

@@ -11231,5 +11231,5 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 
 - Agent 加 `affinity`（0–100，缺省 50，只存变化）；新增 `sim/relationships.ts`：同屋（同 district）聊天完成时双方 +2、封顶 100，`step` 发 `agent.affinity` 事件，同一 tick 同一对只加一次。
 - `chooseLife` 社交改为“加入已经在聊的房间空位”，否则找 affinity 最高的空闲角色、去 TA 附近；单角色不生成 social。
-- 证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真 25 次 meet / 32 条 affinity 事件 / 10 个关系对，单角色 affinity 52–56；单角色世界 affinity 为空、社交降到 11，不报错。
-- 已知限制：两人同一 tick 各结束一次时，可能只涨一边（25 meet / 32 事件）；下一轮可改成到达即结算。
+- 证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真 34 次 meet / 34 条 affinity 事件 / 12 个关系对，单角色 affinity 52–58；单角色世界 affinity 为空、社交降到 11，不报错。
+- 已知限制：到达时间错开时，先到的人会独自把聊天耗完（34 meet / 34 事件）；下一步可做“人齐才起算/等待 30 tick”。

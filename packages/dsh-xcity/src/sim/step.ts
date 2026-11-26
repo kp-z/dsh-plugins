@@ -37,7 +37,7 @@
  * 不碰 IO、不用未注入的随机与时间。调用方要么拥有这个世界，要么先克隆一份。
  */
 import type {
-  WorldEventType, AgentRole, World, WorldEvent } from '../domain/types.js'
+  Activity, WorldEventType, AgentRole, World, WorldEvent } from '../domain/types.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { advanceMovement } from './movement.js'
 import { arriveTravelers, beginTravel } from './travel.js'
@@ -213,16 +213,19 @@ function ingest(
           break
         }
         // R478：调用方可以指定站点（吃饭去 breakroom、休息去休息位）；指定失效就退回能力搜索。
-        const preferred = command.stationId === undefined
-          ? undefined
-          : world.stations.find((candidate) =>
-              candidate.id === command.stationId &&
-              (places.length === 0 || candidate.placeId === placeId) &&
-              candidate.capabilities.some((capability) => wants.includes(capability)) &&
-              occupancyOf(world, candidate.id) < candidate.capacity)
-        const station = preferred ?? world.stations.find((candidate) =>
+        const eligible = (candidate: World['stations'][number]): boolean =>
           (places.length === 0 || candidate.placeId === placeId) &&
-          candidate.capabilities.some((capability) => wants.includes(capability)) && occupancyOf(world, candidate.id) < candidate.capacity)
+          candidate.capabilities.some((capability) => wants.includes(capability)) &&
+          occupancyOf(world, candidate.id) < candidate.capacity
+        const requestedStation = command.stationId === undefined
+          ? undefined
+          : world.stations.find((candidate) => candidate.id === command.stationId)
+        const preferred = requestedStation !== undefined && eligible(requestedStation) ? requestedStation : undefined
+        // R482：指定站点满了时优先同房间的另一个空位（两人约好去同一屋，别一个被挤到别的屋）。
+        const sameRoom = requestedStation === undefined
+          ? undefined
+          : world.stations.find((candidate) => candidate.district === requestedStation.district && eligible(candidate))
+        const station = preferred ?? sameRoom ?? world.stations.find(eligible)
         if (station === undefined) break
         const path = findPath(world.nav, agent.position, stationSlot(station, occupancyOf(world, station.id)))
         // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
@@ -478,6 +481,28 @@ export function step(
   // ── 3. movement ──
   const movement = advanceMovement(world)
 
+  // ── 3.4 relationship ──
+  // R482：到点的聊天在 idle 清站点之前先结算关系；否则两人同一 tick 结束，
+  // 先被 idle 清掉 station 的一方会让这一对只涨一边。
+  const affinitySeen = new Set<string>()
+  for (const agent of world.agents) {
+    if (agent.state !== 'talking' || agent.station === null) continue
+    if (agent.activityUntil === undefined || world.tick < agent.activityUntil) continue
+    const finishing: Activity = {
+      id: 'meet-finishing',
+      agentId: agent.id,
+      kind: 'meet',
+      placeId: agent.placeId,
+      stationId: agent.station,
+      status: 'active',
+      startedAt: 0,
+      endsAt: 0,
+    }
+    for (const bump of applyMeetAffinity(world, finishing, affinitySeen)) {
+      events.push(emitEvent(world, 'agent.affinity', { ...bump }))
+    }
+  }
+
   // ── 3.5 idle ──
   // 待命角色走向歇脚点（M2.5-1）。**放在 movement 之后**：movement 只处理 `walking`，
   // 而这一步只处理 `idle`，两者互不重叠；但刚被派工的人这一 tick 已经是 `walking` 了，
@@ -508,7 +533,6 @@ export function step(
 
   // ── 5.5 activity ──
   // 活动对账放在 emit 之前：这一 tick 结束的活动要能在同一 tick 的事件里被看见。
-  const affinitySeen = new Set<string>()
   for (const activity of syncActivities(world)) {
     events.push(emitEvent(world, 'agent.state', {
       agentId: activity.agentId,

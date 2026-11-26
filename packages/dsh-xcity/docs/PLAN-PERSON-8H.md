@@ -384,7 +384,7 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   2. 没有就选 affinity 最高的空闲角色，挑一个空闲的 converse 座位（办公室是一人一座，不要求同站容量 ≥2；两人坐同屋不同椅也算聊天，H6 用 district 判定"同屋"）；
   3. 没有第二个角色 → 不生成 social（留给 H4 主动发短信）。
 - 完成时（**sim 侧**，`step.ts` 的 `syncActivities` 之后）：`applyMeetAffinity` 找**同 district**、还在 talking/meet 的角色，双方 `affinity += 2`（封顶 100），发 `agent.affinity` 事件（前端/日志可见）；同一 tick 同一对用 `Set` 去重。
-- 社交选择实现：`socialStationId` 先加入"已经在聊的人所在房间的空位"，否则选 affinity 最高、且空闲的角色，挑离 TA 最近的 converse 座位——两个人都这么做才会坐到一起。
+- 社交选择实现：`socialStationId` 先加入"已经在聊的人所在房间的空位"；否则选 affinity 最高、且空闲的角色，**两人都用"两点中点"挑最近的那间屋**（A/B 算出同一个中点、落到同一 district，才不会一个去东屋一个去西屋）；指定座位被占时 ingest 优先退回同房间空位。
 - 避免互等：到不了的站点由 ingest 直接不挪人（不会挂一条永远走不完的路径）；不每 tick 重发。
 
 ### 7.2.1 步骤（R482）
@@ -405,10 +405,10 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 ### 7.4 加固清单与实测（2026-11-27 05:05）
 - [x] 关系值变化有事件（`agent.affinity` 带 agentId/otherId/before/after），日志/前端能看见。
 - [x] 同 tick 同一对只加一次（`Set` 去重）；affinity 封顶 100，缺省 50。
-- [x] 72h 仿真（8 角色）：25 次 meet 完成、32 条 affinity 事件、10 个不同关系对；单角色 affinity 值 52–56，没有暴涨。
+- [x] 72h 仿真（8 角色）：34 次 meet 完成、34 条 affinity 事件、12 个不同关系对；单角色 affinity 值 52–58，没有暴涨。
 - [x] 单角色世界：affinity 为空、不生成 social（社交降到 11，交给 H4 主动短信），不报错。
 - [x] 持久化：`store.test.js` 存了再读，affinity 不丢。
-- 已知限制：两人同一 tick 结束聊天时，先结束的一方可能已被 idle 清掉 station，导致这一对有时只涨一边（72h 25 次 meet / 32 条事件）。不影响“关系会变化”，下一轮可改成到达即结算。
+- 已知限制：两人**到达时间错开**时，先到的人会独自把聊天耗完（72h 34 次 meet / 34 条事件），关系只在实际同屋重叠的那部分增长。下一步可做“到达后等同一房间的人 30 tick、或人到齐才起算时长”。
 
 ### 7.5 风险与回滚
 - 风险：互等死锁、affinity 无限增长、单角色回归。
@@ -495,4 +495,4 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 2026-11-27 04:05 · **H5 完成**。`Activity` 带 `purpose`/`skill`，Agent 带 `activitySkill`；完成事件载荷补 kind/skill/purpose；新增 `persona/study.ts` 的 `awardStudyXp`（skills 并集 + 1 XP + activityId 去重），`index.ts` 只对 `purpose === 'study'` 结算；study 在 code 工位也显示 `SkillStudyActivity`。
   证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP；72h 83 个事件 / 83 次结算 / 83 个唯一 id，每角色 6–13 XP；skills 出现 `code`/`research`。
 - 2026-11-27 05:05 · **H6 完成**。Agent.`affinity`（0–100，缺省 50，只存变化）；`sim/relationships.ts` 在同屋聊天完成时双方 +2（封顶 100），`step` 发 `agent.affinity` 事件、同 tick 同一对去重；`chooseLife` 的社交改为“加入已在聊的房间 / 找最熟的空闲角色，去 TA 附近”，单角色不生成 social。
-  证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真（8 角色）25 次 meet / 32 条 affinity 事件 / 10 个关系对，单角色 affinity 52–56；单角色世界 affinity 为空、社交降到 11（交给 H4），不报错。已知限制：同 tick 双方各结束一次时，可能只涨一边（25 meet / 32 事件），下一轮可改成到达即结算。
+  证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真（8 角色）34 次 meet / 34 条 affinity 事件 / 12 个关系对，单角色 affinity 52–58；单角色世界 affinity 为空、社交降到 11（交给 H4），不报错。已知限制：到达时间错开时先到的人会独自耗完聊天（34 meet / 34 事件），下一步可做“人齐才起算”。
