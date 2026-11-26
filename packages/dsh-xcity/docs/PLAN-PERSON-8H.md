@@ -1,6 +1,6 @@
 # PLAN-PERSON-8H v3 —— 把 Agent 变成活人
 
-> 修订：2026-11-27 00:05（Asia/Shanghai）。v1 每小时只有一句验收、执行太快；v2 拆到文件/算法/测试/回滚；v3 修掉 v2 自相矛盾的地方（缺执行指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛），并做了第四轮评审。
+> 修订：2026-11-27 00:07（Asia/Shanghai）。v1 每小时只有一句验收、执行太快；v2 拆到文件/算法/测试/回滚；v3 修掉 v2 自相矛盾的地方（缺执行指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛），并做了第四轮评审。
 > 目标：让小镇里的 agent 像一个真实的人——有内在状态、自己决定做什么、记得今天、会主动说话，并且真的在游戏里跑起来。
 
 ## 执行指针
@@ -130,7 +130,7 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null
 2. `energy < 30` → rest（歇脚点/rest 站点）；
 3. `social < 35` → social（`converse`；没有第二个角色时不去，留给 H4）；
 4. 上班时段 → work（按角色能力；有 ready 工单时让给调度器）；
-5. 23:00–07:00 → rest（回歇脚点睡觉），除非有 ready 工单；
+5. 23:00–07:00 → rest（去 `rest` 站点睡；还没有“家”，先睡休息区，家留给下一份计划），除非有 ready 工单；
 6. 非上班时段且精力/饥饿尚可 → study（research/code）；
 7. 都不满足 → null（交给待命行为）。
 
@@ -190,7 +190,7 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null
 - 两个角色抢同一个 `capacity=1` 站点：确认 `occupancyOf` 把 targetStation 也算占用。
 - 24h 里是否出现“整夜 work/study”：睡眠时段（23:00–07:00）必须回歇脚点 rest（除非有 ready 工单）。
 - 日志里 decision 条目能看出触发原因（meal/rest/social/work/study）。
-- 吃饭暂时显示成 RestActivity（复用 rest 动作）；这是本小时的已知取舍，写进日志，不在这一小时加新状态。
+- 吃饭暂时显示成 RestActivity（复用 rest 动作）；夜里睡在休息区（没有“家”）。两条都是本小时的已知取舍，写进日志，不在这一小时加新状态。
 
 ### 3.8 风险与回滚
 - 风险：活动抖动、整天空转、站点死锁、meal 与 rest 站点选错。
@@ -397,7 +397,7 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 证据：`test/needs.test.js` 6 条；全量 873/872/1；build 通过。行为未变（固定钟点），H2 接选择器。
 - 24h 仿真：饥饿到 0、体力低，正好证明 H2 必须接“吃/休息”。
 
-## 11. 评审记录（四遍）
+## 11. 评审记录（五遍）
 
 1. **第一遍（完整性）**：v1 每小时只有一句验收，H1 已完成后仍占一整小时；缺仿真工具、回滚、证据模板、时间盒。→ H1 改归档；补 `person-lab`、DoD、回滚、证据格式。
 2. **第二遍（依赖与语义）**：eat/study 是否新增状态没定；H3 的 world→bridge 注入点没写；H4 限频状态没定；H5 XP 写入路径没定；H6 配对死锁没考虑；H7 有重启正式进程的风险。→ 逐项补设计（eat/study 不新增 AgentState；dayContext 端口；lastInitiatedSmsTick；事件→persona；converse 容量与超时；H7 改独立 profile）。
@@ -412,7 +412,13 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
    - H7 没写环境超时 → 补 15 分钟决策点；
    - H4 初版让 app 直接改世界限频字段，违反“世界只经 step 改” → 改成 sim 决策 + 事件，app 只负责投递。
 
+5. **第五遍（v3 内部一致性）**：
+   - 夜里“回歇脚点睡觉”写成了 rest 命令，但歇脚点不是站点、命令无法指定 → 改成去 `rest` 站点睡，并注明“还没有家”；
+   - 把 H4 的限频写回从 app 改回 sim（D41：世界只经 step 改），app 只负责投递与回写短信线程；
+   - 补 §1.1 基线与 §0.5 提交规则，保证每小时从可构建、可回滚的状态开始；
+   - 复核执行指针、R 编号、定时提示与文件路径一致。
+
 ## 12. 进度日志
 
 - 2026-11-26 23:57 · H1 完成（见第 10 节证据）。
-- 2026-11-27 00:08 · 计划 v3：第四轮评审修掉缺指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛、H6 配对、H7 超时；再补一条：H4 从“app 改世界”改成“sim 决策 + 事件”，避免破坏世界只经 step 变更的约束。补基线、提交规则。下一小时 H2。
+- 2026-11-27 00:07 · 计划 v3：五轮评审；修掉缺指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛、H6 配对、H7 超时、夜里睡歇脚点（非站点）、H4 app 改世界（改回 sim 决策 + 事件）；补基线、提交规则。基线提交 `bb1efc2`。下一小时 H2。
