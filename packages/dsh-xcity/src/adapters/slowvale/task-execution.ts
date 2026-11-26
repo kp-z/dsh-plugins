@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { AgentReportInput, World, Task } from '../../protocol/index.js'
+import type { Agent, AgentReportInput, World, Task } from '../../protocol/index.js'
 
 interface TaskExecutionPorts {
   world(): World | null
   cwd: string
+  start(world: World, agent: Agent, task: Task): void
   settle(world: World, task: Task, result: { output: string } | { reason: string }): boolean
   sessions(): ReadonlyMap<string, string>
   available(sessionId: string, signal: AbortSignal): Promise<boolean>
@@ -92,7 +93,12 @@ export function createTaskExecution(ports: TaskExecutionPorts) {
         if (type === 'user/message' && source?.kind !== 'runtime-context') {
           if (delivery.startedTurn === undefined && source?.rpcId === delivery.requestId && delivery.turn !== undefined) {
             delivery.startedTurn = delivery.turn
-            delivery.active = true
+            const task = world.tasks.find((row) => row.id === delivery.taskId && row.attemptId === attempt && row.status === 'in_progress')
+            const agent = world.agents.find((row) => row.id === task?.owner && row.carrying === task?.id)
+            if (task && agent && ports.sessions().get(agent.id) === sessionId) {
+              delivery.active = true
+              ports.start(world, agent, task)
+            }
           } else {
             delivery.active = false
           }

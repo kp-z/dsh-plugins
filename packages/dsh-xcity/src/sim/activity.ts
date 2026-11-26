@@ -21,6 +21,7 @@ export interface StartActivityInput {
   ticks: number
   skill?: string | undefined
   stationId?: string | null
+  taskAttemptId?: string | undefined
   trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
 }
 
@@ -40,13 +41,16 @@ export function startActivity(world: World, agent: Agent, input: StartActivityIn
     status: 'active',
     startedAt: world.tick,
     startedLogSeq: nextLogSeq(world),
-    endsAt: world.tick + Math.max(1, Math.round(input.ticks)),
+    endsAt: input.taskAttemptId === undefined ? world.tick + Math.max(1, Math.round(input.ticks)) : world.tick,
+    taskAttemptId: input.taskAttemptId,
   }
   world.activities.push(activity)
   agent.activityId = activity.id
   agent.activityKind = input.kind === 'sleep' ? 'rest' : input.kind
-  agent.activityUntil = activity.endsAt
-  agent.activityTicks = activity.endsAt - activity.startedAt
+  if (input.taskAttemptId === undefined) {
+    agent.activityUntil = activity.endsAt
+    agent.activityTicks = activity.endsAt - activity.startedAt
+  }
   return activity
 }
 
@@ -87,6 +91,11 @@ export function syncActivities(world: World): Activity[] {
   const completed: Activity[] = []
   for (const agent of world.agents) {
     const live = liveActivityOf(world, agent)
+    if (live?.taskAttemptId !== undefined) {
+      const task = world.tasks.find((row) => row.id === agent.carrying)
+      if (task?.attemptId !== live.taskAttemptId || task.status !== 'in_progress') endActivity(world, agent, 'interrupted')
+      continue
+    }
     const endedByFields = agent.activityKind === undefined || (agent.activityUntil !== undefined && world.tick >= agent.activityUntil)
     if (live !== null && endedByFields && live.status === 'active') {
       live.status = 'completed'

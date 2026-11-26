@@ -134,15 +134,26 @@ function activeActivityOf(world: WorldLike, agent: WorldAgentLike, startDate: st
   const id = (agent as { activityId?: string }).activityId
   const live = activities.find((item) => item.id === id && item.status === 'active')
   if (live === undefined) return undefined
+  const label = activityLabelOf(live.kind)
+  const activity = {
+    activity_type: activityTypeOf(live.kind, live.skill),
+    name: label,
+    description: live.taskAttemptId === undefined ? label : live.trigger?.text ?? label,
+  }
+  if (live.taskAttemptId !== undefined) return activity
   // 1 tick = 1 游戏分钟 = 60 游戏秒。
   const durationSeconds = Math.max(1, (live.endsAt - live.startedAt) * 60)
   return {
-    activity_type: activityTypeOf(live.kind, live.skill),
-    name: activityLabelOf(live.kind),
+    ...activity,
     duration_seconds: durationSeconds,
     progress_elapsed_seconds: 0,
     progress_anchor_game_time: gameTimeAt(startDate, live.startedAt),
   }
+}
+
+function publicStatusOf(world: WorldLike, agent: WorldAgentLike, startDate: string): Record<string, unknown> {
+  const activity = activeActivityOf(world, agent, startDate)
+  return activity === undefined ? { status: 'offline' } : { status: 'online', active_activity: activity }
 }
 
 /** 活动的中文标签（前端的忙碌文案会用它）。 */
@@ -181,11 +192,6 @@ function presenceOf(agent: WorldAgentLike, place: string, asset: string = sceneK
     },
     visual_state: {},
   }
-}
-
-/** 角色公开状态：前端只认 online / offline / initializing / reactivating。 */
-function publicStatusOf(agent: WorldAgentLike): Record<string, unknown> {
-  return { status: agent.state === 'working' || agent.state === 'moving' ? 'online' : 'offline' }
 }
 
 /**
@@ -305,14 +311,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
   for (const agent of world.agents) {
     const agentPlace = agent.placeId ?? opts.place
     presence[agent.id] = presenceOf(agent, agentPlace, assetOfPlace(world, agentPlace))
-    // 头顶徽章：只有真的有活动才是 online，否则就是 offline（前端据此不画）。
-    const status: Record<string, unknown> = { status: 'offline' }
-    const active = activeActivityOf(world, agent, opts.startDate)
-    if (active !== undefined) {
-      status['status'] = 'online'
-      status['active_activity'] = active
-    }
-    statuses[agent.id] = status
+    statuses[agent.id] = publicStatusOf(world, agent, opts.startDate)
   }
   const viewerAgent = world.agents.find((a) => a.id === opts.viewerRoleId) ?? world.agents[0]
   // 场景必须跟着 viewer 的实际位置走：前端靠 committedScene 的**变化**去启动/切换场景，
@@ -432,6 +431,7 @@ export function projectScene(
     const entry = presenceOf(agent, scene) as { scene?: string }
     if (agent.id === opts.viewerRoleId) entry.scene = scene
     presence[agent.id] = entry
+    statuses[agent.id] = publicStatusOf(world, agent, opts.startDate)
   }
   return {
     world_id: opts.worldId,

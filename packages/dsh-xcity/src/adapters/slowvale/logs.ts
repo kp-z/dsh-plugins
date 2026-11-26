@@ -32,6 +32,7 @@ export interface LogActivity {
   startedAt: number
   startedLogSeq?: number
   endedLogSeq?: number
+  taskAttemptId?: string | undefined
   endsAt: number
   endedAt?: number | undefined
   trigger?: LogTrigger | undefined

@@ -35,7 +35,7 @@ import { resolveContentRoot } from './content/load-files.js'
 import { createHandler } from './routes/index.js'
 import type { DialogueChannel } from './routes/dialogue.js'
 import { createEventHub, createRuntime } from './runtime/index.js'
-import { planTeamSync } from './sim/index.js'
+import { planTeamSync, startActivity } from './sim/index.js'
 import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
@@ -341,6 +341,15 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         throw new Error('角色会话未选定指定模型或会话服务已不可用。')
       }
       await sessionControllerService.prompt(request, signal)
+    },
+    start: (world, agent, task) => {
+      if (task.attemptId === null) return
+      startActivity(world, agent, {
+        kind: 'work', ticks: 0, stationId: agent.station,
+        taskAttemptId: task.attemptId,
+        trigger: { kind: 'task', text: '开始执行工单「' + task.title + '」' },
+      })
+      delete agent.activityTrigger
     },
     settle: (world, task, result) => {
       if (state.currentWorld() !== world || task.attemptId === null) return false

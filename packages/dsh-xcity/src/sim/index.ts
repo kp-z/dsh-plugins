@@ -33,6 +33,7 @@ export type { DeliverOutcome, MessageDraft, SendOutcome } from './mailbox.js'
 export { deliverMessages, isInFlight, sendMessages } from './mailbox.js'
 
 export { emitEvent } from './journal.js'
+export { liveActivityOf, startActivity } from './activity.js'
 
 export type { PhaseOutcomes } from './emit.js'
 export { emitPhaseEvents } from './emit.js'

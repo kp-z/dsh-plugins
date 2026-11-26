@@ -249,7 +249,9 @@ export interface Activity {
   endedLogSeq?: number
   /** 开始 tick。 */
   startedAt: number
-  /** 预计结束 tick。 */
+  /** DSH 工单以本次代次的裁决结束，不以预计 tick 结束。 */
+  taskAttemptId?: string | undefined
+  /** 预计结束 tick；没有估算的工单只使用 startedAt。 */
   endsAt: number
   /** 真正的结束 tick（完成/中断时写）。 */
   endedAt?: number | undefined

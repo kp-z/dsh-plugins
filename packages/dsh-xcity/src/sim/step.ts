@@ -41,7 +41,7 @@ import type {
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { advanceMovement } from './movement.js'
 import { arriveTravelers, beginTravel } from './travel.js'
-import { endActivity, startActivity, syncActivities } from './activity.js'
+import { endActivity, liveActivityOf, startActivity, syncActivities } from './activity.js'
 import { advanceWork } from './interaction.js'
 import { advanceIdle } from './idle.js'
 import { recoverStalledTasks } from './recovery.js'
@@ -338,6 +338,10 @@ function applyExternalTasks(
 
     const owner = task.owner === null ? undefined : world.agents.find((a) => a.id === task.owner)
     if (owner !== undefined && owner.carrying === task.id) {
+      const activity = liveActivityOf(world, owner)
+      if (activity?.taskAttemptId !== undefined && activity.taskAttemptId === task.attemptId) {
+        endActivity(world, owner, command.kind === 'taskComplete' ? 'completed' : 'interrupted')
+      }
       owner.carrying = null
       owner.state = 'idle'
       owner.station = null

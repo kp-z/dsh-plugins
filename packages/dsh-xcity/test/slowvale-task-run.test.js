@@ -20,6 +20,9 @@ import { claimTasks } from '../lib/sim/scheduler.js'
 import { advanceMovement } from '../lib/sim/movement.js'
 import { advanceWork } from '../lib/sim/interaction.js'
 import { step } from '../lib/sim/step.js'
+import { startActivity } from '../lib/sim/activity.js'
+import { logsOf } from '../lib/adapters/slowvale/logs.js'
+import { projectSnapshot, projectScene } from '../lib/adapters/slowvale/project.js'
 import { createTaskExecution } from '../lib/adapters/slowvale/task-execution.js'
 import { hasXcityRoleModel, isIdleSession } from '../lib/bridge/dsh-adapter.js'
 import { sessionsByAgent } from '../lib/adapters/slowvale/xcity.js'
@@ -129,6 +132,7 @@ for (const interrupted of [false, true]) test(interrupted ? '工单轮次被插�
   const runner = createTaskExecution({
     world: () => world,
     cwd,
+    start: (w, agent, task) => startActivity(w, agent, { kind: 'work', ticks: 0, taskAttemptId: task.attemptId }),
     settle: (currentWorld, claimed, result) => {
       assert.equal(currentWorld, world)
       output = result.output
@@ -163,8 +167,19 @@ for (const interrupted of [false, true]) test(interrupted ? '工单轮次被插�
   const evidence = sent[0].content[0].text.match(/\.xcity-results\/[a-f0-9]+\.md/)[0]
   const report = { taskId: task.id, status: 'done', summary: '巡检结果', evidence: [evidence] }
   assert.equal(runner.report('lin', report).accepted, false, '仅入队还不能回报')
+  assert.equal(world.activities.some((x) => x.taskAttemptId === task.attemptId), false, '仅投递不能记作开工')
   runner.observe('lin', 'step/start', { turn: 2 })
   runner.observe('lin', 'user/message', { source: { kind: 'user', rpcId: sent[0].requestId } })
+  const opts = { worldId: 'w1', viewerRoleId: worker.id, place: 'company', startDate: '2026-01-01' }
+  const activity = world.activities.find((x) => x.taskAttemptId === task.attemptId)
+  assert.equal(activity.status, 'active')
+  for (let i = 0; i < 50; i += 1) tick()
+  assert.equal(activity.status, 'active', '实际工单不按 tick 结束')
+  for (const project of [projectSnapshot, projectScene]) {
+    const pub = project(world, opts).role_public_statuses[worker.id].active_activity
+    assert.equal(pub.description, '干活')
+    assert.equal(pub.duration_seconds, undefined)
+  }
   assert.equal(runner.report('mei', report).accepted, false, '其他会话不能替交付')
   assert.equal(runner.report('lin', report).accepted, false, '口头完成不是证据')
   const path = join(cwd, evidence)
@@ -192,6 +207,11 @@ for (const interrupted of [false, true]) test(interrupted ? '工单轮次被插�
   assert.equal(commands.length, 1)
   step(world, commands, { sessionWorkers: new Set(), idleAmbient: false })
   assert.equal(task.status, interrupted ? 'failed' : 'done')
+  assert.equal(activity.status, interrupted ? 'interrupted' : 'completed')
+  assert.equal(projectSnapshot(world, opts).role_public_statuses[worker.id].active_activity, undefined)
+  const logs = logsOf({ epoch: 'e', startDate: opts.startDate, activities: world.activities, notices: [], nameOf: () => worker.name, placeOf: () => null })
+  const lifecycle = logs.recent.entries.filter((entry) => entry.phase_id === activity.id).map((entry) => entry.phase.items[0].lifecycle)
+  assert.deepEqual(lifecycle, ['start', interrupted ? 'interrupt' : 'complete'])
   if (interrupted) assert.match(task.failureReason, /未收到有效交付/)
   else assert.equal(task.output, output)
   assert.equal(worker.carrying, null)
