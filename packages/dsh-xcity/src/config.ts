@@ -80,13 +80,11 @@ export const AgentWorldConfig = z.object({
   /**
    * 待命的人是否做"张望 / 踱步 / 歇息"这些自主动作。
    *
-   * R75 默认 **false**（用户："先让 agent 不进行任何动作"）——先把"位置对不对"与
-   * "动作对不对"分开验证：关掉时待命的人走到歇脚点就站定，不转头、不踱步、不坐下。
-   * 位置对了之后把这里翻成 `true` 就能把待命行为按原样加回来（内容侧一行都不用动）。
+   * R75 曾默认 false（先验证"位置对不对"）。R475 用户在看完位置后明确要求
+   * "让角色自己驱动自己生活"，因此翻回 true：没活干的人会自己走去歇脚点，
+   * 再按内容里的权重张望 / 踱步 / 歇息。关掉则退回"走到歇脚点就站定"。
    */
-  idleActionsEnabled: z.boolean().default(false),
-  /** R350：游戏模式；开启后 subagent 的人设注入游戏行为约束。 */
-  gameMode: z.boolean().default(true),
+  idleActionsEnabled: z.boolean().default(true),
 
   /**
    * 每多少 tick 落一次盘（快照 + 事件）。`0` = 不落盘，世界只活在内存里。
@@ -200,8 +198,7 @@ export function resolveConfig(config: Partial<AgentWorldConfig> = {}): AgentWorl
     tickMs: config.tickMs && config.tickMs > 0 ? config.tickMs : 100,
     autoStart: config.autoStart ?? true,
     autoActivate: config.autoActivate ?? false,
-    idleActionsEnabled: config.idleActionsEnabled ?? false,
-    gameMode: config.gameMode ?? true,
+    idleActionsEnabled: config.idleActionsEnabled ?? true,
     persistEveryTicks: config.persistEveryTicks ?? 100,
     maxAgents: config.maxAgents && config.maxAgents > 0 ? Math.floor(config.maxAgents) : 0,
     worldName: config.worldName ?? 'Agent World',

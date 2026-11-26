@@ -141,6 +141,12 @@ export function instantiateAgents(
     hangout: null,
     llm: seat.model ?? { provider: '', model: '', reasoningEffort: null },
     boundAgentId: null,
+    // R477：开局给一点个体差异（同 seed 可复现），但都从"还行"开始。
+    needs: {
+      energy: 80 + rng.range(-8, 8),
+      hunger: 80 + rng.range(-8, 8),
+      social: 80 + rng.range(-8, 8),
+    },
   }))
 }
 

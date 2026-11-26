@@ -165,6 +165,24 @@ export interface AgentLlmRoute {
   reasoningEffort: string | null
 }
 
+/**
+ * R477：内在状态。0–100，**100 = 满足**。
+ *
+ * 为什么不叫"需求值"：数值越大越舒服，这样所有取舍都是"越小越急"，
+ * 选择器里不会出现一半大一半小的反向判断。
+ */
+export interface AgentNeeds {
+  /** 体力：走路、干活会掉，睡觉恢复。 */
+  energy: number
+  /** 饥饿：随游戏时间掉，吃饭恢复。 */
+  hunger: number
+  /** 社交：太久没说话会掉，交谈恢复。 */
+  social: number
+}
+
+/** 老存档没有 needs 时的补全值（不升存档版本）。 */
+export const DEFAULT_NEEDS: AgentNeeds = { energy: 80, hunger: 80, social: 80 }
+
 /** 角色：一个真实 subagent 在小镇里的投影。 */
 export interface Agent {
   id: string
@@ -220,6 +238,8 @@ export interface Agent {
   activityUntil?: number | undefined
   /** 这次活动要干多少 tick（走到工位后才开始算，见 movement 的到站处理）。 */
   activityTicks?: number | undefined
+  /** R477：内在状态（体力/饥饿/社交）。老存档可能没有，读的时候用 DEFAULT_NEEDS 补。 */
+  needs?: AgentNeeds | undefined
   llm: AgentLlmRoute
   /** 与真实 subagent 的绑定。模拟模式下为 null。 */
   boundAgentId: string | null
@@ -421,12 +441,6 @@ export interface World {
   stations: Station[]
   /** 导航网格（R64 物理）。**派生量**：由内容的地图在建世界/读档时算出。null = 没有地图（退回直线走）。 */
   nav: NavGrid | null
-  /** R363：游戏模式；开启后 heartbeat 才会主动安排开会/休息。 */
-  gameMode?: boolean
-  /** R369：本轮任务的开工会议结束 tick；未定义=没有进行中的开工会议。 */
-  briefingUntil?: number
-  /** R369：已经为哪一批任务做过开工会议（按最新任务 createdAtTick 去重）。 */
-  briefingForTick?: number
   agents: Agent[]
   /** 活动记录（环形，最近 ACTIVITY_KEEP 条）。 */
   activities: Activity[]

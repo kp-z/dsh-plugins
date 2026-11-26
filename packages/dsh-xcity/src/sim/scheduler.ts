@@ -107,41 +107,6 @@ export function claimTasks(world: World, sessionWorkers?: ReadonlySet<string>): 
 
   if (ready.length === 0) return { claims, stalled }
 
-  // R369：游戏模式下，新一批任务开工前先全体去会议室。
-  // 会议期间不派工，避免“人在会议室、单已经派给工位”的错位。
-  if (world.gameMode === true) {
-    if (world.briefingUntil !== undefined && world.tick < world.briefingUntil) return { claims, stalled }
-    const newest = ready.reduce((max, task) => Math.max(max, task.createdAtTick), -1)
-    if (world.briefingForTick !== newest) {
-      const meeting = world.stations.find((station) => station.kind === 'meeting' && occupancyOf(world, station.id) < station.capacity)
-      if (meeting !== undefined) {
-        // 开工会议是全员同步，不受 meeting capacity 限制；座位按顺序吸附，超出容量的会靠近最后一席。
-        const attendees = world.agents.filter((agent) => agent.state === 'idle' && agent.carrying === null)
-        for (const [index, agent] of attendees.entries()) {
-          // 超出座位数的参会者不能都吸到最后一把椅子：那会让物理体互相顶、看起来一直跳。
-          const slot = stationSlot(meeting, index)
-          const extra = Math.max(0, index - (meeting.slots.length - 1))
-          if (extra > 0) {
-            const ring = extra - 1
-            slot.x += ((ring % 3) - 1) * 0.55
-            slot.z += Math.floor(ring / 3) * 0.45
-          }
-          const path = findPath(world.nav, agent.position, slot)
-          if (path.length === 0) continue
-          agent.state = 'walking'
-          agent.station = null
-          agent.targetStation = meeting.id
-          agent.path = path
-          agent.activityKind = 'meet'
-          agent.activityUntil = world.tick + 40
-        }
-        world.briefingUntil = world.tick + 40
-        world.briefingForTick = newest
-        return { claims, stalled }
-      }
-    }
-  }
-
   // 本次调度里已经被占用的角色，避免一张单派给同一个人两次。
   const taken = new Set<string>()
   const available = idleAgents(world)

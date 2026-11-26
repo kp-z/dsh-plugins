@@ -43,25 +43,49 @@ export interface RouteContext {
   realtimeSeq?: () => number
 }
 
-/** 短信消息 → 前端字段（前端的行号靠它判断有没有新消息）。 */
-function messageOf(message: {
-  messageRowId: number
-  threadId: string
-  senderRoleId: string
-  senderName: string
-  content: string
-  sentAt: string
-  isSelf: boolean
-}): Record<string, unknown> {
+/**
+ * 短信消息 → 原版手机界面读的字段。
+ *
+ * R474：原版按 `from_role_id === 当前角色` 判断「这条是不是我说的」。
+ * 本世界玩家与角色共用同一个视图 id（viewerRoleId），如果直接拿 peer 的角色 id，
+ * 两边都会被画成「自己」。对端因此用线程 id 代指；等玩家/角色身份拆开后应改回角色 id。
+ */
+function messageOf(
+  message: {
+    messageRowId: number
+    threadId: string
+    senderRoleId: string
+    senderName: string
+    content: string
+    sentAt: string
+    isSelf: boolean
+  },
+  viewerId: string,
+  peerRoleId: string,
+): Record<string, unknown> {
+  const peerId = peerRoleId === viewerId ? 'thread:' + peerRoleId : peerRoleId
   return {
+    message_id: message.messageRowId,
     message_row_id: message.messageRowId,
     thread_id: message.threadId,
+    from_role_id: message.isSelf ? viewerId : peerId,
+    to_role_id: message.isSelf ? peerId : viewerId,
+    from_name: message.isSelf ? '我' : message.senderName,
+    to_name: '',
+    media_type: 'text',
+    read_at: message.sentAt,
     sender_role_id: message.senderRoleId,
     sender_name: message.senderName,
     content: message.content,
     sent_at: message.sentAt,
     is_self: message.isSelf,
   }
+}
+
+/** 短信路由里的「我」：配置优先，空则落到世界第一个角色（与原版快照一致）。 */
+function smsViewerId(ctx: { opts: { viewerRoleId: string }; getWorld: () => { agents: { id: string }[] } | null }): string {
+  if (ctx.opts.viewerRoleId !== '') return ctx.opts.viewerRoleId
+  return ctx.getWorld()?.agents[0]?.id ?? ''
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -271,14 +295,26 @@ export async function handleApi(
       if (agent.id === ctx.opts.viewerRoleId) continue
       ctx.sms.ensureThread(agent.id, agent.name)
     }
-    const threads = ctx.sms.list().map((thread) => ({
-      thread_id: thread.threadId,
-      peer_role_id: thread.peerRoleId,
-      peer_name: thread.peerName,
-      last_message: thread.lastContent,
-      last_sent_at: thread.lastSentAt,
-      unread_count: thread.unread,
-    }))
+    // R474：原版列表读 preview.*（缺 preview 会直接整块崩），last_message 保留给旧调用方。
+    // 只为「有过消息」的线程建行：ensureThread 预先建出来的是联系人，不是会话。
+    const threads = ctx.sms.list().filter((thread) => thread.messages.length > 0).map((thread) => {
+      const last = thread.messages[thread.messages.length - 1]
+      return {
+        thread_id: thread.threadId,
+        peer_role_id: thread.peerRoleId,
+        peer_name: thread.peerName,
+        last_message: thread.lastContent,
+        last_sent_at: thread.lastSentAt,
+        unread_count: thread.unread,
+        preview: {
+          message_id: last?.messageRowId ?? null,
+          content: last?.content ?? '',
+          media_type: 'text',
+          from_me: last?.isSelf ?? false,
+          sent_at: last?.sentAt ?? '',
+        },
+      }
+    })
     sendJson(res, 200, { threads, unread_total: ctx.sms.unreadTotal() })
     return true
   }
@@ -290,10 +326,11 @@ export async function handleApi(
       sendJson(res, 200, { thread_id: threadId, peer_name: null, messages: [], has_more: false, next_before_message_id: null })
       return true
     }
+    const viewerId = smsViewerId(ctx)
     sendJson(res, 200, {
       thread_id: thread.threadId,
       peer_name: thread.peerName,
-      messages: thread.messages.map(messageOf),
+      messages: thread.messages.map((message) => messageOf(message, viewerId, thread.peerRoleId)),
       has_more: false,
       next_before_message_id: null,
     })
@@ -340,7 +377,11 @@ export async function handleApi(
     const threadRoleId = threadId.startsWith('thread:') ? threadId.slice(7) : ''
     if (threadRoleId !== '') ctx.applyDirective?.(threadRoleId, content)
     const thread = ctx.sms.get(threadId)
-    sendJson(res, 200, { ok: true, messages: (thread?.messages ?? []).map(messageOf) })
+    const viewerId = smsViewerId(ctx)
+    sendJson(res, 200, {
+      ok: true,
+      messages: (thread?.messages ?? []).map((message) => messageOf(message, viewerId, thread?.peerRoleId ?? threadRoleId)),
+    })
     return true
   }
   if (path === '/game/player/conversation') {

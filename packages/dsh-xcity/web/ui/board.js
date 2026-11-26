@@ -1870,8 +1870,7 @@ export function createBoard(options = {}) {
       // 只保留“有 boundAgentId 的真实成员”，过滤掉纯 NPC hire 和重复 captain。
       if (teamMembers.length > 0) {
         const boundIds = new Set((world?.agents ?? []).filter((agent) => typeof agent.boundAgentId === 'string' && agent.boundAgentId !== '').map((agent) => agent.id))
-        const gameNpc = world?.gameMode === true
-        model.members = model.members.filter((member) => boundIds.has(member.id) || (gameNpc && member.role !== 'lead'))
+        model.members = model.members.filter((member) => boundIds.has(member.id) || member.role !== 'lead')
       }
       mergeTeamMembers()
       applyTeamOwners()

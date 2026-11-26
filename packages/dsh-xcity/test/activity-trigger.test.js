@@ -35,7 +35,6 @@ test('领工单干活：活动带着「接了哪张单」作为理由', () => {
 
 test('心跳安排休息/开会：理由来自规则，不是编的', () => {
   const world = freshWorld()
-  world.gameMode = true
   const agent = world.agents[0]
   for (let i = 0; i < 200; i += 1) {
     step(world, [])

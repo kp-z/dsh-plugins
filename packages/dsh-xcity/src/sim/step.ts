@@ -51,6 +51,7 @@ import type { CommsOutcome } from './comms.js'
 import type { DeliverOutcome } from './mailbox.js'
 import { deliverMessages } from './mailbox.js'
 import { runHeartbeats } from './heartbeat.js'
+import { advanceNeeds } from './needs.js'
 import { emitPhaseEvents } from './emit.js'
 import { emitEvent } from './journal.js'
 import { recomputeReady } from './ready.js'
@@ -489,6 +490,11 @@ export function step(
   for (const activity of syncActivities(world)) {
     events.push(emitEvent(world, 'agent.state', { agentId: activity.agentId, activityId: activity.id, status: 'completed' }))
   }
+
+  // ── 5.6 needs ──
+  // R477：这一 tick 的状态已经定格（活动也对过账），内在量按它变化。
+  // 放在 emit 之前：快照与事件读到的是同一份需求值。
+  advanceNeeds(world)
 
   // ── 6. emit ──
   events.push(...intentEvents, ...emitPhaseEvents(world, { ready, scheduler: scheduled, movement, idle, work, comms: allMessages }))

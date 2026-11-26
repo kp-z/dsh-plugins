@@ -26,6 +26,12 @@ export { describeKind, idleSlotAt, lookFacing, paceGoal, quarterFacing, quarterO
 export type { CommsOutcome } from './comms.js'
 export { dispatchComms } from './comms.js'
 
+// R476：没活干时按钟点自己安排（上班去工位）。
+export { isWorkMinute, selfLifeCommands } from './life.js'
+
+// R477：内在状态（体力/饥饿/社交）随游戏时间变化。
+export { advanceNeeds, needsOf, NEED_MAX } from './needs.js'
+
 export type { Claim, SchedulerOutcome, Stalled } from './scheduler.js'
 export { claimTasks, occupancyOf, pickStation } from './scheduler.js'
 

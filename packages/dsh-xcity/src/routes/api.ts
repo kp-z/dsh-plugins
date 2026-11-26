@@ -65,8 +65,6 @@ export interface ApiDeps {
   spawnMember?: (payload: { name: string; role: string }) => Promise<{ ok: boolean; reason?: string }>
   /** 读取某个 Agent 对应的 DSH 会话历史。 */
   history?: (agentId: string) => Promise<unknown>
-  /** R350：游戏模式开关（主对话 → subagent 注入）。 */
-  gameMode?: { readonly get: () => boolean; readonly set: (enabled: boolean) => void }
   /** R351：Persona 档案（持久化在插件 stateDir）。 */
   personas?: {
     readonly list: () => readonly Record<string, unknown>[]
@@ -443,21 +441,6 @@ export function apiRoutes(deps: ApiDeps): RouteEntry[] {
         const persona = deps.personas?.upsert(body) ?? null
         if (persona === null) throw new HttpError(503, 'Persona 存储未启用')
         return { ok: true, persona }
-      },
-    },
-    {
-      method: 'GET',
-      pattern: '/api/game-mode',
-      handler: () => ({ enabled: deps.gameMode?.get() === true }),
-    },
-    {
-      method: 'POST',
-      pattern: '/api/game-mode',
-      handler: (request) => {
-        const body = request.body as { enabled?: unknown } | undefined
-        if (typeof body?.enabled !== 'boolean') throw new HttpError(400, '请求体要形如 {"enabled":true}')
-        deps.gameMode?.set(body.enabled)
-        return { ok: true, enabled: deps.gameMode?.get() === true }
       },
     },
     {

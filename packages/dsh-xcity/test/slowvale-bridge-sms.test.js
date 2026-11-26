@@ -59,6 +59,48 @@ test('POST /api/game/player/message：存消息、调 responder、回执 ok', as
   }
 })
 
+// R474：原版手机界面按 preview.from_me / message_id / from_role_id 判定并渲染。
+// 之前只给了 last_message / sender_role_id，通讯面板渲染时直接读 undefined.from_me 崩掉。
+test('短信列表与线程：字段形状要能让原版通讯面板直接渲染', async () => {
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir, pushMs: 0,
+    account: { email: 'a@b.c', password: 'x' },
+    opts: { worldId: 'w1', viewerRoleId: 'agent-1', place: 'place:office.tech_company_1', startDate: '2026-01-01' },
+    getWorld: () => world,
+    respondSms: async () => null,
+  })
+  try {
+    const base = 'http://127.0.0.1:' + String(bridge.port)
+    await fetch(base + '/api/game/player/message', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ thread_id: 'thread:agent-1', content: '你好' }),
+    })
+    bridge.appendIncoming('agent-1', '林野', '在呢。')
+
+    const list = await (await fetch(base + '/api/game/phone/sms/threads')).json()
+    const item = (list.threads ?? []).find((t) => t.thread_id === 'thread:agent-1')
+    assert.ok(item, '线程要在列表里')
+    assert.equal(item.preview.from_me, false, '最后一条是角色回的')
+    assert.equal(item.preview.content, '在呢。')
+    assert.equal(item.preview.message_id, 2, 'preview 要带消息行号（前端靠它判断要不要重拉）')
+    assert.ok(item.preview.sent_at, 'preview 要有时间')
+
+    const thread = await (await fetch(base + '/api/game/phone/sms/thread?thread_id=thread:agent-1')).json()
+    const [mine, theirs] = thread.messages
+    assert.equal(mine.message_id, 1)
+    assert.equal(mine.from_role_id, 'agent-1', '我说的消息 from 是当前角色')
+    assert.equal(mine.to_role_id, 'thread:agent-1', '对端与当前角色同 id 时用线程 id 区分')
+    assert.equal(mine.from_name, '我')
+    assert.equal(theirs.from_role_id, 'thread:agent-1', '角色回的消息不能算成我说的')
+    assert.equal(theirs.to_role_id, 'agent-1')
+    assert.equal(theirs.from_name, '林野')
+    assert.equal(theirs.media_type, 'text')
+    assert.ok(theirs.read_at, '打开线程即已读')
+  } finally {
+    await bridge.close()
+  }
+})
+
 test('responder 抛错：短信照样发得出去（不能因为会话那边坏了就让玩家发不出消息）', async () => {
   const bridge = await createSlowvaleBridge({
     host: '127.0.0.1',

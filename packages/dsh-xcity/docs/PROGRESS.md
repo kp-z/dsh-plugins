@@ -11144,3 +11144,44 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 同名同种子重开一局时，日志 epoch 根据存档已有的创建时间改变；所有 SSE 信封在切换前先建立新基线。真实 SSE+HTTP 回归覆盖同 ID 换局、新基线及旧游标返回 reset_required。
 - 独立 DSH 3189/7799，无持久化存档：原版浏览器显示换局前的活动，重开后 API 同一世界 ID、不同 epoch，旧补拉返回空。原版同页清除未验收：观测时浏览器文档为 hidden、SSE 已无订阅者，页面仍显示旧活动；下轮须在前台重现并检查可见性恢复。未重启 Desktop、未触碰正式世界，指定模型真机验收按用户要求留到 Desktop。
 - npm run build、npm test 均退出 0（874 通过、1 跳过）；镜像 2401 项全部匹配，281 个既有额外文件导致校验退出 1。
+
+## 2026-11-26 22:50：短信回复被同轮自动上下文清掉
+
+- 现象：正式桌面环境发「你好」，林那条会话同一轮确实生成了 `<xcity-reply>你好呀，很高兴收到你的短信！</xcity-reply>`（会话 seq 226），游戏线程里仍只有玩家那条，未读为 0。
+- 复现：把该会话 210–228 的事件按原样喂给当前 tracker，assistant 那一步返回 `reply: null`。根因在宿主每轮自动补的 user/message：短信提示之后紧跟 runtime-context、plugin:graphflow-dsh、time-context、model-selection；tracker 只放过 runtime-context，其余都当成「同轮插队」清掉待回写。
+- 修复：只有 `source.kind === 'user'` 的新发言才算另一个请求；自动上下文不再作废本条短信。回归测试直接放入这四种真实 source 后仍能回写；真实事件回放从 reply:null 变为返回「你好呀，很高兴收到你的短信！」。
+- npm run build、npm test 均退出 0（876 条，875 通过、1 跳过）。正式进程仍是旧构建，需重启 DSH 后由玩家实际发一条短信验收回显。
+
+## 2026-11-26 23:10：回写生效了，但手机通讯面板崩
+
+- 重启后（新进程 17337）玩家 22:54 发「你好」，线程里已有 captain 的回复（row 2、unread 1），上一轮 R473 的写回修复生效；界面仍看不见。
+- 直接打开 7788 复现：手机 → 通讯 显示「面板出错了」。控制台 `TypeError: Cannot read properties of undefined (reading 'from_me')`。原版线程行读 `preview.from_me/content/sent_at`，我们只给了 last_message/last_sent_at；线程详情也缺 message_id/from_role_id/to_role_id/from_name/read_at，气泡无法分辨谁说的。
+- 补齐接口形状（R474）：threads 每行加 preview；消息加 message_id、from/to_role_id、from_name、read_at、media_type。玩家与角色共用 viewerRoleId（本世界两边都是 agent-1）时，对端用线程 id 代指，否则两条都画成「自己」。空线程不进列表。
+- 验收：在未改服务端的现有页面上，用同一份真实数据把这两个响应改写成新形状，原版 通讯 列表出现「captain / 你好呀，今天在小镇过得怎么样？」，点进去两条消息分别显示「我」与「captain」。npm run build、npm test 退出 0（877 条，876 通过、1 跳过）。
+- 待验：正式进程要重启才载入新构建；重启后由玩家实际发一条短信，确认回写 → 面板 → SSE 增量一条龙。短信线程只在内存里，重启会清空现有记录。
+
+## 2026-11-26 23:40：角色按钟点自己过日子
+
+- 用户要求"让角色自己驱动自己生活"。查下来是两处开关都没打开：待命动作 `idleActionsEnabled` 默认 false（R75 为验证位置关的）；世界里的 `gameMode` 也从来没从配置写进去（这次不动它——翻开会带出开工会议，与现有调度诊断打架，留作单独一刀）。
+- R475：打开待命行为。schema 与 `resolveConfig` 两处默认要一起改，只改 schema 实测不生效（它自己有一套兜底）。
+- R476：新增最小的一天（`sim/life.ts`）。1 tick = 1 游戏分钟；09:00–12:00 与 14:00–18:00，空闲、手上没单、也没有 ready 工单的人，自己发一条 `agentActivity work`（trigger=self，按角色映射能力），走到工位干活；其余时间交给待命行为（回歇脚点、踱步、歇息）。有 ready 工单时一个人都不抢，留给调度器。
+- 运行时每步把自派命令并进队列，和玩家/宿主刚下的指令撞车时让位；只在游戏模式启用（`selfLifeEnabled: () => gameModeEnabled`），模拟测试的默认行为不变。
+- 判据：新增 4 条回归；空世界把 tick 拨到 09:00，8 个角色全部自己走向工位，12:00 前后陆续停下；全量 881 条，880 通过、1 跳过。
+- 未验：正式进程仍是旧构建，重启后 09:00 那一班能看到全员自己去上班。吃饭、回家、夜里睡觉不在这一刀里。
+
+## 2026-11-26 23:55：删掉 gameMode
+
+- 用户：世界里的 `gameMode` 本来就是多余的，应该一致开着，删掉。
+- 删除的范围：`World.gameMode` 字段、`config.gameMode`、`/api/game-mode` 两个端点、web 顶栏的开关与 board 里的判断、`createWorld` 选项、heartbeat/scheduler 的开关分支。人设注入与工具→工位映射改为无条件执行。
+- 顺带删掉两层挂在它上面、且互相打架的东西：
+  - 开工会议（R369）：新一批工单先全员去会议室，并带 `briefingUntil`/`briefingForTick` 两个只在开会时有意义的世界字段；它给派单加了一个前置阶段，还会把 17 个测试文件的判据挡掉。删。
+  - heartbeat 的自动开会/休息（R366 的 assignActivity）：tick 0 就会召集全员去会议室，与"上班时段自己去工位"重复。`agent.intent` 保留——它按文档本来就是"想做什么"的日志，不是动作。
+- 角色生活由两条承担：R476 的上班时段自派 + 待命行为（R475）。世界不再有"模式"这个状态。
+- 判据：全量 867 条，866 通过、1 跳过；`node --check` 过 web/main.js 与 board.js。
+
+## 2026-11-26 23:58：活人计划启动（H1：需求模型）
+
+- 目标改为“让 Agent 像一个真实的人”：身体 + 内在状态 + 记忆 + 关系 + 意愿。第一刀只补内在状态，不改选择逻辑。
+- `Agent.needs`（体力/饥饿/社交，0–100，100=满足）+ `DEFAULT_NEEDS`；新增 `sim/needs.ts`：每 tick 基线衰减，睡觉回体力、工作多耗、交谈回社交；`step` 在 emit 前推进；新档用 rng ±8 播种，老档在 reconcile 补默认。
+- 判据：`test/needs.test.js` 6 条通过；全量 873 条，872 通过、1 跳过；构建通过。行为未变（固定钟点仍在）。
+- 8 小时计划在 `docs/PLAN-PERSON-8H.md`；定时任务 `schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（01:00 起每小时，投递到本会话），按文档里的「执行指针」推进。

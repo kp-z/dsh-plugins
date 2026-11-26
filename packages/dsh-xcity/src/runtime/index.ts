@@ -31,7 +31,7 @@ import type { EventSinkPort, RuntimeDiagnostics, RuntimePort, WorldCommand, Worl
 import { STALLED_DIAGNOSTIC_CAP } from '../protocol/index.js'
 import { nullEventSink } from '../protocol/index.js'
 import type { StepResult } from '../sim/index.js'
-import { step } from '../sim/index.js'
+import { selfLifeCommands, step } from '../sim/index.js'
 import { stalledTasksOf } from '../sim/recovery.js'
 
 // 诊断计数的形状定义在协议层（`protocol/ports/runtime.ts`）——路由要把它们发给面板，
@@ -87,6 +87,12 @@ export interface RuntimeOptions {
    * 这是**运行时**的开关，内容侧一字不改——翻回 `true` 即可恢复原有待命行为。
    */
   idleActionsEnabled?: boolean
+  /**
+   * R476：是否让角色按钟点自己安排生活（上班时段自己去工位）。
+   *
+   * 默认关闭：只有插件运行时打开，模拟测试的默认行为不变。
+   */
+  selfLifeEnabled?: boolean
 }
 
 /** 世界运行时。实现协议层的 `RuntimePort`（路由只认那个接口）。 */
@@ -285,6 +291,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
     // 取走本步要处理的命令（取空，避免下一步重复处理）。
     const commands = queue.splice(0, queue.length).flatMap((entry) => entry.world === undefined || entry.world === world ? [entry.command] : [])
+    // R476：角色自己安排的生活。只补"这一步没人管"的人，别盖掉玩家/宿主刚下的指令。
+    if (options.selfLifeEnabled === true) {
+      const claimed = new Set<string>()
+      for (const command of commands) {
+        if (command.kind === 'agentActivity' || command.kind === 'moveAgent' || command.kind === 'taskAssign') {
+          claimed.add(command.agentId)
+        }
+      }
+      commands.push(...selfLifeCommands(world).filter((command) => !claimed.has(command.agentId)))
+    }
     const tickBefore = world.tick
 
     let result: StepResult

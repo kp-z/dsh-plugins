@@ -66,7 +66,7 @@ export function textOfBlocks(blocks: readonly unknown[]): string {
 /**
  * 会话事件要不要顺手让角色走一步？
  *
- * 只有游戏模式才做：工具调用 → 去工位干活；工具返回 → 收工。
+ * 一律做：工具调用 → 去工位干活；工具返回 → 收工。
  * 这是"看起来在干活"的最低成本映射，不参与任何业务判断。
  */
 export function activityForEvent(input: {
@@ -126,7 +126,10 @@ export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
           state.queued.delete(text)
           state.smsTurn = state.turn
           state.pending = pending
-        } else if (state.smsTurn === state.turn && (data?.['source'] as { kind?: unknown } | undefined)?.kind !== 'runtime-context') {
+        } else if (state.smsTurn === state.turn && (data?.['source'] as { kind?: unknown } | undefined)?.kind === 'user') {
+          // R473：只有真正的用户发言才算"另一个请求"。同一轮里 runtime-context /
+          // time-context / plugin:* / model-selection 是宿主自动补的上下文，不是插队，
+          // 之前一律清掉待回写，真实会话于是每轮都把短信回复丢掉。
           state.pending = undefined
         }
       }

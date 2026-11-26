@@ -62,9 +62,26 @@ test('短信只关联实际投递轮次：同角色旧轮次和隐藏块均不�
 test('另一条用户消息拼入同一轮后，后续回复不算前一条短信', () => {
   const tracker = createSmsReplyTracker(5000, () => 0)
   tracker.track('agent-1', 'lin', '已登记短信')
-  tracker.observe('lin', 'user/message', { turn: 2 }, [text('已登记短信')])
-  tracker.observe('lin', 'user/message', { turn: 2 }, [text('非短信的另一个请求')])
+  tracker.observe('lin', 'user/message', { turn: 2, source: { kind: 'user' } }, [text('已登记短信')])
+  tracker.observe('lin', 'user/message', { turn: 2, source: { kind: 'user' } }, [text('非短信的另一个请求')])
   assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, [text('<xcity-reply>另一条回答</xcity-reply>')]), { reply: null })
+})
+
+// R473 回归：真实会话每轮都会在短信之后补 runtime-context / 插件说明 / 时间 / 切模型提示。
+// 它们不是"另一个请求"，不能让这条短信的回复作废。
+test('同轮自动补的上下文不算插队，短信回复照常回写', () => {
+  const tracker = createSmsReplyTracker(5000, () => 0)
+  tracker.track('agent-1', 'lin', '玩家短信')
+  tracker.observe('lin', 'step/start', { turn: 3 }, [])
+  tracker.observe('lin', 'user/message', { source: { kind: 'user', rpcId: 'xcity-sms:lin:1' } }, [text('玩家短信')])
+  tracker.observe('lin', 'user/message', { source: { kind: 'runtime-context' } }, [text('当前目录…')])
+  tracker.observe('lin', 'user/message', { source: { kind: 'plugin:graphflow-dsh' } }, [text('GraphFlow: …')])
+  tracker.observe('lin', 'user/message', { source: { kind: 'time-context' } }, [text('Time sampled …')])
+  tracker.observe('lin', 'user/message', { source: { kind: 'model-selection' } }, [text('[model changed]')])
+  assert.deepEqual(
+    tracker.observe('lin', 'assistant/message', { turn: 3 }, [text('<xcity-reply>在呢。</xcity-reply>')]),
+    { reply: { peerRoleId: 'agent-1', text: '在呢。' } },
+  )
 })
 
 test('干活映射：工具调用去工位、工具返回收工、别的什么都不做', () => {

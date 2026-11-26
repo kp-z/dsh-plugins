@@ -80,8 +80,6 @@ function this_agentId(record: Record<string, unknown>): string | undefined {
 
 export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): void {
   const resolved = resolveConfig(config)
-  /** R350：游戏模式（可在主对话 header 切换，不需要重启插件）。 */
-  let gameModeEnabled = resolved.gameMode
   const personaStore = createPersonaStore(join(resolved.stateDir, 'personas.json'))
   // R446：调试数据只写文件，不上正式面板。JSONL，排查时直接 tail。
   const debugLogPath = join(resolved.stateDir, 'debug.jsonl')
@@ -367,6 +365,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     service: state,
     tickMs: state.tickMs,
     idleActionsEnabled: resolved.idleActionsEnabled,
+    // R476：角色按钟点自己生活（上班去工位）。没有模式开关，永远开着。
+    selfLifeEnabled: true,
     sink: hub,
     ...(taskExecution === null ? {} : { sessionWorkers: taskExecution.workers }),
     ...(storeDir === null
@@ -519,7 +519,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   let lastFailureCode: string | undefined
   const dialoguePort = toLazyDialoguePort(() => {
     const wiring = createDshCharacterBridge(ctx, {
-      systemPromptFor: createPersonaResolver(state, () => gameModeEnabled, personaStore),
+      systemPromptFor: createPersonaResolver(state, personaStore),
       // 角色只许看世界、读内容、派单（D35）。**不给 xcity_open**：那会让一个角色重开整个世界。
       characterTools: ['xcity_status', 'xcity_content', 'xcity_dispatch'],
       maxLiveSessions: resolved.maxLiveSessions,
@@ -850,8 +850,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       })
       if (actor === null) return
 
-      // ② 看起来在干活：工具调用 → 去工位，工具返回 → 收工。只在游戏模式里做。
-      if (gameModeEnabled && (taskExecution === null || !world.agents.some((agent) => agent.id === actor.id && agent.carrying !== null))) {
+      // ② 看起来在干活：工具调用 → 去工位，工具返回 → 收工。
+      if (taskExecution === null || !world.agents.some((agent) => agent.id === actor.id && agent.carrying !== null)) {
         const activity = activityForEvent({ type: event.type, blocks, agentId: actor.id, skillOf: skillForTool })
         if (activity !== null) runtime.enqueue(activity as never)
       }
@@ -1212,7 +1212,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         bridgeBase: 'http://' + resolved.slowvale.host + ':' + String(resolved.slowvale.port),
         maxLiveSessions: resolved.maxLiveSessions,
         dialogue: activeDialoguePort,
-        gameMode: { get: () => gameModeEnabled, set: (enabled) => { gameModeEnabled = enabled; const world = state.currentWorld(); if (world !== null) world.gameMode = enabled } },
         personas: {
           list: () => personaStore.list() as unknown as Record<string, unknown>[],
           upsert: (input) => personaStore.upsert(input as never) as unknown as Record<string, unknown>,
@@ -1587,7 +1586,7 @@ function createSeatResolver(state: ReturnType<typeof createPluginState>): (chara
 }
 
 /** 旧签名（人设正文）：套壳路径之外的调用方还在用。 */
-function createPersonaResolver(state: ReturnType<typeof createPluginState>, gameMode: () => boolean, personas: ReturnType<typeof createPersonaStore>): (characterId: string) => string {
+function createPersonaResolver(state: ReturnType<typeof createPluginState>, personas: ReturnType<typeof createPersonaStore>): (characterId: string) => string {
   const resolve = createSeatResolver(state)
   const GAME_PROMPT = [
     '你现在在一个可玩的办公室里，而不是只做文本问答。',
@@ -1601,7 +1600,6 @@ function createPersonaResolver(state: ReturnType<typeof createPluginState>, game
   ].join('\n')
   return (characterId) => {
     const seat = resolve(characterId)
-    if (!gameMode()) return seat.persona
     const world = state.currentWorld()
     const actor = world?.agents.find((agent) => agent.id === characterId)
     const key = actor?.boundAgentId ?? actor?.id ?? characterId

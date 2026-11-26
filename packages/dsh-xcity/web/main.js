@@ -456,67 +456,6 @@ const panelVisibility = (() => {
     return { team: saved?.team !== false, task: saved?.task !== false }
   } catch (e) { return { team: true, task: true } }
 })()
-const gameToggle = root.querySelector?.('#cmd-game')
-let gameModeEnabled = false
-
-async function loadGameMode() {
-  if (gameToggle === null || gameToggle === undefined) return
-  try {
-    const res = await fetch(apiUrl('api/game-mode'))
-    if (!res.ok) {
-      if (res.status === 404 && gameToggle !== null && gameToggle !== undefined) {
-        gameToggle.disabled = true
-        gameToggle.title = '游戏模式需要重启宿主加载新版'
-        gameToggle.setAttribute('aria-label', gameToggle.title)
-      }
-      return
-    }
-    const body = await res.json().catch(() => ({}))
-    setGameModeUi(body.enabled === true)
-  } catch (error) {
-    if (gameToggle !== null && gameToggle !== undefined) {
-      gameToggle.disabled = true
-      gameToggle.title = '游戏模式需要重启宿主加载新版'
-      gameToggle.setAttribute('aria-label', gameToggle.title)
-    }
-  }
-}
-
-function setGameModeUi(enabled) {
-  gameModeEnabled = enabled === true
-  if (gameToggle === null || gameToggle === undefined) return
-  gameToggle.classList.toggle('is-on', gameModeEnabled)
-  gameToggle.setAttribute('aria-pressed', String(gameModeEnabled))
-  gameToggle.title = gameModeEnabled ? '游戏模式：开' : '游戏模式：关'
-  gameToggle.setAttribute('aria-label', gameToggle.title)
-}
-
-if (gameToggle !== null && gameToggle !== undefined) {
-  gameToggle.addEventListener('click', () => { void toggleGameMode() })
-  // R387：启动时读取宿主状态；之前只定义没调用，导致默认 true 仍显示关闭。
-  void loadGameMode()
-}
-
-async function toggleGameMode() {
-  const next = !gameModeEnabled
-  setGameModeUi(next)
-  try {
-    const res = await fetch(apiUrl('api/game-mode'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok || body.enabled !== next) {
-      setGameModeUi(!next)
-      showHint(res.status === 404 ? '游戏模式切换失败：宿主还没加载新版，重启 DeepSeek Harness 后再试' : `游戏模式切换失败：${body.error ?? res.status}`)
-    }
-  } catch (error) {
-    setGameModeUi(!next)
-    showHint(`游戏模式切换失败：${error instanceof Error ? error.message : String(error)}`)
-  }
-}
-
 const panelSwitchButton = root.querySelector?.('#cmd-panels')
 const panelSwitchMenu = root.querySelector?.('#panel-switch-menu')
 const panelChecks = [...(root.querySelectorAll?.('[data-panel]') ?? [])]

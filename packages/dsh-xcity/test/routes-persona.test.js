@@ -1,9 +1,9 @@
 /**
- * 游戏模式开关与 Persona 档案的 HTTP 路由测试（R350 / R351）。
+ * Persona 档案的 HTTP 路由测试（R351）。
  *
  * ## 为什么不起真端口
  *
- * 这两组端点只做「校验请求体 → 调端口 → 序列化响应」，没有任何传输层之外的东西。
+ * 这组端点只做「校验请求体 → 调端口 → 序列化响应」，没有任何传输层之外的东西。
  * 这里用 `createHttpHandler` + 手写的 req/res 直接走**同一个处理器**：
  * 状态码、JSON 形状、异常翻译都是真实路径，代价却小得多。
  * `http.test.js` 用真服务器测的是「Node 请求对象进、响应对象出」那一层，
@@ -13,7 +13,6 @@
  *
  * Persona 用真的 `createPersonaStore`（临时目录），因为它本身就是持久化层；
  * 假一个内存对象会把「写盘后重新读」这条真实语义换掉。
- * 游戏模式则用一个可观察的布尔端口——路由的职责是「读它 / 写它」，没有更多。
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -72,30 +71,14 @@ function postJson(handler, pathname, value) {
   return call(handler, 'POST', pathname, JSON.stringify(value))
 }
 
-/** 一个只有游戏模式端点在意的端口：读/写都能从外面观察。 */
-function gameModePort(initial = false) {
-  const state = { enabled: initial, writes: [] }
-  return {
-    state,
-    port: {
-      get: () => state.enabled,
-      set: (enabled) => {
-        state.enabled = enabled
-        state.writes.push(enabled)
-      },
-    },
-  }
-}
-
 /**
  * 造一条只含 API 路由的处理器。
  *
- * `service` / `runtime` 对这两组端点来说是**不会用到的**依赖，所以给空壳；
+ * `service` / `runtime` 对这组端点来说是**不会用到的**依赖，所以给空壳；
  * 传进去只是为了满足 `ApiDeps` 的形状，而不是在测试里假装有个世界。
  */
-function handlerFor({ gameMode, personas } = {}) {
+function handlerFor({ personas } = {}) {
   const deps = { service: {}, runtime: {}, tickMs: 100 }
-  if (gameMode !== undefined) deps.gameMode = gameMode
   if (personas !== undefined) deps.personas = personas
   return createHttpHandler(PREFIX, apiRoutes(deps))
 }
@@ -110,72 +93,17 @@ async function withPersonaStore(fn) {
   }
 }
 
-// ── 注册：这两个端点必须真的在完整路由表里 ──────────────────────────────────
+// ── 注册：端点必须真的在完整路由表里 ────────────────────────────────────────
 
-test('buildRoutes：game-mode 与 personas 端点都在完整路由表里，且 game-mode 默认 false', async () => {
+test('buildRoutes：personas 端点都在完整路由表里', async () => {
   const service = createPluginState(resolveConfig({ autoStart: false, scene: 'scene.default-town' }))
   const stubs = { service, runtime: {}, tickMs: 100, source: createEventHub() }
 
   // 路由表本身就能看出端点是否被挂上——比等一条请求打空更能定位"忘了接线"。
   const patterns = buildRoutes(stubs).map((route) => `${route.method} ${route.pattern}`)
-  for (const endpoint of ['GET /api/game-mode', 'POST /api/game-mode', 'GET /api/personas', 'POST /api/personas']) {
+  for (const endpoint of ['GET /api/personas', 'POST /api/personas']) {
     assert.ok(patterns.includes(endpoint), `完整路由表里必须有 ${endpoint}`)
   }
-
-  // 没有注入 gameMode 时只能是 false：传输层不许编造一个"开着"的状态。
-  const handler = createHandler(PREFIX, stubs)
-  const res = await call(handler, 'GET', '/api/game-mode')
-  assert.equal(res.status, 200)
-  assert.deepEqual(res.body, { enabled: false })
-  assert.match(res.headers['Content-Type'], /application\/json/)
-})
-
-// ── 游戏模式 ────────────────────────────────────────────────────────────────
-
-test('GET/POST /api/game-mode：默认 false，打开后 GET 为 true，关掉再回到 false', async () => {
-  const { state, port } = gameModePort()
-  const handler = handlerFor({ gameMode: port })
-
-  const before = await call(handler, 'GET', '/api/game-mode')
-  assert.equal(before.status, 200)
-  assert.deepEqual(before.body, { enabled: false })
-  assert.deepEqual(state.writes, [], '读状态不该有写入')
-
-  const on = await postJson(handler, '/api/game-mode', { enabled: true })
-  assert.equal(on.status, 200)
-  assert.deepEqual(on.body, { ok: true, enabled: true })
-  assert.equal(state.enabled, true)
-  assert.deepEqual(state.writes, [true])
-
-  const after = await call(handler, 'GET', '/api/game-mode')
-  assert.deepEqual(after.body, { enabled: true })
-
-  const off = await postJson(handler, '/api/game-mode', { enabled: false })
-  assert.equal(off.status, 200)
-  assert.deepEqual(off.body, { ok: true, enabled: false })
-  assert.deepEqual(state.writes, [true, false], '每次 POST 只写一次')
-})
-
-test('POST /api/game-mode：enabled 必须是布尔值，其余一律 400 且不写入', async () => {
-  const { state, port } = gameModePort()
-  const handler = handlerFor({ gameMode: port })
-
-  for (const body of [{}, { enabled: 'true' }, { enabled: 1 }, { enabled: 0 }, { enabled: null }, { enabled: 'false' }]) {
-    const res = await postJson(handler, '/api/game-mode', body)
-    assert.equal(res.status, 400, `${JSON.stringify(body)} 应当被拒`)
-    assert.match(res.body.error, /enabled/, '报错要指出缺的是 enabled 字段')
-  }
-
-  // 空体与坏 JSON 走的是路由层，同样是 400（而不是 500）。
-  const empty = await call(handler, 'POST', '/api/game-mode')
-  assert.equal(empty.status, 400)
-
-  const broken = await call(handler, 'POST', '/api/game-mode', '{ enabled: true')
-  assert.equal(broken.status, 400)
-  assert.match(broken.body.error, /JSON/)
-
-  assert.equal(state.enabled, false, '一条坏请求都不该改动开关')
-  assert.deepEqual(state.writes, [], '一条坏请求都不该调用 set')
 })
 
 // ── Persona 列表 ────────────────────────────────────────────────────────────

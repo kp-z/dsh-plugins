@@ -60,6 +60,7 @@ import { instantiateDistrict, instantiateStation } from '../content/instantiate.
 import type { ContentRegistry } from '../content/registry.js'
 import { slotsFor } from '../domain/constants.js'
 import { distance } from '../domain/geometry.js'
+import { DEFAULT_NEEDS } from '../domain/types.js'
 import type { Agent, District, Station, World } from '../domain/types.js'
 import { DEFAULT_MIN_GAP, hangoutsForWorld } from './hangouts.js'
 import { navFromMap, nearestWalkablePoint } from './nav.js'
@@ -261,7 +262,9 @@ export function reconcileWorld(world: World, content: ContentRegistry): Reconcil
   const movedIdle: string[] = []
   let hangoutChanged = 0
   let appearanceChanged = 0
-  world.agents.forEach((agent, index) => {
+  world.agents.forEach((agent0, index) => {
+    // R477：老存档没有 needs —— 补默认，不当成"这个人天生没有需求"。
+    const agent = agent0.needs === undefined ? { ...agent0, needs: { ...DEFAULT_NEEDS } } : agent0
     const next = hangouts[index % Math.max(1, hangouts.length)] ?? null
     const old = agent.hangout
     const hangoutMoved = old === null || next === null ? old !== next : distance(old, next) > 1e-9

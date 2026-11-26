@@ -20,7 +20,6 @@ function makeWorld() {
   return {
     tick: 10,
     seed: 1,
-    gameMode: false,
     nav: null,
     paused: false,
     tasks: [],

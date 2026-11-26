@@ -13,9 +13,6 @@ import { seedFromString, createRng } from '../domain/rng.js'
 import type { Agent, Message, Task, World } from '../domain/types.js'
 import type { DeliverOutcome, SendOutcome } from './mailbox.js'
 import { sendMessages } from './mailbox.js'
-import { findPath } from './pathfind.js'
-import { occupancyOf } from './scheduler.js'
-import { stationSlot } from '../domain/geometry.js'
 
 export const HEARTBEAT_TICKS = 20
 
@@ -92,41 +89,13 @@ export function heartbeatFor(world: World, agent: Agent, delivered: DeliverOutco
   }
 }
 
-function assignActivity(world: World, agent: Agent, kind: 'meet' | 'rest', reason: string): boolean {
-  if (agent.state !== 'idle' || agent.carrying !== null) return false
-  const capability = kind === 'rest' ? 'rest' : 'converse'
-  const station = world.stations.find((candidate) => candidate.capabilities.includes(capability) && occupancyOf(world, candidate.id) < candidate.capacity)
-  if (station === undefined) return false
-  const path = findPath(world.nav, agent.position, stationSlot(station, occupancyOf(world, station.id)))
-  if (path.length === 0) return false
-  agent.state = 'walking'
-  agent.targetStation = station.id
-  agent.station = null
-  agent.path = path
-  agent.activityKind = kind
-  // 理由来自触发它的规则，不是编的：开会是按 180 tick 的作息，休息是心跳想要。
-  agent.activityTrigger = { kind: 'schedule', text: reason }
-  agent.activityUntil = world.tick + 60
-  return true
-}
-
 export function runHeartbeats(world: World, delivered: DeliverOutcome['delivered'] = []): HeartbeatOutcome {
   const intents: AgentIntent[] = []
-  // R366：gameMode 下每 180 tick 召集一次同步会：同一 meeting 站点、同一结束 tick。
-  if (world.gameMode === true && world.tick % 180 === 0) {
-    const meeting = world.stations.find((station) => station.kind === 'meeting' && occupancyOf(world, station.id) < station.capacity)
-    if (meeting !== undefined) {
-      const room = meeting.capacity - occupancyOf(world, meeting.id)
-      const attendees = world.agents.filter((agent) => agent.state === 'idle' && agent.carrying === null).slice(0, room)
-      for (const agent of attendees) assignActivity(world, agent, 'meet', '到了开会的点')
-    }
-  }
   const drafts = []
   for (const agent of world.agents) {
     if (!heartbeatDue(world, agent)) continue
     const intent = heartbeatFor(world, agent, delivered)
     intents.push(intent)
-    if (world.gameMode === true && (intent.decision === 'meet' || intent.decision === 'rest')) assignActivity(world, agent, intent.decision, intent.decision === 'meet' ? '想找人聊聊' : '想歇一会儿')
     if (intent.decision !== 'reply' || intent.replyTo === null) continue
     const message = world.messages.find((candidate) => candidate.id === intent.replyTo)
     if (message === undefined || message.from === message.to) continue

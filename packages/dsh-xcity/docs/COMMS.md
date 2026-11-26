@@ -6,7 +6,7 @@
 
 | 通道 | 触发 | 数据 | 展示 |
 |---|---|---|---|
-| 手机短信 | `GET /game/phone/sms/threads`、`/game/phone/sms/thread` | `{threads:[{thread_id, peer_name, last_message, last_sent_at, unread_count}], unread_total}` | 手机面板 |
+| 手机短信 | `GET /game/phone/sms/threads`、`/game/phone/sms/thread` | `{threads:[{thread_id, peer_name, unread_count, preview:{message_id, content, media_type, from_me, sent_at}}], unread_total}`；详情 `{messages:[{message_id, from_role_id, to_role_id, from_name, content, sent_at, read_at, media_type}]}` | 手机面板 |
 | 发送 | `POST /game/player/message` `{role_id, content}` | 同一条线程追加 | 气泡 / 手机 |
 | 当面对话 | `POST /game/player/interaction` → `GET /game/player/conversation` | `{messages, suggestions, topics, ...}` | 头顶气泡 `bubble_panel` |
 | **角色之间** | **SSE `visual` 包里的 beat** | `beat.dialogue` / `beat.bubble` | `_spawnSpeechBubble(beat.dialogue)` |
@@ -26,7 +26,7 @@ g.dialogue && this._spawnSpeechBubble(g.dialogue), g.toast && ...
 | 短信线程存储（世界侧、收下即回执、按行号单调递增） | ✅ 已实现 `sms.ts` |
 | `GET /game/phone/sms/threads` / `thread` | ✅ 返回真实线程 |
 | `POST /game/player/message` | ✅ 落库并返回追加后的线程 |
-| 对方回复 | ❌ 需要 `SmsResponder`（接会话后才有） |
+| 对方回复 | ✅ 会话绑定后，模型带 `<xcity-reply>` 的正文回写线程（R473：同轮自动上下文不算插队）；字段形状按原版手机面板补齐（R474） |
 | `visual` 包 | ❌ 一次都没发过 → 所以**没有任何气泡**，也没有角色之间对话 |
 | `/game/player/conversation` | ⚠️ 仍是固定空数组 |
 
