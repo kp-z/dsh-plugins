@@ -43,7 +43,8 @@ import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings, sessionsByAgent } from './adapters/slowvale/xcity.js'
-import { initiativePromptText, respondViaSession } from './adapters/slowvale/respond-sms.js'
+import { respondViaSession } from './adapters/slowvale/respond-sms.js'
+import { deliverInitiative } from './adapters/slowvale/initiative-delivery.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT, spawnOf } from './adapters/slowvale/stage.js'
@@ -829,27 +830,24 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
    */
   async function sendInitiative(agentId: string, reason: string, tick: number): Promise<void> {
     try {
-      const character = loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))[agentId]
-      if (character === undefined) return
-      const sessionId = loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === character)?.sessionId
-      if (sessionId === undefined) return
-      const marker = 'xcity-init:' + sessionId + ':' + tick
-      // R479/R480：主动短信也带当天经历，别发"在吗"这种没有生活的话。
-      const world = state.currentWorld()
-      const dayLines = world === null ? [] : summarizeDay(world, agentId, world.tick)
-      const text = initiativePromptText(reason, dayLines) + '\n\n主动短信编号：' + marker
-      const cancel = smsReplies.track(agentId, sessionId, text, 'initiative')
-      try {
-        if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
-        await sessionControllerService.prompt(
-          { requestId: marker, sessionId, mode: 'queue', content: [{ type: 'text', text }] } as never,
-          new AbortController().signal,
-        )
-      } catch (error) {
-        cancel()
-        throw error
-      }
+      await deliverInitiative(agentId, reason, tick, {
+        characterOf: (id) => loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))[id] ?? null,
+        sessionOf: (characterId) =>
+          loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === characterId)?.sessionId ?? null,
+        // R479/R480：主动短信也带当天经历，别发"在吗"这种没有生活的话。
+        dayContext: (id) => {
+          const world = state.currentWorld()
+          return world === null ? [] : summarizeDay(world, id, world.tick)
+        },
+        track: (id, sessionId, text, kind) => smsReplies.track(id, sessionId, text, kind),
+        prompt: async (payload) => {
+          if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
+          await sessionControllerService.prompt(payload as never, new AbortController().signal)
+        },
+        onError: (message) => logger.warn('[xcity-init] 投递失败 agent=' + agentId + '：' + message),
+      })
     } catch (error: unknown) {
+      // 读绑定表失败等：只记日志，不重试。
       logger.warn('[xcity-init] 投递失败 agent=' + agentId + '：' + String(error))
     }
   }

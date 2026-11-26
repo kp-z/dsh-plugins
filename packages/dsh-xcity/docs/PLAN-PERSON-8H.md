@@ -292,8 +292,9 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 3. `sim/step.ts`：needs 之后调用，意图转 `agent.initiative` 事件。
 4. `respond-sms.ts`：加 `initiativePromptText(reason)`。
 5. `session-events.ts`：tracker 的 `track(..., kind)` 记录 `player-sms | initiative`，`observe` 回传 kind。
-6. `index.ts`：`hub.subscribe` 订阅 `agent.initiative` → 找角色会话 → 用唯一编号投递 → 失败只记日志。
-7. 新增 `test/initiative.test.js`；更新 tracker 旧断言（回复对象多一个 kind）。
+6. 新增 `adapters/slowvale/initiative-delivery.ts`：`deliverInitiative`（绑定查找、唯一编号、dayContext、kind 登记、失败取消）——抽出来才能单测"到底投了什么"。
+7. `index.ts`：`hub.subscribe` 订阅 `agent.initiative` → `deliverInitiative`；失败只记日志。
+8. 新增 `test/initiative.test.js` + `test/deliver-initiative.test.js`；更新 tracker 旧断言（回复对象多一个 kind）。
 
 ### 5.3 测试矩阵
 | 用例 | 断言 |
@@ -462,4 +463,4 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 2026-11-27 02:05 · **H3 完成**。新增 `sim/day-summary.ts`：当天 + 跨午夜活动（起点夹到 00:00），最多 5 行、≤300 字、无内部 id；短信 prompt 注入“你今天到目前为止：…”；活动记录改为**到站后**才采纳（修 stationId=null / startedAt=出发时刻）。
   证据：`test/day-summary.test.js` 11 条；全量 896 条，895 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。
 - 2026-11-27 03:05 · **H4 完成**。`sim/initiative.ts` 在 sim 里决定“想不想发”并写限频字段（07:00–23:00、3h 间隔、每人每天 ≤2、睡着/对话/手上有单不发）；`step` 发 `agent.initiative` 事件；`index.ts` 订阅事件、找角色会话、用唯一编号投递；tracker 登记项带 kind，和玩家短信回执分开。
-  证据：`test/initiative.test.js` 9 条；全量 905 条，904 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例；单角色 48h：day0 22:19、day1 08:24/11:24、day2 07:54，间隔均 ≥3h。主动短信 prompt 也带上了当天经历（H3 的摘要），不是空泛的“在吗”。真机投递留 H7。
+  证据：`test/initiative.test.js` 9 条 + `test/deliver-initiative.test.js` 4 条；全量 909 条，908 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例；单角色 48h：day0 22:19、day1 08:24/11:24、day2 07:54，间隔均 ≥3h。主动短信 prompt 也带上了当天经历（H3 的摘要），不是空泛的“在吗”。真机投递留 H7。
