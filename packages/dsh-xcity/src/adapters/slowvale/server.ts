@@ -20,7 +20,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
@@ -448,7 +448,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         const file = options.bindingsFile ?? join(homedir(), '.dsh', 'xcity', 'bindings.json')
         const bindings = loadXcityBindings(file)
         // 把角色绑定摊到世界里的 agentId 上：谁（agent-N）现在代表哪个人、用哪个会话。
-        const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
+        const agents = loadAgentMap(join(dirname(file), 'agents.json'))
         const resolved = Object.entries(agents).map(([agentId, characterId]) => ({
           agentId,
           characterId,

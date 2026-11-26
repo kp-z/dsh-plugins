@@ -12,7 +12,7 @@
  */
 import { appendFileSync, existsSync, renameSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   buildCharacterSystemPrompt,
@@ -793,7 +793,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         activeSessionId: state.activeSessionId,
         characterOfSession: (id) => characterOfSession(loadXcityBindings(resolved.slowvale.bindingsFile), id),
         agentOfCharacter: (character) => {
-          const agents = loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))
+          const agents = loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))
           return Object.keys(agents).find((agentId) => agents[agentId] === character) ?? null
         },
       })
@@ -1047,22 +1047,11 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             place: resolved.slowvale.place,
             startDate: resolved.slowvale.startDate,
           },
-          /**
-           * 短信走会话：收到短信 → 把话送进绑定会话。
-           *
-           * 这里**返回 null 是诚实的**：短信是异步的（收下即回执），
-           * "他回一句"发生在会话里，不是在这个请求里凑一句假回复。
-           */
-          /**
-           * 自己开一条会话给角色（照 cove-task 的三步：create -> attachSession -> prompt）。
-           *
-           * 三步缺一不可：只 create 的话，会话不归任何工作区，面板里只能出现在归档。
-           */
+          // 建好角色会话，但不使用宿主默认模型发送开场白。
           spawnSession: async (input: { characterId: string; characterName: string }) => {
-            const cwd = join(homedir(), '.dsh', 'xcity')
+            const cwd = dirname(resolve(resolved.slowvale.bindingsFile))
             return spawnCharacterSession({
               characterId: input.characterId,
-              characterName: input.characterName,
               cwd,
               now: Date.now(),
               ports: {
@@ -1085,18 +1074,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
                     await workspace.attachSession?.(sessionId)
                   }
                   return true
-                },
-                prompt: async (sessionId, text) => {
-                  if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
-                  await sessionControllerService.prompt(
-                    {
-                      requestId: 'xcity:' + sessionId,
-                      sessionId,
-                      mode: 'queue',
-                      content: [{ type: 'text', text }],
-                    } as never,
-                    new AbortController().signal,
-                  )
                 },
               },
             })
@@ -1122,7 +1099,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             try {
               return await respondViaSession(input, {
                 onForward: smsReplies.track,
-              characterOf: (peerRoleId) => loadAgentMap(join(homedir(), '.dsh', 'xcity', 'agents.json'))[peerRoleId] ?? null,
+              characterOf: (peerRoleId) => loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))[peerRoleId] ?? null,
               sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === characterId)?.sessionId ?? null,
               prompt: async (payload, signal) => {
                 if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
