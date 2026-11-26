@@ -247,7 +247,7 @@ test('持有 SSE 的客户端可在日志水位变化后按游标补拉', async 
 
 test('同一 SSE 连接获得活动开始和结束徽章，无整页重同步', async () => {
   const role = { id: 'agent-1', name: '阿金' }
-  const world = { id: 'w1', name: '测试', tick: 40, agents: [role], activities: [] }
+  let world = { id: 'w1', createdAt: '2026-01-01T00:00:00Z', name: '测试', tick: 40, agents: [role], activities: [] }
   const bridge = await createSlowvaleBridge({
     host: '127.0.0.1', port: 0, assetsDir: '.', pushMs: 20,
     account: { email: 'test@example.invalid', password: 'test' },
@@ -261,6 +261,7 @@ test('同一 SSE 连接获得活动开始和结束徽章，无整页重同步', 
     let buffer = ''
     let previous
     let activeCount = 0
+    let firstEpoch
     for await (const chunk of stream.body.pipeThrough(new TextDecoderStream())) {
       buffer += chunk
       let end
@@ -270,7 +271,18 @@ test('同一 SSE 连接获得活动开始和结束徽章，无整页重同步', 
         if (!frame.startsWith('event: ')) continue
         const [name, body] = frame.split('\n')
         const data = JSON.parse(body.slice(6))
+        if (name === 'event: resync') {
+          assert.notEqual(data.cursor.epoch, firstEpoch)
+          assert.equal(data.feed_head_record_entry_id, 0)
+          const baseUrl = 'http://127.0.0.1:' + bridge.port + '/api/game/'
+          const stale = await (await fetch(baseUrl + 'logs/catch-up?' + new URLSearchParams({ role_id: role.id, realtime_epoch: firstEpoch, after_record_entry_id: '30' }))).json()
+          assert.equal(stale.outcome, 'reset_required')
+          assert.equal(stale.realtime_epoch, data.cursor.epoch)
+          assert.deepEqual(stale.entries, [])
+          return
+        }
         if (name === 'event: connected') {
+          firstEpoch = data.cursor.epoch
           const scene = await (await fetch('http://127.0.0.1:' + bridge.port + '/api/game/state/scene?scene=company')).json()
           assert.equal(scene.cursor.epoch, data.cursor.epoch)
           assert.ok(scene.cursor.seq < world.tick, '场景不能用世界 tick 跳过后续状态增量')
@@ -294,11 +306,11 @@ test('同一 SSE 连接获得活动开始和结束徽章，无整页重同步', 
         } else {
           assert.equal(activeCount, 1)
           assert.deepEqual(update.payload, { status: 'offline' })
-          return
+          world = { ...world, createdAt: '2026-01-02T00:00:00Z', tick: 0, activities: [] }
         }
       }
     }
-    assert.fail('没有收到活动结束增量')
+    assert.fail('没有收到活动结束和换局快照')
   } finally {
     clearTimeout(timer)
     controller.abort()

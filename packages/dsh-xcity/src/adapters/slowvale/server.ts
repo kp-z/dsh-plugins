@@ -155,17 +155,30 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   let envelopeSeq = 0
   let lastCursor: { epoch: string; seq: number } | null = null
 
-  const connectSnapshot = (res: ServerResponse, world: WorldLike): void => {
+  const snapshotAt = (world: WorldLike, seq: number) =>
+    projectSnapshot(world, { ...options.opts, phone: sms.signal(), realtimeSeq: seq })
+
+  const synchronizeWorld = (world: WorldLike, newcomer?: ServerResponse): string => {
     const epoch = epochOf(world)
-    const cursor = { epoch, seq: envelopeSeq }
-    const snapshot = { ...projectSnapshot(world, { ...options.opts, phone: sms.signal() }), cursor }
-    // A different world really does require a new baseline for established clients.
-    if (lastCursor !== null && lastCursor.epoch !== epoch) {
-      for (const client of clients) if (client !== res) writeEvent(client, 'resync', snapshot)
+    if (lastCursor?.epoch !== epoch) {
+      const replacing = lastCursor !== null
+      lastCursor = { epoch, seq: envelopeSeq }
+      lastPushedScene = null
+      walkLengths.clear()
+      if (replacing) {
+        const snapshot = snapshotAt(world, envelopeSeq)
+        for (const client of clients) if (client !== newcomer) writeEvent(client, 'resync', snapshot)
+      }
     }
-    lastCursor = cursor
-    writeEvent(res, 'connected', snapshot)
+    return epoch
   }
+
+  const connectSnapshot = (res: ServerResponse, world: WorldLike): void => {
+    synchronizeWorld(world, res)
+    writeEvent(res, 'connected', snapshotAt(world, envelopeSeq))
+  }
+
+  const nextCursor = (world: WorldLike) => ({ epoch: synchronizeWorld(world), seq: ++envelopeSeq })
 
   /**
    * 发一个 scene_state 信号（信封形状由前端逐字段硬校验）：
@@ -180,14 +193,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const pushSceneState = (): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
+    synchronizeWorld(world)
     const scene = projectSnapshot(world, options.opts).scene
     if (typeof scene !== 'string' || scene === '') return
     // 只在场景**变化**时推：每秒重发同一场景会让前端反复转场，
     // 每次转场都会打断上一个场景的 loader.start() → 报「资源加载无进展」。
     if (options.sceneStateOnChangeOnly === true && scene === lastPushedScene) return
     lastPushedScene = scene
-    envelopeSeq += 1
-    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
+    const cursor = nextCursor(world)
     const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: options.opts.worldId, scene }))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -217,8 +230,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const pushStatePart = (part: string, key: string, payload: Record<string, unknown>, route: { role_ids: string[]; scenes: string[]; broadcast?: true }): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
-    envelopeSeq += 1
-    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
+    const cursor = nextCursor(world)
     const body = gzipSync(Buffer.from(JSON.stringify({ part, operation: 'replace', key, payload }))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -243,9 +255,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (world === null || clients.size === 0) return false
     const scene = projectSnapshot(world, options.opts).scene
     if (typeof scene !== 'string' || scene === '') return false
-    envelopeSeq += 1
+    const cursor = nextCursor(world)
     const tickMarker = 'tick-' + String(world.tick)
-    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const packet = independentDialogue({
       epoch: cursor.epoch,
       seq: envelopeSeq,
@@ -274,9 +285,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (world === null || clients.size === 0 || beats.length === 0) return false
     const scene = projectSnapshot(world, options.opts).scene
     if (typeof scene !== 'string' || scene === '') return false
-    envelopeSeq += 1
+    const cursor = nextCursor(world)
     const tickMarker = 'tick-' + String(world.tick)
-    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
     const packet = independentTimeline({ epoch: cursor.epoch, seq: envelopeSeq, tickMarker, actorId, beats: beats as never })
     const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
     const envelope = {
@@ -300,8 +310,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const snapshot = projectSnapshot(world, options.opts)
     const scene = snapshot.scene
     if (typeof scene !== 'string' || scene === '') return
-    envelopeSeq += 1
-    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
+    const cursor = nextCursor(world)
     const payload = { place_id: options.opts.place, furniture: [] }
     const body = gzipSync(Buffer.from(JSON.stringify(payload))).toString('base64')
     const envelope = {
@@ -380,7 +389,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (lastLogHead?.head === head && lastLogHead.epoch === epoch && lastLogHead.roleId === roleId) return
     lastLogHead = { epoch, roleId, head }
     if (initial || head === 0) return
-    const cursor = { epoch, seq: ++envelopeSeq }
+    const cursor = nextCursor(world)
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
       cursor,

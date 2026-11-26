@@ -38,9 +38,9 @@ export interface ProjectOptions {
   phone?: { rowId: number; unread: number } | undefined
 }
 
-/** 日志条目布局变更时，旧游标不能继续使用。HTTP 和 SSE 共用此值。 */
-export function epochOf(world: Pick<WorldLike, 'id'>): string {
-  return 'epoch-' + world.id + '-feed3'
+/** 同名同种子的世界可能共用 id；创建时刻在存档内，重开才切换日志 epoch。 */
+export function epochOf(world: Pick<WorldLike, 'id' | 'createdAt'>): string {
+  return 'epoch-' + world.id + (world.createdAt === undefined ? '' : '-' + world.createdAt) + '-feed3'
 }
 
 /** 由 tick 推游戏时间。一天 = MINUTES_PER_DAY 个 tick。 */

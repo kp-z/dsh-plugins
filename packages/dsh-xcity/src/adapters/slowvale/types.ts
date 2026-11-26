@@ -28,6 +28,7 @@ export interface WorldAgentLike {
 /** world 内核的世界快照。我们只读这几个字段。 */
 export interface WorldLike {
   id: string
+  createdAt?: string
   /** 城市里的场所（有它就能按场所投影在场与场景）。 */
   places?: { id: string; name: string; asset: string; spawn: { x: number; z: number } }[]
   defaultPlaceId?: string
