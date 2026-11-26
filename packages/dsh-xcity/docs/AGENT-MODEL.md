@@ -74,6 +74,26 @@
 
 ---
 
+## 二·五、活人模型（2026-11-27，R477–R482）
+
+长期模型回答“他是谁、做过什么”；**活人模型**回答“他现在想干什么、今天过得怎么样”。
+两者分开：活人模型在模拟内核里、随 tick 演化；长期模型在 persona 里、跨会话保留。
+
+| 机制 | 形状 | 谁写 | 说明 |
+|---|---|---|---|
+| 内在需求 | `Agent.needs {energy,hunger,social}`（0–100，100=满足） | `sim/needs.ts` 每 tick | 基线衰减 + 状态/用途恢复；老档默认 80 |
+| 一天的选择 | `chooseLife(world, agent)` | `sim/life.ts` | 饿 > 夜里睡 > 累 > 社交 > 上班 > 学习；有 ready 工单时让位 |
+| 活动用途 | `Agent.activityPurpose` / `Activity.purpose` | ingest / activity | meal/sleep/rest/social/work/study；只影响需求恢复、徽章与学习结算，不进状态机 |
+| 学习 | persona `skills` + `xp` | `persona/study.ts`（app 层订阅完成事件） | 一次学习块 = 1 XP；同一 activityId 只结算一次 |
+| 关系 | `Agent.affinity: Record<agentId, 0–100>` | `sim/relationships.ts` | 缺省 50；同 district 聊天完成双方 +2；只存变化，不建图谱 |
+| 主动意愿 | `lastInitiatedSmsTick / initiatedSmsDay / initiatedSmsCount` | `sim/initiative.ts` | 07:00–23:00、3h 间隔、每天 ≤2；app 只负责投递 |
+| 当天记忆 | `summarizeDay(world, agentId, tick)` | 纯函数，短信 prompt 读取 | 当天 + 跨午夜；≤5 行、≤300 字、无内部 id |
+
+**边界**：这些字段都不改变“长期状态不碰确定性”的纪律——它们在 world 里、由 step 推进；
+persona 的写入只在 app 层订阅事件后发生，失败会被 try/catch 挡住，不带崩模拟。
+
+---
+
 ## 三、Profile（档案）
 
 ### 3.1 形状

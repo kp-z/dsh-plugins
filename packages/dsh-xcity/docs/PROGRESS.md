@@ -11242,3 +11242,14 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 未验：AI 回信引用当天活动（H3）、主动短信真正投递（H4）——桥没有会话，正式进程仍旧构建；不假装验过。
 - 发现 UI 时间戳异常：消息显示「第739946天」、历史栏「第739617天」，顶部却是第 1/2 天；API `sent_at` 是真实时间，疑似前端换算 bug，记录未改。
 - 正式进程重启后的 5 分钟核对清单已写进计划 8.4（看一天、发短信、等主动短信、看控制台）。
+
+## 2026-11-27 07:05：H8 收尾与第二轮计划
+
+- 清理证据（本轮核对，**都不删**）：
+  - `live` / agent-teams：`index.ts` 的 `syncSubagents` 与外部工单仍在用；删了真实 subagent 就投影不进小镇。
+  - mailbox：`heartbeat.sendMessages` + `step.deliverMessages` 在用；删了角色间纸条/消息就没了。
+  - travel/places：`beginTravel` + `city-travel.test.js` 在用；多场所出行是现有能力。
+  - 活动镜像（`agent.activity*` vs `world.activities`）与绑定（`boundAgentId` vs `bindings.json`）：都被多处读写，**不在收尾小时硬删**；写进下一轮 H2/H3（先统一读入口）。
+- 文档：`AGENT-MODEL.md` 补“活人模型（R477–R482）”一节（needs/选择/用途/学习/关系/主动意愿/当天记忆与边界）。
+- 计划：`PLAN-PERSON-8H.md` **原地重写为第二轮**（H1–H8）：H1 最小 DSH profile 真宿主验收（绕开 agent-teams 不兼容）、H2 活动读模型统一、H3 绑定统一、H4 家/睡觉落点、H5 社交等人、H6 跨天记忆、H7 周末与闲暇、H8 清理/下一份计划；指针重置到 H1。
+- 依据：上一轮全量 922 条 / 921 通过 / 1 跳过；H7 的独立桥已验到“夜里睡觉、早上学习/吃饭/干活、位置变化、徽章、手机线程/未读/气泡”，AI 回信与主动投递列为 H1 的验收目标。
