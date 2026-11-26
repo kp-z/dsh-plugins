@@ -248,6 +248,8 @@ export interface Agent {
   activityTicks?: number | undefined
   /** R478：这次活动的用途（meal/sleep/social/study…）；只影响需求恢复与日志。 */
   activityPurpose?: ActivityPurpose | undefined
+  /** R481：这次活动用的能力（code/review/research/compute）；学习结算靠它记“学会了什么”。 */
+  activitySkill?: string | undefined
   /** R480：上一次由角色主动发起短信的 tick（限频，随存档）。 */
   lastInitiatedSmsTick?: number | undefined
   /** R480：主动短信按游戏日记数；换天时重置。 */
@@ -275,6 +277,8 @@ export interface Activity {
   agentId: string
   kind: 'work' | 'rest' | 'meet' | 'visit' | 'sleep'
   skill?: string | undefined
+  /** R481：这次活动的用途（study 才会结算学习 XP）；老存档可能没有。 */
+  purpose?: ActivityPurpose | undefined
   placeId: string
   stationId: string | null
   /** 谁触发了这件事。日志里的 decision 条目就写它——有真实来源才写，不编。 */

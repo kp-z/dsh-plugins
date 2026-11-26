@@ -56,6 +56,14 @@ test('R478：吃饭/睡觉沿用 rest 活动，但徽章与动作要分开', () 
   assert.equal(napSnap.actors['agent-1'].visual_state.anim, 'sit')
 })
 
+test('R481：learning 在 code 工位也显示 SkillStudyActivity / 学习', () => {
+  const world = worldWith('work')
+  world.agents[0].activityPurpose = 'study'
+  const snapshot = projectSnapshot(world, opts)
+  assert.equal(snapshot.role_public_statuses['agent-1'].active_activity.activity_type, 'SkillStudyActivity')
+  assert.equal(snapshot.role_public_statuses['agent-1'].active_activity.name, '学习')
+})
+
 test('没有活动时不给这些字段', () => {
   const world = worldWith('work')
   world.agents[0].activityId = undefined

@@ -27,6 +27,8 @@ export interface StartActivityInput {
 
 /** 开始一个活动：写进世界、挂到人身上，并把老字段同步好（旧机制还在读它们）。 */
 export function startActivity(world: World, agent: Agent, input: StartActivityInput): Activity {
+  // R481：endActivity 会清掉 agent.activityPurpose，先把它带进活动记录。
+  const purpose = agent.activityPurpose
   endActivity(world, agent, 'interrupted')
   if (world.activities === undefined) world.activities = []
   world.activitySeq = (world.activitySeq ?? 0) + 1
@@ -35,6 +37,7 @@ export function startActivity(world: World, agent: Agent, input: StartActivityIn
     agentId: agent.id,
     kind: input.kind,
     skill: input.skill,
+    purpose,
     placeId: agent.placeId,
     stationId: input.stationId ?? null,
     trigger: input.trigger,
@@ -62,6 +65,7 @@ export function endActivity(world: World, agent: Agent, status: 'completed' | 'i
   agent.activityId = undefined
   delete agent.activityKind
   delete agent.activityPurpose
+  delete agent.activitySkill
   delete agent.activityUntil
   delete agent.activityTicks
   if (activity === undefined) return null
@@ -105,6 +109,7 @@ export function syncActivities(world: World): Activity[] {
       agent.activityId = undefined
       agent.activityKind = undefined
       agent.activityPurpose = undefined
+      agent.activitySkill = undefined
       agent.activityUntil = undefined
       agent.activityTicks = undefined
       completed.push(live)
@@ -120,7 +125,8 @@ export function syncActivities(world: World): Activity[] {
         agentId: agent.id,
         kind: agent.activityKind === 'meet' ? 'meet' : agent.activityKind === 'rest' ? 'rest' : agent.activityKind === 'visit' ? 'visit' : 'work',
         trigger: agent.activityTrigger,
-        skill: undefined,
+        skill: agent.activitySkill,
+        purpose: agent.activityPurpose,
         placeId: agent.placeId,
         stationId: agent.station,
         status: 'active',

@@ -101,6 +101,8 @@ function activityTypeOf(kind: string, skill?: string | null, purpose?: string | 
   // R478：吃饭/睡觉都复用 rest 活动，用 purpose 决定徽章，别把吃饭画成 RestActivity。
   if (purpose === 'meal') return 'EatActivity'
   if (purpose === 'sleep') return 'SleepActivity'
+  // R481：学习可能发生在 code 工位（skill=code）；用 purpose 保证徽章仍是“学习”。
+  if (purpose === 'study') return 'SkillStudyActivity'
   if (kind === 'sleep') return 'SleepActivity'
   if (kind === 'rest') return 'RestActivity'
   if (kind === 'meet') return 'SpeakActivity'

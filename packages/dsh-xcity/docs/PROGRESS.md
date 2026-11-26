@@ -11218,3 +11218,11 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 日常干活不算“值得说”，否则每 90 tick 收工一次都触发，会刷屏；主动短信 prompt 也带当天经历（H3 的摘要），不是空泛的“在吗”。
 - 证据：`test/initiative.test.js` 9 条 + `test/deliver-initiative.test.js` 4 条 + 存档往返 1 条；全量 910 条，909 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例。
 - 已知取舍：限频是“每人 ≤2/天”，8 人理论上最多 16/天（实测约 9/天）；正式世界目前 1 个角色，即 ≤2/天。真机投递留 H7。
+
+## 2026-11-27 04:05：H5 学习与技能
+
+- `Activity` 补 `purpose`（study/work…）与 `skill`；Agent 补 `activitySkill`，命令里的 skill 真正落到活动/事件上。
+- 完成事件载荷补 `kind`/`skill`/`purpose`；新增 `persona/study.ts` 的 `awardStudyXp`：技能名并集进 persona.skills、`addXp(1)`、同一 activityId 只结算一次。
+- `index.ts` 只对 `completed + purpose === 'study'` 结算；study 徽章固定 `SkillStudyActivity`（code 工位学习不再显示成 ProgrammerActivity）。
+- 证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP，skills 出现 `code`/`research`。
+- 已知限制：技能只记“会不会”，没有熟练度分级；技能反过来影响选站留给下一份计划。

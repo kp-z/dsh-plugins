@@ -5,8 +5,8 @@
 
 ## 执行指针
 
-- **当前小时：H5**
-- 已完成：H1（需求模型）、H2（需求驱动的一天）、H3（今天记得什么）、H4（主动找玩家）
+- **当前小时：H6**
+- 已完成：H1（需求模型）、H2（需求驱动的一天）、H3（今天记得什么）、H4（主动找玩家）、H5（学习与技能）
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（01:00 起每小时，投递到本会话）
 - 推进规则：DoD 全过才把「当前小时」改成下一小时；没做完就下一轮继续，不跳。
 - 本份计划覆盖 H1–H8；H8 完成后原地重写本文件，接下一份 8 小时。
@@ -329,12 +329,24 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 ### 6.2 设计
 - 复用 H2 的 `study`：`agentActivity work + skill: 'research'`（code 技能同理），在 research/code 站点；到站后状态 working。
 - **不新增“每技能等级”概念**：persona 现有 `skills: string[]`（会不会）与 `xp`（熟练度总量）已经够表达“学习有积累”。要等级是下一份计划的事。
-- 事件：`sim/step.ts` 在 `syncActivities` 返回完成活动时发 `agent.state`，载荷目前只有 `{agentId, activityId, status}`；补上 `kind`/`skill`（活动对象上已有）。
+- 活动记录：`Activity` 补 `purpose`（study/work…）与 `skill`；Agent 补 `activitySkill`（命令里的 skill 落到活动上；只加这一个字段，不建技能表）。
+- 事件：`sim/step.ts` 完成活动时发 `agent.state`，载荷补 `kind`/`skill`/`purpose`。
 - app 层（`index.ts`）：
-  - `const hub = createEventHub()` 之后 `hub.subscribe(events => …)`；
-  - 看到 `status === 'completed'` 且 `kind === 'work'`、`skill === 'research'|'code'` → 取该 agent 的 persona（`persona.list()` 里找，找不到就 upsert），`skills` 并集加入该技能，`addXp(1)`；
+  - `hub.subscribe` 看到 `status === 'completed'` 且 `purpose === 'study'`；
+  - 取该 agent 的 persona key（`boundAgentId ?? id`），调 `persona/study.ts` 的 `awardStudyXp`：技能名并集进 `skills`，`addXp(1)`；
+  - **同一 activityId 只结算一次**（进程内 `Set`）；找不到 persona 就跳过。
   - XP 规则：**一次完成的学习块 = 1 XP**（块长 45–120 tick）；不做“每分钟折算”，避免重复计。
 - 选站仍按角色能力（sim 不认识 persona）；“技能反过来影响选择”留给下一份计划，写进 H8 的下一份计划，不在这里硬接。
+- 徽章：`project.ts` 的 `activityTypeOf` 看到 `purpose === 'study'` 就出 `SkillStudyActivity`（否则在 code 工位学习会显示成 ProgrammerActivity）。
+
+### 6.2.1 步骤（R481）
+1. `domain/types.ts`：`Activity.purpose`、Agent.`activitySkill`。
+2. `sim/activity.ts`：开始/采纳活动时带 purpose + skill；结束统一清掉。
+3. `sim/step.ts`：完成事件载荷补 kind/skill/purpose。
+4. 新增 `persona/study.ts`：`awardStudyXp(store, key, completion, seen)`（可单测的纯结算）。
+5. `index.ts`：订阅 `agent.state` completed + purpose=study → 结算。
+6. `project.ts`：study 徽章固定 SkillStudyActivity。
+7. 新增 `test/study.test.js`；投影测试补 study 场景。
 
 ### 6.3 测试矩阵
 | 用例 | 断言 |
@@ -345,9 +357,12 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 | 无 persona 存储 | 不报错，跳过 |
 | 时间窗 | 20:00 可学习，23:30 不学习（睡觉优先） |
 
-### 6.4 加固清单
-- 学习时长与 XP 的关系写进文档，不让“1 小时 = 1 级”。
-- 面板/日志能看到“在学什么”（前端 activityTypeOf 已有 SkillStudyActivity）。
+### 6.4 加固清单与实测（2026-11-27 04:05）
+- [x] 学习时长与 XP：一次完成的学习块（45–120 tick）= 1 XP；不做分钟折算，避免重复计。
+- [x] 面板/日志能看到“在学什么”：study 在 code 工位也显示 SkillStudyActivity / 学习（有投影测试）。
+- [x] 事件与结算解耦：`awardStudyXp` 纯函数 + 进程内 activityId 去重；同一活动不会加两次。
+- [x] 24h 真实仿真：37 个 study 完成事件；每角色 4–6 XP；技能并集出现 `code`/`research`（修复前只有 XP、skills 为空，因为活动没带 skill）。
+- 已知限制：技能只记“会不会”，没有熟练度分级；技能反过来影响选站留给下一份计划。
 
 ### 6.5 风险与回滚
 - 风险：事件重复计 XP、persona 写失败、sim 越界。
@@ -464,3 +479,5 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   证据：`test/day-summary.test.js` 11 条；全量 896 条，895 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。
 - 2026-11-27 03:05 · **H4 完成**。`sim/initiative.ts` 在 sim 里决定“想不想发”并写限频字段（07:00–23:00、3h 间隔、每人每天 ≤2、睡着/对话/手上有单不发）；`step` 发 `agent.initiative` 事件；`index.ts` 订阅事件、找角色会话、用唯一编号投递；tracker 登记项带 kind，和玩家短信回执分开。
   证据：`test/initiative.test.js` 9 条 + `test/deliver-initiative.test.js` 4 条 + 存档往返 1 条；全量 910 条，909 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例；单角色 48h：day0 22:19、day1 08:24/11:24、day2 07:54，间隔均 ≥3h。主动短信 prompt 也带上了当天经历（H3 的摘要），不是空泛的“在吗”。真机投递留 H7。
+- 2026-11-27 04:05 · **H5 完成**。`Activity` 带 `purpose`/`skill`，Agent 带 `activitySkill`；完成事件载荷补 kind/skill/purpose；新增 `persona/study.ts` 的 `awardStudyXp`（skills 并集 + 1 XP + activityId 去重），`index.ts` 只对 `purpose === 'study'` 结算；study 在 code 工位也显示 `SkillStudyActivity`。
+  证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP，skills 出现 `code`/`research`（修复前 skills 为空，因为活动没带 skill）。

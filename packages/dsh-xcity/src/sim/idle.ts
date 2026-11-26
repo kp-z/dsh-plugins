@@ -103,6 +103,7 @@ export function advanceIdle(world: World, behaviors: readonly IdleBehaviorPlan[]
       agent.path = []
       delete agent.activityKind
       delete agent.activityPurpose
+      delete agent.activitySkill
       delete agent.activityUntil
       stateChanged.push(agent.id)
       continue

@@ -229,6 +229,7 @@ function ingest(
         agent.activityKind = command.activity
         // R478：用途标签（吃饭/睡觉/学习…）；不传就按命令类型推一个默认值。
         agent.activityPurpose = command.purpose ?? (command.activity === 'meet' ? 'social' : command.activity === 'work' ? 'work' : command.activity === 'rest' ? 'rest' : undefined)
+        agent.activitySkill = command.skill
         agent.activityTrigger = command.trigger
         agent.activityTicks = Math.max(5, Math.round(command.ticks))
         if (path.length === 0) {
@@ -507,7 +508,15 @@ export function step(
   // ── 5.5 activity ──
   // 活动对账放在 emit 之前：这一 tick 结束的活动要能在同一 tick 的事件里被看见。
   for (const activity of syncActivities(world)) {
-    events.push(emitEvent(world, 'agent.state', { agentId: activity.agentId, activityId: activity.id, status: 'completed' }))
+    events.push(emitEvent(world, 'agent.state', {
+      agentId: activity.agentId,
+      activityId: activity.id,
+      status: 'completed',
+      // R481：学习结算需要知道"这是什么活动、学的是什么"。
+      kind: activity.kind,
+      skill: activity.skill ?? null,
+      purpose: activity.purpose ?? null,
+    }))
   }
 
   // ── 5.6 needs ──

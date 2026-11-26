@@ -52,6 +52,7 @@ import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
 import { createTaskExecution } from './adapters/slowvale/task-execution.js'
 import { hasXcityRoleModel, isIdleSession } from './bridge/dsh-adapter.js'
 import { createPersonaStore } from './persona/store.js'
+import { awardStudyXp } from './persona/study.js'
 import { registerDispatchTool } from './tools/dispatch.js'
 import { registerReportTool } from './tools/report.js'
 import { registerWorldTools } from './tools/world.js'
@@ -851,6 +852,31 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       logger.warn('[xcity-init] 投递失败 agent=' + agentId + '：' + String(error))
     }
   }
+
+  // R481：学习结算。只看 completed + purpose=study；同一 activityId 只加一次。
+  const studySeen = new Set<string>()
+  hub.subscribe((events) => {
+    const world = state.currentWorld()
+    if (world === null) return
+    for (const event of events) {
+      if (event.type !== 'agent.state') continue
+      const payload = event.payload as Record<string, unknown>
+      if (payload.status !== 'completed' || payload.purpose !== 'study') continue
+      const agentId = typeof payload.agentId === 'string' ? payload.agentId : ''
+      const agent = world.agents.find((item) => item.id === agentId)
+      if (agent === undefined) continue
+      const key = agent.boundAgentId ?? agent.id
+      awardStudyXp(
+        personaStore,
+        key,
+        {
+          activityId: typeof payload.activityId === 'string' ? payload.activityId : '',
+          skill: typeof payload.skill === 'string' ? payload.skill : null,
+        },
+        studySeen,
+      )
+    }
+  })
 
   // 订阅世界事件：sim 决定"想发"，这里负责投递。
   hub.subscribe((events) => {
