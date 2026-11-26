@@ -55,7 +55,8 @@ export function createTaskExecution(ports: TaskExecutionPorts) {
         if (!task || !attempt || agent.state !== 'working' || agent.carrying !== task.id || task.status !== 'in_progress' ||
           task.owner !== agent.id || task.externalId !== null || task.attemptId !== attempt || attempts.has(attempt)) return
         // The host deduplicates by requestId across a retry or process restart. Never steer.
-        const requestId = 'xcity-task:' + world.id + ':' + attempt
+        // World id depends on seed; a reset can reuse it and the same task attempt id.
+        const requestId = 'xcity-task:' + digest(JSON.stringify([world.id, world.createdAt, attempt]))
         const evidence = '.xcity-results/' + digest(requestId).slice(0, 24) + '.md'
         attempts.set(attempt, { sessionId, taskId: task.id, requestId, evidence, active: false })
         if (!missingArtifact(ports.cwd, evidence)) {

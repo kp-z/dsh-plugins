@@ -27,13 +27,13 @@ import { createTaskExecution } from '../lib/adapters/slowvale/task-execution.js'
 import { hasXcityRoleModel, isIdleSession } from '../lib/bridge/dsh-adapter.js'
 import { sessionsByAgent } from '../lib/adapters/slowvale/xcity.js'
 
-function makeWorld(taskSets) {
+function makeWorld(taskSets, createdAt = '2026-01-01T00:00:00.000Z') {
   const content = new ContentRegistry()
   content.loadAll(builtinPacks())
   return createWorld({
     content,
     scene: 'scene.default-town',
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt,
     taskSets,
   })
 }
@@ -160,7 +160,7 @@ for (const interrupted of [false, true]) test(interrupted ? '工单轮次被插�
   await Promise.all([runner.heartbeat(), runner.heartbeat()])
   await runner.heartbeat()
   assert.equal(sent.length, 1)
-  assert.equal(sent[0].requestId, 'xcity-task:' + world.id + ':' + task.attemptId)
+  assert.match(sent[0].requestId, /^xcity-task:[a-f0-9]{64}$/)
   assert.equal(sent[0].sessionId, 'lin')
   assert.equal(sent[0].mode, 'queue')
   assert.equal(task.status, 'in_progress')
@@ -225,4 +225,34 @@ test('自主工单不借宿主默认模型或其他已选模型代跑', () => {
   assert.equal(current({ provider: 'other', model: 'DeepSeek-V4.1' }), false)
   assert.equal(current(undefined), false)
   assert.equal(hasXcityRoleModel({}, 'lin'), false)
+})
+
+test('旧存档恢复保持请求编号，同种子开新局不会复用编号', async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), 'xcity-receipt-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  const old = makeWorld(['task.town-inspection'])
+  const reset = makeWorld(['task.town-inspection'], '2026-01-02T00:00:00.000Z')
+  assert.equal(old.id, reset.id)
+  for (const world of [old, reset]) {
+    for (let i = 0; i < 200; i += 1) step(world, [], { sessionWorkers: new Set([world.agents[0].id]), idleAmbient: false })
+  }
+  assert.equal(old.tasks[0].attemptId, reset.tasks[0].attemptId)
+  async function request(world) {
+    let requestId
+    const runner = createTaskExecution({
+      cwd, world: () => world,
+      start: () => assert.fail('投递不是开工'),
+      settle: () => assert.fail('投递不是完成'),
+      sessions: () => new Map([[world.agents[0].id, 'lin']]),
+      available: async () => true,
+      prompt: async (input) => { requestId = input.requestId },
+    })
+    await runner.heartbeat()
+    runner.stop()
+    assert.equal(typeof requestId, 'string')
+    return requestId
+  }
+  const original = await request(old)
+  assert.equal(await request(structuredClone(old)), original)
+  assert.notEqual(await request(reset), original)
 })
