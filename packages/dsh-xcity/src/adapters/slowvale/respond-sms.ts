@@ -69,11 +69,13 @@ export async function respondViaSession(
 /**
  * R480：主动短信的 prompt。与"回复玩家"不同：这次没有玩家原话，只有一个念头。
  */
-export function initiativePromptText(reason: string): string {
+export function initiativePromptText(reason: string, dayLines: readonly string[] = []): string {
+  const day = dayLines.length === 0 ? [] : ['你今天到目前为止：', ...dayLines.map((line) => '- ' + line), '']
   return [
     '你在 xcity 小镇里，突然想给玩家发一条短信。',
     '此刻的念头：' + reason,
     '',
+    ...day,
     '规则：',
     '1. 给玩家看的话放进 ' + REPLY_OPEN + '…' + REPLY_CLOSE + ' 之间，一句，不超过 30 字；',
     '2. 标记之外可以写详细说明——那部分只有 DSH 里的人看得到，不会进游戏；',

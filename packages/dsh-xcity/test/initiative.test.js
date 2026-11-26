@@ -134,9 +134,11 @@ test('tracker：initiative 回复带 kind，玩家的回执仍是 player-sms', (
   assert.equal(playerReply.reply.kind, 'player-sms')
 })
 
-test('主动短信 prompt 带上念头与格式要求', () => {
-  const text = initiativePromptText('刚忙完一件事，想跟你说一声')
+test('主动短信 prompt 带上念头、当天经历与格式要求', () => {
+  const text = initiativePromptText('刚忙完一件事，想跟你说一声', ['09:20–10:40 在工位 22干活'])
   assert.ok(text.includes('刚忙完一件事'))
+  assert.ok(text.includes('你今天到目前为止：'))
+  assert.ok(text.includes('09:20–10:40 在工位 22干活'))
   assert.ok(text.includes(REPLY_OPEN))
   assert.ok(text.includes('不超过 30 字'))
 })

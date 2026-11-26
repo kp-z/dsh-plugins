@@ -834,7 +834,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const sessionId = loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === character)?.sessionId
       if (sessionId === undefined) return
       const marker = 'xcity-init:' + sessionId + ':' + tick
-      const text = initiativePromptText(reason) + '\n\n主动短信编号：' + marker
+      // R479/R480：主动短信也带当天经历，别发"在吗"这种没有生活的话。
+      const world = state.currentWorld()
+      const dayLines = world === null ? [] : summarizeDay(world, agentId, world.tick)
+      const text = initiativePromptText(reason, dayLines) + '\n\n主动短信编号：' + marker
       const cancel = smsReplies.track(agentId, sessionId, text, 'initiative')
       try {
         if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
