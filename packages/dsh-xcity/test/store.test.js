@@ -53,6 +53,20 @@ const PACKS = [{ id: 'pack.default', version: '1.0.0' }]
 
 // ── 存档本身 ────────────────────────────────────────────────────────────────
 
+test('R482：affinity 随存档往返（关系不是内存里的幻觉）', async () => {
+  const dir = await tempDir()
+  const store = createWorldStore(dir)
+  const world = makeWorld()
+  const agent = world.agents[0]
+  agent.affinity = { 'agent-2': 56 }
+
+  await store.saveWorld(world, PACKS)
+  const loaded = await store.load()
+  assert.ok(loaded && 'ok' in loaded)
+  const read = loaded.ok.world.agents.find((item) => item.id === agent.id)
+  assert.equal(read.affinity['agent-2'], 56)
+})
+
 test('R480：主动短信限频字段随存档往返（重启不刷屏）', async () => {
   const dir = await tempDir()
   const store = createWorldStore(dir)

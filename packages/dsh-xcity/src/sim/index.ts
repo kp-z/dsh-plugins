@@ -26,6 +26,10 @@ export { describeKind, idleSlotAt, lookFacing, paceGoal, quarterFacing, quarterO
 export type { CommsOutcome } from './comms.js'
 export { dispatchComms } from './comms.js'
 
+// R482：关系（affinity 只存变化，按同屋聊天加）。
+export { affinityOf, applyMeetAffinity, bumpAffinity, DEFAULT_AFFINITY } from './relationships.js'
+export type { AffinityBump } from './relationships.js'
+
 // R480：主动找玩家（决定 + 限频在 sim）。
 export { advanceInitiative } from './initiative.js'
 export type { InitiativeIntent } from './initiative.js'

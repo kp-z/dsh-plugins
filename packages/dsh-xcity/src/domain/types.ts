@@ -256,6 +256,8 @@ export interface Agent {
   initiatedSmsDay?: number | undefined
   /** R480：当天已发起的主动短信条数（上限 2）。 */
   initiatedSmsCount?: number | undefined
+  /** R482：对其他角色的熟悉度（0–100，缺省 50）；只存变化，不建图谱。 */
+  affinity?: Record<string, number> | undefined
   /** R477：内在状态（体力/饥饿/社交）。老存档可能没有，读的时候用 DEFAULT_NEEDS 补。 */
   needs?: AgentNeeds | undefined
   llm: AgentLlmRoute
@@ -410,6 +412,7 @@ export type WorldEventType =
   | 'message.sent'
   | 'agent.intent'
   | 'agent.initiative'
+  | 'agent.affinity'
   | 'agent.report'
   | 'world.paused'
 

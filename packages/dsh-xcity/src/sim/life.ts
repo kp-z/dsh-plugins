@@ -14,6 +14,7 @@ import { distance } from '../domain/geometry.js'
 import type { Agent, Station, World } from '../domain/types.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { needsOf } from './needs.js'
+import { affinityOf } from './relationships.js'
 import { occupancyOf } from './scheduler.js'
 
 /** 一天多少游戏分钟（= 多少 tick）。 */
@@ -98,6 +99,7 @@ function freeStation(
   agent: Agent,
   capabilities: readonly Station['capabilities'][number][],
   prefer?: (station: Station) => boolean,
+  origin: { x: number; z: number } = agent.position,
 ): Station | null {
   let best: Station | null = null
   let bestDistance = Number.POSITIVE_INFINITY
@@ -106,13 +108,45 @@ function freeStation(
     if (!station.capabilities.some((capability) => capabilities.includes(capability))) continue
     if (prefer !== undefined && !prefer(station)) continue
     if (occupancyOf(world, station.id) >= station.capacity) continue
-    const d = distance(agent.position, station.anchor)
+    const d = distance(origin, station.anchor)
     if (d < bestDistance) {
       best = station
       bestDistance = d
     }
   }
   return best
+}
+
+/**
+ * R482：社交去哪。
+ *
+ * 1. 已经在聊的人所在房间还有空位 → 加入；
+ * 2. 否则找最熟的空闲角色，挑离 TA 最近的 converse 座位（两个人都这么做，才会坐到一起）。
+ * 没有第二个人 → null（留给 H4 主动发短信）。
+ */
+function socialStationId(world: World, agent: Agent): string | null {
+  let join: { stationId: string; affinity: number } | null = null
+  for (const other of world.agents) {
+    if (other.id === agent.id) continue
+    const stationId = other.targetStation ?? (other.state === 'talking' ? other.station : null)
+    if (stationId === null) continue
+    const station = world.stations.find((item) => item.id === stationId)
+    if (station === undefined || !station.capabilities.includes('converse')) continue
+    // 找同房间的另一个空位（会议椅是一人一座）。
+    const seat = freeStation(world, agent, ['converse'], (candidate) => candidate.district === station.district)
+    if (seat === null) continue
+    const affinity = affinityOf(agent, other.id)
+    if (join === null || affinity > join.affinity) join = { stationId: seat.id, affinity }
+  }
+  if (join !== null) return join.stationId
+
+  const others = world.agents
+    .filter((other) => other.id !== agent.id && other.state === 'idle' && other.targetStation === null && other.station === null)
+    .sort((a, b) => affinityOf(agent, b.id) - affinityOf(agent, a.id))
+  const target = others[0]
+  if (target === undefined) return null
+  const station = freeStation(world, agent, ['converse'], undefined, target.position) ?? freeStation(world, agent, ['converse'])
+  return station?.id ?? null
 }
 
 /**
@@ -151,12 +185,11 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null {
       : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, reason: '有点累，歇一会儿' }
   }
 
-  // 4) 想说话：有人才去（H6 会把"找谁"接上）。
+  // 4) 想说话：有人才去。先加入已经在聊的人，否则找最熟的人、去他附近。
   if (needs.social < SOCIAL_LOW && world.agents.length > 1) {
-    // 办公室的会议椅是一人一座：不要求"同一站能坐两人"，两人坐同屋不同椅也算聊天。
-    const station = freeStation(world, agent, ['converse'])
-    if (station !== null) {
-      return { purpose: 'social', stationId: station.id, ticks: SOCIAL_TICKS, reason: '想找人聊两句' }
+    const stationId = socialStationId(world, agent)
+    if (stationId !== null) {
+      return { purpose: 'social', stationId, ticks: SOCIAL_TICKS, reason: '想找人聊两句' }
     }
   }
 

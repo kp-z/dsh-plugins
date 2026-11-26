@@ -11226,3 +11226,10 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - `index.ts` 只对 `completed + purpose === 'study'` 结算；study 徽章固定 `SkillStudyActivity`（code 工位学习不再显示成 ProgrammerActivity）。
 - 证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP；72h 83 个事件 / 83 次结算 / 83 个唯一 id，每角色 6–13 XP；skills 出现 `code`/`research`。结算失败被 try/catch 挡住，不会带崩世界推进。
 - 已知限制：技能只记“会不会”，没有熟练度分级；技能反过来影响选站留给下一份计划。
+
+## 2026-11-27 05:05：H6 人和人的关系
+
+- Agent 加 `affinity`（0–100，缺省 50，只存变化）；新增 `sim/relationships.ts`：同屋（同 district）聊天完成时双方 +2、封顶 100，`step` 发 `agent.affinity` 事件，同一 tick 同一对只加一次。
+- `chooseLife` 社交改为“加入已经在聊的房间空位”，否则找 affinity 最高的空闲角色、去 TA 附近；单角色不生成 social。
+- 证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真 25 次 meet / 32 条 affinity 事件 / 10 个关系对，单角色 affinity 52–56；单角色世界 affinity 为空、社交降到 11，不报错。
+- 已知限制：两人同一 tick 各结束一次时，可能只涨一边（25 meet / 32 事件）；下一轮可改成到达即结算。

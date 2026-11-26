@@ -53,6 +53,7 @@ import { deliverMessages } from './mailbox.js'
 import { runHeartbeats } from './heartbeat.js'
 import { advanceNeeds } from './needs.js'
 import { advanceInitiative } from './initiative.js'
+import { applyMeetAffinity } from './relationships.js'
 import { emitPhaseEvents } from './emit.js'
 import { emitEvent } from './journal.js'
 import { recomputeReady } from './ready.js'
@@ -507,6 +508,7 @@ export function step(
 
   // ── 5.5 activity ──
   // 活动对账放在 emit 之前：这一 tick 结束的活动要能在同一 tick 的事件里被看见。
+  const affinitySeen = new Set<string>()
   for (const activity of syncActivities(world)) {
     events.push(emitEvent(world, 'agent.state', {
       agentId: activity.agentId,
@@ -517,6 +519,12 @@ export function step(
       skill: activity.skill ?? null,
       purpose: activity.purpose ?? null,
     }))
+    // R482：同屋聊天完成，双方 +2；同一 tick 同一对只加一次。
+    if (activity.kind === 'meet') {
+      for (const bump of applyMeetAffinity(world, activity, affinitySeen)) {
+        events.push(emitEvent(world, 'agent.affinity', { ...bump }))
+      }
+    }
   }
 
   // ── 5.6 needs ──
