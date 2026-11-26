@@ -16,7 +16,7 @@ interface TaskExecutionPorts {
 /** Coordinate real session work without changing the saved task model. */
 export function createTaskExecution(ports: TaskExecutionPorts) {
   const lifetime = new AbortController()
-  type Delivery = { sessionId: string; taskId: string; requestId: string; evidence: string; active: boolean }
+  type Delivery = { sessionId: string; taskId: string; requestId: string; evidence: string; active: boolean; turn?: number; startedTurn?: number; settled?: boolean }
   const sent = new WeakMap<World, Map<string, Delivery>>()
   const none: ReadonlySet<string> = new Set()
   let eligible: ReadonlySet<string> = none
@@ -83,11 +83,29 @@ export function createTaskExecution(ports: TaskExecutionPorts) {
     heartbeat,
     observe(sessionId: string, type: string | undefined, data: Record<string, unknown> | undefined): void {
       const world = ports.world()
-      if (!world || (type !== 'user/message' && type !== 'turn/end')) return
+      if (!world || lifetime.signal.aborted) return
       const source = data?.['source'] as { kind?: unknown; rpcId?: unknown } | undefined
-      if (source?.kind === 'runtime-context') return
-      for (const delivery of sent.get(world)?.values() ?? []) {
-        if (delivery.sessionId === sessionId) delivery.active = type === 'user/message' && source?.rpcId === delivery.requestId
+      const turn = typeof data?.['turn'] === 'number' ? data['turn'] : undefined
+      for (const [attempt, delivery] of sent.get(world) ?? []) {
+        if (delivery.sessionId !== sessionId || delivery.settled) continue
+        if (type !== 'turn/end' && turn !== undefined) delivery.turn = turn
+        if (type === 'user/message' && source?.kind !== 'runtime-context') {
+          if (delivery.startedTurn === undefined && source?.rpcId === delivery.requestId && delivery.turn !== undefined) {
+            delivery.startedTurn = delivery.turn
+            delivery.active = true
+          } else {
+            delivery.active = false
+          }
+        }
+        if (type !== 'turn/end' || turn === undefined || turn !== delivery.startedTurn) continue
+        delivery.active = false
+        const task = world.tasks.find((row) => row.id === delivery.taskId && row.attemptId === attempt && row.status === 'in_progress')
+        if (!task || task.externalId !== null || task.owner === null || ports.sessions().get(task.owner) !== sessionId) continue
+        try {
+          delivery.settled = ports.settle(world, task, { reason: 'DSH 任务轮次结束，未收到有效交付。' })
+        } catch (error) {
+          ports.onError?.(error)
+        }
       }
     },
     report(sessionId: string, input: AgentReportInput): { accepted: boolean; reason?: string } {
@@ -95,7 +113,7 @@ export function createTaskExecution(ports: TaskExecutionPorts) {
       const task = world?.tasks.find((row) => row.id === input.taskId)
       const delivery = world && task?.attemptId ? sent.get(world)?.get(task.attemptId) : undefined
       if (!world || !task || task.externalId !== null || task.status !== 'in_progress' || task.owner === null ||
-        ports.sessions().get(task.owner) !== sessionId || delivery?.sessionId !== sessionId || !delivery.active || lifetime.signal.aborted) {
+        ports.sessions().get(task.owner) !== sessionId || delivery?.sessionId !== sessionId || !delivery.active || delivery.settled || delivery.turn !== delivery.startedTurn || lifetime.signal.aborted) {
         return { accepted: false, reason: '只能汇报当前会话收到的活跃工单代次。' }
       }
       if (input.summary.trim() === '') return { accepted: false, reason: '汇报结论不能为空。' }
@@ -107,6 +125,7 @@ export function createTaskExecution(ports: TaskExecutionPorts) {
         output: input.summary + '\n' + delivery.evidence + ' (SHA-256: ' + artifact + ')',
       })) return { accepted: false, reason: '工单裁决未被接受。' }
       delivery.active = false
+      delivery.settled = true
       return { accepted: true }
     },
     workers(world: World): ReadonlySet<string> {

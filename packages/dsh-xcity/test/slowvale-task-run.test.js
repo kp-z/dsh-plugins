@@ -116,7 +116,7 @@ test('自动派工不使用重复角色槽位或多人共用的 DSH 会话', () 
   assert.deepEqual([...sessionsByAgent([...bindings, { characterId: 'other', sessionId: 'ls' }], { ...slots, 'agent-4': 'mei' })], [['agent-3', 'zs']])
 })
 
-test('空闲会话只派工一次，交付文件与当前轮次共同约束结单', async (t) => {
+for (const interrupted of [false, true]) test(interrupted ? '工单轮次被插入其他输入且未交付，结束后只失败一次' : '空闲会话只派工一次，交付文件与当前轮次共同约束结单', async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), 'xcity-claim-'))
   t.after(() => rm(cwd, { recursive: true, force: true }))
   const world = makeWorld(['task.town-inspection'])
@@ -132,7 +132,8 @@ test('空闲会话只派工一次，交付文件与当前轮次共同约束结�
     settle: (currentWorld, claimed, result) => {
       assert.equal(currentWorld, world)
       output = result.output
-      commands.push({ kind: 'taskComplete', taskId: claimed.id, attemptId: claimed.attemptId, output })
+      const identity = { taskId: claimed.id, attemptId: claimed.attemptId }
+      commands.push('output' in result ? { kind: 'taskComplete', ...identity, output } : { kind: 'taskFail', ...identity, reason: result.reason })
       return true
     },
     sessions: () => new Map([[worker.id, 'lin']]),
@@ -162,6 +163,7 @@ test('空闲会话只派工一次，交付文件与当前轮次共同约束结�
   const evidence = sent[0].content[0].text.match(/\.xcity-results\/[a-f0-9]+\.md/)[0]
   const report = { taskId: task.id, status: 'done', summary: '巡检结果', evidence: [evidence] }
   assert.equal(runner.report('lin', report).accepted, false, '仅入队还不能回报')
+  runner.observe('lin', 'step/start', { turn: 2 })
   runner.observe('lin', 'user/message', { source: { kind: 'user', rpcId: sent[0].requestId } })
   assert.equal(runner.report('mei', report).accepted, false, '其他会话不能替交付')
   assert.equal(runner.report('lin', report).accepted, false, '口头完成不是证据')
@@ -175,16 +177,23 @@ test('空闲会话只派工一次，交付文件与当前轮次共同约束结�
   await writeFile(path, '  ')
   assert.equal(runner.report('lin', report).accepted, false, '空产物不算完成')
   await writeFile(path, '原版场景巡检结果')
-  runner.observe('lin', 'user/message', { source: { kind: 'user', rpcId: 'other-input' } })
-  assert.equal(runner.report('lin', report).accepted, false, '被插入其他消息后不能交付')
-  runner.observe('lin', 'user/message', { source: { kind: 'user', rpcId: sent[0].requestId } })
-  assert.equal(runner.report('lin', report).accepted, true)
-  assert.match(output, /SHA-256: [a-f0-9]{64}/)
-  assert.equal(runner.report('lin', report).accepted, false, '防重复裁决')
+  runner.observe('lin', 'turn/end', { turn: 1 })
+  assert.equal(commands.length, 0, '无关轮次结束不裁决')
+  if (interrupted) {
+    runner.observe('lin', 'user/message', { turn: 2, source: { kind: 'user', rpcId: 'other-input' } })
+    assert.equal(runner.report('lin', report).accepted, false, '被插入其他消息后不能交付')
+  } else {
+    assert.equal(runner.report('lin', report).accepted, true)
+    assert.match(output, /SHA-256: [a-f0-9]{64}/)
+  }
+  runner.observe('lin', 'turn/end', { turn: 2 })
+  runner.observe('lin', 'turn/end', { turn: 2 })
+  assert.equal(runner.report('lin', report).accepted, false, '防重复或迟到裁决')
   assert.equal(commands.length, 1)
   step(world, commands, { sessionWorkers: new Set(), idleAmbient: false })
-  assert.equal(task.status, 'done')
-  assert.equal(task.output, output)
+  assert.equal(task.status, interrupted ? 'failed' : 'done')
+  if (interrupted) assert.match(task.failureReason, /未收到有效交付/)
+  else assert.equal(task.output, output)
   assert.equal(worker.carrying, null)
   runner.stop()
 })
