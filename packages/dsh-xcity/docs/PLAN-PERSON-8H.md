@@ -5,8 +5,8 @@
 
 ## 执行指针
 
-- **当前小时：H7**
-- 已完成：H1–H6（需求、选择、记忆、主动短信、学习、关系）
+- **当前小时：H8**
+- 已完成：H1–H7（需求、选择、记忆、主动短信、学习、关系、真机验收）
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（01:00 起每小时，投递到本会话）
 - 推进规则：DoD 全过才把「当前小时」改成下一小时；没做完就下一轮继续，不跳。
 - 本份计划覆盖 H1–H8；H8 完成后原地重写本文件，接下一份 8 小时。
@@ -436,6 +436,28 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 ### 8.3 失败回退
 - 独立宿主起不来：退化为“用新构建起独立桥 + 真实前端”，只验手机/活动；无法验的项写“未验 + 原因”，不假装验过。
 
+### 8.4 验收结果（2026-11-27 06:20）
+
+**宿主尝试**：找到 CLI `.../runtime/cli/bin/dsh`；`--profile xcity-test` 启动后 15 分钟仍 0% CPU、无端口（组合时已报 `@nanmicoder/dsh-agent-teams` 与 0.2.2-rc.5 不兼容），按 8.2 第 0 条转桥直连，未重启正式进程。
+
+**桥直连（新构建）**：新增 `tools/verify-bridge.mjs`，独立端口 7799、临时世界、8 个角色、`viewerRoleId=player`；浏览器打开 `/world/w1`。
+
+- [x] 世界正常、不重建：tick 持续前进，同一批 8 个角色。
+- [x] 行为会变：00:18 全员在 lounge 睡觉（`SleepActivity`，位置 x=24–30）；09:42 同一天出现「学习 / 吃饭 / 干活 / idle」混合，角色位置变化（26,-6 → 26,1）。
+- [x] 徽章正确：睡觉 `SleepActivity`、吃饭 `EatActivity`、学习 `SkillStudyActivity`、干活 `ProgrammerActivity`。
+- [x] 手机：`appendIncoming` 后线程列表出现「工头阿金 / 刚在茶水间… / 未读 1」；点进线程能看到气泡；API preview/`from_role_id`/`read_at` 形状正确。
+- [ ] AI 回信引用当天活动（H3）：桥没有会话，未验；正式进程仍旧构建。
+- [ ] 主动短信真正投递（H4）：同上，未验；仿真里的触发/限频已有证据。
+- 发现（UI）：消息时间显示「第739946天」、历史栏「第739617天」，与顶部「第 1/2 天」不一致；API 的 `sent_at` 是真实时间，疑似前端换算 bug。记录，不在 H7 改。
+- 截图：`/Users/demo/Downloads/xcity-h7-world.png`（浏览器现场，未入仓）。
+
+**正式进程重启后 5 分钟核对清单（留给用户）**
+1. 重启 DSH 后进入世界，确认不重建、角色还在。
+2. 看一天：23:00 后睡觉、饭点吃饭、上班时段干活/学习，徽章不是清一色 idle。
+3. 发一条短信：回复要能提到当天做过的事；「通讯」线程与未读正常。
+4. 等一条主动短信（社交低/刚忙完），确认线程与未读；没有就记下触发时的世界状态。
+5. 看控制台是否报错；把异常发我。
+
 ---
 
 ## 9. H8 · 清理、收尾与下一份计划（流程号 R483）
@@ -496,3 +518,5 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP；72h 83 个事件 / 83 次结算 / 83 个唯一 id，每角色 6–13 XP；skills 出现 `code`/`research`。
 - 2026-11-27 05:05 · **H6 完成**。Agent.`affinity`（0–100，缺省 50，只存变化）；`sim/relationships.ts` 在同屋聊天完成时双方 +2（封顶 100），`step` 发 `agent.affinity` 事件、同 tick 同一对去重；`chooseLife` 的社交改为“加入已在聊的房间 / 找最熟的空闲角色，去 TA 附近”，单角色不生成 social。
   证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真（8 角色）34 次 meet / 34 条 affinity 事件 / 12 个关系对，单角色 affinity 52–58；单角色世界 affinity 为空、社交降到 11（交给 H4），不报错。已知限制：到达时间错开时先到的人会独自耗完聊天（34 meet / 34 事件），下一步可做“人齐才起算”。
+- 2026-11-27 06:20 · **H7 完成（桥直连，未起 DSH 宿主）**。CLI `dsh --profile xcity-test` 启动 15 分钟仍无端口（组合时报 `@nanmicoder/dsh-agent-teams` 与 0.2.2-rc.5 不兼容），按回退用新构建起独立桥（`tools/verify-bridge.mjs`，7799，8 角色，viewer=player）。
+  浏览器实测：00:18 全员在 lounge 睡觉（SleepActivity，位置 x=24–30）；09:42 同一天出现学习/吃饭/干活/idle 混合，位置变化；徽章正确；手机线程列表出现「工头阿金 / 未读 1」，点进去有气泡；API preview/from_role_id/read_at 形状正确。未验：AI 回信引用当天活动、主动短信真正投递（桥没有会话）；正式进程仍旧构建。发现 UI 消息时间「第739946天」异常（顶部是第 1/2 天），记录未改。正式重启清单已写进 8.4。

@@ -11233,3 +11233,12 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - `chooseLife` 社交改为“加入已经在聊的房间空位”，否则找 affinity 最高的空闲角色、去 TA 附近；单角色不生成 social。
 - 证据：`test/relationships.test.js` 5 条 + 存档往返 1 条；全量 922 条，921 通过、1 跳过；72h 仿真 34 次 meet / 34 条 affinity 事件 / 12 个关系对，单角色 affinity 52–58；单角色世界 affinity 为空、社交降到 11，不报错。
 - 已知限制：到达时间错开时，先到的人会独自把聊天耗完（34 meet / 34 事件）；下一步可做“人齐才起算/等待 30 tick”。
+
+## 2026-11-27 06:20：H7 独立桥真机验收
+
+- DSH CLI `dsh --profile xcity-test` 启动 15 分钟仍 0% CPU、无端口（组合时报 `@nanmicoder/dsh-agent-teams` 与 0.2.2-rc.5 不兼容），按计划 8.3 回退，未重启正式进程。
+- 新增 `tools/verify-bridge.mjs`：用当前构建起独立桥（7799、临时世界、8 角色、viewer=player），浏览器打开真实前端。
+- 实测：00:18 全员在 lounge 睡觉（SleepActivity，位置 x=24–30）；09:42 同一天出现学习/吃饭/干活/idle 混合，角色位置变化；徽章正确；手机线程列表出现「工头阿金 / 未读 1」，点进去有气泡；API preview/from_role_id/read_at 形状正确。
+- 未验：AI 回信引用当天活动（H3）、主动短信真正投递（H4）——桥没有会话，正式进程仍旧构建；不假装验过。
+- 发现 UI 时间戳异常：消息显示「第739946天」、历史栏「第739617天」，顶部却是第 1/2 天；API `sent_at` 是真实时间，疑似前端换算 bug，记录未改。
+- 正式进程重启后的 5 分钟核对清单已写进计划 8.4（看一天、发短信、等主动短信、看控制台）。
