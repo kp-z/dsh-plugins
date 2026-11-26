@@ -95,7 +95,7 @@ function idleAgents(world: World): Agent[] {
  *
  * @param world - 世界（就地修改）。
  */
-export function claimTasks(world: World): SchedulerOutcome {
+export function claimTasks(world: World, sessionWorkers?: ReadonlySet<string>): SchedulerOutcome {
   const claims: Claim[] = []
   const stalled: Stalled[] = []
 
@@ -147,7 +147,9 @@ export function claimTasks(world: World): SchedulerOutcome {
   const available = idleAgents(world)
 
   for (const task of ready) {
-    const free = available.filter((a) => !taken.has(a.id))
+    const free = available.filter((a) => !taken.has(a.id) &&
+      (task.externalId !== null || sessionWorkers === undefined || sessionWorkers.has(a.id)) &&
+      (task.owner === null || task.owner === a.id))
     if (free.length === 0) {
       stalled.push({
         taskId: task.id,

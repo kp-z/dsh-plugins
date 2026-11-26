@@ -46,6 +46,35 @@ function getService(ctx: unknown, key: string): unknown {
   }
 }
 
+/** Do not start autonomous work on a cold or differently configured Agent. */
+export function hasXcityRoleModel(ctx: unknown, sessionId: string): boolean {
+  const agents = getService(ctx, 'agents')
+  const get = pluck(agents, 'get') as ((id: string) => { model?: unknown } | undefined) | undefined
+  const model = get?.call(agents, sessionId)?.model
+  const current = pluck(model, 'current')?.call(model)
+  if (typeof current !== 'object' || current === null) return false
+  const selection = current as Record<string, unknown>
+  return selection.provider === 'mmt-vision' && typeof selection.model === 'string' &&
+    /^deepseekv?41$/.test(selection.model.toLowerCase().replace(/[^a-z0-9]/g, ''))
+}
+
+/** Reads passive DSH state; unknown/unavailable state is not idle. */
+export async function isIdleSession(ctx: unknown, sessionId: string, signal: AbortSignal): Promise<boolean> {
+  const controller = getService(ctx, 'sessionController')
+  const state = pluck(controller, 'state') as ((request: { sessionId: string }, signal: AbortSignal) => Promise<unknown>) | undefined
+  if (state === undefined || signal.aborted) return false
+  try {
+    const value = await state.call(controller, { sessionId }, signal)
+    if (typeof value !== 'object' || value === null || signal.aborted) return false
+    const status = value as Record<string, unknown>
+    return status.running === false &&
+      Array.isArray(status.pendingInput) && status.pendingInput.length === 0 &&
+      (Array.isArray(status.queue) ? status.queue.length === 0 : status.active === false && status.queue === null)
+  } catch {
+    return false
+  }
+}
+
 /** 从 `Session` 上取 `id`（`Session` 有 `get id(): SessionId`）。 */
 function sessionIdOf(session: unknown): string | undefined {
   if (typeof session !== 'object' || session === null) return undefined

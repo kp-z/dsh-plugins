@@ -25,7 +25,7 @@ export type { EventHub } from './hub.js'
 export { createEventHub } from './hub.js'
 
 import { MESSAGE_DELIVERY_TICKS } from '../domain/constants.js'
-import type { WorldEvent } from '../domain/types.js'
+import type { World, WorldEvent } from '../domain/types.js'
 import type { WorldStore } from '../store/index.js'
 import type { EventSinkPort, RuntimeDiagnostics, RuntimePort, WorldCommand, WorldServicePort } from '../protocol/index.js'
 import { STALLED_DIAGNOSTIC_CAP } from '../protocol/index.js'
@@ -76,6 +76,7 @@ export interface RuntimeOptions {
    * @param tick - 推进之后的 tick。
    */
   onTick?: (tick: number) => void
+  sessionWorkers?: (world: World) => ReadonlySet<string>
   /** 落盘。不传则世界只活在内存里。 */
   persist?: PersistOptions
   /**
@@ -91,6 +92,7 @@ export interface RuntimeOptions {
 /** 世界运行时。实现协议层的 `RuntimePort`（路由只认那个接口）。 */
 export interface Runtime extends RuntimePort {
   readonly running: boolean
+  enqueue(command: WorldCommand, world?: World): void
   /** 开始按节拍推进。重复调用是幂等的。 */
   start(): void
   /** 停止并清掉定时器。重复调用是幂等的。 */
@@ -213,7 +215,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
    * 这样它影响的是"命令到达的那一 tick"，而不是"HTTP 请求到达的那个瞬间"。
    * 后者会让世界的行为取决于网络时序，直接破坏确定性。
    */
-  const queue: WorldCommand[] = []
+  const queue: { command: WorldCommand; world: World | undefined }[] = []
   /** 队列上限：10Hz 的循环配 1000 条积压已经很离谱了，再多说明循环卡死了。 */
   const MAX_QUEUE = 1000
 
@@ -282,7 +284,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     }
 
     // 取走本步要处理的命令（取空，避免下一步重复处理）。
-    const commands = queue.splice(0, queue.length)
+    const commands = queue.splice(0, queue.length).flatMap((entry) => entry.world === undefined || entry.world === world ? [entry.command] : [])
     const tickBefore = world.tick
 
     let result: StepResult
@@ -301,6 +303,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
         idleBehaviors: idleActionsEnabled ? service.content().idleBehaviors() : [],
         // R471：关掉待命行为时，没有目标就站定，不再“自己去歇脚点”。
         idleAmbient: idleActionsEnabled,
+        ...(options.sessionWorkers === undefined ? {} : { sessionWorkers: options.sessionWorkers(world) }),
       })
     } catch (error) {
       diagnostics.errors += 1
@@ -388,14 +391,14 @@ export function createRuntime(options: RuntimeOptions): Runtime {
       return MESSAGE_DELIVERY_TICKS
     },
 
-    enqueue(command: WorldCommand): void {
+    enqueue(command: WorldCommand, world?: World): void {
       if (queue.length >= MAX_QUEUE) {
         throw new Error(
           `命令队列已积压 ${queue.length} 条（上限 ${MAX_QUEUE}）——模拟循环大概卡住了。` +
             '请先查 runtime.diagnostics.errors 与日志。静默丢弃会让"我点了暂停它没停"无从解释，所以这里直接报错。',
         )
       }
-      queue.push(command)
+      queue.push({ command, world })
     },
 
     start(): void {

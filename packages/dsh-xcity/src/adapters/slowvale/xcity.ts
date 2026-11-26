@@ -74,3 +74,18 @@ export function loadAgentMap(path: string): Record<string, string> {
     return {}
   }
 }
+
+/** Autonomy never guesses which session owns an ambiguous character or slot. */
+export function sessionsByAgent(bindings: readonly XcityBinding[], agents: Readonly<Record<string, string>>): Map<string, string> {
+  const slots = Object.entries(agents)
+  const sessions = new Map<string, string>()
+  for (const [agentId, characterId] of slots) {
+    if (slots.some(([otherId, otherCharacter]) => otherId !== agentId && otherCharacter === characterId)) continue
+    const matches = bindings.filter((binding) => binding.characterId === characterId)
+    if (matches.length !== 1) continue
+    const sessionId = matches[0]?.sessionId
+    if (!sessionId || bindings.filter((binding) => binding.sessionId === sessionId).length !== 1) continue
+    sessions.set(agentId, sessionId)
+  }
+  return sessions
+}

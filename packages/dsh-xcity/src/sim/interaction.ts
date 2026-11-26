@@ -44,7 +44,7 @@ export interface WorkOutcome {
  *
  * @param world - 世界（就地修改）。
  */
-export function advanceWork(world: World): WorkOutcome {
+export function advanceWork(world: World, sessionWorkers?: ReadonlySet<string>): WorkOutcome {
   const tasks = new Map(world.tasks.map((t) => [t.id, t]))
   const progressed: WorkOutcome['progressed'] = []
   const completed: WorkOutcome['completed'] = []
@@ -91,6 +91,8 @@ export function advanceWork(world: World): WorkOutcome {
     //
     // ⚠️ **封顶必须发生在 `task.progress = next` 之前**（R39 自查抓到）：先赋值再封顶的话，
     // 进度事件里报的是 1，而状态还是 in_progress——面板会画一根满格进度条配"进行中"。
+    // 本地真实工单没有团队 externalId；只认宿主的完成裁决，不运行估算进度。
+    if (sessionWorkers !== undefined && task.externalId === null) continue
     const externallyDriven = world.mode === 'live' && task.externalId !== null
     if (externallyDriven && task.progress + 1 / ticks >= 1) {
       // 封顶 0.95：1 在视觉上就是"完成"，而它还没完成。人继续显示在忙。

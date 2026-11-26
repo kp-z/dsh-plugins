@@ -41,12 +41,14 @@ import { skillForTool } from './sim/tool-skill.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
-import { characterOfSession, loadAgentMap, loadXcityBindings } from './adapters/slowvale/xcity.js'
+import { characterOfSession, loadAgentMap, loadXcityBindings, sessionsByAgent } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT, spawnOf } from './adapters/slowvale/stage.js'
 import { spawnCharacterSession } from './adapters/slowvale/spawn.js'
+import { createTaskExecution } from './adapters/slowvale/task-execution.js'
+import { hasXcityRoleModel, isIdleSession } from './bridge/dsh-adapter.js'
 import { createPersonaStore } from './persona/store.js'
 import { registerDispatchTool } from './tools/dispatch.js'
 import { registerReportTool } from './tools/report.js'
@@ -324,11 +326,40 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   // 事件广播：运行时往里**推**，SSE 订阅者往里**取**。同一个对象两副面孔。
   const hub = createEventHub()
 
+  const bindingsPath = resolve(resolved.slowvale.bindingsFile)
+  const characterWorkspace = dirname(bindingsPath)
+  const taskExecution = resolved.slowvale.enabled ? createTaskExecution({
+    world: () => state.currentWorld(),
+    cwd: characterWorkspace,
+    sessions: () => sessionsByAgent(loadXcityBindings(bindingsPath), loadAgentMap(join(characterWorkspace, 'agents.json'))),
+    available: async (sessionId, signal) => {
+      if (typeof sessionControllerService?.prompt !== 'function' || !hasXcityRoleModel(ctx, sessionId)) return false
+      return await isIdleSession(ctx, sessionId, signal) && hasXcityRoleModel(ctx, sessionId)
+    },
+    prompt: async (request, signal) => {
+      if (typeof sessionControllerService?.prompt !== 'function' || !hasXcityRoleModel(ctx, request.sessionId)) {
+        throw new Error('角色会话未选定指定模型或会话服务已不可用。')
+      }
+      await sessionControllerService.prompt(request, signal)
+    },
+    settle: (world, task, result) => {
+      if (state.currentWorld() !== world || task.attemptId === null) return false
+      const identity = { taskId: task.id, attemptId: task.attemptId }
+      runtime.enqueue('output' in result
+        ? { kind: 'taskComplete', ...identity, output: result.output }
+        : { kind: 'taskFail', ...identity, reason: result.reason }, world)
+      return true
+    },
+    onError: (error) => logger.warn('XCity 工单投递未确认：' + String(error)),
+  }) : null
+  if (taskExecution !== null) ctx.effect(() => () => taskExecution.stop(), 'xcity: task execution')
+  let nextTaskHeartbeat = 0
   const runtime = createRuntime({
     service: state,
     tickMs: state.tickMs,
     idleActionsEnabled: resolved.idleActionsEnabled,
     sink: hub,
+    ...(taskExecution === null ? {} : { sessionWorkers: taskExecution.workers }),
     ...(storeDir === null
       ? {}
       : {
@@ -342,6 +373,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     // D41/R43：每隔一段 tick 把团队状态同步回小镇。**同步返回**（见 onTick 说明），
     // 真正的读与算丢给一个不等待的 promise。
     onTick: (tick) => {
+      if (taskExecution !== null && Date.now() >= nextTaskHeartbeat) {
+        nextTaskHeartbeat = Date.now() + 1000
+        void taskExecution.heartbeat()
+      }
       if (tick - lastRosterSyncTick >= TEAM_SYNC_INTERVAL_TICKS) {
         lastRosterSyncTick = tick
         void syncRoster()
@@ -662,6 +697,12 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const world = state.currentWorld()
       const base = { agentId: '', agentName: '', taskId: input.taskId, status: input.status, xpAwarded: 0, level: 1 }
       if (world === null) return { ...base, accepted: false, reason: '世界尚未创建。' }
+      const localTask = world.tasks.find((candidate) => candidate.id === input.taskId && candidate.externalId === null)
+      if (taskExecution !== null && localTask !== undefined) {
+        const result = taskExecution.report(agentSessionId, input)
+        const owner = world.agents.find((candidate) => candidate.id === localTask.owner)
+        return { ...base, ...result, agentId: owner?.id ?? '', agentName: owner?.name ?? '' }
+      }
       const agent = world.agents.find((candidate) => candidate.boundAgentId === agentSessionId)
       if (agent === undefined) return { ...base, accepted: false, reason: '调用者不是当前世界绑定的 subagent。' }
       const task = world.tasks.find((candidate) => candidate.id === input.taskId)
@@ -778,6 +819,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const content = event.type === 'user/message' ? event.data?.['content'] ?? message?.content : message?.content
       const blocks = Array.isArray(content) ? content : []
+      taskExecution?.observe(sessionId, event.type, event.data)
       const sms = smsReplies.observe(sessionId, event.type, event.data, blocks)
       if (event.type !== 'user/message' && event.type !== 'assistant/message' && event.type !== 'tool/result') return
       const world = state.currentWorld()
@@ -800,7 +842,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       if (actor === null) return
 
       // ② 看起来在干活：工具调用 → 去工位，工具返回 → 收工。只在游戏模式里做。
-      if (gameModeEnabled) {
+      if (gameModeEnabled && (taskExecution === null || !world.agents.some((agent) => agent.id === actor.id && agent.carrying !== null))) {
         const activity = activityForEvent({ type: event.type, blocks, agentId: actor.id, skillOf: skillForTool })
         if (activity !== null) runtime.enqueue(activity as never)
       }

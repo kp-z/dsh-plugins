@@ -447,7 +447,7 @@ export function step(
   // ── 2. scheduler ──
   // 输入必须是"依赖已求值"的状态，而这个求值全世界只有 ready.ts 一处实现。
   const ready = recomputeReady(world)
-  const scheduled = claimTasks(world)
+  const scheduled = claimTasks(world, context.sessionWorkers)
 
   // ── 3. movement ──
   const movement = advanceMovement(world)
@@ -459,7 +459,7 @@ export function step(
   const idle = advanceIdle(world, context.idleBehaviors ?? [], { allowAmbient: context.idleAmbient ?? true })
 
   // ── 4. interaction ──
-  const work = advanceWork(world)
+  const work = advanceWork(world, context.sessionWorkers)
 
   // ── 4.5 comms ──
   // 产生协作消息（M2.5-2）。放在 interaction 之后，才能把"本 tick 刚完工的单"报出去。
