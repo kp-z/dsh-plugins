@@ -11202,3 +11202,11 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 证据：`test/life-choice.test.js` 11 条；全量 885 条，884 通过、1 跳过；`node tools/person-lab.mjs --hours 72` → sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、生活活动切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43，最低 h 5–16 / s 7–18。
 - 投影：吃饭→EatActivity/eat、睡觉→SleepActivity/sleep、小憩→RestActivity/sit（原先吃饭会播睡眠带，已修）。
 - 已知取舍：夜里睡休息区（还没有“家”）。留给后续小时。
+
+## 2026-11-27 02:05：H3 今天记得什么
+
+- 新增 `sim/day-summary.ts`：读当天活动（含跨午夜，起点夹到 00:00），最多 5 行、≤300 字、不出现 `agent-`/`station.`/`task-`；没有记录返回空数组，不编。
+- `respond-sms.ts`：`promptText(content, dayLines)` 只在有摘要时加“你今天到目前为止：…”；`respondViaSession` 从 `dayContext` 取；`index.ts` 用 `state.currentWorld()` 注入。
+- 修 `sim/activity.ts`：活动记录改为**到站后**才采纳（`targetStation === null`），否则 stationId 为 null、startedAt 是出发时刻，摘要会出现没有地点的“08:00–09:43 学习”。
+- 证据：`test/day-summary.test.js` 10 条；全量 895 条，894 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。
+- 真机发短信核对：正式进程仍旧构建，留 H7 独立宿主；不假装验过。

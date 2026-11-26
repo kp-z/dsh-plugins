@@ -38,6 +38,7 @@ import { createEventHub, createRuntime } from './runtime/index.js'
 import { planTeamSync, startActivity } from './sim/index.js'
 import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
+import { summarizeDay } from './sim/day-summary.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
@@ -1149,6 +1150,11 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           respondSms: async (input: { peerRoleId: string; content: string }) => {
             try {
               return await respondViaSession(input, {
+                // R479：让回复知道"今天做了什么、现在在做什么"（读世界事实，不编）。
+                dayContext: (peerRoleId) => {
+                  const world = state.currentWorld()
+                  return world === null ? [] : summarizeDay(world, peerRoleId, world.tick)
+                },
                 onForward: smsReplies.track,
               characterOf: (peerRoleId) => loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))[peerRoleId] ?? null,
               sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === characterId)?.sessionId ?? null,

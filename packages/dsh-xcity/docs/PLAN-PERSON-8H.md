@@ -5,8 +5,8 @@
 
 ## 执行指针
 
-- **当前小时：H3**
-- 已完成：H1（需求模型）、H2（需求驱动的一天）
+- **当前小时：H4**
+- 已完成：H1（需求模型）、H2（需求驱动的一天）、H3（今天记得什么）
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（01:00 起每小时，投递到本会话）
 - 推进规则：DoD 全过才把「当前小时」改成下一小时；没做完就下一轮继续，不跳。
 - 本份计划覆盖 H1–H8；H8 完成后原地重写本文件，接下一份 8 小时。
@@ -218,16 +218,23 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null
 ```ts
 export function summarizeDay(world: World, agentId: string, nowTick: number): string[]
 ```
-- 取当天（`floor(nowTick/1440)` 相同的 `startedAt`）的活动；
+- 取"今天"的活动：`startedAt` 在今天，**或跨 midnight 但 `endedAt` 落在今天**（昨晚的觉算今天凌晨，起点夹到 00:00）；
 - 最多 5 条已完成/进行中，格式“09:20–10:40 在 <站点名> 工作”，不出现内部 id；
 - 当前活动单独一条“现在在…”，没有就“现在闲着”；
 - 没有记录时返回空数组（prompt 里写“今天还没做什么”，不编）。
 - **activities 是环形缓冲（会裁剪）**：裁剪掉了就少说，不补造；摘要只读还在世界里的记录。
 
 接线：
-- `respond-sms.ts` 的 `promptText(content, dayLines?)` 增加一段“你今天：…”，只在有内容时加；
-- `index.ts` 给 responder 注入 `dayContext: (peerRoleId) => summarizeDay(world, peerRoleId, world.tick)`（world 从 state 取）；
+- `respond-sms.ts` 的 `promptText(content, dayLines?)` 增加一段“你今天到目前为止：…”，只在有内容时加；
+- `respondViaSession` 的 deps 加 `dayContext`，`index.ts` 注入 `(peerRoleId) => summarizeDay(world, peerRoleId, world.tick)`（world 从 state 取；取不到就返回空数组）；
 - 不把 DSH 内部工具调用/思考写进摘要。
+
+### 4.2.1 步骤（R479）
+1. 新增 `src/sim/day-summary.ts`（纯函数，见上）。
+2. 修 `src/sim/activity.ts`：活动记录要**到站后**才采纳（`targetStation === null`），否则 stationId=null、startedAt=出发时刻，摘要会出现“08:00–09:43 学习”这种没有地点的条目。
+3. `respond-sms.ts`：`promptText` 支持 `dayLines`；`respondViaSession` 从 `deps.dayContext` 取摘要并拼进投递文本。
+4. `index.ts`：给 responder 注入 `dayContext`（`state.currentWorld()`）。
+5. 新增 `test/day-summary.test.js`；构建 + 全量测试。
 
 ### 4.3 测试矩阵
 | 用例 | 断言 |
@@ -239,10 +246,14 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 | 截断 | 最多 5 条，总长 ≤300 字 |
 | 不泄露 id | 不含 `agent-`/`station.`/`task-` |
 
-### 4.4 加固清单
-- 摘要里的时间与前端时钟一致（用 tick 推，不用 Date.now）。
-- prompt 变长后检查 token 增幅（目标 <300 字）。
-- 真实会话里发一条短信，从 session 日志确认 prompt 带上了“你今天”。
+### 4.4 加固清单与实测（2026-11-27 02:05）
+- [x] 时间用 tick 推（`hhmm(tick % 1440)`），与前端时钟同一套，不碰 `Date.now`。
+- [x] 摘要预算：实测 5 行 109 字（上限 300）；prompt 总长约 351 字，仍在可接受范围。
+- [x] 不泄露内部 id：测试断言不含 `agent-`/`station.`/`task-`。
+- [x] 跨午夜：08:30 的真实仿真里能看到「00:00–07:35 在东侧休息区睡觉」+「现在在东侧休息区吃饭」。
+- [x] 空世界：`summarizeDay` 返回 `[]`，prompt 不加“你今天…”段。
+- [ ] 真实会话发短信核对：正式进程仍是旧构建，留 H7 独立宿主统一验（不假装验过）。
+- 已知限制：活动记录是环形缓冲，裁掉的就少说；玩家指令的 trigger.text 可能不含“吃/睡/学/聊”，退回 kind 标签。
 
 ### 4.5 风险与回滚
 - 风险：摘要编造、时间窗错、prompt 过长。
@@ -431,7 +442,9 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 ## 12. 进度日志
 
 - 2026-11-26 23:57 · H1 完成（见第 10 节证据）。
+- 2026-11-27 00:07 · 计划 v3：五轮评审；修掉缺指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛、H6 配对、H7 超时、夜里睡歇脚点（非站点）、H4 app 改世界（改回 sim 决策 + 事件）；补基线、提交规则。基线提交 `bb1efc2`。下一小时 H2。
 - 2026-11-27 01:25 · **H2 完成**。`chooseLife` 按“饿 > 夜里睡 > 累 > 社交 > 上班 > 学习”选择；活动用 `purpose` 标签区分 meal/sleep/rest/social/study/work，只影响需求恢复（不新增 kind/状态）；命令带 `stationId` 指定茶水间/休息区；办公室补 4 座茶水间 + 6 座东侧休息区。
   修正：走路期间不再起算活动时长（远端通勤不再半路耗光）；已在站点上直接开始（不再空转 90 tick）；`WALK_SPEED` 0.18→0.9；idle 残留路径清理；pace 半径至少 3 步。
   证据：`test/life-choice.test.js` 11 条；全量 885 条，884 通过、1 跳过；`person-lab --hours 72`：sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43。投影：meal→EatActivity/eat、sleep→SleepActivity/sleep、rest→RestActivity/sit（不再是“吃饭画成睡觉”）。
-- 2026-11-27 00:07 · 计划 v3：五轮评审；修掉缺指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛、H6 配对、H7 超时、夜里睡歇脚点（非站点）、H4 app 改世界（改回 sim 决策 + 事件）；补基线、提交规则。基线提交 `bb1efc2`。下一小时 H2。
+- 2026-11-27 02:05 · **H3 完成**。新增 `sim/day-summary.ts`：当天 + 跨午夜活动（起点夹到 00:00），最多 5 行、≤300 字、无内部 id；短信 prompt 注入“你今天到目前为止：…”；活动记录改为**到站后**才采纳（修 stationId=null / startedAt=出发时刻）。
+  证据：`test/day-summary.test.js` 10 条；全量 895 条，894 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。

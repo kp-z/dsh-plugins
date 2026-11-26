@@ -26,6 +26,9 @@ export { describeKind, idleSlotAt, lookFacing, paceGoal, quarterFacing, quarterO
 export type { CommsOutcome } from './comms.js'
 export { dispatchComms } from './comms.js'
 
+// R479：当天经历摘要（进短信 prompt）。
+export { summarizeDay } from './day-summary.js'
+
 // R476/R478：没活干时由需求自己安排（吃/睡/歇/社交/干活/学习）。
 export { chooseLife, isNightMinute, isWorkMinute, minuteOfDay, selfLifeCommands } from './life.js'
 export type { LifeIntent, LifePurpose } from './life.js'

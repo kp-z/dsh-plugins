@@ -110,7 +110,10 @@ export function syncActivities(world: World): Activity[] {
       completed.push(live)
       continue
     }
-    if (live === null && agent.activityKind !== undefined) {
+    // R479：走路去站点的路上还不算"活动开始"——到站（targetStation 清空）才采纳。
+    // 否则活动记录会在半路创建：stationId 是 null、startedAt 是出发时刻，
+    // 记忆/统计里就会出现"08:00–09:43 学习"这种没有地点的条目。
+    if (live === null && agent.activityKind !== undefined && agent.targetStation === null) {
       world.activitySeq += 1
       const record: Activity = {
         id: 'act-' + String(world.activitySeq),
