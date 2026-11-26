@@ -26,6 +26,10 @@ export { describeKind, idleSlotAt, lookFacing, paceGoal, quarterFacing, quarterO
 export type { CommsOutcome } from './comms.js'
 export { dispatchComms } from './comms.js'
 
+// R480：主动找玩家（决定 + 限频在 sim）。
+export { advanceInitiative } from './initiative.js'
+export type { InitiativeIntent } from './initiative.js'
+
 // R479：当天经历摘要（进短信 prompt）。
 export { summarizeDay } from './day-summary.js'
 

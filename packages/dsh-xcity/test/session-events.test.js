@@ -53,7 +53,7 @@ test('短信只关联实际投递轮次：同角色旧轮次和隐藏块均不�
   tracker.observe('lin', 'step/start', { turn: 2 }, [])
   assert.deepEqual(tracker.observe('lin', 'user/message', {}, [text('短信一')]), { reply: null })
   assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, [{ type: 'reasoning', text: reply[0].text }]), { reply: null })
-  assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, reply), { reply: { peerRoleId: 'agent-1', text: '已到。' } })
+  assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, reply), { reply: { peerRoleId: 'agent-1', text: '已到。', kind: 'player-sms' } })
   assert.deepEqual(tracker.observe('lin', 'assistant/message', { turn: 2 }, reply), { reply: null })
   tracker.observe('lin', 'turn/end', { turn: 2 }, [])
   assert.equal(tracker.observe('lin', 'assistant/message', { turn: 3 }, reply), null)
@@ -80,7 +80,7 @@ test('同轮自动补的上下文不算插队，短信回复照常回写', () =>
   tracker.observe('lin', 'user/message', { source: { kind: 'model-selection' } }, [text('[model changed]')])
   assert.deepEqual(
     tracker.observe('lin', 'assistant/message', { turn: 3 }, [text('<xcity-reply>在呢。</xcity-reply>')]),
-    { reply: { peerRoleId: 'agent-1', text: '在呢。' } },
+    { reply: { peerRoleId: 'agent-1', text: '在呢。', kind: 'player-sms' } },
   )
 })
 

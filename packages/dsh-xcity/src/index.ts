@@ -43,7 +43,7 @@ import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
 import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings, sessionsByAgent } from './adapters/slowvale/xcity.js'
-import { respondViaSession } from './adapters/slowvale/respond-sms.js'
+import { initiativePromptText, respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT, spawnOf } from './adapters/slowvale/stage.js'
@@ -820,6 +820,48 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     on?: (name: string, handler: (session: { id?: string }, event: { type?: string; data?: Record<string, unknown> }) => void) => unknown
   }).on
   const smsReplies = createSmsReplyTracker(10 * 60 * 1000)
+
+  /**
+   * R480：把 sim 的"想发"变成真正的会话投递。
+   *
+   * sim 已经写好限频字段（世界只经 step 改）；这里只做 IO：找角色会话、投递、
+   * 用带 kind 的登记项等回复。失败只记日志，不重试（限频已消耗，3 小时后再来）。
+   */
+  async function sendInitiative(agentId: string, reason: string, tick: number): Promise<void> {
+    try {
+      const character = loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))[agentId]
+      if (character === undefined) return
+      const sessionId = loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === character)?.sessionId
+      if (sessionId === undefined) return
+      const marker = 'xcity-init:' + sessionId + ':' + tick
+      const text = initiativePromptText(reason) + '\n\n主动短信编号：' + marker
+      const cancel = smsReplies.track(agentId, sessionId, text, 'initiative')
+      try {
+        if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
+        await sessionControllerService.prompt(
+          { requestId: marker, sessionId, mode: 'queue', content: [{ type: 'text', text }] } as never,
+          new AbortController().signal,
+        )
+      } catch (error) {
+        cancel()
+        throw error
+      }
+    } catch (error: unknown) {
+      logger.warn('[xcity-init] 投递失败 agent=' + agentId + '：' + String(error))
+    }
+  }
+
+  // 订阅世界事件：sim 决定"想发"，这里负责投递。
+  hub.subscribe((events) => {
+    for (const event of events) {
+      if (event.type !== 'agent.initiative') continue
+      const agentId = typeof event.payload.agentId === 'string' ? event.payload.agentId : ''
+      if (agentId === '') continue
+      const reason = typeof event.payload.reason === 'string' ? event.payload.reason : '想找你说说话'
+      void sendInitiative(agentId, reason, event.tick)
+    }
+  })
+
   let mainDialogueChannel: DialogueChannel | null = null
   let mainTurnSeq = 0
   const turnBySession = new Map<string, string>()

@@ -5,8 +5,8 @@
 
 ## 执行指针
 
-- **当前小时：H4**
-- 已完成：H1（需求模型）、H2（需求驱动的一天）、H3（今天记得什么）
+- **当前小时：H5**
+- 已完成：H1（需求模型）、H2（需求驱动的一天）、H3（今天记得什么）、H4（主动找玩家）
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（01:00 起每小时，投递到本会话）
 - 推进规则：DoD 全过才把「当前小时」改成下一小时；没做完就下一轮继续，不跳。
 - 本份计划覆盖 H1–H8；H8 完成后原地重写本文件，接下一份 8 小时。
@@ -273,10 +273,11 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   ```ts
   export function advanceInitiative(world: World): { agentId: string; reason: string }[]
   ```
-  - 条件：游戏时间 07:00–23:00；`social < 35` 或刚完成“值得说”的活动（工单/学习完成）；
-    距上次 ≥180 tick（3 游戏小时）；当天 ≤2 条；不在忙/对话/暂停。
+  - 条件：游戏时间 07:00–23:00；`social < 35`，或刚完成“值得说”的事（**完成工单 / research 学习**，30 tick 窗口）；
+    距上次 ≥180 tick（3 游戏小时）；当天 ≤2 条；睡着/正在对话/被卡住/手上有单 → 不发；走路/干活可以发。
   - 命中就在**同一 tick** 写回 `lastInitiatedSmsTick` / 当天计数，并返回意图；不重复命中。
-  - 新月（`floor(tick/1440)` 变了）重置当天计数。
+  - 换天（`floor(tick/1440)` 变了）重置当天计数。
+  - 日常干活不算“值得说”：否则每 90 tick 收工一次都会触发，变成刷屏。
 - `sim/step.ts` 在 needs 之后调用 `advanceInitiative`，把意图转成 `agent.initiative` 事件（新增事件类型）。
 - app 层（`index.ts`）：`hub.subscribe(events => …)` 看到 `agent.initiative` → 给角色会话投一条主动短信提示。
   - prompt 文本 = 主动短信指令 + `\n\n主动短信编号：xcity-init:<sessionId>:<tick>`（文本唯一，tracker 按文本登记）。
@@ -284,6 +285,15 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   - 收到 initiative 回复 → `appendIncoming`；player-sms 路径行为不变。
 - 失败/空回复：清登记，不重试；限频已经消耗，3 小时后再试；记录原因。
 - 为什么不让 app 直接改世界字段：D41 要求所有世界变更经 step；把“决定 + 限频”放进 sim，app 只负责 IO。
+
+### 5.2.1 步骤（R480）
+1. `domain/types.ts`：Agent 加 `lastInitiatedSmsTick` / `initiatedSmsDay` / `initiatedSmsCount`（可选、随存档）；`WorldEventType` 加 `agent.initiative`。
+2. 新增 `sim/initiative.ts`：`advanceInitiative(world)`（纯函数 + 就地写限频字段）。
+3. `sim/step.ts`：needs 之后调用，意图转 `agent.initiative` 事件。
+4. `respond-sms.ts`：加 `initiativePromptText(reason)`。
+5. `session-events.ts`：tracker 的 `track(..., kind)` 记录 `player-sms | initiative`，`observe` 回传 kind。
+6. `index.ts`：`hub.subscribe` 订阅 `agent.initiative` → 找角色会话 → 用唯一编号投递 → 失败只记日志。
+7. 新增 `test/initiative.test.js`；更新 tracker 旧断言（回复对象多一个 kind）。
 
 ### 5.3 测试矩阵
 | 用例 | 断言 |
@@ -297,10 +307,12 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 | 事件载荷 | `agent.initiative` 含 agentId/reason/tick |
 | 空回复 | 不写线程、不重试（app 侧） |
 
-### 5.4 加固清单
-- 确认不会和“玩家发的短信”回执串线（tracker 分类型）。
-- 重启后限频字段来自存档，不会立刻重复。
-- 真机/会话日志里看到主动短信的 prompt 与回复。
+### 5.4 加固清单与实测（2026-11-27 03:05）
+- [x] 不串线：tracker 的登记项带 kind；测试同时跑 initiative 与 player-sms 两条路径。
+- [x] 限频字段随存档（Agent 字段），换天重置；重启不会立刻重复。
+- [x] 72h 仿真（8 角色）：37 条意图 / 4 个日历日，**单角色单日最多 2 条**，全部落在 07:00–22:00，没有间隔 <180 tick 的违例。
+- [x] 已知取舍：限频是“每人 ≤2/天”，8 人理论上最多 16/天（实测约 9/天）；正式世界目前只有 1 个角色，就是 ≤2/天。若以后多人世界嫌吵，再加“全镇每日上限”。
+- [ ] 真机/会话日志看到主动短信的 prompt 与回复：正式进程仍旧构建，留 H7 独立宿主；不假装验过。
 
 ### 5.5 风险与回滚
 - 风险：刷屏、串线、会话忙时堆积。
@@ -449,3 +461,5 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   证据：`test/life-choice.test.js` 11 条；全量 885 条，884 通过、1 跳过；`person-lab --hours 72`：sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43。投影：meal→EatActivity/eat、sleep→SleepActivity/sleep、rest→RestActivity/sit（不再是“吃饭画成睡觉”）。
 - 2026-11-27 02:05 · **H3 完成**。新增 `sim/day-summary.ts`：当天 + 跨午夜活动（起点夹到 00:00），最多 5 行、≤300 字、无内部 id；短信 prompt 注入“你今天到目前为止：…”；活动记录改为**到站后**才采纳（修 stationId=null / startedAt=出发时刻）。
   证据：`test/day-summary.test.js` 11 条；全量 896 条，895 通过、1 跳过；真实仿真 08:30 →「00:00–07:35 在东侧休息区睡觉」「现在在东侧休息区吃饭」；5 行摘要 109 字，prompt 351 字。真机发短信核对留 H7。
+- 2026-11-27 03:05 · **H4 完成**。`sim/initiative.ts` 在 sim 里决定“想不想发”并写限频字段（07:00–23:00、3h 间隔、每人每天 ≤2、睡着/对话/手上有单不发）；`step` 发 `agent.initiative` 事件；`index.ts` 订阅事件、找角色会话、用唯一编号投递；tracker 登记项带 kind，和玩家短信回执分开。
+  证据：`test/initiative.test.js` 9 条；全量 905 条，904 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例。真机投递留 H7。

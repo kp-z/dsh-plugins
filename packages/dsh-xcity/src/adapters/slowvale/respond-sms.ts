@@ -67,6 +67,22 @@ export async function respondViaSession(
 }
 
 /**
+ * R480：主动短信的 prompt。与"回复玩家"不同：这次没有玩家原话，只有一个念头。
+ */
+export function initiativePromptText(reason: string): string {
+  return [
+    '你在 xcity 小镇里，突然想给玩家发一条短信。',
+    '此刻的念头：' + reason,
+    '',
+    '规则：',
+    '1. 给玩家看的话放进 ' + REPLY_OPEN + '…' + REPLY_CLOSE + ' 之间，一句，不超过 30 字；',
+    '2. 标记之外可以写详细说明——那部分只有 DSH 里的人看得到，不会进游戏；',
+    '3. 像普通朋友发消息，不要提系统、任务、内存这些词；',
+    '4. 这条回复必须是普通文本消息（assistant text），只写在思考里玩家收不到；若调用了工具，工具之后要再补一条文本回复。',
+  ].join('\n')
+}
+
+/**
  * 投进会话的那段话：玩家原话 + **给前端看的回复格式要求**。
  *
  * 为什么要把格式写进 prompt：同一次回复有两个读者——DSH 里的人要详细，

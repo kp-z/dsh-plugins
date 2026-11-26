@@ -87,7 +87,7 @@ export function activityForEvent(input: {
 
 /** Bind a delivered SMS prompt to the DSH turn that consumed it. */
 export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
-  type Pending = { peerRoleId: string; expiresAt: number }
+  type Pending = { peerRoleId: string; kind: 'player-sms' | 'initiative'; expiresAt: number }
   type State = { queued: Map<string, Pending>; turn?: number; smsTurn?: number; pending?: Pending | undefined }
   const sessions = new Map<string, State>()
   const prune = (sessionId: string, state: State): void => {
@@ -97,9 +97,9 @@ export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
     if (state.queued.size === 0 && state.smsTurn === undefined) sessions.delete(sessionId)
   }
   return {
-    track(peerRoleId: string, sessionId: string, text: string): () => void {
+    track(peerRoleId: string, sessionId: string, text: string, kind: 'player-sms' | 'initiative' = 'player-sms'): () => void {
       const state = sessions.get(sessionId) ?? { queued: new Map<string, Pending>() }
-      const pending = { peerRoleId, expiresAt: now() + ttlMs }
+      const pending = { peerRoleId, kind, expiresAt: now() + ttlMs }
       state.queued.set(text, pending)
       sessions.set(sessionId, state)
       return () => {
@@ -140,7 +140,7 @@ export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
         ? extractFrontendReply(textOfBlocks(blocks)) : null
       if (text === null || pending === undefined) return { reply: null }
       state.pending = undefined
-      return { reply: { peerRoleId: pending.peerRoleId, text } }
+      return { reply: { peerRoleId: pending.peerRoleId, text, kind: pending.kind } }
     },
   }
 }

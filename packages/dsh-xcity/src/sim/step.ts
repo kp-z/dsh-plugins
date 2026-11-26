@@ -52,6 +52,7 @@ import type { DeliverOutcome } from './mailbox.js'
 import { deliverMessages } from './mailbox.js'
 import { runHeartbeats } from './heartbeat.js'
 import { advanceNeeds } from './needs.js'
+import { advanceInitiative } from './initiative.js'
 import { emitPhaseEvents } from './emit.js'
 import { emitEvent } from './journal.js'
 import { recomputeReady } from './ready.js'
@@ -513,6 +514,14 @@ export function step(
   // R477：这一 tick 的状态已经定格（活动也对过账），内在量按它变化。
   // 放在 emit 之前：快照与事件读到的是同一份需求值。
   advanceNeeds(world)
+
+  // ── 5.7 initiative ──
+  // R480：社交低/刚忙完的人会想主动发条短信。决定与限频都在 sim，
+  // app 只订阅事件去投递；这里不碰 IO。
+  const initiatives = advanceInitiative(world)
+  for (const intent of initiatives) {
+    events.push(emitEvent(world, 'agent.initiative', { ...intent }))
+  }
 
   // ── 6. emit ──
   events.push(...intentEvents, ...emitPhaseEvents(world, { ready, scheduler: scheduled, movement, idle, work, comms: allMessages }))

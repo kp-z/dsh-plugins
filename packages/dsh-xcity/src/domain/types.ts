@@ -248,6 +248,12 @@ export interface Agent {
   activityTicks?: number | undefined
   /** R478：这次活动的用途（meal/sleep/social/study…）；只影响需求恢复与日志。 */
   activityPurpose?: ActivityPurpose | undefined
+  /** R480：上一次由角色主动发起短信的 tick（限频，随存档）。 */
+  lastInitiatedSmsTick?: number | undefined
+  /** R480：主动短信按游戏日记数；换天时重置。 */
+  initiatedSmsDay?: number | undefined
+  /** R480：当天已发起的主动短信条数（上限 2）。 */
+  initiatedSmsCount?: number | undefined
   /** R477：内在状态（体力/饥饿/社交）。老存档可能没有，读的时候用 DEFAULT_NEEDS 补。 */
   needs?: AgentNeeds | undefined
   llm: AgentLlmRoute
@@ -399,6 +405,7 @@ export type WorldEventType =
   | 'task.failed'
   | 'message.sent'
   | 'agent.intent'
+  | 'agent.initiative'
   | 'agent.report'
   | 'world.paused'
 
