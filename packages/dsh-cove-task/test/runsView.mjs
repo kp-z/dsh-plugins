@@ -43,6 +43,7 @@ const task = (id, extra) => Object.assign({
   no: 1,
   title: `任务 ${id}`,
   done: false,
+  project: '项目A',
   workspaceKey: 'wA',
   workspaceTitle: '项目A',
   workspacePath: '/x/wA',
@@ -288,38 +289,45 @@ check('计时覆盖：没有未完成任务时是 0 / 0（卡片不会渲染出 
 
 /* ---------------- 项目合并（旭日图的数据） ---------------- */
 
-check('项目合并：自定义目录把多个 workspace 合成一个项目（与总览/关系同一套规则）', () => {
-  const tasks = [
-    task('p1', { workspaceKey: 'wk-a', workspaceTitle: 'A', running: true }),
-    task('p2', { workspaceKey: 'wk-b', workspaceTitle: 'B', blocked: true }),
-    task('p3', { workspaceKey: 'wk-c', workspaceTitle: 'C' }),
-    task('p4', { workspaceKey: '', workspaceTitle: '' }),
-  ]
+check('缺项目的旧快照不从目录或工作区推断项目', () => {
   const view = buildRuns({
-    tasks, now: NOW,
-    groups: [{ id: 'g1', name: 'QV', members: ['wk-a', 'wk-b'] }],
-    workspaces: [{ key: 'wk-a', label: 'A' }, { key: 'wk-b', label: 'B' }, { key: 'wk-c', label: 'C' }],
+    tasks: [task('x', { project: undefined, workspaceKey: 'wk-a' }), task('y', { project: undefined, workspaceKey: 'wk-b' })],
+    now: NOW,
+    groups: [{ id: 'g1', name: '不能推断', members: ['wk-a', 'wk-b'] }],
+    workspaces: [{ key: 'wk-a', title: 'A' }, { key: 'wk-b', title: 'B' }],
   })
-  assert.deepEqual(view.projects.map((p) => [p.label, p.count, p.merged]), [['QV', 2, 2], ['C', 1, 1], ['未归属项目', 1, 1]])
-  const qv = view.projects[0]
-  assert.deepEqual(qv.states, { running: 1, started: 0, blocked: 1, suspended: 0, idle: 0 }, '外圈的状态拆分')
-  assert.equal(qv.key, 'group:g1', '合并后的 key 用目录 id')
+  assert.deepEqual(view.projects.map((row) => [row.key, row.label, row.count]), [['', '未归属项目', 2]])
 })
 
-check('项目合并：一个 workspace 只属于一个目录（先到先得），没进目录的落未分组', () => {
-  const tasks = [task('x', { workspaceKey: 'wk-a', workspaceTitle: 'A' })]
-  const view = buildRuns({
-    tasks, now: NOW,
-    groups: [{ id: 'g1', name: '第一', members: ['wk-a'] }, { id: 'g2', name: '第二', members: ['wk-a'] }],
-    workspaces: [{ key: 'wk-a', label: 'A' }],
-  })
-  assert.deepEqual(view.projects.map((p) => p.label), ['第一'])
+check('项目归属：换工作区、改目录不改变项目，气泡保留项目与工作区', () => {
+  const project = 'Demo'
+  const tasks = [task('x', { project, workspaceKey: 'old', running: true }), task('y', { project, workspaceKey: 'other', blocked: true })]
+  const before = buildRuns({ tasks, now: NOW })
+  const after = buildRuns({ tasks: tasks.map((row) => ({ ...row, workspaceKey: 'new', workspaceTitle: '新代码副本' })), groups: [{ id: 'wrong', name: '别的目录', members: ['new'] }], now: NOW })
+  assert.deepEqual(after.projects, before.projects)
+  assert.equal(after.projects.length, 1)
+  assert.equal(after.projects[0].key, project)
+  assert.equal(after.projects[0].label, project)
+  assert.equal(after.projects[0].count, 2)
+  assert.deepEqual(after.bubbles[0].project, project)
+  assert.equal(after.bubbles[0].workspaceKey, 'new')
 })
 
-check('项目合并：没有自定义目录时按 workspace 各自算', () => {
-  const tasks = [task('x', { workspaceKey: 'wk-a', workspaceTitle: 'A' }), task('y', { workspaceKey: 'wk-b', workspaceTitle: 'B' })]
-  const view = buildRuns({ tasks, now: NOW, workspaces: [{ key: 'wk-a', label: 'A' }, { key: 'wk-b', label: 'B' }] })
-  assert.deepEqual(view.projects.map((p) => p.label), ['A', 'B'])
+check('项目归属：同工作区同名项目合并，明确未归属不推断', () => {
+  const view = buildRuns({ tasks: [
+    task('x', { project: '同名' }),
+    task('y', { project: '同名' }),
+    task('z', { project: '' }),
+  ], now: NOW, groups: [{ id: 'wrong', name: '不能推断', members: ['wA'] }] })
+  assert.deepEqual(view.projects.map((row) => row.key).sort(), ['', '同名'])
+  assert.equal(view.projects.find((row) => row.key === '').label, '未归属项目')
+})
+
+check('项目名称不借用展示桶key，标准化后仍按名称聚合', () => {
+  const view = buildRuns({ tasks: [
+    task('x', { project: ' __none__ ' }), task('y', { project: '__none__' }), task('z', { project: '' }),
+  ], now: NOW })
+  assert.deepEqual(view.projects.map((row) => [row.key, row.count]), [['__none__', 2], ['', 1]])
 })
 
 /* ---------------- 概览 / 活跃度 ---------------- */

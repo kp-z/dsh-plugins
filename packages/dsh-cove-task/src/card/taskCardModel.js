@@ -158,7 +158,7 @@ export const CARD_CONSUMED_FIELDS = [
   'reopenPending', 'reopenError',
   'suspension',
   'workspaceTitle', 'workspaceName', 'workspacePath', 'workspaceWrite', 'workspaceError', 'workspaceCanRegister',
-  'error',
+  'project', 'projectSyncError', 'error',
 ]
 
 /**
@@ -315,12 +315,18 @@ export function buildTaskCardModel(task, context) {
     /* 自定义字段：跳过设置里隐藏的、写回列（它们已经是 chip 了）、优先级，最多 4 个。 */
     const hidden = new Set(arr(ctx.hiddenFieldNames).concat(arr(ctx.echoFieldNames)))
     const fields = arr(t.customFields)
+    const project = typeof t.project === 'string' ? t.project.trim() : str(fields.find((field) => field && field.name === '项目')?.value).trim()
+    if (project && !hidden.has('项目')) {
+      chips.push({ key: 'project', label: '📁 ' + project, cls: 'chip chip-field', title: '项目：' + project })
+    }
     let shown = 0
     for (const field of fields) {
       if (shown >= 4) break
       const name = str(field && field.name)
       const value = field && field.value != null ? str(field.value) : ''
       if (!value || hidden.has(name)) continue
+      // 项目单独用图标展示；旧项目Key只隐藏，不擅自删除远端字段。
+      if (name.trim() === '项目' || /^项目\s*key$/i.test(name.trim())) continue
       /* 优先级在卡片左上角已经是实心徽标了，自定义字段里再来一枚就是重复（面板同口径）。 */
       if (name === '优先级') continue
       if (field.type === 'datetime' && /开始|结束/.test(name)) continue
@@ -329,7 +335,11 @@ export function buildTaskCardModel(task, context) {
     }
   }
   {
-    const resolved = str(t.workspaceTitle) || str(t.workspaceName)
+    /* 画布 / 看板卡片把「工作区」列进了 hiddenFieldNames（那里有左树表达归属，
+       卡片上再挂一枚「[Demo] 后端工作区 A」只是噪音），这个 chip 也必须遵守同一开关。
+       详情面板不传该字段，切换工作区的入口照旧保留。 */
+    const workspaceHidden = arr(ctx.hiddenFieldNames).includes('工作区')
+    const resolved = workspaceHidden ? '' : (str(t.workspaceTitle) || str(t.workspaceName))
     if (resolved) {
       const write = t.workspaceWrite && typeof t.workspaceWrite === 'object' ? t.workspaceWrite : null
       const pending = !!(write && write.pending)
@@ -348,7 +358,7 @@ export function buildTaskCardModel(task, context) {
   if (t.workspaceError) {
     model.workspaceError = { text: str(t.workspaceError), canRegister: t.workspaceCanRegister === true }
   }
-  if (str(t.error)) model.error = str(t.error)
+  model.error = [str(t.error), str(t.projectSyncError) ? '项目待同步：' + str(t.projectSyncError) : ''].filter(Boolean).join(' · ')
 
   /* ---- 文档：去重、保序 ---- */
   const seenDoc = new Set()

@@ -50,6 +50,11 @@ export function num(value, fallback) {
 
 export function collapse(value) { return str(value).replace(/\s+/g, ' ').trim() }
 
+/** 分析与整理只读已补齐的项目名称，不从工作区或目录反推。 */
+export function projectNameOf(task) {
+  return isObj(task) && typeof task.project === 'string' ? task.project.trim() : ''
+}
+
 /** 视觉宽度估算：CJK 记 1，其余记 0.56。用于按「节点里放得下几个字」截断标题。 */
 export function measure(value) {
   const s = str(value)
@@ -376,65 +381,50 @@ function fillLane(lane, groupId) {
   return lane
 }
 
-/**
- * 按自定义目录分组：用户把若干 workspace 拖成一组并起名（比如「QV」），
- * 这一组就是「一个项目」——它的全部任务画在**同一张图、同一套坐标**里。
- * 一个 workspace 只属于一个目录（先到先得）；没进任何目录的落「未分组」桶。
- */
+/** 项目图按任务的持久 project 分组；工作区成员只为未迁移快照兜底，并保留树中的空工作区。 */
 export function groupByCustom(groups, tasks, workspaces) {
-  const projects = groupTasks(tasks, workspaces)
-  const byKey = new Map(projects.map((project) => [project.key, project]))
-  const claimed = new Set()
-  const out = []
-
-  for (const def of normalizeGroups(groups)) {
-    const lane = {
-      key: GROUP_PREFIX + def.id,
-      id: def.id,
-      name: def.name,
-      label: def.name,
-      custom: true,
-      ungrouped: false,
-      members: [...def.members],
-      labels: { ...def.labels },
-      missingMembers: [],
-      projects: [],
-      tasks: [],
-      /* 目录图标：宿主把 group:<id> 的配置一起投影到 groups[]（纯本地展示） */
-      logo: def.logo || '',
-      logoColor: def.logoColor || '',
-    }
-    for (const key of def.members) {
-      const project = byKey.get(key)
-      if (!project) {
-        /* 工作区被删/改名了：成员还在，但当前任务集里没有它 —— 只提示，不画。 */
-        lane.missingMembers.push({ key, label: collapse(def.labels[key]) || key })
-        continue
-      }
-      if (claimed.has(key)) continue
-      claimed.add(key)
-      lane.projects.push(project)
-    }
-    out.push(fillLane(lane, def.id))
+  const definitions = normalizeGroups(groups)
+  const byName = new Map(definitions.map((def) => [def.name, def]))
+  const ownerByWorkspace = new Map()
+  for (const def of definitions) {
+    for (const key of def.members) if (!ownerByWorkspace.has(key)) ownerByWorkspace.set(key, def.id)
   }
-
-  const rest = projects.filter((project) => !claimed.has(project.key))
-  if (rest.length) {
-    const bucket = {
-      key: UNGROUPED_KEY,
-      id: '',
-      name: UNGROUPED_LABEL,
-      label: UNGROUPED_LABEL,
-      custom: true,
-      ungrouped: true,
-      members: [],
-      labels: {},
-      missingMembers: [],
-      projects: rest,
-      tasks: [],
+  const tasksByProject = new Map()
+  for (const task of arr(tasks)) {
+    if (!isObj(task) || !str(task.id)) continue
+    const explicit = projectNameOf(task)
+    if (explicit && !byName.has(explicit)) {
+      const def = { id: explicit, name: explicit, members: [], labels: {} }
+      byName.set(explicit, def)
+      definitions.push(def)
     }
-    out.push(fillLane(bucket, ''))
+    const id = typeof task.project === 'string' ? (byName.get(explicit)?.id || '') : ownerByWorkspace.get(workspaceOf(task).key) || ''
+    if (!tasksByProject.has(id)) tasksByProject.set(id, [])
+    tasksByProject.get(id).push(task)
   }
+  const available = groupTasks([], workspaces)
+  const knownKeys = new Set(groupTasks(tasks, workspaces).map((workspace) => workspace.key))
+  const out = definitions.map((def) => {
+    const ownTasks = tasksByProject.get(def.id) || []
+    const ownedWorkspaces = available.filter((workspace) => ownerByWorkspace.get(workspace.key) === def.id)
+      .map((workspace) => ({ key: workspace.key, title: workspace.label, path: workspace.path, logo: workspace.logo, logoColor: workspace.logoColor }))
+    return fillLane({
+      key: GROUP_PREFIX + def.id, id: def.id, name: def.name, label: def.name,
+      custom: true, ungrouped: false,
+      members: [...def.members], labels: { ...def.labels },
+      missingMembers: def.members.filter((key) => !knownKeys.has(key)).map((key) => ({ key, label: collapse(def.labels[key]) || key })),
+      projects: groupTasks(ownTasks, ownedWorkspaces), tasks: [],
+      logo: def.logo || '', logoColor: def.logoColor || '',
+    }, def.id)
+  })
+  const restTasks = tasksByProject.get('') || []
+  const restWorkspaces = available.filter((workspace) => !ownerByWorkspace.has(workspace.key))
+    .map((workspace) => ({ key: workspace.key, title: workspace.label, path: workspace.path, logo: workspace.logo, logoColor: workspace.logoColor }))
+  const rest = groupTasks(restTasks, restWorkspaces)
+  if (rest.length) out.push(fillLane({
+    key: UNGROUPED_KEY, id: '', name: UNGROUPED_LABEL, label: UNGROUPED_LABEL,
+    custom: true, ungrouped: true, members: [], labels: {}, missingMembers: [], projects: rest, tasks: [],
+  }, ''))
   return out
 }
 
@@ -498,14 +488,8 @@ export function lanesForScope(groups, tasks, scope, workspaces) {
   const s = normScope(scope)
   if (s.kind === 'all') return all
   if (s.kind === 'group') return all.filter((lane) => laneInScope(lane, s))
-  const out = []
-  all.forEach((lane) => {
-    lane.projects.forEach((project) => {
-      if (project.key !== s.id) return
-      out.push(singleProjectLane(project))
-    })
-  })
-  return out
+  // 旧 scope.kind=project 表示具体工作区；保留局部视图，不把它改成长期项目。
+  return groupTasks(tasks, workspaces).filter((workspace) => workspace.key === s.id).map(singleProjectLane)
 }
 
 /**
@@ -526,7 +510,11 @@ export function scopeTasks(tasks, scope, groups) {
     members = lane ? lane.projects.map((project) => project.key) : []
   }
   const set = new Set(members)
-  return list.filter((task) => set.has(workspaceOf(task).key))
+  const projectName = normalizeGroups(groups).find((group) => group.id === s.id)?.name || s.id
+  return list.filter((task) => {
+    if (typeof task.project === 'string') return s.id === UNGROUPED_KEY ? !projectNameOf(task) : projectNameOf(task) === projectName
+    return set.has(workspaceOf(task).key)
+  })
 }
 
 /** scope 的人话名字（面包屑/图头用）。 */
@@ -566,7 +554,7 @@ export function buildTree(groups, tasks, options) {
   let selected = null
 
   function push(row, visible) {
-    row.selected = scope.kind === row.kind && scope.id === str(row.id)
+    row.selected = !selected && scope.kind === row.kind && scope.id === str(row.id)
     if (row.selected) selected = row
     byKey[row.key] = row
     if (visible !== false) rows.push(row)
@@ -598,6 +586,12 @@ export function buildTree(groups, tasks, options) {
     else allRow.ready += 1
   })
 
+  /* 同一工作区可能承载不同长期项目的任务。树展示键必须区分父项目，scope id 仍是工作区。 */
+  const workspaceRows = groupTasks(list, o.workspaces)
+  const workspacesByKey = new Map(workspaceRows.map((workspace) => [workspace.key, workspace]))
+  const occurrences = new Map()
+  for (const lane of lanes) for (const workspace of lane.projects) occurrences.set(workspace.key, (occurrences.get(workspace.key) || 0) + 1)
+  const configuredGroups = new Set(normalizeGroups(groups).map((group) => group.id))
   /* 二级可见行只有目录；项目挂在目录下面 */
   const rootVisible = true
   lanes.forEach((lane) => {
@@ -619,6 +613,7 @@ export function buildTree(groups, tasks, options) {
       ready: lane.ready,
       suspended: lane.suspended,
       ungrouped: bucket,
+      configured: configuredGroups.has(id),
       members: lane.members.slice(),
       labels: { ...lane.labels },
       missing: lane.missingMembers.length,
@@ -629,21 +624,23 @@ export function buildTree(groups, tasks, options) {
     }, rootVisible)
     const groupVisible = rootVisible && groupRow.collapsed !== true
     lane.projects.forEach((project) => {
+      const repeated = occurrences.get(project.key) > 1
+      const shown = repeated ? workspacesByKey.get(project.key) || project : project
       push({
-        key: `project:${project.key}`,
+        key: repeated ? 'project:' + JSON.stringify([id, project.key]) : 'project:' + project.key,
         kind: 'project',
         id: project.key,
         label: project.label,
         logo: project.logo || '',
         logoColor: project.logoColor || '',
         depth: 1,
-        count: project.total,
-        tasks: project.total,
-        open: project.open,
-        done: project.done,
-        blocked: project.blocked,
-        ready: project.ready,
-        suspended: project.suspended,
+        count: shown.total,
+        tasks: shown.total,
+        open: shown.open,
+        done: shown.done,
+        blocked: shown.blocked,
+        ready: shown.ready,
+        suspended: shown.suspended,
         groupId: id,
         groupLabel: lane.label,
         ungrouped: bucket,
@@ -676,7 +673,7 @@ export function rowMenu(row, groups, scope) {
   if (kind === 'group') {
     /* 目录也能换图标（用户口径）：key 用 group:<id>，和项目共用同一张本地配置表 */
     const logoItem = { id: 'logo', label: '设置图标…', kind: 'item', groupId: key }
-    if (r.ungrouped === true) return [logoItem, { id: 'new-group', label: '新建目录', kind: 'item' }]
+    if (r.ungrouped === true || !defs.some((def) => def.id === key)) return [logoItem, { id: 'new-group', label: '新建目录', kind: 'item' }]
     return [
       logoItem,
       { id: 'rename', label: '重命名', kind: 'item', groupId: key },
@@ -765,14 +762,14 @@ export function statsOf(tasks, relations) {
     if (!a) missing.add(edge.from)
     if (!b) missing.add(edge.to)
     if (a && b) {
-      const ka = workspaceOf(a).key
-      const kb = workspaceOf(b).key
+      const ka = projectNameOf(a)
+      const kb = projectNameOf(b)
       if (ka !== kb) cross.add(`${ka}>${kb}`)
     }
   })
   stats.missingGhosts = missing.size
   stats.crossProject = cross.size
-  const projects = new Set(list.map((task) => workspaceOf(task).key))
+  const projects = new Set(list.map(projectNameOf).filter(Boolean))
   stats.projects = projects.size
   /* 契约里的 stats.groups：这里指「这批任务横跨几个项目」，与宿主的口径同名同义。 */
   stats.groups = projects.size

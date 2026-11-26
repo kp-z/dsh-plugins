@@ -49,6 +49,7 @@ const T = (id, extra = {}) => ({
   description: extra.description || '',
   done: extra.done === true,
   meta: { workspace: extra.workspace || 'w1' },
+  project: extra.project || 'Project A',
   predecessors: extra.predecessors || [],
   successors: extra.successors || [],
   sourceTasks: extra.sourceTasks || [],
@@ -74,6 +75,13 @@ check('批次 ID：同范围同小时窗共享前缀，但每次整理都唯一�
 })
 
 /* ---- 2. 取材 ---- */
+check('分析取材只带项目字段，不用工作区名前缀替代项目', () => {
+  const pack = buildEvidencePack({ tasks: [{ id: 'a', title: 'A', project: 'Demo', meta: { workspace: '[DSH] 临时目录' } }], relations: [] })
+  assert.equal(pack.items[0].project, 'Demo')
+  assert.ok(!('workspace' in pack.items[0]))
+  assert.ok(!pack.text.includes('[DSH]'))
+})
+
 check('取材：给出范围内任务、带已有关系摘要，完整时不标截断', () => {
   const tasks = [T('a', { title: 'A', predecessors: ['b'] }), T('b', { title: 'B' })]
   const pack = buildEvidencePack({ tasks, relations: [{ from: 'b', to: 'a', kind: 'depends_on' }], budget: 99999 })
@@ -236,6 +244,7 @@ const TX = (id, extra = {}) => ({
   expectedAt: 0,
   completedAt: 0,
   workspaceKey: 'w1',
+  project: 'Project A',
   ...extra,
 })
 const fmt = (at) => `T${at}`
@@ -270,7 +279,7 @@ check('时间建议兜底：预期时间全相同或缺失时，按开始时间�
     tasks: [
       TX('a', { expectedAt: 10, startedAt: 1 }),
       TX('b', { expectedAt: 10, startedAt: 2 }),
-      TX('c', { expectedAt: 10, startedAt: 1, workspaceKey: 'w2' }),
+      TX('c', { expectedAt: 10, startedAt: 1, workspaceKey: 'w2', project: 'Project B' }),
     ],
     relations: [],
     format: fmt,
@@ -286,8 +295,8 @@ check('时间建议：只串待办（已完成不再生成，画布默认也不�
       TX('open2', { expectedAt: 200 }),
       TX('done1', { done: true, completedAt: 50 }),
       TX('done2', { done: true, completedAt: 60 }),
-      TX('other1', { expectedAt: 100, workspaceKey: 'w2' }),
-      TX('other2', { expectedAt: 300, workspaceKey: 'w2' }),
+      TX('other1', { expectedAt: 100, workspaceKey: 'w2', project: 'Project B' }),
+      TX('other2', { expectedAt: 300, workspaceKey: 'w2', project: 'Project B' }),
     ],
     relations: [],
     format: fmt,
@@ -328,7 +337,7 @@ check('关系线索兜底：同项目创建时间相邻，给低置信度线索�
   const tasks = [
     TX('a', { title: '写接口', createdAt: 100, workspaceKey: 'w1' }),
     TX('b', { title: '补测试', createdAt: 200, workspaceKey: 'w1' }),
-    TX('c', { title: '别的项目', createdAt: 300, workspaceKey: 'w2' }),
+    TX('c', { title: '别的项目', createdAt: 300, workspaceKey: 'w2', project: 'Project B' }),
   ]
   const first = buildHeuristicRelations({ tasks, relations: [] }).items
   assert.deepEqual(first.map((item) => `${item.from}>${item.to}`), ['a>b'])
@@ -477,6 +486,27 @@ check('宿主：整理会话的提示词与批次都带 okr，接受/撤销按 k
   assert.ok(/okrItems\.map\(/.test(acceptRegion), 'O/KR 应该批量一次应用（okrItems.map 传进 applyOkrLabels）')
   assert.ok(!/for \(const item of okrItems\)[\s\S]{0,200}await applyOkrLabels/.test(acceptRegion), '不要在 okr 循环里逐条 await applyOkrLabels')
   assert.match(host, /beforeOkr/, '接受时没有记录写之前的 O/KR，撤销就无法还原')
+})
+
+check('项目名称是唯一身份：跨工作区同名串联，不同名同工作区不串联', () => {
+  const tasks = [
+    { id: 'a', project: 'Demo', workspaceKey: 'old', expectedAt: 100 },
+    { id: 'b', project: 'Demo', workspaceKey: 'new', expectedAt: 200 },
+    { id: 'c', project: 'DSH', workspaceKey: 'new', expectedAt: 300 },
+  ]
+  const result = buildTemporalSuggestions({ tasks, relations: [] })
+  assert.equal(result.items.length, 1)
+  assert.equal(result.items[0].from, 'a')
+  assert.equal(result.items[0].to, 'b')
+})
+
+check('显式未归属项目不从工作区兜底生成时间链或相邻关系', () => {
+  const tasks = [
+    { id: 'a', project: '', workspaceKey: 'ws', expectedAt: 100, createdAt: 100 },
+    { id: 'b', project: '', workspaceKey: 'ws', expectedAt: 200, createdAt: 200 },
+  ]
+  assert.equal(buildTemporalSuggestions({ tasks, relations: [] }).items.length, 0)
+  assert.equal(buildHeuristicRelations({ tasks, relations: [] }).items.length, 0)
 })
 
 console.log(`\norganizeSuggestions.js: ${passed} passed, ${failures.length} failed`)

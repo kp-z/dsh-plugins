@@ -19,7 +19,10 @@ check('日期：YYYY-MM-DD / 毫秒都解析', () => {
   assert.equal(parseOppDate(''), null)
 })
 
-check('投影：workspace → Objective，listName → Key Result，进度按 done/total', () => {
+check('投影：Objective 只认真实字段，不拿工作区名冒充；listName → Key Result', () => {
+  /* 三个任务都**没填** objective，但分属两个工作区。旧实现会拿 workspaceTitle 兜底，
+     于是「项目A / 项目B」变成两个假 Objective —— 名字看着像目标，其实是目录名。
+     现在必须并进同一组，且组名明确说明未归入。 */
   const nodes = [
     { id: 'a', state: 'open', done: true, priority: 'P1', no: 1, workspaceTitle: '项目A' },
     { id: 'b', state: 'open', done: false, priority: 'P2', no: 2, workspaceTitle: '项目A' },
@@ -31,13 +34,14 @@ check('投影：workspace → Objective，listName → Key Result，进度按 do
     c: { done: false, listName: '清单2', workspaceTitle: '项目B', start: '2026-11-03' },
   }
   const model = buildOpp(nodes, tasks)
-  assert.equal(model.objectives.length, 2)
-  const a = model.objectives.find((o) => o.title === '项目A')
-  assert.equal(a.krs.length, 1)
-  assert.equal(a.krs[0].title, '清单1')
-  assert.equal(a.krs[0].done, 1)
-  assert.equal(a.krs[0].total, 2)
-  assert.equal(a.krs[0].progress, 50)
+  assert.equal(model.objectives.length, 1, '不能按工作区拆成多个假 Objective')
+  const a = model.objectives.find((o) => o.title === '未归入 Objective')
+  assert.ok(a, '没有真实 O 的统一归入「未归入 Objective」')
+  assert.deepEqual(a.krs.map((kr) => kr.title).sort(), ['清单1', '清单2'], 'KR 仍按 listName 分组')
+  const kr1 = a.krs.find((kr) => kr.title === '清单1')
+  assert.equal(kr1.done, 1)
+  assert.equal(kr1.total, 2)
+  assert.equal(kr1.progress, 50)
   assert.equal(model.stats.total, 3)
   assert.equal(model.stats.done, 1)
   assert.equal(model.stats.progress, 33)
@@ -69,8 +73,9 @@ check('排序：P0 在 P3 前，空数据不抛', () => {
 
 check('空 O/KR：保留定义，聚合进度仍按全量任务', () => {
   const tasks = {
-    a: { done: true, listName: 'KR1', workspaceTitle: 'O1' },
-    b: { done: false, listName: 'KR2', workspaceTitle: 'O1' },
+    /* O1 必须是**真实 objective 字段**：workspaceTitle 不再冒充 Objective。 */
+    a: { done: true, listName: 'KR1', objective: 'O1' },
+    b: { done: false, listName: 'KR2', objective: 'O1' },
   }
   const full = mergeEmptyOkr(buildOpp([{ id: 'a', state: 'done' }, { id: 'b', state: 'open' }], tasks), {
     objectives: ['Empty O'],

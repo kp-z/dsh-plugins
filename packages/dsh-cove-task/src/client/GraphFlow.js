@@ -69,7 +69,7 @@ function createTaskCardHost(React, h) {
     const task = props.task || {}
     const signature = JSON.stringify([
       task.id, task.title, task.no, task.priority, task.done, task.suspended,
-      task.start, task.end, task.due, task.listName, task.workspaceTitle,
+      task.start, task.end, task.due, task.listName, task.workspaceTitle, task.project, task.projectSyncError,
       task.commitment && task.commitment.expectedAt, task.commitment && task.commitment.expectedText,
       task.schedule && task.schedule.nextText, task.sessionId, task.sessionAlive, task.sessionUnread,
       (task.docs || []).length, (task.members || []).length,

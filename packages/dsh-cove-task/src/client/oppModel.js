@@ -84,7 +84,10 @@ export function buildOpp(nodes, taskById) {
         status,
         workspace: task.workspaceTitle || node.workspaceTitle || '未分组',
         list: task.listName || '默认清单',
-        objective: asText(task.objective || node.objective) || asText(task.workspaceTitle || node.workspaceTitle) || '未归入 Objective',
+        /* Objective 只认任务自己填的字段。原来会拿工作区名兜底（objective ← workspaceTitle），
+           于是每个没填 O 的工作区都变成一张「[Demo] 后端工作区 A」的假 Objective ——
+           名字看着像目标，其实是目录名。没填就统一归入下面这一组，不冒充。 */
+        objective: asText(task.objective || node.objective) || '未归入 Objective',
         keyResult: asText(task.keyResult || node.keyResult) || asText(task.listName) || '未归入 KR',
         /* 真实字段（不做任何兜底）：Plan 只认这两个，不拿工作区/清单名冒充 O/KR。 */
         objectiveRaw: asText(task.objective || node.objective),

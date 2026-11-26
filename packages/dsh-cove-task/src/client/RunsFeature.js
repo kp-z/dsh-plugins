@@ -14,6 +14,7 @@
  */
 
 import { buildRuns, formatAgo, startOfDay } from './runsView.js'
+import { projectNameOf } from '../overview/model.js'
 import { injectExactStyles } from './runsExactStyles.js'
 import { iconDrawNodes, normalizeIcon, colorHex, autoIconFor, renderIcon } from './projectIcons.js'
 import { derivePulses, prunePulses, toneColor, subscribeActivity, PULSE_TTL } from './sessionPulse.js'
@@ -428,7 +429,7 @@ export function createRunsFeature(deps) {
       const map = new Map()
       const rows = Array.isArray((ctx.snapshot || ctx).tasks) ? (ctx.snapshot || ctx).tasks : []
       rows.forEach((row) => {
-        const key = String((row && row.workspaceKey) || '')
+        const key = projectNameOf(row)
         if (!key) return
         const cell = map.get(key) || { total: 0, done: 0 }
         cell.total += 1
@@ -585,7 +586,7 @@ export function createRunsFeature(deps) {
                 const tone = isRunning ? 'is-ok' : (isSuspended ? 'is-suspended' : 'is-dim')
                 /* 完成率 = 该项目已完成任务占比（0~100）。
                    ≥8% 的下限只是让波浪线可见（0 时水面贴在圆底、裁剪后看不出来）。 */
-                const pct = Math.max(8, Math.min(100, progressOf(row.workspaceKey)))
+                const pct = Math.max(8, Math.min(100, progressOf(projectNameOf(row))))
                 const isBlocked = row.state === 'blocked'
                 const stateText = isRunning
                   ? '运行中'

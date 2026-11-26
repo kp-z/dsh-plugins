@@ -58,22 +58,29 @@ function check(name, actual, expected) {
 check(
   '中文键：工作区 + 自动开工',
   parseTaskMeta({ summary: '修一下搜索', description: '工作区：dsh-plugins\n自动开工：是' }),
-  { workspace: 'dsh-plugins', auto: true, source: 'description' },
+  { workspace: 'dsh-plugins', project: '', auto: true, source: 'description' },
 )
 
 /* ── 解析：英文键 / 等号 / 列表前缀 ── */
 check(
   '英文键与等号',
   parseTaskMeta({ summary: 'x', description: '- workspace = /Users/demo/dsh-plugins\n* auto: on' }),
-  { workspace: '/Users/demo/dsh-plugins', auto: true, source: 'description' },
+  { workspace: '/Users/demo/dsh-plugins', project: '', auto: true, source: 'description' },
 )
 
 /* ── 解析：标题标记 ── */
 check(
   '标题里的 [ws:...] 标记',
   parseTaskMeta({ summary: '[ws:dviz] 对齐侧边栏', description: '' }),
-  { workspace: 'dviz', auto: undefined, source: 'title' },
+  { workspace: 'dviz', project: '', auto: undefined, source: 'title' },
 )
+
+check(
+  '项目和工作区是独立字段，不能用项目名开工作区',
+  parseTaskMeta({ summary: 'x', description: '项目: Demo\n工作区: 临时目录' }),
+  { workspace: '临时目录', project: 'Demo', auto: undefined, source: 'description' },
+)
+check('只有项目不补工作区', parseTaskMeta({ description: 'project: DSH' }).workspace, '')
 
 /* ── 显式关掉 ── */
 check('自动开工：否', parseTaskMeta({ summary: 'x', description: '自动开工: 否' }).auto, false)

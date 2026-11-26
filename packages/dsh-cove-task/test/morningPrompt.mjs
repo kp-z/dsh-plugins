@@ -26,4 +26,7 @@ for (const needle of ['点名 T 号', '换个项目也成立', '等于没给建�
   assert.ok(DEFAULT_INSIGHT_PROMPT.includes(needle), 'advice/improve must be concrete: ' + needle)
 }
 assert.ok(PROMPT_REV >= 17, 'prompt rev bumped so cached diagnoses regenerate')
+assert.ok(DEFAULT_MORNING_PROMPT.includes('项目只认材料里的「项目」字段'))
+assert.ok(DEFAULT_MORNING_PROMPT.includes('不要从工作区、目录或标题前缀猜项目'))
+assert.ok(PROMPT_REV >= 18)
 console.log('MORNING_PROMPT_OK: itemized yesterday script with plain-language project context')

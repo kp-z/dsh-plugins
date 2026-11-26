@@ -15,6 +15,7 @@
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { createRunsFeature } from '../src/client/RunsFeature.js'
 
 const src = readFileSync(new URL('../src/client/RunsFeature.js', import.meta.url), 'utf8')
 const panel = readFileSync(new URL('../src/client/OverviewPanel.js', import.meta.url), 'utf8')
@@ -33,6 +34,24 @@ function check(name, fn) {
     console.log(`       ${error.message.split('\n')[0]}`)
   }
 }
+
+check('完成率按项目而不是工作区算，包含已完成任务且缺名称不反推', () => {
+  const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) })
+  const Feature = createRunsFeature({ React: {}, h })
+  const waterHeight = (project) => {
+    const tree = Feature({ now: 1, tasks: [
+      { id: 'open', project, workspaceKey: 'a' },
+      { id: 'done', project: 'Demo', workspaceKey: 'b', done: true },
+      { id: 'other', project: 'Other', workspaceKey: 'a', done: true },
+    ] })
+    const nodes = []
+    const walk = (node) => { if (node && typeof node === 'object') { nodes.push(node); (node.children || []).forEach(walk) } }
+    walk(tree)
+    return nodes.find((node) => node.type === 'rect' && node.props.width === 100).props.height
+  }
+  assert.equal(waterHeight(' Demo '), 46, '标准化后跨工作区同项目完成率50%，无关项目不进入分母')
+  assert.ok(waterHeight(undefined) < 10, '缺项目只保留8%的可见下限，不能按同工作区反推50%')
+})
 
 /** 去掉注释：注释里会提到 color-mix()（解释为什么不能用），那不是代码 */
 const stripComments = (text) => text

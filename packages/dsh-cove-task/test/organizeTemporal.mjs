@@ -32,7 +32,7 @@ const TASKS = [
   { id: 'd1', no: 'T6', title: '已完成的活', description: '', done: true, completedAt: at(-5), workspaceId: 'w1', workspaceTitle: 'demo' },
   /* 另一个项目：不该和 demo 串成一条时间线。 */
   { id: 'x1', no: 'T7', title: '别的项目', description: '', done: false, expectedAt: at(1.5), workspaceId: 'w2', workspaceTitle: 'other' },
-]
+].map((task) => ({ ...task, project: task.workspaceId === 'w1' ? 'Demo' : 'Other' }))
 
 await mkdir(join(HOME, 'dsh-cove-task'), { recursive: true })
 await writeFile(join(HOME, 'dsh-cove-task', 'settings.json'), JSON.stringify({ autoSync: false, cliPath: '/nonexistent/feishu-sync-cli', managedTasklist: { enabled: false } }))

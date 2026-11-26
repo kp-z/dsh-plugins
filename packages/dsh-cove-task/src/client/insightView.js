@@ -1,9 +1,9 @@
 /**
  * 洞察页的纯函数层：`buildInsight(snapshot)`。
  *
- * 零依赖、零副作用（不读 store、不碰 DOM、不联网），所以能离线单测。
+ * 纯函数、零副作用（不读 store、不碰 DOM、不联网），所以能离线单测。
  * 输入就是宿主快照里的那份数据（见 index.js 的 overview 组装）：
- *   tasks:     { id, no, title, done, workspaceKey, workspaceTitle, blocked, ready,
+ *   tasks:     { id, no, title, done, project, workspaceKey, workspaceTitle, blocked, ready,
  *                started, suspended, sessionId, running, sessionTurn,
  *                predecessors[], successors[], sourceTasks[], derivedTasks[], blockedBy[] }
  *   relations: { from, to, kind: 'depends_on' | 'derived_from' }
@@ -16,6 +16,8 @@
  * - 任务级时间戳由宿主投影（毫秒）：`createdAt` / `startedAt` / `completedAt` / `suspendedAt`，
  *   取不到就是 0。0 一律视为「没有时间」，排序时排最后，不拿编号冒充时间。
  */
+
+import { projectNameOf } from '../overview/model.js'
 
 const DECO = [0, 1, 2, 3, 4, 5]
 
@@ -168,7 +170,6 @@ export function buildInsight(snapshot) {
     ratio: total > 0 ? buckets[key] / total : 0,
   }))
 
-  const projectTotal = new Set(tasks.map((task) => str(task.workspaceKey) || '__none__')).size
   /* 今日完成：completedAt 落在今天 0 点之后；一个时间都没有时退化为「累计已完成」 */
   const nowMs = num(snap.now, 0)
   const todayStart = nowMs > 0 ? startOfDay(nowMs) : 0
@@ -188,7 +189,6 @@ export function buildInsight(snapshot) {
     kpiOf('todayDone', hasCompletionTime ? '今日完成' : '已完成', doneToday, Math.max(total, 1), 'ok'),
   ]
   /* 每张卡的一句话口径（组件直接显示，不再各自算） */
-  kpis[0].note = `${projectTotal} 个项目 · ${running} 个会话在跑`
   kpis[1].note = `${done}/${total} 已完成`
   kpis[2].note = buckets.blocked ? '在等前置任务' : '没有被阻塞的任务'
   kpis[3].note = `${buckets.ready} 个可以开工`
@@ -200,23 +200,26 @@ export function buildInsight(snapshot) {
   kpis[1].total = 100
 
   /* ---- 项目分布：按任务数倒序，Top 8 + 其他 ---- */
-  const byWorkspace = new Map()
+  const byProject = new Map()
   tasks.forEach((task) => {
-    const key = str(task.workspaceKey) || '__none__'
-    let row = byWorkspace.get(key)
+    const key = projectNameOf(task)
+    const label = key || '未归属项目'
+    let row = byProject.get(key)
     if (!row) {
-      row = { key, label: str(task.workspaceTitle) || str(task.workspaceKey) || '未归属项目', total: 0, done: 0, blocked: 0, running: 0 }
-      byWorkspace.set(key, row)
+      row = { key, label, total: 0, done: 0, blocked: 0, running: 0 }
+      byProject.set(key, row)
     }
     row.total += 1
     if (task.done === true) row.done += 1
     if (bucketOf(task) === 'blocked') row.blocked += 1
     if (task.running === true) row.running += 1
   })
-  const allWorkspaces = Array.from(byWorkspace.values())
+  const allProjects = Array.from(byProject.values())
     .sort((a, b) => (b.total - a.total) || a.label.localeCompare(b.label) || a.key.localeCompare(b.key))
+  const projectCount = allProjects.filter((row) => row.key).length
+  kpis[0].note = `${projectCount} 个项目 · ${running} 个会话在跑`
   const topN = 8
-  const head = allWorkspaces.slice(0, topN).map((row, index) => ({
+  const head = allProjects.slice(0, topN).map((row, index) => ({
     key: row.key,
     label: row.label,
     total: row.total,
@@ -227,11 +230,11 @@ export function buildInsight(snapshot) {
     pct: row.total > 0 ? Math.round((row.done / row.total) * 100) : 0,
     deco: DECO[index % DECO.length],
   }))
-  const tail = allWorkspaces.slice(topN)
-  const wsRows = tail.length
+  const tail = allProjects.slice(topN)
+  const projectRows = tail.length
     ? head.concat([{
       key: '__other__',
-      label: `其他 ${tail.length} 个项目`,
+      label: tail.some((row) => !row.key) ? '其他项目及未归属任务' : `其他 ${tail.length} 个项目`,
       total: tail.reduce((sum, row) => sum + row.total, 0),
       done: tail.reduce((sum, row) => sum + row.done, 0),
       blocked: tail.reduce((sum, row) => sum + row.blocked, 0),
@@ -242,7 +245,7 @@ export function buildInsight(snapshot) {
       other: true,
     }])
     : head
-  wsRows.forEach((row) => {
+  projectRows.forEach((row) => {
     if (row.other) {
       row.ratio = row.total > 0 ? row.done / row.total : 0
       row.pct = Math.round(row.ratio * 100)
@@ -331,11 +334,11 @@ export function buildInsight(snapshot) {
 
   return {
     empty: total === 0,
-    totals: { tasks: total, done, open, blocked: buckets.blocked, suspended: buckets.suspended, ready: buckets.ready, running, projects: allWorkspaces.length },
+    totals: { tasks: total, done, open, blocked: buckets.blocked, suspended: buckets.suspended, ready: buckets.ready, running, projects: projectCount },
     kpis,
     statusMix,
-    workspaces: wsRows,
-    projectCount: allWorkspaces.length,
+    workspaces: projectRows,
+    projectCount,
     relations: relationsView,
     blockers,
     recent,
@@ -493,17 +496,17 @@ export function calendarHints(tasks, now, calendar) {
     if (last) hints.push({ key: 'last', text: '最近一次动静：' + last.day.slice(5) })
   }
 
-  /* 4) 近 28 天完成最多的工作区（项目） */
+  /* 4) 近 28 天完成最多的项目 */
   const since = today - 27 * DAY
-  const byWorkspace = new Map()
+  const byProject = new Map()
   rows.forEach((task) => {
     const done = doneAt(task)
     if (done < since || done >= today + DAY) return
-    const key = str(task.workspaceTitle) || str(task.workspaceKey) || '未分组'
-    byWorkspace.set(key, (byWorkspace.get(key) || 0) + 1)
+    const name = projectNameOf(task)
+    if (name) byProject.set(name, (byProject.get(name) || 0) + 1)
   })
-  const top = [...byWorkspace.entries()].sort((a, b) => b[1] - a[1])[0]
-  if (top && top[1] > 0) hints.push({ key: 'workspace', text: '完成最多：' + top[0] + '（' + top[1] + ' 件）' })
+  const top = [...byProject.entries()].sort((a, b) => b[1] - a[1])[0]
+  if (top) hints.push({ key: 'workspace', text: '完成最多：' + top[0] + '（' + top[1] + ' 件）' })
 
   return hints.slice(0, 3)
 }

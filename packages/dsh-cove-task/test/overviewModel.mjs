@@ -36,6 +36,7 @@ import {
   statsOf,
   truncateTitle,
   workspaceOf,
+  projectNameOf,
 } from '../src/overview/model.js'
 
 /* ---------------- 迷你 runner ---------------- */
@@ -109,6 +110,76 @@ const WORKSPACES = [
   { key: 'wB', id: 'wB', path: '/Users/demo/DEV/beta', title: '项目B' },
   { key: 'wF', id: 'wF', path: '/Users/demo/DEV/empty', title: '空项目' },
 ]
+
+test('projectNameOf：项目读取只有一处，缺字段不猜工作区', () => {
+  assert.equal(projectNameOf({ project: ' Demo ', workspaceTitle: '[Other] 工作区' }), 'Demo')
+  assert.equal(projectNameOf({ workspaceTitle: '[Demo] 工作区', workspaceKey: 'w' }), '')
+  assert.equal(projectNameOf({ project: { name: 'Demo' } }), '', '旧格式只在加载边界补齐')
+  assert.equal(projectNameOf(null), '')
+})
+
+test('同工作区跨项目：树键唯一，计数匹配具体工作区视图，只有一行被选中', () => {
+  const groups = [{ id: 'p1', name: 'P1', members: [] }, { id: 'p2', name: 'P2', members: [] }]
+  const tasks = [{ id: 'a', workspaceKey: 'ws', project: 'P1' }, { id: 'b', workspaceKey: 'ws', project: 'P2' }]
+  const tree = buildTree(groups, tasks, { collapsed: { 'group:p1': false, 'group:p2': false }, selection: { kind: 'project', id: 'ws' } })
+  const rows = tree.rows.filter((row) => row.kind === 'project')
+  assert.equal(rows.length, 2)
+  assert.equal(new Set(rows.map((row) => row.key)).size, 2)
+  assert.ok(rows.every((row) => tree.byKey[row.key] === row && row.count === 2))
+  assert.equal(rows.filter((row) => row.selected).length, 1)
+})
+
+test('没有配置目录的持久项目：不提供无法执行的重命名/删除', () => {
+  const tree = buildTree([], [{ id: 'a', project: 'P1' }])
+  const row = tree.byKey['group:P1']
+  assert.equal(row.configured, false)
+  assert.ok(!rowMenu(row, [], {}).some((item) => item.id === 'rename' || item.id === 'delete'))
+})
+
+test('长期项目：换到别的工作区后图与范围仍按 task.project 归属', () => {
+  const groups = [
+    { id: 'p-demo', name: 'Demo', members: ['ws-a'] },
+    { id: 'p-dsh', name: 'DSH', members: ['ws-b'] },
+  ]
+  const tasks = [
+    { id: 'a', workspaceKey: 'ws-b', workspaceTitle: '[DSH] 临时工作区', project: 'Demo' },
+    { id: 'b', workspaceKey: 'ws-b', workspaceTitle: '[DSH] 临时工作区', project: 'DSH' },
+  ]
+  const lanes = groupByCustom(groups, tasks)
+  assert.deepEqual(lanes.find((lane) => lane.id === 'p-demo').tasks.map((task) => task.id), ['a'])
+  assert.deepEqual(lanes.find((lane) => lane.id === 'p-dsh').tasks.map((task) => task.id), ['b'])
+  assert.deepEqual(scopeTasks(tasks, { kind: 'group', id: 'p-demo', members: ['ws-a'] }, groups).map((task) => task.id), ['a'])
+  assert.equal(lanesForScope(groups, tasks, { kind: 'project', id: 'ws-b' }).length, 1, '具体工作区仍是一个局部视图')
+  assert.equal(lanesForScope(groups, tasks, { kind: 'project', id: 'ws-b' })[0].tasks.length, 2)
+})
+
+test('项目名称唯一：同名归并到现有目录 UI，统计不使用目录 id', () => {
+  const groups = [{ id: 'directory-uuid', name: 'Demo', members: [] }]
+  const tasks = [{ id: 'a', project: 'Demo', workspaceKey: 'a' }, { id: 'b', project: 'Demo', workspaceKey: 'b' }]
+  const lanes = groupByCustom(groups, tasks)
+  assert.equal(lanes.length, 1)
+  assert.equal(lanes[0].id, 'directory-uuid')
+  assert.equal(lanes[0].total, 2)
+  assert.equal(scopeTasks(tasks, { kind: 'group', id: 'directory-uuid' }, groups).length, 2)
+  assert.equal(statsOf(tasks, []).projects, 1)
+})
+
+test('显式未归属项目不从工作区目录重新推断', () => {
+  const groups = [{ id: 'p', name: 'Demo', members: ['ws'] }]
+  const tasks = [{ id: 'a', workspaceKey: 'ws', project: '' }]
+  assert.equal(groupByCustom(groups, tasks).find((lane) => lane.id === 'p').tasks.length, 0)
+  assert.equal(scopeTasks(tasks, { kind: 'group', id: 'p' }, groups).length, 0)
+  assert.equal(scopeTasks(tasks, { kind: 'group', id: UNGROUPED_KEY }, groups).length, 1)
+})
+
+test('长期项目：目录被删、没有工作区时持久项目仍然可见', () => {
+  const tasks = [{ id: 'a', project: 'Demo' }]
+  const lane = groupByCustom([], tasks)[0]
+  assert.equal(lane.id, 'Demo')
+  assert.equal(lane.label, 'Demo')
+  assert.equal(lane.tasks.length, 1)
+  assert.equal(scopeTasks(tasks, { kind: 'group', id: 'Demo' }, []).length, 1)
+})
 
 console.log('overview/model.js')
 
@@ -445,13 +516,14 @@ test('rowMenu：项目行 = 设置图标 / 移入目录 ▸ / 移出目录 / 只
 test('rowMenu：坏输入不抛', () => {
   assert.deepEqual(rowMenu(null, null, null), [])
   assert.deepEqual(rowMenu({ kind: 'nope' }, 'x', 1), [])
-  assert.deepEqual(rowMenu({ kind: 'group', id: 'g1' }, [{ id: '' }], { kind: 'group', id: 'g1' }).length, 5)
+  assert.deepEqual(rowMenu({ kind: 'group', id: 'g1' }, [{ id: '' }], { kind: 'group', id: 'g1' }).map((item) => item.id), ['logo', 'new-group'], '不存在的目录不能提供重命名/删除')
 })
 
 /* ---------------- 统计 ---------------- */
 
 test('statsOf：计数口径与坏输入', () => {
-  const stats = statsOf(TASKS, RELATIONS)
+  const statsTasks = TASKS.map((task) => ({ ...task, project: task.workspaceKey === 'wA' ? 'Project A' : task.workspaceKey === 'wB' ? 'Project B' : '' }))
+  const stats = statsOf(statsTasks, RELATIONS)
   assert.equal(stats.tasks, 5)
   assert.equal(stats.done, 1)
   assert.equal(stats.open, 4)
@@ -463,8 +535,8 @@ test('statsOf：计数口径与坏输入', () => {
   assert.equal(stats.externalEdges, 1)
   assert.equal(stats.missingGhosts, 1)
   assert.equal(stats.crossProject, 1)
-  assert.equal(stats.projects, 3)
-  assert.equal(stats.groups, 3)
+  assert.equal(stats.projects, 2)
+  assert.equal(stats.groups, 2)
   // 两端都不在这批任务里的边跟这批任务无关，不能计进来（否则目录的边数会比图上多）
   const scoped = statsOf(TASKS, [...RELATIONS, { from: 'x1', to: 'x2', kind: 'depends_on' }, { from: 'x1', to: 'a1', kind: 'depends_on' }])
   assert.equal(scoped.dependencyEdges, 3)

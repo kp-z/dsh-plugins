@@ -48,6 +48,7 @@ const task = (id, extra) => Object.assign({
   no: 1,
   title: `任务 ${id}`,
   done: false,
+  project: '项目A',
   workspaceKey: 'wA',
   workspaceTitle: '项目A',
   blocked: false,
@@ -217,9 +218,9 @@ check('running 计数走宿主字段，不靠猜', () => {
 
 check('项目分布：按任务数倒序', () => {
   const tasks = [
-    ...Array.from({ length: 3 }, (_, i) => task(`a${i}`, { workspaceKey: 'wA', workspaceTitle: 'A' })),
-    ...Array.from({ length: 5 }, (_, i) => task(`b${i}`, { workspaceKey: 'wB', workspaceTitle: 'B' })),
-    task('c0', { workspaceKey: 'wC', workspaceTitle: 'C' }),
+    ...Array.from({ length: 3 }, (_, i) => task(`a${i}`, { project: 'A', workspaceKey: 'wA', workspaceTitle: 'A' })),
+    ...Array.from({ length: 5 }, (_, i) => task(`b${i}`, { project: 'B', workspaceKey: 'wB', workspaceTitle: 'B' })),
+    task('c0', { project: 'C', workspaceKey: 'wC', workspaceTitle: 'C' }),
   ]
   const view = buildInsight({ tasks })
   assert.deepEqual(view.workspaces.map((row) => row.label), ['B', 'A', 'C'])
@@ -229,7 +230,7 @@ check('项目分布：按任务数倒序', () => {
 check('项目分布：12 个项目 → Top 8 + 「其他 4 个项目」，总数守恒', () => {
   const tasks = []
   for (let i = 0; i < 12; i += 1) {
-    for (let k = 0; k <= i; k += 1) tasks.push(task(`t${i}-${k}`, { workspaceKey: `w${i}`, workspaceTitle: `P${i}` }))
+    for (let k = 0; k <= i; k += 1) tasks.push(task(`t${i}-${k}`, { project: `P${i}`, workspaceKey: `w${i}`, workspaceTitle: `P${i}` }))
   }
   const view = buildInsight({ tasks })
   assert.equal(view.workspaces.length, 9, 'Top8 + 其他')
@@ -241,7 +242,7 @@ check('项目分布：12 个项目 → Top 8 + 「其他 4 个项目」，总数
 })
 
 check('项目分布：8 个项目整时不出现「其他」', () => {
-  const tasks = Array.from({ length: 8 }, (_, i) => task(`t${i}`, { workspaceKey: `w${i}`, workspaceTitle: `P${i}` }))
+  const tasks = Array.from({ length: 8 }, (_, i) => task(`t${i}`, { project: `P${i}`, workspaceKey: `w${i}`, workspaceTitle: `P${i}` }))
   const view = buildInsight({ tasks })
   assert.equal(view.workspaces.length, 8)
   assert.equal(view.workspaces.some((row) => row.other === true), false)
@@ -252,6 +253,55 @@ check('项目分布：条上叠加完成率（done/total）', () => {
   const view = buildInsight({ tasks })
   assert.equal(view.workspaces[0].pct, 25)
   assert.equal(view.workspaces[0].ratio, 0.25)
+})
+
+check('项目归属：跨工作区合并，换工作区仍保留项目数量和完成率', () => {
+  const project = 'Demo'
+  const tasks = [task('x', { project, workspaceKey: 'old', done: true }), task('y', { project, workspaceKey: 'other' })]
+  const before = buildInsight({ tasks })
+  const after = buildInsight({ tasks: tasks.map((row) => ({ ...row, workspaceKey: 'new', workspaceTitle: '新代码副本' })) })
+  assert.deepEqual(after.workspaces, before.workspaces)
+  assert.equal(after.projectCount, 1)
+  assert.equal(after.totals.projects, 1)
+  assert.ok(after.kpis[0].note.startsWith('1 个项目'))
+  assert.equal(after.workspaces[0].key, project)
+  assert.equal(after.workspaces[0].label, project)
+  assert.equal(after.workspaces[0].pct, 50)
+})
+
+check('项目归属：同工作区同名项目合并，明确未归属不推断', () => {
+  const view = buildInsight({ tasks: [
+    task('x', { project: '同名' }),
+    task('y', { project: '同名' }),
+    task('z', { project: '' }),
+  ] })
+  assert.equal(view.projectCount, 1)
+  assert.deepEqual(view.workspaces.map((row) => row.key).sort(), ['', '同名'])
+  assert.equal(view.workspaces.find((row) => row.key === '').label, '未归属项目')
+})
+
+check('项目归属：完成最多提示按项目名称合并不同工作区', () => {
+  const now = Date.UTC(2026, 10, 25, 12)
+  const tasks = ['a', 'b'].map((id) => task(id, { project: 'Demo', workspaceKey: id, workspaceTitle: id, completedAt: now - 1000 }))
+  const hints = calendarHints(tasks, now, null)
+  assert.ok(hints.some((row) => row.text === '完成最多：Demo（2 件）'))
+})
+
+check('缺项目不推断，未归属不计项目数；名称不与展示桶冲突', () => {
+  const view = buildInsight({ tasks: [
+    task('x', { project: ' __none__ ' }), task('y', { project: '__none__' }),
+    task('z', { project: undefined, workspaceTitle: '不能推断' }), task('empty', { project: '' }),
+  ] })
+  assert.equal(view.projectCount, 1)
+  assert.equal(view.totals.projects, 1)
+  assert.equal(view.kpis[0].note.startsWith('1 个项目'), true)
+  assert.deepEqual(view.workspaces.map((row) => row.key).sort(), ['', '__none__'])
+  assert.equal(view.workspaces.find((row) => row.key === '__none__').total, 2)
+  const now = new Date('2026-11-11T10:00:00+08:00').getTime()
+  assert.equal(calendarHints([{ id: 'old', completedAt: now - 1000, workspaceTitle: '不能推断' }], now, null).some((row) => row.key === 'workspace'), false)
+  const many = buildInsight({ tasks: Array.from({ length: 18 }, (_, i) => task(`p${i}`, { project: `P${i % 9}` })).concat(task('none', { project: '' })) })
+  assert.equal(many.projectCount, 9)
+  assert.equal(many.workspaces.at(-1).label, '其他项目及未归属任务')
 })
 
 /* ---------------- 关系概览 ---------------- */
@@ -382,6 +432,7 @@ check('大量任务（500 条 / 200 条关系）也能算，且状态和守恒',
     done: i % 3 === 0,
     blocked: i % 7 === 0 && i % 3 !== 0,
     suspended: i % 11 === 0,
+    project: `P${i % 9}`,
     workspaceKey: `w${i % 9}`,
     workspaceTitle: `P${i % 9}`,
     running: i % 37 === 0,
@@ -658,9 +709,9 @@ check('calendarHints：周对比 / 最忙一天 / 最近动静（最多 3 条）
   const day = 86_400_000
   const base = startOfDay(NOW)
   const tasks = [
-    { id: 'a', completedAt: base - 1 * day + 1000, workspaceTitle: '项目A' },
-    { id: 'b', completedAt: base - 2 * day + 1000, workspaceTitle: '项目A' },
-    { id: 'c', completedAt: base - 8 * day + 1000, workspaceTitle: '项目B' },
+    { id: 'a', completedAt: base - 1 * day + 1000, project: '项目A', workspaceTitle: '项目A' },
+    { id: 'b', completedAt: base - 2 * day + 1000, project: '项目A', workspaceTitle: '项目A' },
+    { id: 'c', completedAt: base - 8 * day + 1000, project: '项目B', workspaceTitle: '项目B' },
   ]
   const cal = calendarFromTasks(tasks, NOW, 30)
   const hints = calendarHints(tasks, NOW, cal)
@@ -674,7 +725,7 @@ check('calendarHints：周对比 / 最忙一天 / 最近动静（最多 3 条）
 
 check('calendarHints：没有日历数据时也能给出周对比 + 完成最多的项目', () => {
   const base = startOfDay(NOW)
-  const hints = calendarHints([{ id: 'x', completedAt: base - 1000, workspaceTitle: '项目C' }], NOW, null)
+  const hints = calendarHints([{ id: 'x', completedAt: base - 1000, project: '项目C', workspaceTitle: '项目C' }], NOW, null)
   const texts = hints.map((hint) => hint.text).join(' | ')
   assert.ok(texts.includes('本周完成 1 件'), texts)
   assert.ok(texts.includes('完成最多：项目C'), texts)

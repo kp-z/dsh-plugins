@@ -759,7 +759,8 @@ export function createOverviewPanel(deps) {
       const key = String(projectKey || '').replace(/^project:/, '')
       if (!key) return
       if (targetRow && targetRow.kind === 'group' && targetRow.ungrouped !== true) {
-        const row = tree && tree.byKey ? tree.byKey[`project:${key}`] : null
+        if (targetRow.configured === false) return
+        const row = tree && tree.byKey ? Object.values(tree.byKey).find((item) => item.kind === 'project' && item.id === key) : null
         runGroup({ action: 'add', id: targetRow.id, member: { key, label: row ? row.label : key } })
         return
       }

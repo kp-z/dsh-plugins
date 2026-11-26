@@ -211,5 +211,14 @@ check('默认元素工厂：字符串子节点转成文本节点', () => {
   assert.ok(collectText(node).includes('Session'), '会话标签应成为文本节点')
 })
 
+check('项目标签可见文字只有图标和名称，不显示项目Key或项目字段名前缀', () => {
+  const model = buildTaskCardModel({ id: 'p', title: '任务', project: 'Demo', customFields: [{ name: '项目', value: 'Demo' }, { name: '项目Key', value: 'hidden-id' }] }, { now: NOW })
+  const card = renderTaskCard(model, { el: h })
+  assert.ok(card.text.includes('📁 Demo'))
+  assert.ok(!card.text.includes('项目 Demo'))
+  assert.ok(!card.text.includes('项目Key'))
+  assert.ok(!card.text.includes('hidden-id'))
+})
+
 console.log('\ntaskCardView.mjs: ' + passed + ' passed, ' + failures.length + ' failed')
 if (failures.length) process.exit(1)

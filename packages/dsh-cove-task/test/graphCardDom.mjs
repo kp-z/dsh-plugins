@@ -73,15 +73,16 @@ check('签名：看得见的内容变了才变', () => {
   assert.equal(graphCardSignature(Object.assign({}, node, { x: 999, y: 999 })), base, '位置不该影响签名')
   assert.notEqual(graphCardSignature(Object.assign({}, node, { priority: 'P0' })), base)
   assert.notEqual(graphCardSignature(Object.assign({}, node, { sessionId: 'sess-2' })), base)
+  assert.notEqual(graphCardSignature(node, { project: 'Demo' }), graphCardSignature(node, { project: 'DSH' }), '项目名称变化要刷新卡片')
   assert.notEqual(graphCardSignature(Object.assign({}, node, { refs: { predecessors: [{}], successors: [] } })), base)
   /* 同一张卡的 foreignObject 高度会变；几何变了必须重建 DOM，不能沿用旧布局。 */
   assert.notEqual(graphCardSignature(Object.assign({}, node, { w: 420, h: 120 })), graphCardSignature(Object.assign({}, node, { w: 420, h: 156 })), '高度变化要进签名')
 })
-check('渲染：就是面板那张卡（.task + 标题 + 工作区）', () => {
+check('渲染：共用任务卡但不重复显示工作区 chip', () => {
   const { element } = buildGraphCardDom(node, { el })
   assert.equal(element.className, 'task')
   assert.ok(element.text.includes('排查访客地图无数据'))
-  assert.ok(element.text.includes('blog_dev'))
+  assert.ok(!element.text.includes('blog_dev'), '画布卡片不显示工作区名')
   assert.ok(element.text.includes('就绪'))
 })
 check('没有动作行：画布卡片只做展示，打开/聚焦交给点击与键盘', () => {

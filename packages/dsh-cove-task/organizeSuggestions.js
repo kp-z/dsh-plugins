@@ -13,6 +13,7 @@
  */
 
 import { updateRelations } from './relations.js'
+import { projectNameOf } from './src/overview/model.js'
 
 /** 置信度下限：阻塞性的 depends_on 要求更高（precision 优先）。 */
 export const MIN_CONFIDENCE = { depends_on: 0.75, derived_from: 0.6, temporal: 0.9 }
@@ -79,8 +80,6 @@ export function organizeBatchId(scope, at, windowMs = 3600_000) {
   return `sg:${scopeKeyOf(scope)}:${bucket}-${ms}${seq}`
 }
 
-const workspaceOfTask = (task) => str(task?.meta?.workspace) || str(task?.workspaceTitle) || str(task?.workspacePath) || ''
-
 /**
  * 取材：把范围内的任务压成给模型看的紧凑清单（受字符预算约束）。
  * 超预算时按「有关系的任务优先、其次时间新」保留，并声明「候选不完整」——不静默截断。
@@ -96,7 +95,6 @@ export function buildEvidencePack(input) {
     edgeCount.set(str(edge.from), (edgeCount.get(str(edge.from)) || 0) + 1)
     edgeCount.set(str(edge.to), (edgeCount.get(str(edge.to)) || 0) + 1)
   }
-  const fingerprint = (task) => JSON.stringify([task.id, str(task.title), str(task.description).slice(0, 160), task.done === true, workspaceOfTask(task)])
   const ranked = tasks
     .map((task) => ({
       task,
@@ -115,7 +113,7 @@ export function buildEvidencePack(input) {
       title: str(row.task.title).slice(0, 120),
       description: str(row.task.description).slice(0, 220),
       done: row.task.done === true,
-      workspace: workspaceOfTask(row.task).slice(0, 60),
+      project: projectNameOf(row.task).slice(0, 60),
       predecessors: arr(row.task.predecessors).map(str).slice(0, 6),
       successors: arr(row.task.successors).map(str).slice(0, 6),
       sources: arr(row.task.sourceTasks).map(str).slice(0, 6),
@@ -202,7 +200,8 @@ export function buildTemporalSuggestions(input) {
     if (task.done === true) continue
     const at = num(task.expectedAt, 0)
     if (!(at > 0)) continue
-    const project = str(task.projectKey) || str(task.workspaceKey) || str(task.meta?.workspace) || str(task.workspaceTitle)
+    const project = projectNameOf(task)
+    if (!project) continue
     const key = `${project}|open`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push({ task, at, done: false })
@@ -239,7 +238,8 @@ export function buildTemporalSuggestions(input) {
       if (task.done === true) continue
       const at = num(task.startedAt, 0) || num(task.createdAt, 0)
       if (!(at > 0)) continue
-      const project = str(task.projectKey) || str(task.workspaceKey) || str(task.meta?.workspace) || str(task.workspaceTitle)
+      const project = projectNameOf(task)
+      if (!project) continue
       const key = `${project}|started`
       if (!fallback.has(key)) fallback.set(key, [])
       fallback.get(key).push({ task, at })
@@ -349,8 +349,9 @@ export function buildHeuristicRelations(input) {
       if (task.done === true) continue
       const at = num(task.createdAt, 0)
       if (!(at > 0)) continue
-      const project = str(task.projectKey) || str(task.workspaceKey) || str(task.meta?.workspace) || str(task.workspaceTitle)
-      const key = project || '（未分组）'
+      const project = projectNameOf(task)
+      if (!project) continue
+      const key = project
       if (!groups.has(key)) groups.set(key, [])
       groups.get(key).push({ task, at })
     }

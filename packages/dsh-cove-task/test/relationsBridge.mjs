@@ -69,7 +69,7 @@ const tasks = [
   { id: 'c', title: 'Completed research', done: true, tasklistGuid: 'list' },
   { id: 'd', title: 'Publish', done: false, tasklistGuid: 'list' },
   { id: 'outside', title: 'Other project', done: false, tasklistGuid: 'other' },
-].map((task) => ({ ...task, members: [], customFields: [], meta: {} }))
+].map((task) => ({ ...task, project: task.tasklistGuid === 'list' ? 'Build Project' : 'Other Project', members: [], customFields: [], meta: {} }))
 await writeFile(join(DATA, 'state.json'), JSON.stringify({
   tasks,
   schedules: {},
@@ -247,6 +247,7 @@ try {
   await test('bound create tool forwards followUp/relations and rejects invalid GUID before CLI', async () => {
     const tool = app.tools.get('cove_task_create')
     assert.ok(tool.parameters.properties.followUp)
+    assert.equal(tool.parameters.properties.project.type, 'string')
     const before = await cliCalls()
     const normal = await tool.execute({ summary: 'Follow-up' }, { agent: { id: 'bound-session' } })
     assert.match(normal, /followUp=true/)
@@ -343,12 +344,13 @@ try {
   await test('successful followUp uses real mock CLI/bridge, creates GUID/source and preserves original binding', async () => {
     app.services.workspaceRegistry = { list: () => [{ id: 'workspace-new', title: 'New project', path: '/new-project', sessionIds: ['bound-session'] }] }
     const tool = app.tools.get('cove_task_create')
-    const result = await tool.execute({ summary: 'Follow-up success', followUp: true, predecessorIds: ['c'], reason: 'follow-up evidence' }, { agent: { id: 'bound-session' } })
+    const result = await tool.execute({ summary: 'Follow-up success', project: 'Explicit Project', followUp: true, predecessorIds: ['c'], reason: 'follow-up evidence' }, { agent: { id: 'bound-session' } })
     assert.doesNotMatch(result, /创建失败/)
     const state = await app.state()
     const created = state.tasks.find((task) => task.id === 'created-1')
     assert.ok(created)
     assert.equal(created.sessionId, null)
+    assert.equal(created.project, 'Explicit Project', 'tool string project parameter reaches creation and survives sync')
     assert.equal(created.workspaceId, 'workspace-new')
     assert.equal(created.workspaceTitle, 'New project')
     assert.equal(state.workspaceLinks['created-1'].id, 'workspace-new')

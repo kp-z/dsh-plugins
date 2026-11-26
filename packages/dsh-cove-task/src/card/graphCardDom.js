@@ -59,6 +59,7 @@ export function graphCardSignature(node, baseTask) {
     /* 完整任务带上之后，这些变了也要重建卡片 */
     t.start || '', t.end || '', t.schedule?.nextText || '', t.commitment?.expectedAt || 0,
     t.commitment?.syncState || '', t.sessionAlive === true, t.sessionUnread === true,
+    t.project || '', t.projectSyncError || '',
     t.listName || '', (t.docs || []).length, (t.members || []).length, (t.customFields || []).length,
   ])
 }
@@ -85,6 +86,7 @@ export function buildGraphCardDom(node, deps) {
     canStart: false,
     badges,
     actions: GRAPH_CARD_ACTIONS,
+    hiddenFieldNames: ['工作区'],
   })
   const element = renderTaskCard(model, {
     el: options.el,

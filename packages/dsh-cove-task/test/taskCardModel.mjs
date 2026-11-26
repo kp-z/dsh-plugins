@@ -174,5 +174,32 @@ check('画布上下文：canStart=false 时不给开工', () => {
   assert.equal(m.actions.some((a) => a.key === 'start'), false)
 })
 
+check('项目只显示图标和名称，旧项目Key不进入卡片', () => {
+  const fields = [{ name: '项目', value: 'Demo' }, { name: '项目Key', value: 'old-id' }, { name: '项目 key', value: 'old-id-2' }]
+  const task = { id: 'p', project: 'Demo', customFields: fields }
+  const model = build(task)
+  assert.deepEqual(model.chips.filter((chip) => chip.key === 'project').map((chip) => chip.label), ['📁 Demo'])
+  assert.ok(!model.chips.some((chip) => /项目Key|old-id|项目 Demo/.test(chip.label)))
+  assert.equal(fields.length, 3, '只调整展示，不删除任务原始字段')
+})
+check('旧卡片只带项目字段也使用图标；明确空项目不显示', () => {
+  const customFields = [{ name: '项目', value: 'Demo' }]
+  assert.equal(build({ id: 'p', customFields }).chips.find((chip) => chip.key === 'project').label, '📁 Demo')
+  assert.ok(!build({ id: 'p', project: '', customFields }).chips.some((chip) => chip.key === 'project'))
+  assert.ok(!build({ id: 'p', project: 'Demo' }, { hiddenFieldNames: ['项目'] }).chips.some((chip) => chip.key === 'project'))
+})
+
+check('项目写回失败在卡片中可见，不遮掉已有错误', () => {
+  const model = build({ id: 'p', error: '开工失败', projectSyncError: '飞书权限不足' })
+  assert.match(model.error, /开工失败/)
+  assert.match(model.error, /项目待同步：飞书权限不足/)
+})
+
+check('看板隐藏工作区 chip，普通任务卡保留切换入口', () => {
+  const task = { id: 'w', title: '任务', workspaceTitle: '[Demo] 后端工作区 A' }
+  assert.ok(build(task).chips.some((chip) => chip.key === 'workspace'))
+  assert.ok(!build(task, { hiddenFieldNames: ['工作区'] }).chips.some((chip) => chip.key === 'workspace'))
+})
+
 console.log('\ntaskCardModel.mjs: ' + passed + ' passed, ' + failures.length + ' failed')
 if (failures.length) process.exit(1)

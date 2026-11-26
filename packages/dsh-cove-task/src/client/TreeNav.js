@@ -92,7 +92,7 @@ export function createTreeNav(deps) {
       const stagger = Math.min(Math.max(Number(index) || 0, 0), 7)
       const isGroup = row.kind === 'group'
       const isProject = row.kind === 'project'
-      const canDrop = row.kind === 'all' || isGroup
+      const canDrop = row.kind === 'all' || (isGroup && (row.ungrouped || row.configured !== false))
       /* 缩进导轨：每层一条 1px 竖线（绝对定位，不占 flex 空间）—— 必须在 children 之前算，
          否则 TDZ（`Cannot access 'guides' before initialization`）。
          为什么要它：缩进只有 10px/层，比一个项目图标还窄，光靠 padding 看不出「谁属于谁」。 */
@@ -194,7 +194,7 @@ export function createTreeNav(deps) {
         draggable: isProject,
         title: `${KIND_LABEL[row.kind] || ''}：${label}`,
         onClick: () => { focusKey(row.key); if (typeof onSelect === 'function') onSelect(row) },
-        onDoubleClick: () => { if (isGroup && !row.ungrouped && typeof onRenameStart === 'function') onRenameStart(row) },
+        onDoubleClick: () => { if (isGroup && !row.ungrouped && row.configured !== false && typeof onRenameStart === 'function') onRenameStart(row) },
         onContextMenu: (event) => {
           event.preventDefault()
           focusKey(row.key)
@@ -210,18 +210,18 @@ export function createTreeNav(deps) {
         },
         onDragEnd: () => { if (typeof onDragKey === 'function') onDragKey('') },
         onDragOver: (event) => {
-          if (!canDrop) return
+          if (!canDrop) { if (isGroup) event.stopPropagation?.(); return }
           event.preventDefault()
           if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
           if (dropKey !== row.key && typeof onDropKey === 'function') onDropKey(row.key)
         },
         onDragLeave: () => { if (dropKey === row.key && typeof onDropKey === 'function') onDropKey('') },
         onDrop: (event) => {
-          if (!canDrop) return
+          if (!canDrop) { if (isGroup) event.stopPropagation?.(); return }
           event.preventDefault()
           let key = ''
           try { key = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '' } catch (error) { key = '' }
-          if (!key && dragKey) key = String(dragKey).replace(/^project:/, '')
+          if (!key && dragKey) key = (tree && tree.byKey && tree.byKey[dragKey] ? tree.byKey[dragKey].id : String(dragKey).replace(/^project:/, ''))
           if (typeof onDropKey === 'function') onDropKey('')
           if (key && typeof onDrop === 'function') onDrop(key, row)
         },
@@ -261,7 +261,7 @@ export function createTreeNav(deps) {
         event.preventDefault()
         if (typeof onSelect === 'function') onSelect(current)
       } else if (event.key === 'F2') {
-        if (current.kind === 'group' && !current.ungrouped && typeof onRenameStart === 'function') { event.preventDefault(); onRenameStart(current) }
+        if (current.kind === 'group' && !current.ungrouped && current.configured !== false && typeof onRenameStart === 'function') { event.preventDefault(); onRenameStart(current) }
       } else if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) && typeof onMenu === 'function') {
         event.preventDefault()
         const node = itemRefs.current[current.key]
@@ -274,7 +274,7 @@ export function createTreeNav(deps) {
       if (!dragKey) return
       event.preventDefault()
       if (typeof onDropKey === 'function') onDropKey('')
-      if (typeof onDrop === 'function') onDrop(String(dragKey).replace(/^project:/, ''), null)
+      if (typeof onDrop === 'function') onDrop((tree && tree.byKey && tree.byKey[dragKey] ? tree.byKey[dragKey].id : String(dragKey).replace(/^project:/, '')), null)
     }
 
     const items = []

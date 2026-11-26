@@ -205,3 +205,19 @@ export function workspaceKeyOf(task) {
   const label = str(t.workspaceTitle || t.workspaceName || t.meta?.workspace).trim()
   return label ? `name:${label}` : ''
 }
+
+/** 项目名是唯一身份。已有归属优先；目录/工作区前缀仅供首次补齐，不随工作区变化重算。 */
+export function projectOf(task, groups) {
+  const t = task && typeof task === 'object' ? task : {}
+  const saved = typeof t.project === 'string' ? t.project.trim() : str(t.project?.name).trim()
+  if (saved) return saved
+  const list = Array.isArray(groups) ? groups.filter((group) => group && typeof group === 'object') : []
+  const key = workspaceKeyOf(t)
+  const byMember = key ? list.find((group) => Array.isArray(group.members) && group.members.includes(key)) : null
+  if (byMember) return str(byMember.name).trim()
+  const label = str(t.workspaceTitle || t.workspaceName || t.meta?.workspace).trim()
+  const match = /^\s*\[([^\]]+)\]/.exec(label)
+  const name = match ? match[1].trim() : ''
+  const byName = name ? list.find((group) => str(group.name).trim().toLowerCase() === name.toLowerCase()) : null
+  return byName ? str(byName.name).trim() : name
+}

@@ -7,7 +7,7 @@
  * 跑法：node test/workspaceGroups.mjs
  */
 import assert from 'node:assert/strict'
-import { normalizeGroups, applyGroupAction, projectGroups } from '../workspaceGroups.js'
+import { normalizeGroups, applyGroupAction, projectGroups, projectOf } from '../workspaceGroups.js'
 
 let count = 0
 function ok(label, fn) {
@@ -156,6 +156,37 @@ ok('projectGroups：统计在场成员数，按总览页同一套 workspace key'
   assert.deepEqual(rows[0].members, ['/p/demo', 'id-2', 'name:前端', 'gone'])
   assert.deepEqual(projectGroups(null, tasks), [])
   assert.deepEqual(projectGroups(groups, null)[0].presentMembers, 0)
+})
+
+/* 项目只有唯一名称；目录的 id 和工作区 id 不充当项目属性。 */
+const Demo_GROUPS = [{ id: 'wg-demo', name: 'Demo', members: ['ws-a'], labels: {} }]
+
+ok('projectOf：已存项目名不随工作区变化', () => {
+  const task = { project: 'Demo', workspaceId: 'ws-new', workspaceTitle: '[DSH] 临时开发' }
+  assert.equal(projectOf(task, [{ id: 'g', name: 'DSH', members: ['ws-new'] }]), 'Demo')
+  assert.equal(projectOf({ project: ' Demo ' }, []), 'Demo')
+})
+ok('projectOf：上版本地对象只取名称，不继续保留项目ID', () => {
+  assert.equal(projectOf({ project: { id: 'old-uuid', name: 'Demo' } }, []), 'Demo')
+})
+ok('projectOf：目录首次补齐与方括号首次补齐得到同一名称', () => {
+  assert.equal(projectOf({ workspaceId: 'ws-a' }, Demo_GROUPS), 'Demo')
+  assert.equal(projectOf({ workspaceTitle: '[Demo]demo-scenepack' }, Demo_GROUPS), 'Demo')
+})
+ok('projectOf：未归属为空字符串，不编造项目', () => {
+  assert.equal(projectOf({ workspaceTitle: 'standalone-worktree' }, Demo_GROUPS), '')
+  assert.equal(projectOf(null, null), '')
+  assert.equal(projectOf({ project: '' }, []), '')
+})
+ok('projectOf：首次匹配目录时统一名称的大小写与首尾空白', () => {
+  assert.equal(projectOf({ workspaceTitle: '[demo] 工作区' }, Demo_GROUPS), 'Demo')
+  assert.equal(projectOf({ workspaceTitle: '[Demo2] 工作区' }, Demo_GROUPS), 'Demo2')
+})
+ok('projectOf：纯函数，不改目录或任务', () => {
+  const task = { workspaceId: 'ws-a' }
+  const snapshot = JSON.stringify([task, Demo_GROUPS])
+  projectOf(task, Demo_GROUPS)
+  assert.equal(JSON.stringify([task, Demo_GROUPS]), snapshot)
 })
 
 console.log(`\nWORKSPACE_GROUPS_OK：${count} 组断言通过`)
