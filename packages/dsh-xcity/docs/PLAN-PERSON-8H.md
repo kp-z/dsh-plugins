@@ -199,6 +199,8 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null
 - [x] 需求：72h 平均 e 73–76、h 48–53、s 39–43；最低 h 5–16、s 7–18（不再到 0）。
 - 已知取舍：吃饭暂时显示成 RestActivity（复用 rest 动作）；夜里睡在休息区（没有“家”），留给下一份计划。
 - 实测命令：`node tools/person-lab.mjs --hours 72`；24h 结果：work 12.5–31.3%、study 25–37.5%、sleep 28–33%、meal 3.5–6.1%、social 0–2.8%、walking 5.6–15%、idle <1%。
+- 7 天稳定：无 NaN/越界；hunger 最低 0–1（醒前最饿）、均值 45–50；休息区峰值 6/6；切换仍 0.9–1.0/h。
+- 单角色 72h：不报错；social 降到 0（没有第二个人，也没主动短信）——留给 H4 主动发短信。
 
 ### 3.8 风险与回滚
 - 风险：活动抖动、整天空转、站点死锁、meal 与 rest 站点选错。

@@ -168,7 +168,7 @@ const ALL_STATIONS: StationEntry[] = [...STATIONS, BREAKROOM, LOUNGE]
  */
 const SCENE: SceneEntry = {
   id: 'scene.office',
-  name: 'Microverse 办公室',
+  name: 'Microverse 办公室（含茶水间/休息区）',
   districts: DISTRICTS.map((d) => d.id),
   stations: ALL_STATIONS.map((s) => s.id),
   // 入场点：接待处门口（原版前台那一片）。
@@ -190,7 +190,7 @@ export const officePack: ContentPack = {
     id: 'pack.office',
     name: 'Microverse 原版办公室',
     description:
-      '把 Microverse 游戏自带的办公室场景搬过来：9 个房间（名字与描述是原版的中文）、24 个座位、一张整图底图。',
+      '把 Microverse 游戏自带的办公室场景搬过来：9 个房间（名字与描述是原版的中文）、24 个工位、茶水间/休息区 10 个座位、一张整图底图。',
     version: '1.0.0',
     schemaVersion: 1,
     requires: ['pack.pixel'],
