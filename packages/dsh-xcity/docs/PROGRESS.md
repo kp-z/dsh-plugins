@@ -11224,5 +11224,5 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - `Activity` 补 `purpose`（study/work…）与 `skill`；Agent 补 `activitySkill`，命令里的 skill 真正落到活动/事件上。
 - 完成事件载荷补 `kind`/`skill`/`purpose`；新增 `persona/study.ts` 的 `awardStudyXp`：技能名并集进 persona.skills、`addXp(1)`、同一 activityId 只结算一次。
 - `index.ts` 只对 `completed + purpose === 'study'` 结算；study 徽章固定 `SkillStudyActivity`（code 工位学习不再显示成 ProgrammerActivity）。
-- 证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP，skills 出现 `code`/`research`。
+- 证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP；72h 83 个事件 / 83 次结算 / 83 个唯一 id，每角色 6–13 XP；skills 出现 `code`/`research`。结算失败被 try/catch 挡住，不会带崩世界推进。
 - 已知限制：技能只记“会不会”，没有熟练度分级；技能反过来影响选站留给下一份计划。

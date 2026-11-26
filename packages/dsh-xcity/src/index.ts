@@ -866,15 +866,20 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const agent = world.agents.find((item) => item.id === agentId)
       if (agent === undefined) continue
       const key = agent.boundAgentId ?? agent.id
-      awardStudyXp(
-        personaStore,
-        key,
-        {
-          activityId: typeof payload.activityId === 'string' ? payload.activityId : '',
-          skill: typeof payload.skill === 'string' ? payload.skill : null,
-        },
-        studySeen,
-      )
+      try {
+        awardStudyXp(
+          personaStore,
+          key,
+          {
+            activityId: typeof payload.activityId === 'string' ? payload.activityId : '',
+            skill: typeof payload.skill === 'string' ? payload.skill : null,
+          },
+          studySeen,
+        )
+      } catch (error: unknown) {
+        // 写 persona 失败不能把这一步的世界推进带崩（hub.publish 是同步的）。
+        logger.warn('[xcity-study] 结算失败 agent=' + agent.id + '：' + String(error))
+      }
     }
   })
 

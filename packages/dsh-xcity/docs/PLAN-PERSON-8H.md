@@ -362,6 +362,8 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - [x] 面板/日志能看到“在学什么”：study 在 code 工位也显示 SkillStudyActivity / 学习（有投影测试）。
 - [x] 事件与结算解耦：`awardStudyXp` 纯函数 + 进程内 activityId 去重；同一活动不会加两次。
 - [x] 24h 真实仿真：37 个 study 完成事件；每角色 4–6 XP；技能并集出现 `code`/`research`（修复前只有 XP、skills 为空，因为活动没带 skill）。
+- [x] 72h：83 个 study 完成事件、83 次结算、83 个唯一 activityId（无重复）；每角色 6–13 XP，等级仍 1（不搞“1 小时 1 级”）。
+- [x] 写 persona 失败不会带崩世界推进：结算包在 try/catch 里（hub.publish 是同步的）。
 - 已知限制：技能只记“会不会”，没有熟练度分级；技能反过来影响选站留给下一份计划。
 
 ### 6.5 风险与回滚
@@ -480,4 +482,4 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 2026-11-27 03:05 · **H4 完成**。`sim/initiative.ts` 在 sim 里决定“想不想发”并写限频字段（07:00–23:00、3h 间隔、每人每天 ≤2、睡着/对话/手上有单不发）；`step` 发 `agent.initiative` 事件；`index.ts` 订阅事件、找角色会话、用唯一编号投递；tracker 登记项带 kind，和玩家短信回执分开。
   证据：`test/initiative.test.js` 9 条 + `test/deliver-initiative.test.js` 4 条 + 存档往返 1 条；全量 910 条，909 通过、1 跳过；72h 仿真（8 角色）37 条意图 / 4 天，单角色单日最多 2 条，07:00–22:00，无 <180 tick 间隔违例；单角色 48h：day0 22:19、day1 08:24/11:24、day2 07:54，间隔均 ≥3h。主动短信 prompt 也带上了当天经历（H3 的摘要），不是空泛的“在吗”。真机投递留 H7。
 - 2026-11-27 04:05 · **H5 完成**。`Activity` 带 `purpose`/`skill`，Agent 带 `activitySkill`；完成事件载荷补 kind/skill/purpose；新增 `persona/study.ts` 的 `awardStudyXp`（skills 并集 + 1 XP + activityId 去重），`index.ts` 只对 `purpose === 'study'` 结算；study 在 code 工位也显示 `SkillStudyActivity`。
-  证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP，skills 出现 `code`/`research`（修复前 skills 为空，因为活动没带 skill）。
+  证据：`test/study.test.js` 5 条 + 投影 1 条；全量 916 条，915 通过、1 跳过；24h 仿真 37 个 study 完成事件，每角色 4–6 XP；72h 83 个事件 / 83 次结算 / 83 个唯一 id，每角色 6–13 XP；skills 出现 `code`/`research`。
