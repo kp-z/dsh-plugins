@@ -61,6 +61,7 @@ export function endActivity(world: World, agent: Agent, status: 'completed' | 'i
   const activity = agent.activityId === undefined ? undefined : (world.activities ?? []).find((item) => item.id === agent.activityId)
   agent.activityId = undefined
   delete agent.activityKind
+  delete agent.activityPurpose
   delete agent.activityUntil
   delete agent.activityTicks
   if (activity === undefined) return null
@@ -103,6 +104,7 @@ export function syncActivities(world: World): Activity[] {
       live.endedLogSeq = nextLogSeq(world)
       agent.activityId = undefined
       agent.activityKind = undefined
+      agent.activityPurpose = undefined
       agent.activityUntil = undefined
       agent.activityTicks = undefined
       completed.push(live)

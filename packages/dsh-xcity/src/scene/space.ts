@@ -135,11 +135,13 @@ export function buildSceneSpace(input: BuildSceneSpaceInput): SceneSpace | null 
       footprint: cellRect(nav, cell.col, cell.row),
       // 底边 = 站点锚点的世界 z（渲染器以前就是这么算深度的，这里只是把它写进契约）。
       base: station.anchor.z,
-      slots: station.slots.map((slot) => ({ x: slot.x, z: slot.z })),
+      // R478：slots 是相对锚点的偏移（stationSlot 也这么算）；这里转成世界坐标，
+      // 否则审核会把"相对偏移"当绝对点，误报（也让前端拿到错误的吸附点）。
+      slots: station.slots.map((slot) => ({ x: station.anchor.x + slot.x, z: station.anchor.z + slot.z })),
     })
     for (const slot of station.slots) {
       slots += 1
-      const c = cellOf(nav, slot)
+      const c = cellOf(nav, { x: station.anchor.x + slot.x, z: station.anchor.z + slot.z })
       if (!walkable(nav, c.col, c.row)) slotsBlocked += 1
     }
   }

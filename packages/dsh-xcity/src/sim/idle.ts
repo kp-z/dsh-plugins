@@ -86,6 +86,14 @@ export function advanceIdle(world: World, behaviors: readonly IdleBehaviorPlan[]
 
   const tasksById = new Map(world.tasks.map((task) => [task.id, task]))
   for (const agent of world.agents) {
+    // R478：idle 却还挂着半截路径（中断/待命行为留下的）——清掉。
+    // 不清的话，`sim/life` 的 available() 会把它当成"正在走路"，
+    // 于是一个饿到 0 的人可以站在原地 17 小时等不到自派。
+    if (agent.state === 'idle' && agent.targetStation === null && agent.path.length > 0) {
+      agent.path = []
+      repaired.push(agent.id)
+      // 不 continue：清完路径继续走本 tick 的待命行为（否则永远轮不到踱步）。
+    }
     // R363：主动开会/休息驻留：到点散会，清站点，回 idle。
     if (agent.activityUntil !== undefined && (agent.state === 'talking' || agent.state === 'sleeping' || (agent.state === 'working' && agent.activityKind === 'work'))) {
       if (world.tick < agent.activityUntil) continue
@@ -94,6 +102,7 @@ export function advanceIdle(world: World, behaviors: readonly IdleBehaviorPlan[]
       agent.targetStation = null
       agent.path = []
       delete agent.activityKind
+      delete agent.activityPurpose
       delete agent.activityUntil
       stateChanged.push(agent.id)
       continue
@@ -175,8 +184,11 @@ export function advanceIdle(world: World, behaviors: readonly IdleBehaviorPlan[]
     // 那一单就得等他回来才派得出去（最坏一整个窗口 ≈ 12 秒）。所以"有活等着就别踱步"。
     const pacing =
       slot !== null && slot.active && slot.behavior.kind === 'pace' && !workWaiting
+    // R478：半径至少要有 3 步，否则 WALK_SPEED 提高后"踱步"变成原地挪一下，
+    // 渲染器永远看不到 walking（R69 的回归正是这么来的）。
+    const paceRadius = Math.max(slot?.behavior.radius ?? 0, WALK_SPEED * 3)
     const paceTarget = pacing
-      ? paceGoal(world.seed, agent.id, slot.index, home, slot.behavior.radius, (point) =>
+      ? paceGoal(world.seed, agent.id, slot.index, home, paceRadius, (point) =>
           world.nav === null ? true : isWalkable(world.nav, cellOf(world.nav, point)),
         )
       : null

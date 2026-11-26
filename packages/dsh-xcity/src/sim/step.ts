@@ -210,23 +210,41 @@ function ingest(
           startActivity(world, agent, { kind: 'visit', ticks: Math.max(5, Math.round(command.ticks)), trigger: command.trigger })
           break
         }
-        const station = world.stations.find((candidate) =>
+        // R478：调用方可以指定站点（吃饭去 breakroom、休息去休息位）；指定失效就退回能力搜索。
+        const preferred = command.stationId === undefined
+          ? undefined
+          : world.stations.find((candidate) =>
+              candidate.id === command.stationId &&
+              (places.length === 0 || candidate.placeId === placeId) &&
+              candidate.capabilities.some((capability) => wants.includes(capability)) &&
+              occupancyOf(world, candidate.id) < candidate.capacity)
+        const station = preferred ?? world.stations.find((candidate) =>
           (places.length === 0 || candidate.placeId === placeId) &&
           candidate.capabilities.some((capability) => wants.includes(capability)) && occupancyOf(world, candidate.id) < candidate.capacity)
         if (station === undefined) break
         const path = findPath(world.nav, agent.position, stationSlot(station, occupancyOf(world, station.id)))
-        if (path.length === 0) break
+        // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
+        // 用老字段承载，syncActivities 会在下一 tick 采纳成正式活动。
+        agent.activityKind = command.activity
+        // R478：用途标签（吃饭/睡觉/学习…）；不传就按命令类型推一个默认值。
+        agent.activityPurpose = command.purpose ?? (command.activity === 'meet' ? 'social' : command.activity === 'work' ? 'work' : command.activity === 'rest' ? 'rest' : undefined)
+        agent.activityTrigger = command.trigger
+        agent.activityTicks = Math.max(5, Math.round(command.ticks))
+        if (path.length === 0) {
+          // R478：已经在站点上（刚干完一轮、原地再开）——直接开始，
+          // 不要把命令丢掉；否则要等待命行为把人挪开，白白空转 90 tick。
+          agent.station = station.id
+          agent.targetStation = null
+          agent.state = command.activity === 'meet' ? 'talking' : command.activity === 'rest' ? 'sleeping' : 'working'
+          agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
+          break
+        }
         agent.state = 'walking'
         agent.station = null
         agent.targetStation = station.id
         agent.path = path
-        // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
-        // 用老字段承载，syncActivities 会在下一 tick 采纳成正式活动。
-        agent.activityKind = command.activity
-        agent.activityTrigger = command.trigger
-        agent.activityTicks = Math.max(5, Math.round(command.ticks))
-        // 走路时间不该算进干活时长：到站后由 movement 重新起算（见 arrive 分支）。
-        agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
+        // R478：走路时间不算进活动时长——到站后由 movement 按 activityTicks 起算。
+        agent.activityUntil = undefined
         break
       }
       case 'moveAgent': {

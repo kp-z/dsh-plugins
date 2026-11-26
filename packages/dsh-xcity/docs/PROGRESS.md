@@ -11192,3 +11192,12 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 五轮评审挑出的硬伤：缺执行指针；eat/study 新 kind 与“不加状态”自相矛盾；恢复率没按一天算账；H4 让 app 直接改世界（违反世界只经 step）；夜里睡歇脚点（不是站点）；H6 两人各挑站点会互等；H7 没有环境超时。
 - 基线提交 `bb1efc2`（短信回写/面板、删 gameMode、needs、自派作息）。定时提示词改为“至少 45 分钟、验收是下限、过验收后继续加固清单”。
 - 下一步：01:00 从 H2（需求驱动选择）开始。
+
+## 2026-11-27 01:25：H2 需求驱动的一天
+
+- `sim/life.ts` 新增 `chooseLife`：饿（<35）→ 吃饭；23:00–07:00 → 睡觉；累（<30）→ 小憩；社交（<35）→ 找人；上班 → 干活；其余 → 学习。有 ready 工单、正在忙、站点满员时一律让位。
+- 不新增 Activity kind/AgentState：吃饭/睡觉复用 `rest`，学习复用 `work + skill`，只用 `activityPurpose` 标签区分恢复方向；命令加 `stationId` 指定落点。
+- 内容：办公室补 `station.breakroom-01`（4 座）与 `station.lounge-01`（6 座），否则 8 个角色夜里一半没地方睡（实测需求到 0）。
+- 修正三处尺度问题：走路期间不计活动时长；已在站点上直接开始；`WALK_SPEED` 0.18→0.9（1 tick=1 分钟下，横穿办公室从 6.5 小时降到 78 分钟）。另修 idle 残留路径、pace 半径下限。
+- 证据：`test/life-choice.test.js` 9 条；全量 882 条，881 通过、1 跳过；`node tools/person-lab.mjs --hours 72` → sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、生活活动切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43，最低 h 5–16 / s 7–18。
+- 已知取舍：吃饭暂时显示成 RestActivity；夜里睡休息区（还没有“家”）。留给后续小时。

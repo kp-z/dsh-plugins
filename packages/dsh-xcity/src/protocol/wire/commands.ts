@@ -16,7 +16,7 @@
  * "字段不存在"和"字段存在但是 undefined"会变成两种类型，而它们过一遍 JSON 就不可区分了。
  * 用 `| null` 显式表达"这个字段这次没给值"。
  */
-import type { AgentRole } from '../../domain/types.js'
+import type { ActivityPurpose, AgentRole } from '../../domain/types.js'
 
 /** 一条世界命令。`kind` 是判别式。 */
 export type WorldCommand =
@@ -62,7 +62,7 @@ export type WorldCommand =
    */
   | { kind: 'moveAgent'; agentId: string; x: number; z: number }
   /** R364：把真实 subagent 的工具调用映射成世界动作（work/meet/rest/idle）。 */
-  | { kind: 'agentActivity'; agentId: string; activity: 'work' | 'meet' | 'rest' | 'visit' | 'idle'; ticks: number; skill?: 'code' | 'review' | 'research' | 'compute'; placeId?: string | undefined; trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined }
+  | { kind: 'agentActivity'; agentId: string; activity: 'work' | 'meet' | 'rest' | 'visit' | 'idle'; ticks: number; skill?: 'code' | 'review' | 'research' | 'compute'; placeId?: string | undefined; /** R478：指定去哪一站；不填就按能力挑第一个空位。 */ stationId?: string | undefined; /** R478：这次活动的用途；只影响需求恢复与日志。 */ purpose?: ActivityPurpose | undefined; trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined }
 
 /** 全部命令的 kind。用于校验与穷尽性检查。 */
 export const WORLD_COMMAND_KINDS = [

@@ -72,7 +72,9 @@ for (const [skill, stationId] of [
     assert.equal(agent.state, 'walking')
     assert.equal(agent.targetStation, stationId)
     assert.equal(agent.activityKind, 'work')
-    assert.equal(agent.activityUntil, startTick + 60)
+    // R478：走路期间不开始计时，到站后由 movement 按 activityTicks 起算。
+    assert.equal(agent.activityUntil, undefined)
+    assert.equal(agent.activityTicks, 60)
     assert.ok(agent.path.length > 0)
   })
 }
@@ -82,7 +84,8 @@ test('agentActivity work 不带 skill：退回 code 能力的工位', () => {
   assert.equal(agent.state, 'walking')
   assert.equal(agent.targetStation, 'desk')
   assert.equal(agent.activityKind, 'work')
-  assert.equal(agent.activityUntil, startTick + 60)
+  assert.equal(agent.activityUntil, undefined)
+  assert.equal(agent.activityTicks, 60)
 })
 
 test('agentActivity meet / rest：分别去会场与休息室，并带上对应 activityKind', () => {
@@ -109,14 +112,14 @@ test('agentActivity：没有能力匹配的站点时不挪人', () => {
   assert.deepEqual(agent.path, [])
 })
 
-test('agentActivity：activityUntil 至少 5 tick（ticks 过小也不许立刻散会）', () => {
+test('agentActivity：activityTicks 至少 5 tick（ticks 过小也不许立刻散会）', () => {
   const world = makeWorld()
   step(world, [{ kind: 'agentActivity', agentId: 'a', activity: 'work', ticks: 1 }])
-  assert.equal(world.agents[0].activityUntil, 10 + 5)
+  assert.equal(world.agents[0].activityTicks, 5)
 
   const another = makeWorld()
   step(another, [{ kind: 'agentActivity', agentId: 'a', activity: 'work', ticks: 0 }])
-  assert.equal(another.agents[0].activityUntil, 10 + 5)
+  assert.equal(another.agents[0].activityTicks, 5)
 })
 
 test('agentActivity idle：清掉活动标记与路径，不只清状态', () => {

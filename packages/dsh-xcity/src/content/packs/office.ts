@@ -106,6 +106,56 @@ const STATIONS: StationEntry[] = OFFICE_STATIONS.map((s) => {
 })
 
 /**
+ * R478：茶水间休息位。
+ *
+ * 原版地图的 24 把椅子都是工位/会议椅，没有“吃饭、歇一会儿”的落点；
+ * 于是“饿了/累了”在模型里只能站着。这里补一个 breakroom 站点——
+ * `kind: 'breakroom'` 与 `rest` 能力都已经存在，不新增概念。
+ */
+const BREAKROOM: StationEntry = {
+  id: 'station.breakroom-01',
+  name: '茶水间休息位',
+  kind: 'breakroom',
+  district: 'district.6',
+  anchor: { x: -12, z: -10 },
+  relativeTo: null,
+  // 8 个角色同时想吃饭时 2 个座位会排队饿死；茶水间按 4 个座位做。
+  capacity: 4,
+  capabilities: ['rest'],
+  props: [{ model: CHAIR, offset: { x: 0, z: 0 }, rotationY: 0 }],
+  // 座点是**相对锚点**的偏移（stationSlot 会加 anchor）；两者都要落在可走格上。
+  slots: [{ x: 0, z: 0 }, { x: 2, z: 0 }, { x: 4, z: 0 }, { x: 6, z: 0 }],
+}
+
+/**
+ * R478：东侧休息区。
+ *
+ * 茶水间只有 4 个座位，8 个角色夜里同时想睡时，一半人整夜站着（实测饥饿/体力到 0）。
+ * 这里再补 6 个休息位，让"睡觉"不必排队；仍然是 breakroom 这一既有 kind。
+ */
+const LOUNGE: StationEntry = {
+  id: 'station.lounge-01',
+  name: '东侧休息区',
+  kind: 'breakroom',
+  district: 'district.4',
+  anchor: { x: 20, z: -6 },
+  relativeTo: null,
+  capacity: 6,
+  capabilities: ['rest'],
+  props: [{ model: CHAIR, offset: { x: 0, z: 0 }, rotationY: 0 }],
+  slots: [
+    { x: 0, z: 0 },
+    { x: 2, z: 0 },
+    { x: 4, z: 0 },
+    { x: 6, z: 0 },
+    { x: 8, z: 0 },
+    { x: 10, z: 0 },
+  ],
+}
+
+const ALL_STATIONS: StationEntry[] = [...STATIONS, BREAKROOM, LOUNGE]
+
+/**
  * **这一局的装配单**：只引用原版办公室的 9 个分区与 24 个座位。
  *
  * 为什么需要它：`overrides` 只能**按 id 替换**条目，删不掉别人的。而基础包里有
@@ -120,7 +170,7 @@ const SCENE: SceneEntry = {
   id: 'scene.office',
   name: 'Microverse 办公室',
   districts: DISTRICTS.map((d) => d.id),
-  stations: STATIONS.map((s) => s.id),
+  stations: ALL_STATIONS.map((s) => s.id),
   // 入场点：接待处门口（原版前台那一片）。
   spawn: { x: -28, z: 12 },
   // 世界半边长 = 地图宽度的一半（74 / 2）。
@@ -147,7 +197,7 @@ export const officePack: ContentPack = {
     provides: ['districts', 'stations', 'maps', 'scenes'],
     overrides: [
       ...DISTRICTS.map((d) => `districts/${d.id}`),
-      ...STATIONS.map((s) => `stations/${s.id}`),
+      ...ALL_STATIONS.map((s) => `stations/${s.id}`),
       'maps/map.office',
       'scenes/scene.office',
     ],
@@ -156,6 +206,6 @@ export const officePack: ContentPack = {
     maps: [MAP],
     scenes: [SCENE],
     districts: DISTRICTS,
-    stations: STATIONS,
+    stations: ALL_STATIONS,
   },
 }

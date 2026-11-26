@@ -183,6 +183,14 @@ export interface AgentNeeds {
 /** 老存档没有 needs 时的补全值（不升存档版本）。 */
 export const DEFAULT_NEEDS: AgentNeeds = { energy: 80, hunger: 80, social: 80 }
 
+/**
+ * R478：这次活动在生活里的用途（只影响需求恢复与日志，不影响状态机）。
+ *
+ * 吃饭/睡觉都复用 `rest` 与 `sleeping` 状态；区分它们需要这一个标签，
+ * 否则"睡 8 小时"会被当成"吃 8 小时"，饥饿值直接满。
+ */
+export type ActivityPurpose = 'meal' | 'rest' | 'sleep' | 'social' | 'work' | 'study'
+
 /** 角色：一个真实 subagent 在小镇里的投影。 */
 export interface Agent {
   id: string
@@ -238,6 +246,8 @@ export interface Agent {
   activityUntil?: number | undefined
   /** 这次活动要干多少 tick（走到工位后才开始算，见 movement 的到站处理）。 */
   activityTicks?: number | undefined
+  /** R478：这次活动的用途（meal/sleep/social/study…）；只影响需求恢复与日志。 */
+  activityPurpose?: ActivityPurpose | undefined
   /** R477：内在状态（体力/饥饿/社交）。老存档可能没有，读的时候用 DEFAULT_NEEDS 补。 */
   needs?: AgentNeeds | undefined
   llm: AgentLlmRoute

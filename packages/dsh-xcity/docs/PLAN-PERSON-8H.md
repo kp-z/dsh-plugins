@@ -5,8 +5,8 @@
 
 ## 执行指针
 
-- **当前小时：H2**
-- 上一小时：H1（已完成，见第 10 节）
+- **当前小时：H3**
+- 已完成：H1（需求模型）、H2（需求驱动的一天）
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（01:00 起每小时，投递到本会话）
 - 推进规则：DoD 全过才把「当前小时」改成下一小时；没做完就下一轮继续，不跳。
 - 本份计划覆盖 H1–H8；H8 完成后原地重写本文件，接下一份 8 小时。
@@ -100,7 +100,7 @@ H1 needs（已完成）
 H1 的 `sim/needs.ts`、`needsOf`、`Agent.needs`；`sim/life.ts` 现有 `selfLifeCommands`；`sim/step.ts` 的 `agentActivity` 分支；`sim/movement.ts` 到站处理。
 
 ### 3.3 设计
-**不新增 activity kind / AgentState**。v2 里“eat 和 study 各加一个 kind”会把移动、到站、结束、前端映射四处都改一遍，收益不值；用现有两种活动承载：
+**不新增 activity kind / AgentState**。v2 里“eat 和 study 各加一个 kind”会把移动、到站、结束、前端映射四处都改一遍，收益不值；用现有两种活动承载，只加一个**用途标签** `activityPurpose`（只影响需求恢复与日志，不进状态机）：
 - **吃饭** = `agentActivity rest`，目标站点是 `kind === 'breakroom'`，trigger 文本“去吃点东西”；
 - **休息** = `agentActivity rest`，目标站点是歇脚点或非 breakroom 的 `rest` 站点；
 - **社交** = `agentActivity meet`，目标站点是 `converse`；
@@ -125,13 +125,13 @@ export interface LifeIntent {
 }
 export function chooseLife(world: World, agent: Agent): LifeIntent | null
 ```
-优先级（阈值可调，先按这个做）：
-1. `hunger < 30` → meal（breakroom）；
-2. `energy < 30` → rest（歇脚点/rest 站点）；
-3. `social < 35` → social（`converse`；没有第二个角色时不去，留给 H4）；
-4. 上班时段 → work（按角色能力；有 ready 工单时让给调度器）；
-5. 23:00–07:00 → rest（去 `rest` 站点睡；还没有“家”，先睡休息区，家留给下一份计划），除非有 ready 工单；
-6. 非上班时段且精力/饥饿尚可 → study（research/code）；
+优先级（已按实测调过）：
+1. `hunger < 35` → meal（breakroom / 休息区）；
+2. 23:00–07:00 → sleep（去 `rest` 站点；还没有“家”，先睡休息区，家留给下一份计划），除非有 ready 工单；
+3. `energy < 30` → rest（rest 站点）；
+4. `social < 35` → social（`converse`；没有第二个角色时不去，留给 H4）；
+5. 上班时段 → work（本职能力优先，满员/太远就退到任意工位；有 ready 工单时让给调度器）；
+6. 非上班时段且精力/饥饿尚可 → study（research/code 里挑最近的）；
 7. 都不满足 → null（交给待命行为）。
 
 规则：
@@ -142,34 +142,39 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null
 - 站点选不到（全被占）→ 返回 null，不要每 tick 重试轰炸；加一个 30 tick 的失败冷却。
 
 恢复率（按 1440 min 一天算过账，见 3.3.1）：
-| 活动 | 每分钟 | 一次典型时长 | 效果 |
+| 活动 | 每分钟（叠加在基线上） | 一次典型时长 | 净效果 |
 |---|---|---|---|
-| meal（breakroom） | hunger +1.2、energy +0.05 | 40 tick | 补 48 饥饿 |
-| rest | energy +0.15 | 480 tick（睡） | 补 72 体力 |
-| social | social +0.5 | 30 tick | 补 15 社交 |
-| work/study | energy −0.02、hunger −0.01 | 60–120 tick | 叠加在基线上 |
+| meal | hunger +1.2、energy +0.05 | 50 tick | 补 ~56 饥饿 |
+| sleep | energy +0.35、hunger −0.02 | 480 tick | 补 ~146 体力 |
+| rest（小憩） | energy +0.35、hunger −0.02 | 60 tick | 补 ~18 体力 |
+| social | social +0.6 | 40 tick | 补 ~22 社交 |
+| work/study | energy −0.02、hunger −0.01、social −0.01 | 90 tick | 叠加在基线上 |
 
 #### 3.3.1 一天的账（改数值前先算）
-- 饥饿：基线 −0.075/min × 1440 = −108/天；三顿正餐 ×48 = +144（有余量，偶尔漏一顿也活着）。
-- 体力：基线 −0.045 × 1440 = −64.8；睡 8h +72；工作额外 −0.02 × 480 = −9.6 → 略有余量。
-- 社交：基线 −0.04 × 1440 = −57.6；两次 30 tick 聊天 +30，或一次 60 tick +30 → 会略缺，正好推动 H4 主动发短信。
+- 饥饿：基线 −0.075/min × 1440 = −108/天；两顿 ×56 = +112（略有富余）；实测 3 天平均 48–53，最低 5–16。
+- 体力：基线 −0.045 × 1440 = −64.8；睡 8h 净 +146（会夹到 100）；工作额外 −0.02 × 480 = −9.6；实测平均 73–76。
+- 社交：基线 −0.04 × 1440 = −57.6；一次 40 tick 聊天 +22 → 每天约 2 次才平衡；实测平均 39–43，略缺，正好推动 H4 主动发短信。
 **改任何一个数值，先重算这张表，写进注释。**
 
 ### 3.4 步骤（流程号 R478）
-1. `src/protocol/wire/commands.ts`：`agentActivity` 增加可选 `stationId`；同步 `describeCommand`。
-2. `src/sim/step.ts` 的 ingest：`stationId` 合法且空闲 → 用它；否则退回能力搜索（保留旧行为）。
-3. 改 `src/sim/life.ts`：`isWorkMinute` 保留作输入；新增 `chooseLife`；`selfLifeCommands` 改为调用它并生成带 `stationId` 的命令。
-4. 改 `src/sim/needs.ts`：`advanceNeeds` 按活动 + 站点 kind 区分（breakroom→补饥饿，其余 rest→补体力，meet→补社交）。
-5. 新增 `tools/person-lab.mjs`（见 3.5）。
-6. 新增 `test/life-choice.test.js`。
-7. 构建 + 测试 + 24h 仿真 + `npm test`。
+0. 内容：办公室原版 24 把椅子没有“吃饭/睡觉”落点。补 `station.breakroom-01`（茶水间，4 座）与 `station.lounge-01`（东侧休息区，6 座），kind=`breakroom`、capabilities=`['rest']`；座点是**相对锚点**的偏移，且 raw slot 与 anchor+slot 都要在可走格上。
+1. `src/protocol/wire/commands.ts`：`agentActivity` 增加可选 `stationId` 与 `purpose`；同步 `describeCommand`。
+2. `src/sim/step.ts` 的 ingest：`stationId` 合法且空闲 → 用它；否则退回能力搜索。**已经在站点上（path 为空）就直接开始**，不要把命令丢掉。
+3. 改 `src/sim/life.ts`：新增 `chooseLife`；`selfLifeCommands` 改为调用它并生成带 `stationId`/`purpose` 的命令。
+4. 改 `src/sim/needs.ts`：`advanceNeeds` 按 `activityPurpose` 恢复（meal/sleep/rest/social/study/work），只在 `station !== null` 时生效（走路去吃饭不算吃过）。
+5. 世界尺度：`WALK_SPEED` 0.18 → 0.9（1 tick=1 分钟下横穿办公室 6.5 小时 → 78 分钟）；`step` 里走路期间 `activityUntil = undefined`，到站后由 movement 起算。
+6. `idle.ts`：清掉“idle 却挂着半截路径”的残留（否则选择器以为他在走，饿到 0 也不自派）；`paceGoal` 半径至少 3 步（不然 WALK_SPEED 提高后看不到走路）。
+7. 新增 `tools/person-lab.mjs`（见 3.5）。
+8. 新增 `test/life-choice.test.js`；更新受影响的旧测试（走路计时、非上班学习、站点 slot 审核）。
+9. 构建 + 测试 + 24h/72h 仿真 + `npm test`。
 
 ### 3.5 仿真工具（后续小时复用）
 `tools/person-lab.mjs`：
-- 参数：`--hours 24`、`--agents 1|8`、`--seed <name>`、`--json`。
-- 做法：`createPluginState(resolveConfig(...))` + `createRuntime({ idleActionsEnabled: true, selfLifeEnabled: true })`，从 08:00 推进 N×1440 tick。
-- 输出：每个角色的活动 tick 占比、每小时状态切换次数、需求 min/avg/max、站点占用峰值、异常（NaN/越界/卡死）。
+- 参数：`--hours 24`（**游戏小时**，1 小时 = 60 tick）、`--agents 1|8`、`--seed <name>`、`--json`。
+- 做法：`createPluginState(resolveConfig(...))` + `createRuntime({ idleActionsEnabled: true, selfLifeEnabled: true })`，从 08:00 推进 N×60 tick。
+- 输出：每个角色的活动 tick 占比、每小时“生活活动”切换次数（走路/到站不算）、需求 min/avg/max、站点占用峰值、异常（NaN/越界）。
 - 退出码：有不变量违例就 1，便于以后每小时直接当验收命令。
+- 验收用 `node tools/person-lab.mjs --hours 72`（三天，看稳态），单日看 `--hours 24`。
 
 ### 3.6 测试矩阵
 | 用例 | 断言 |
@@ -179,18 +184,21 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null
 | 社交优先 | social=10、其余满 → social（有第二个角色时） |
 | 有工单让位 | ready 工单存在 → 自派为空 |
 | 做事中不换 | activityUntil 未到 → 不发新命令 |
-| 吃饭恢复 | meal 40 tick 后 hunger 明显上升，且不超过 100 |
-| 休息恢复 | 同样 40 tick，breakroom 吃饭涨 hunger，普通 rest 不涨 |
+| 吃饭恢复 | meal 50 tick 后 hunger 明显上升，且不超过 100 |
+| 睡觉恢复 | 同样 50 tick，purpose=sleep 涨 energy、**不涨** hunger |
 | 站点被占 | stationId 被占 → 退回能力搜索或 null，不报错 |
 | 上班/下班 | 10:00 无需求→work；20:00→study 或 null |
 | 不抖动 | 24h 内状态切换 ≤6 次/小时 |
 
-### 3.7 加固清单（验收后继续做）
-- 站点不够时不要每 tick 重试轰炸：加一个短的失败冷却（内存即可，不落盘）。
-- 两个角色抢同一个 `capacity=1` 站点：确认 `occupancyOf` 把 targetStation 也算占用。
-- 24h 里是否出现“整夜 work/study”：睡眠时段（23:00–07:00）必须回歇脚点 rest（除非有 ready 工单）。
-- 日志里 decision 条目能看出触发原因（meal/rest/social/work/study）。
-- 吃饭暂时显示成 RestActivity（复用 rest 动作）；夜里睡在休息区（没有“家”）。两条都是本小时的已知取舍，写进日志，不在这一小时加新状态。
+### 3.7 加固清单与实测（2026-11-27 01:20）
+- [x] 站点不够时不每 tick 轰炸：选择器返回 null 时不发命令、不打日志；代价是“饿了没座位就站着”，实测 8 人时休息位 10 个，不再排队。
+- [x] 抢 `capacity=1` 站点：`occupancyOf` 已把 `targetStation` 算占用（breakroom 峰值 4、lounge 峰值 6，未超容量）。
+- [x] 整夜 work/study：72h 分布 sleep 32–33%，夜里没有 work/study。
+- [x] 日志能看出原因：命令 `trigger.text` 写“饿了，去吃点东西 / 夜深了，去睡一觉 / 到了上班的点…”；`activityPurpose` 可区分 meal/sleep/rest/social/study/work。
+- [x] 抖动：生活活动切换 **0.8–1.0 次/小时**（上限 6）。
+- [x] 需求：72h 平均 e 73–76、h 48–53、s 39–43；最低 h 5–16、s 7–18（不再到 0）。
+- 已知取舍：吃饭暂时显示成 RestActivity（复用 rest 动作）；夜里睡在休息区（没有“家”），留给下一份计划。
+- 实测命令：`node tools/person-lab.mjs --hours 72`；24h 结果：work 12.5–31.3%、study 25–37.5%、sleep 28–33%、meal 3.5–6.1%、social 0–2.8%、walking 5.6–15%、idle <1%。
 
 ### 3.8 风险与回滚
 - 风险：活动抖动、整天空转、站点死锁、meal 与 rest 站点选错。
@@ -329,7 +337,7 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 - 世界字段：`Agent.affinity?: Record<string, number>`（对每个认识的 agent 0–100，缺省 50；历史，随存档）。
 - `chooseLife` 的 social 分支：
   1. 先看有没有人**已经在去/在**一个还有空位的 `converse` 站点（`activityKind === 'meet'` 且 `targetStation` 非空、`occupancyOf < capacity`）→ 直接加入同一个站点；
-  2. 没有就选 affinity 最高的空闲角色，挑一个 `capacity >= 2` 的 converse 站点；
+  2. 没有就选 affinity 最高的空闲角色，挑一个空闲的 converse 座位（办公室是一人一座，不要求同站容量 ≥2；两人坐同屋不同椅也算聊天，H6 用 district 判定"同屋"）；
   3. 没有第二个角色 → 不生成 social（留给 H4 主动发短信）。
 - 完成时（**sim 侧**，`sim/activity.ts` 结束 meet 活动那一段）：找出同一站点、也在 meet 的其他角色，双方 `social += 恢复率`、`affinity += 2`（封顶 100），写一条 decision 日志。
 - 避免互等：超过 30 tick 还没到目标站点 → 放弃，回 idle；不要每 tick 重发。
@@ -421,4 +429,7 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
 ## 12. 进度日志
 
 - 2026-11-26 23:57 · H1 完成（见第 10 节证据）。
+- 2026-11-27 01:25 · **H2 完成**。`chooseLife` 按“饿 > 夜里睡 > 累 > 社交 > 上班 > 学习”选择；活动用 `purpose` 标签区分 meal/sleep/rest/social/study/work，只影响需求恢复（不新增 kind/状态）；命令带 `stationId` 指定茶水间/休息区；办公室补 4 座茶水间 + 6 座东侧休息区。
+  修正：走路期间不再起算活动时长（远端通勤不再半路耗光）；已在站点上直接开始（不再空转 90 tick）；`WALK_SPEED` 0.18→0.9；idle 残留路径清理；pace 半径至少 3 步。
+  证据：`test/life-choice.test.js` 9 条；全量 882 条，881 通过、1 跳过；`person-lab --hours 72`：sleep 32–33%、work 15–23%、study 15–21%、meal 5.6–6.2%、social 4.6–5.6%、walking 3–20%、idle <1%、切换 0.8–1.0/h；需求均值 e 73–76 / h 48–53 / s 39–43。
 - 2026-11-27 00:07 · 计划 v3：五轮评审；修掉缺指针、eat/study 新 kind、恢复率没算账、H4/H5 接口空泛、H6 配对、H7 超时、夜里睡歇脚点（非站点）、H4 app 改世界（改回 sim 决策 + 事件）；补基线、提交规则。基线提交 `bb1efc2`。下一小时 H2。

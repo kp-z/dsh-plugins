@@ -52,10 +52,15 @@ test('上班时段：空闲角色自己发起去工位干活，来源标记为 s
   assert.ok(walking.length > 0, '至少有人已经在去工位路上')
 })
 
-test('非上班时间不自己排活；有 ready 工单时把人留给调度器', () => {
+test('夜里自己睡觉；有 ready 工单时把人留给调度器', () => {
   const night = makeWorld()
-  night.tick = 21 * 60
-  assert.deepEqual(selfLifeCommands(night), [])
+  night.tick = 2 * 60
+  const sleep = selfLifeCommands(night)
+  assert.ok(sleep.length > 0, '夜里应当有人去睡')
+  for (const command of sleep) {
+    assert.equal(command.activity, 'rest')
+    assert.equal(command.purpose, 'sleep')
+  }
 
   const busy = makeWorld()
   busy.tick = 10 * 60
