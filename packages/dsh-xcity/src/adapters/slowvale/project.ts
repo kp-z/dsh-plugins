@@ -32,8 +32,8 @@ export interface ProjectOptions {
   startDate: string
   /** 只暴露一个地点（调试用：排除多场景互相干扰）。 */
   singlePlace?: boolean
-  /** 客户端请求的 after_seq：快照 cursor.seq 不能小于它，否则前端判"没覆盖这次切换"。 */
-  afterSeq?: number
+  /** 桥提供的实时水位；独立投影没有连接时使用世界 tick。 */
+  realtimeSeq?: number | undefined
   /** 短信信号：最后一条消息行号与未读数（前端靠它们判断要不要重拉线程）。 */
   phone?: { rowId: number; unread: number } | undefined
 }
@@ -151,7 +151,7 @@ function activeActivityOf(world: WorldLike, agent: WorldAgentLike, startDate: st
   }
 }
 
-function publicStatusOf(world: WorldLike, agent: WorldAgentLike, startDate: string): Record<string, unknown> {
+export function publicStatusOf(world: WorldLike, agent: WorldAgentLike, startDate: string): Record<string, unknown> {
   const activity = activeActivityOf(world, agent, startDate)
   return activity === undefined ? { status: 'offline' } : { status: 'online', active_activity: activity }
 }
@@ -347,7 +347,7 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     scene,
     world_id: opts.worldId,
     protocol_version: SLOWVALE_PROTOCOL_VERSION,
-    cursor: { epoch: epochOf(world), seq: world.tick },
+    cursor: { epoch: epochOf(world), seq: opts.realtimeSeq ?? world.tick },
     viewer_role_id: viewerAgent?.id ?? opts.viewerRoleId,
     // 快照与 /game/logs/recent 必须报同一个 head：前端靠它对齐日志游标，不一致会被当成整体重同步。
     feed_head_record_entry_id: feedHeadOf(world),
@@ -435,9 +435,7 @@ export function projectScene(
   }
   return {
     world_id: opts.worldId,
-    // cursor.seq 取 max(world.tick, after_seq)：前端只认「seq 覆盖了它请求的位置」，
-    // envelope 的 seq 与 world.tick 是两个计数器，直接给 world.tick 会被判不覆盖。
-    cursor: { epoch: epochOf(world), seq: Math.max(world.tick, opts.afterSeq ?? 0) },
+    cursor: { epoch: epochOf(world), seq: opts.realtimeSeq ?? world.tick },
     tick_marker: 'tick-' + String(world.tick),
     scene,
     role_public_statuses: statuses,

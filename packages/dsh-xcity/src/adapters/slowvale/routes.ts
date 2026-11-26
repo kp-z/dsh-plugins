@@ -40,6 +40,7 @@ export interface RouteContext {
   applyDirective?: ((roleId: string, text: string) => boolean) | null
   /** SSE 通道的当前连接数（给诊断端点用）。 */
   streamClients?: () => number
+  realtimeSeq?: () => number
 }
 
 /** 短信消息 → 前端字段（前端的行号靠它判断有没有新消息）。 */
@@ -248,7 +249,7 @@ export async function handleApi(
       sendJson(res, 503, { detail: { code: 'no_world', message: '世界还没起来' } })
       return true
     }
-    sendJson(res, 200, projectSnapshot(world, { ...ctx.opts, phone: ctx.sms.signal() }))
+    sendJson(res, 200, projectSnapshot(world, { ...ctx.opts, phone: ctx.sms.signal(), realtimeSeq: ctx.realtimeSeq?.() }))
     return true
   }
   if (path === '/game/state/scene') {
@@ -258,9 +259,8 @@ export async function handleApi(
     }
     // 前端请求会带 ?scene=<place_id>；照它回，否则它判「快照没覆盖这次切换」并整体重同步
     const requested = url.searchParams.get('scene')
-    const rawAfter = Number(url.searchParams.get('after_seq') ?? '0')
     const baseOpts = requested === null ? ctx.opts : { ...ctx.opts, scene: requested }
-    sendJson(res, 200, projectScene(world, { ...baseOpts, phone: ctx.sms.signal(), afterSeq: Number.isFinite(rawAfter) ? rawAfter : 0 }))
+    sendJson(res, 200, projectScene(world, { ...baseOpts, phone: ctx.sms.signal(), realtimeSeq: ctx.realtimeSeq?.() }))
     return true
   }
   // ── 短信：线程 / 详情 / 发送 ─────────────────────────────────────────────

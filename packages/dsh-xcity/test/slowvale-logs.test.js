@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { gunzipSync } from 'node:zlib'
 
 import { logsOf } from '../lib/adapters/slowvale/logs.js'
 import { createSlowvaleBridge } from '../lib/adapters/slowvale/server.js'
@@ -237,6 +238,67 @@ test('持有 SSE 的客户端可在日志水位变化后按游标补拉', async 
     const query = new URLSearchParams({ role_id: 'agent-1', realtime_epoch: logSignal.cursor.epoch, after_record_entry_id: '0' })
     const page = await (await fetch(root + 'logs/catch-up?' + query)).json()
     assert.deepEqual(page.entries.map((entry) => entry.phase.items[0].lifecycle), ['start', 'complete'])
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
+    await bridge.close()
+  }
+})
+
+test('同一 SSE 连接获得活动开始和结束徽章，无整页重同步', async () => {
+  const role = { id: 'agent-1', name: '阿金' }
+  const world = { id: 'w1', name: '测试', tick: 40, agents: [role], activities: [] }
+  const bridge = await createSlowvaleBridge({
+    host: '127.0.0.1', port: 0, assetsDir: '.', pushMs: 20,
+    account: { email: 'test@example.invalid', password: 'test' },
+    opts: { worldId: 'w1', viewerRoleId: role.id, place: 'company', startDate: base.startDate },
+    getWorld: () => world,
+  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 3000)
+  try {
+    const stream = await fetch('http://127.0.0.1:' + bridge.port + '/api/game/stream', { signal: controller.signal })
+    let buffer = ''
+    let previous
+    let activeCount = 0
+    for await (const chunk of stream.body.pipeThrough(new TextDecoderStream())) {
+      buffer += chunk
+      let end
+      while ((end = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, end)
+        buffer = buffer.slice(end + 2)
+        if (!frame.startsWith('event: ')) continue
+        const [name, body] = frame.split('\n')
+        const data = JSON.parse(body.slice(6))
+        if (name === 'event: connected') {
+          const scene = await (await fetch('http://127.0.0.1:' + bridge.port + '/api/game/state/scene?scene=company')).json()
+          assert.equal(scene.cursor.epoch, data.cursor.epoch)
+          assert.ok(scene.cursor.seq < world.tick, '场景不能用世界 tick 跳过后续状态增量')
+          role.activityId = 'act-7'
+          world.activities.push(activity({ status: 'active', taskAttemptId: 'attempt-1' }))
+        } else {
+          assert.equal(name, 'event: update')
+          assert.deepEqual(data.prev, previous)
+        }
+        previous = data.cursor
+        if (data.kind !== 'state') continue
+        const update = JSON.parse(gunzipSync(Buffer.from(data.payload_gz, 'base64')).toString())
+        if (update.part !== 'role_public_status') continue
+        assert.equal(update.key, role.id)
+        assert.deepEqual(data.route, { world_id: 'w1', broadcast: true, role_ids: [], scenes: [] })
+        if (update.payload.status === 'online') {
+          activeCount += 1
+          assert.equal(update.payload.active_activity.description, '干活')
+          assert.equal(update.payload.active_activity.duration_seconds, undefined)
+          delete role.activityId
+        } else {
+          assert.equal(activeCount, 1)
+          assert.deepEqual(update.payload, { status: 'offline' })
+          return
+        }
+      }
+    }
+    assert.fail('没有收到活动结束增量')
   } finally {
     clearTimeout(timer)
     controller.abort()

@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { debugScript } from './debug.js'
-import { epochOf, feedHeadOf, projectPhone, projectScene, projectSnapshot, type ProjectOptions } from './project.js'
+import { epochOf, feedHeadOf, projectPhone, projectScene, projectSnapshot, publicStatusOf, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
 import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat } from './visual.js'
@@ -141,6 +141,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     token: () => localToken,
     log,
     streamClients: () => clients.size,
+    realtimeSeq: () => envelopeSeq,
     // 这个字段之前漏了：BridgeOptions 收了 applyDirective，却没传给 RouteContext，
     // 于是 ctx.applyDirective 永远是 undefined，短信指令这条路静默失效。
     applyDirective: options.applyDirective ?? null,
@@ -213,7 +214,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
    * - place_runtime 的 payload.place_id 必须等于 key；
    * - place_topology 的 payload.id 必须等于 key。
    */
-  const pushStatePart = (part: string, key: string, payload: Record<string, unknown>, route: { role_ids: string[]; scenes: string[] }): void => {
+  const pushStatePart = (part: string, key: string, payload: Record<string, unknown>, route: { role_ids: string[]; scenes: string[]; broadcast?: true }): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
     envelopeSeq += 1
@@ -335,6 +336,27 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     )
   }
 
+  let statusEpoch: string | null = null
+  let activeStatuses = new Map<string, string>()
+  const pushActivityChanges = (world: WorldLike): void => {
+    const epoch = epochOf(world)
+    if (statusEpoch !== epoch) activeStatuses.clear()
+    statusEpoch = epoch
+    const broadcast = { broadcast: true as const, role_ids: [], scenes: [] }
+    const next = new Map<string, string>()
+    for (const agent of world.agents) {
+      const status = publicStatusOf(world, agent, options.opts.startDate)
+      if (status['active_activity'] === undefined) continue
+      const signature = JSON.stringify(status)
+      next.set(agent.id, signature)
+      if (activeStatuses.get(agent.id) !== signature) pushStatePart('role_public_status', agent.id, status, broadcast)
+    }
+    for (const id of activeStatuses.keys()) {
+      if (!next.has(id)) pushStatePart('role_public_status', id, { status: 'offline' }, broadcast)
+    }
+    activeStatuses = next
+  }
+
   let lastPhone = sms.signal()
   const pushPhoneIfChanged = (): void => {
     const signal = sms.signal()
@@ -389,7 +411,10 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         const world = options.getWorld()
         if (world !== null) {
           connectSnapshot(res, world)
-          if (clients.size === 1) signalLogHead(true)
+          if (clients.size === 1) {
+            activeStatuses.clear()
+            signalLogHead(true)
+          }
         }
         req.on('close', () => {
           clients.delete(res)
@@ -519,6 +544,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         // 世界侧驱动：谁开始移动，就给谁发一拍 walk（路径点来自内核 sim/pathfind）
         const world = options.getWorld()
         if (world !== null && clients.size > 0) {
+          pushActivityChanges(world)
           const picked = pickWalkStarts(walkLengths, world.agents)
           walkLengths.clear()
           for (const [id, len] of picked.next) walkLengths.set(id, len)
