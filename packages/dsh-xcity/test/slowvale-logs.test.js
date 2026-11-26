@@ -219,7 +219,7 @@ test('持有 SSE 的客户端可在日志水位变化后按游标补拉', async 
         if (!frame.startsWith('event: ')) continue
         const [name, body] = frame.split('\n')
         const data = JSON.parse(body.slice(6))
-        if (name === 'event: resync') {
+        if (name === 'event: connected') {
           assert.equal(data.feed_head_record_entry_id, 0)
           world.activities.push(activity({ startedLogSeq: 1, endedLogSeq: 2 }))
         }

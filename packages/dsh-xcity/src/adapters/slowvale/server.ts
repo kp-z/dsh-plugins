@@ -150,25 +150,20 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n')
   }
 
-  /**
-   * 推送策略：连上时给一次 resync（整份快照建立基线），之后**只发 scene_state 信封**。
-   *
-   * 两条都是踩出来的：
-   * 1. 一直发 resync 会把基线反复重建，场景永远不挂；
-   * 2. 信封的 cursor 必须**逐条递增并带 prev**，否则前端判「cursor 链断裂」并要求整体重同步。
-   */
+  // Increment only for updates shared by all subscribers. Joining takes a snapshot at the current cursor.
   let envelopeSeq = 0
   let lastCursor: { epoch: string; seq: number } | null = null
 
-  const pushSnapshot = (event: string): void => {
-    const world = options.getWorld()
-    if (world === null || clients.size === 0) return
-    const payload = projectSnapshot(world, { ...options.opts, phone: sms.signal() })
-    envelopeSeq += 1
-    const cursor = { epoch: epochOf(world), seq: envelopeSeq }
-    const withCursor = { ...payload, cursor }
+  const connectSnapshot = (res: ServerResponse, world: WorldLike): void => {
+    const epoch = epochOf(world)
+    const cursor = { epoch, seq: envelopeSeq }
+    const snapshot = { ...projectSnapshot(world, { ...options.opts, phone: sms.signal() }), cursor }
+    // A different world really does require a new baseline for established clients.
+    if (lastCursor !== null && lastCursor.epoch !== epoch) {
+      for (const client of clients) if (client !== res) writeEvent(client, 'resync', snapshot)
+    }
     lastCursor = cursor
-    for (const res of clients) writeEvent(res, event, withCursor)
+    writeEvent(res, 'connected', snapshot)
   }
 
   /**
@@ -393,9 +388,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         clients.add(res)
         const world = options.getWorld()
         if (world !== null) {
-          // connected 会重置基线；紧跟着发一次 resync 建立 cursor 链的起点
-          writeEvent(res, 'connected', projectSnapshot(world, { ...options.opts, phone: sms.signal() }))
-          pushSnapshot('resync')
+          connectSnapshot(res, world)
           if (clients.size === 1) signalLogHead(true)
         }
         req.on('close', () => {
