@@ -158,13 +158,23 @@ function socialStationId(world: World, agent: Agent): string | null {
 }
 
 /**
- * 由需求决定"下一步做什么"。
+ * R498：候选意图 + 分数。
  *
- * 有 ready 工单时返回 null：调度器才是主导，自派会把空闲的人先占走。
+ * B1（本次）只把结构抽出来：`chooseLife` 仍取**第一个**候选，行为与旧阶梯完全一致；
+ * B2 再把“取第一个”换成“取分数最高”，用 golden 测试钉住差异。
+ *
+ * `intent: null` 表示**这一档卡住了**（饿了却没座位），不能落到下一档——
+ * 旧实现是提前 return null，这里用候选语义表达同一件事。
  */
-export function chooseLife(world: World, agent: Agent): LifeIntent | null {
-  if (!available(agent)) return null
-  if (world.tasks.some((task) => task.status === 'ready')) return null
+export interface IntentOption {
+  intent: LifeIntent | null
+  /** 0-1：B2 用；B1 忽略。 */
+  score: number
+}
+
+export function intentOptions(world: World, agent: Agent): IntentOption[] {
+  if (!available(agent)) return []
+  if (world.tasks.some((task) => task.status === 'ready')) return []
 
   const needs = needsOf(agent)
 
@@ -172,50 +182,93 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null {
   if (needs.hunger < HUNGER_LOW) {
     const station = freeStation(world, agent, ['rest'], (candidate) => candidate.kind === 'breakroom')
     // 饿了却没有吃饭的地方：宁可站着等（交给待命行为），也不要转头去干活。
-    return station === null
+    return [{ score: 1, intent: station === null
       ? null
-      : { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, reason: '饿了，去吃点东西' }
+      : { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, reason: '饿了，去吃点东西' } }]
   }
 
-  // 2) 夜里：睡觉。还没有"家"，先睡休息区（下一份计划再做 home）。
+  // 2) 夜里：睡觉。还没有“家”，先睡休息区（下一份计划再做 home）。
   if (isNightMinute(world.tick)) {
     const station = freeStation(world, agent, ['rest'])
-    return station === null
+    return [{ score: 0.95, intent: station === null
       ? null
-      : { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' }
+      : { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' } }]
   }
 
   // 3) 累了：歇一会儿。
   if (needs.energy < ENERGY_LOW) {
     const station = freeStation(world, agent, ['rest'])
-    return station === null
+    return [{ score: 0.8, intent: station === null
       ? null
-      : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, reason: '有点累，歇一会儿' }
+      : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, reason: '有点累，歇一会儿' } }]
   }
+
+  const options: IntentOption[] = []
 
   // 4) 想说话：有人才去。先加入已经在聊的人，否则找最熟的人、去他附近。
   if (needs.social < SOCIAL_LOW && world.agents.length > 1) {
     const stationId = socialStationId(world, agent)
     if (stationId !== null) {
-      return { purpose: 'social', stationId, ticks: SOCIAL_TICKS, reason: '想找人聊两句' }
+      options.push({ score: 0.7, intent: { purpose: 'social', stationId, ticks: SOCIAL_TICKS, reason: '想找人聊两句' } })
     }
   }
 
   // 5) 上班时段：干活。站点按角色能力找；找不到就交给待命行为。
   if (isWorkMinute(world.tick)) {
     const preferred = SKILL_OF_ROLE[agent.role] ?? 'code'
-    // 先找本职工位；满员/太远就退到任意工位，别为了"职位标签"横穿全城。
+    // 先找本职工位；满员/太远就退到任意工位，别为了“职位标签”横穿全城。
     const station = freeStation(world, agent, [preferred]) ?? freeStation(world, agent, ['code', 'review', 'research', 'compute'])
-    if (station === null) return null
+    if (station === null) return [...options, { score: 0.65, intent: null }]
     const skill = station.capabilities.includes(preferred) ? preferred : (station.capabilities.find((capability) => capability === 'code' || capability === 'review' || capability === 'research' || capability === 'compute') ?? 'code')
-    return { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, reason: '到了上班的点，自己去干活' }
+    return [...options, { score: 0.65, intent: { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, reason: '到了上班的点，自己去干活' } }]
   }
 
-  // 6) 其余时间：学点东西（research/code 里挑最近的，不为了"研究"两个字横穿全城）。
+  // 6) 其余时间：学点东西（research/code 里挑最近的，不为了“研究”两个字横穿全城）。
   const studyStation = freeStation(world, agent, ['research', 'code'])
-  if (studyStation === null) return null
+  if (studyStation === null) return [...options, { score: 0.5, intent: null }]
   const studySkill: 'research' | 'code' = studyStation.capabilities.includes('research') ? 'research' : 'code'
-  return { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, reason: '闲着，学点东西' }
+  return [...options, { score: 0.5, intent: { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, reason: '闲着，学点东西' } }]
+}
+
+/** 性格缺省：老档没有 traits 时按中庸处理，不改变老档行为太多。 */
+function traitOf(agent: Agent, key: 'diligence' | 'duty'): number {
+  const value = agent.traits?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5
+}
+
+/**
+ * R498-B2：把候选按性格加权后取最高分。
+ *
+ * 为什么不是纯权重：纯权重是弱机制——需求贴阈值时要做大 3 倍以上才翻得动。
+ * 所以可见差异还要靠 L2 硬规则与承诺（H3/H7）；这里只先让"同样有空"的人分出偏好。
+ */
+function weightedScore(option: IntentOption, agent: Agent): number {
+  const purpose = option.intent?.purpose
+  if (purpose === 'work' || purpose === 'study') {
+    // 干劲 0→×0.8，1→×1.2。
+    return option.score * (0.8 + 0.4 * traitOf(agent, 'diligence'))
+  }
+  if (purpose === 'social') {
+    // 越有干劲越不急着闲聊，但幅度要小：社交本身有需求驱动。
+    return option.score * (1.1 - 0.2 * traitOf(agent, 'diligence'))
+  }
+  return option.score
+}
+
+export function chooseLife(world: World, agent: Agent): LifeIntent | null {
+  const options = intentOptions(world, agent).filter((option) => option.intent !== null)
+  if (options.length === 0) return null
+  let best = options[0]!
+  let bestScore = weightedScore(best, agent)
+  for (const option of options.slice(1)) {
+    const score = weightedScore(option, agent)
+    // 同分保持旧顺序，保证确定性。
+    if (score > bestScore) {
+      best = option
+      bestScore = score
+    }
+  }
+  return best.intent
 }
 
 export type SelfLifeCommand = Extract<WorldCommand, { kind: 'agentActivity' }>

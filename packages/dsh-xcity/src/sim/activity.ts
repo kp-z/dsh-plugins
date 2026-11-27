@@ -10,7 +10,7 @@
  * 这里的活动是**领域概念**，不认识前端词表：kind/skill 由适配层翻译成
  * ProgrammerActivity / GymExerciseActivity 这类前端类型名。
  */
-import type { Activity, Agent, World } from '../domain/types.js'
+import type { Activity, ActivityPurpose, Agent, World } from '../domain/types.js'
 import { nextLogSeq } from './journal.js'
 import { recordActivityEpisode } from './memory.js'
 
@@ -23,13 +23,15 @@ export interface StartActivityInput {
   skill?: string | undefined
   stationId?: string | null
   taskAttemptId?: string | undefined
+  /** R498：用途直接从入参给，不再要求调用方先写老字段。 */
+  purpose?: ActivityPurpose | undefined
   trigger?: { kind: 'player' | 'schedule' | 'self' | 'task'; text?: string | undefined } | undefined
 }
 
 /** 开始一个活动：写进世界、挂到人身上，并把老字段同步好（旧机制还在读它们）。 */
 export function startActivity(world: World, agent: Agent, input: StartActivityInput): Activity {
   // R481：endActivity 会清掉 agent.activityPurpose，先把它带进活动记录。
-  const purpose = agent.activityPurpose
+  const purpose = input.purpose ?? agent.activityPurpose
   endActivity(world, agent, 'interrupted')
   if (world.activities === undefined) world.activities = []
   world.activitySeq = (world.activitySeq ?? 0) + 1
