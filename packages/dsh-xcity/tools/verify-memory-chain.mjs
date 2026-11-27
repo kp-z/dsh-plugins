@@ -105,7 +105,11 @@ const agents = (world === null ? [] : world.agents ?? []).map((agent) => ({
   commitments: agent.commitments ?? [],
 }));
 
-// [2] 日小结：D1..D{days} 一天一条
+// [2] 日小结：**最近 days 天**一天一条。
+//
+// ⚠️ 不能写死 D1..D{days}：情节记忆只保留最近 7 天（sim/memory.ts 的 EPISODE_KEEP_DAYS），
+// 宿主跑到第 11 天时 D1 早被裁掉，那样这条检查在任何长期运行的宿主上必然红——
+// 红的原因不是记忆坏了，而是检查的坐标错了。窗口末端取"世界当前天"。
 const digestRows = agents.map((agent) => {
   const byDay = new Map();
   for (const episode of agent.episodes) {
@@ -114,7 +118,12 @@ const digestRows = agents.map((agent) => {
   }
   const missing = [];
   const duplicates = [];
-  for (let day = 1; day <= days; day += 1) {
+  // 只要求**已经过完**的天：第 N 天的日小结是在第 N+1 天 00:00 写的，
+  // 所以窗口末端取"昨天"（当前天 - 1），否则每次都会把还没结束的今天算成缺失。
+  const today = world === null ? days : Math.floor((world.tick ?? 0) / 1440) + 1;
+  const windowEnd = Math.max(1, today - 1);
+  const windowStart = Math.max(1, windowEnd - days + 1);
+  for (let day = windowStart; day <= windowEnd; day += 1) {
     const count = byDay.get(day) ?? 0;
     if (count === 0) missing.push(day);
     else if (count > 1) duplicates.push(day);
@@ -123,6 +132,7 @@ const digestRows = agents.map((agent) => {
     agentId: agent.id,
     name: agent.name,
     have: [...byDay.keys()].sort((a, b) => a - b),
+    window: [windowStart, windowEnd],
     missing,
     duplicates,
   };

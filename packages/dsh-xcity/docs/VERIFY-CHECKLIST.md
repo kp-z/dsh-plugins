@@ -152,8 +152,11 @@ events:   67026 行 / 最后一代保留 6759 条 / 11 代 / tickRange [8,16899]
 ```
 
 另一条内部一致性（一条命令，可原样跑）：日小结文字必须由当天真实情节计数得来，
-逐字比对"小结文字 vs 按情节重算"——在第 11 天（窗口 D8–D10）实测 **26/27 逐字一致**，
-唯一例外是 agent-9 的 D8：那天它还不存在、0 条情节，按 `writeDayDigest` 的规则本来就不该有小结。
+逐字比对"小结文字 vs 按情节重算"。两次实测：
+
+- 第 11 天（窗口 D8–D10）：**26/27 逐字一致**，唯一例外是 agent-9 的 D8——那天它还不存在、0 条情节，
+  按 `writeDayDigest` 的规则本来就不该有小结（不是数据错）；
+- 收尾复跑（`tick=17891`，窗口 D10–D12）：**27/27，failures 为空**。
 
 ```bash
 node --input-type=module -e 'const j=await(await fetch("http://127.0.0.1:3190/agent-world/api/world")).json(),w=j.world,DAY=1440,dayOf=t=>Math.floor(Math.max(0,t)/DAY)+1,now=dayOf(w.tick),win=[now-3,now-2,now-1],LABEL={meal:"吃了顿饭",sleep:"睡了一觉",rest:"歇了一会儿",social:"和人聊了聊",work:"干活",study:"学习"};const rows=[];for(const a of w.agents??[]){for(const d of win){const eps=a.episodes??[],d1=eps.find(e=>e.kind==="day"&&e.day===d),mine=eps.filter(e=>e.day===d&&e.kind!=="day"),c=new Map();for(const e of mine){const l=LABEL[e.kind]??e.kind;c.set(l,(c.get(l)??0)+1)}const exp=[...c.entries()].sort((x,y)=>y[1]-x[1]).map(([l,n])=>l+"×"+n).join("、"),act=d1===undefined?null:String(d1.summary).replace(/^第\d+天：/,"");rows.push({agent:a.id,day:d,ok:d1!==undefined&&act===exp,episodes:mine.length,expected:exp,actual:act})}}const bad=rows.filter(r=>!r.ok);console.log(JSON.stringify({tick:w.tick,window:win,checked:rows.length,ok:bad.length===0,failures:bad},null,1))'
@@ -315,6 +318,8 @@ node /tmp/xcity-say-check.mjs http://127.0.0.1:7791 agent-1 "清单自检"
 即：`playback.kind=independent`、信封与包内 `tick_marker` 一致、第一拍就是 `bubble.float_up`，
 没有 `dialogue` 也没有 `body`。
 
+（`frameKinds` 会随世界状态变化——复跑时可能多出 `log_resync`；断言只认 `kind==='visual'` 的那一帧。）
+
 **命令 B（前端运行时）**：浏览器打开 `http://127.0.0.1:7791/world/w1?role_id=agent-1`，
 在控制台装钩子后发一句，5s 后读回：
 
@@ -367,11 +372,14 @@ find slowvale-mirror -newermt '2026-11-28 00:00:00' -type f | wc -l
 
 ```
 (no match: 0 行)
-46                      # git diff --name-only 总行数，全在别的包（dsh-cove-task / dsh-spellbook …）
+43                      # git diff --name-only 总行数：dsh-cove-task 22、dsh-spellbook 19、dsh-xcity 1（就是本文件）
 0                       # git ls-files slowvale-mirror —— 该目录整体未被跟踪
 ?? slowvale-mirror/     # 只是一个未跟踪的镜像检出
 0                       # 今天（11-28 00:00 之后）该目录被改动的文件数
 ```
+
+（核对期间仓库有一次提交落到 HEAD——`4112467`，所以"46 行"是核对开始时的数、`43 行` 是收尾时的数；
+两者都不含 `slowvale-mirror`。）
 
 最新 mtime 是 `2026-11-27 11:20`（上一轮的镜像同步，共 9 个文件），本轮没有文件被动过。
 
