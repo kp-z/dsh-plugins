@@ -288,3 +288,10 @@
   端到端证据：真实会话推进来的一句「在工位忙了一整天，想找人聊两句，你在干嘛？」被页面创建为头顶 Text（钩子捕获原文）。
   代码：`visual.ts` 新增 `sayBeat`；`server.ts` 对话**入队**（同 tick 的包会被前端字符串比较丢弃）并在时钟包之前发；`Bridge.say` 暴露给 app；短信回复到达时同时推头顶浮字。
   偏差/风险：这不是原生对话泡（没有气泡框），是头顶浮字；要气泡框必须改前端，本轮按用户约束不做。
+
+- 2026-11-28 02:38 · **H6 未过，卡点从"没文件工具"换到"派单不落地"**。
+  第一层（已修）：角色会话只有 xcity 工具，写不了 `.xcity-results/*.md`，于是 task-1 被模型如实报 blocked（原因原文见 failure_reason）。根因不是预设，而是测试 profile 组合的 `dsh-base` 默认 `disabled: true` 关掉了 `tool-fs`/`tool-fs-search`；已在 `.testhome/profiles/xcity-3/cordis.patch.yml` 里启用（仅测试环境，产品代码零改动）。顺手撤掉了为这个问题加的「角色预设」配置项（不必要，已回退）。
+  第二层（新卡点）：重启后 `dispatch` 返回 accepted、`runtime.diagnostics.dispatches=2`，但 `world.tasks` 始终为空（`runtime.pending=0`），即派单命令被消费却没有生成工单；插件日志不进 stdout，看不到原因。
+  附带确认（好消息）：同日计划已在新会话上跑通——`runtime.plan = {asked:3, answered:3, applied:4, promptError:0}`，说明 H3/H4 的通道在重启+重建会话后可复现，不是一次性偶然。
+  验收工具：`tools/verify-tasks.mjs`（只读、纯 Node）已就位，三工单闭环判定=dashboard 每张有 owner、status=done、output 非空；世界词汇是 `done` 不是 `completed`。
+  下一步：先查 dispatch 在编排层的落地路径（内容库 taskSet 解析 / 队列消费点），必要时把它变成可观测计数（dispatched/applied/noTaskSet），再重跑三工单。
