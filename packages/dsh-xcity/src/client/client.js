@@ -31,6 +31,8 @@
       /** iframe 的固定容器：跨面板挂载周期存在，绝不销毁。 */
       var host = null
       var frame = null
+      /** iframe 第一次“有尺寸”时才加载的地址（见 ensureFrame 的注释）。 */
+      var frameBase = null
 
       function useBridgeBase() {
         var st = React.useState(baseCache)
@@ -54,7 +56,8 @@
 
       /** 建一次：容器 + iframe，挂到 body 下。之后的显隐都只改样式。 */
       function ensureFrame(base) {
-        if (frame !== null) return
+        if (frame !== null) { frameBase = base; return }
+        frameBase = base
         host = document.createElement('div')
         host.setAttribute('data-xcity-host', '')
         host.style.cssText = [
@@ -66,7 +69,10 @@
           'border-radius:0',
         ].join(';')
         frame = document.createElement('iframe')
-        frame.src = base + '/'
+        // R492：先不设 src。
+        // 这个 iframe 先挂在 display:none 的容器里；隐藏状态下画布尺寸是 0，
+        // Phaser 会以“现场画面未能启动”收场，之后即使面板打开也只剩错误页。
+        // 等 place() 第一次拿到非零尺寸再加载，保证游戏一启动就是可见、有尺寸的。
         frame.title = 'xcity'
         frame.setAttribute('allow', 'clipboard-write')
         frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#14131b'
@@ -87,6 +93,10 @@
         host.style.top = rect.top + 'px'
         host.style.width = rect.width + 'px'
         host.style.height = rect.height + 'px'
+        // R492：第一次真正可见、有尺寸时才加载游戏。
+        if (frame !== null && frame.getAttribute('src') === null && frameBase !== null) {
+          frame.setAttribute('src', frameBase + '/')
+        }
       }
 
       function Icon() {

@@ -11275,3 +11275,10 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 切换的读：needs 的恢复率、day-summary 的“现在…”行、relationships 的同屋 meet 判定、interaction 的“到站但没单”保护。
 - 写入路径不动（movement/idle/step 仍写老字段）；`project.ts` 在适配层仍直读 activities，留到下一轮。
 - 证据：`test/activity-view.test.js` 4 条（选择器、兜底、needs 按 Activity meal 恢复、240 tick 不漂移）；全量 926 条，925 通过、1 跳过；72h sim 分布与 H6 同量级（sleep 31–33%、work 10–23%、study 23–35%、meal ~6%、social 2–5%、walking 8–14%）。
+
+## 2026-11-27 10:35：修「现场画面未能启动」（R492）
+
+- 现象：DSH 侧栏 xcity 面板一直显示游戏自己的 `chrome.fishtank.boot_failed`「现场画面未能启动，请重新加载」，点重新加载也不恢复。
+- 根因：`src/client/client.js` 在面板还没显示时就把 iframe 挂进 `display:none` 的容器并设了 `src`。游戏在隐藏/零尺寸容器里启动，Phaser 画布尺寸为 0，直接进入 boot 失败；等面板真正有尺寸时，错误页已经生成。
+- 修法：iframe 创建时**不设 src**；`place()` 第一次拿到非零尺寸（真正可见）时才设置 `src`。游戏从第一帧就是可见、有尺寸的。
+- 验证：`npm run build` 通过；`lib/client.iife.js` 里已是 `frameBase` + `place()` 首次设置 src 的逻辑。正式进程未重启；**刷新一次 DSH 窗口（Cmd+R）** 让新客户端生效即可。若仍报错，把控制台/游戏错误发我。
