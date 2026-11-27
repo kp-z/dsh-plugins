@@ -303,20 +303,23 @@ function traitOf(agent: Agent, key: 'diligence' | 'duty'): number {
 }
 
 /**
- * R515：一条记忆是好事、坏事还是闲事。只看已有字段（kind/summary），不新增 polarity 字段。
+ * R515/R521：一条记忆是好事、坏事还是闲事。只看已有字段（kind/summary），不新增 polarity 字段。
  *
  * - `没做完：` 开头 = 负向：`sim/memory.ts` 的 summarizeActivity 对 interrupted 活动只加这个
- *   前缀（`没做完：干活` / `没做完：工单「X」`），它是"打算做的事没做成"的现有表达。
+ *   前缀（`没做完：干活` / `没做完：工单「X」`）；承诺被判 missed 时也用它。
  * - `工单` 开头 = 正向：同一函数对带工单触发的活动写 `工单「X」`，即真的把一张单办成了。
+ * - `守约：` 开头 = 正向：R521 起 `sim/commitments.ts` 裁决成 kept 时给双方各写一条
+ *   （`守约：答应b的「一起吃饭」兑现了`），于是"兑现了承诺"真的抬高心情。
  * - 其余（吃饭/睡觉/干活/学习/聊天/日小结）中性：日常琐事不构成心情。这一点是刻意的——
  *   若把它们也算正向，golden 世界跑一天就有 30+ 条完成记忆，心情恒为 +1，加权退化成常数偏置，
  *   那就不是"记忆影响决策"，而是"永远 +10%"。
  *
- * 已知盲区（不掩饰）：承诺的 kept/missed 目前不写情节记忆（`sim/commitments.ts` 只改
- * Commitment.status），所以"守约/爽约"暂时不计入心情；要覆盖它得先让承诺产出记忆，那是另一件事。
+ * 曾经的盲区（R521 已补）：承诺以前只改 Commitment.status、不写情节记忆，所以守约/爽约读不到；
+ * 现在两条裁决都会产出上面两种前缀的记忆，这里不需要为新概念增加分支。
  */
 function moodPolarityOf(episode: Episode): -1 | 0 | 1 {
   if (episode.summary.startsWith('没做完：')) return -1
+  if (episode.summary.startsWith('守约：')) return 1
   if (episode.summary.startsWith('工单')) return 1
   return 0
 }

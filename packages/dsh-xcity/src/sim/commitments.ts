@@ -13,7 +13,7 @@
  * 纯函数：不碰 IO、不读时钟（nowTick 由调用方给），就地改传入的 world 并返回裁决结果。
  */
 import type { Activity, Agent, Commitment, CommitmentStatus, World } from '../domain/types.js'
-import { DAY_TICKS, dayOf } from './memory.js'
+import { appendEpisode, DAY_TICKS, dayOf } from './memory.js'
 
 /** 每人同时 open 的承诺上限。超出时最旧的一条转 released——被挤掉不算违约。 */
 export const OPEN_MAX = 3
@@ -132,6 +132,9 @@ export function keepCommitment(world: World, agentId: string, id: string): boole
   if (!mine) return false
   if (!rows.some((item) => item.row.status === 'open')) return false
   setStatus(world, id, 'kept')
+  // R521：显式"我办到了"也是 kept 裁决，同样留痕——否则这条承诺已不是 open，
+  // settleCommitments 再也不会判它，记忆里就永远查不到"答应过谁、兑现没有"。
+  recordSettledEpisodes(world, id, 'kept', world.tick)
   return true
 }
 
@@ -176,6 +179,8 @@ export function settleCommitments(world: World, nowTick: number): Settlement[] {
         metInWindow(world, pair[0], pair[1], from, Math.min(now, graceEnd))
       if (kept) {
         setStatus(world, row.id, 'kept')
+        // R521：裁决要留痕——双方各写一条情节，心情与回忆才读得到这次兑现。
+        recordSettledEpisodes(world, row.id, 'kept', now)
         settled.push({ id: row.id, status: 'kept', pair })
         continue
       }
@@ -188,12 +193,55 @@ export function settleCommitments(world: World, nowTick: number): Settlement[] {
       if (now <= graceEnd) continue
 
       setStatus(world, row.id, 'missed')
+      // R521：爽约同样双方各写一条（前缀 `没做完：` 沿用既有负向约定）。
+      recordSettledEpisodes(world, row.id, 'missed', now)
       settled.push({ id: row.id, status: 'missed', pair })
     }
   }
 
   pruneSettled(world, now)
   return settled
+}
+
+/**
+ * R521：一次裁决写进**双方**的情节记忆——"我答应过谁、兑现没有"必须有地方可读。
+ *
+ * 为什么写在裁决点：裁决本身只发生一次（open → kept/missed 之后 settleCommitments 直接跳过，
+ * keepCommitment 也只在真有 open 行时才转），所以**幂等由状态机保证**，不另立去重表。
+ *
+ * 文案两个约定，与 memory.ts 的既有写法对齐：
+ * - kept → `守约：答应<对方>的「<事项>」兑现了`（正向，life.ts 的 moodPolarityOf 认这个前缀）；
+ * - missed → `没做完：答应<对方>的「<事项>」`（沿用 `没做完：` 这个既有负向前缀）。
+ * kind 用 'social'：这是"和某人的一件事"，不新开记忆类型；with 指向对方。
+ * salience 0.55 / 0.45：守约比爽约更值得记住，但都不该压过"办成一张工单"（0.9）。
+ */
+function recordSettledEpisodes(world: World, id: string, status: 'kept' | 'missed', nowTick: number): void {
+  const rows = rowsOf(world, id)
+  const head = rows[0]
+  if (head === undefined) return
+  const what = head.row.what
+  const pair = pairOf(rows, head.owner.id, head.row)
+  for (const ownerId of pair) {
+    const owner = world.agents.find((agent) => agent.id === ownerId)
+    if (owner === undefined) continue
+    const peerId = ownerId === pair[0] ? pair[1] : pair[0]
+    if (peerId === ownerId) continue
+    const peer = world.agents.find((agent) => agent.id === peerId)
+    if (peer === undefined) continue
+    const who = peer.name.trim() === '' ? peer.id : peer.name
+    const summary = status === 'kept'
+      ? '守约：答应' + who + '的「' + what + '」兑现了'
+      : '没做完：答应' + who + '的「' + what + '」'
+    appendEpisode(owner, {
+      tick: nowTick,
+      day: dayOf(nowTick),
+      kind: 'social',
+      summary,
+      with: [peerId],
+      placeId: owner.placeId ?? '',
+      salience: status === 'kept' ? 0.55 : 0.45,
+    }, nowTick)
+  }
 }
 
 function rowOf(agent: Agent, id: string): Commitment | undefined {
