@@ -442,7 +442,7 @@
 | H21 ✅ | 赴约成功率 43%→83%（迟到也要去，见日志） | 变更后新承诺 kept 只有 4/10；赴约要求"对方闲着或已在聊 + 有空位" | 同一批 3 天里 kept ≥ 70%，且能解释剩下的是真没成（非判定误差） |
 | H22 ✅ | 记忆进计划（5 条正经事，三人各异，见日志） | 计划提示词现在只有"昨天日小结"；Top-K 情节检索仍只用于对话（`bridge/memory-context.ts`） | 计划里带 3–5 条**相关**记忆（不只是昨天）；同一角色不同记忆 → 计划不同 |
 | H23 ✅ | 计费口径（真实 usage：40.6k/天，缓存 96%，见日志）| 现有 11.9k token/天是**增量下界**；每步重发的历史上下文与工具 schema（一次 18k 字符 / 122 次）未计 | 给出"计费口径"估算与每轮上限，误差来源写明 |
-| H24 | 一键端到端 | 现有 6 个 verify 脚本各自为政，没有一个"从零到三工单完成"的冒烟 | 一条命令起世界→派单→三单完成→记忆/成本核对，全绿退出码 0 |
+| H24 ✅ | 一键端到端（smoke-e2e 3 单闭环 + 修 owner-lock 缺目录 bug）| 现有 6 个 verify 脚本各自为政，没有一个"从零到三工单完成"的冒烟 | 一条命令起世界→派单→三单完成→记忆/成本核对，全绿退出码 0 |
 | H25 | 无座者策略 | 24 人时 11 人无座空转（`unseatedMax 11`），只在歇脚点站着 | 无座时有明确降级行为（如排队/回休息区/自主找事），并在荡压力采样里可区分 |
 | H26 | 减法 | `BUSY_GRACE_TICKS` 已被 `MISS_GRACE_TICKS` 覆盖；`tools/*.mjs` 里"读世界+轮询+输出 JSON"重复 6 份 | 删掉冗余常量与至少一处重复骨架，测试仍全绿 |
 | H27 | 复盘与收口 | 与 H18 同 | 文档/清单更新；下一份计划 |
@@ -512,3 +512,11 @@
   两套独立实现交叉核对（`tools/measure-tokens.mjs` vs `tools/verify-cost.mjs`，后者是我另起一路按要求**不看前者**独立写的）：totals 的 input/output/cacheRead/turns 以及三个角色的分解**逐位相等**（1,387,420 / 292,899 / 33,144,320 / 1222）。
   过程记录（如实）：我先在同一个文件里并行改，造成一次写冲突（半成品），已把文件交还子代理并停手；收敛后由它统一实现。
   工具：`tools/measure-tokens.mjs`（按 usage 重算，chars/4 只做兜底）、`tools/verify-cost.mjs`（独立复核）。
+
+- 2026-11-28 07:27 · **H24 通过（勾选）**。
+  `tools/smoke-e2e.mjs`：一条命令从**空目录**走完 build → 起独立宿主（端口 3290/7891、独立 `DSH_HOME=.smokehome`）→ spawn 三会话 → 写 bindings → 派 `task.town-inspection` → 等三单 done → 核对 `kind=task` 情节 → 按真实 usage 算成本 → 杀宿主并清理。
+  两次完整跑通（子代理一次、我一次）：`{"ok":true,"tasks":{"done":3,"failed":0,"pending":0},"memoryEpisodes":3}`，耗时 **183s / 247s**（默认 600s 上限）；成本 33–44 轮、55.9–62.7k tokens/天（1–1.6 游戏日窗口，样本小所以波动大，不作长期口径）。
+  安全审查（`docs/SMOKE-E2E-REVIEW.md`，独立一路只审不改）**抓到一个必须先处理的隐患**：脚本把真实 `.testhome/.credentials.yaml` 复制进 `.smokehome`，而 `.smokehome` **没进 .gitignore** —— 一次 `git add -A` 就会把真 key 提进仓库。已修：加 `/.smokehome/` 与 `/.smokehome.lock` 到 `packages/dsh-xcity/.gitignore`，并删掉现场残留。
+  同时按审查补齐三条：① 三处 `rmSync` 前统一走 `assertSmokeHome()`（必须是 `<pkg>/.smokehome`、含 `.smokehome`、不在 `/`、repo 根、`.testhome`）；② `SIGINT/SIGTERM/exit` 兜底清理 + 起宿主时写 `host.pid`（实测 `kill -INT` 后端口无残留）；③ `O_EXCL` 文件锁做并发互斥（已存在即 exit 2）。
+  **顺手修掉一个真 bug（插件侧，不是测试脚本的问题）**：全新 `DSH_HOME` 里 `<profile>/state` 不存在时，`acquireOwnerLock` 的 `openSync(...,"wx")` 拿到 ENOENT → `owned=false` → **桥根本不启动**（世界照建、端口不监听），日志里只有一行 `dsh web`，表面看像"spawn 失败"。修法（R526）：`acquireOnce` 先 `mkdirSync(stateDir,{recursive:true})`，并补 `test/owner-lock-missing-dir.test.js`。
+  测试：`npm test` → **1108 tests / 1107 pass / 1 skip / 0 fail**。

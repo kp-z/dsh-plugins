@@ -7,3 +7,8 @@
 artifacts/
 
 .testhome/
+
+# 端到端冒烟用的独立 HOME（R526）：里面会复制一份 credentials 与世界存档。
+# **必须忽略**——否则 git add -A 会把真实 key 提进仓库。
+/.smokehome/
+/.smokehome.lock

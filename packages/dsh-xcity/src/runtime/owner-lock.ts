@@ -8,7 +8,7 @@
  * 用 pid 锁把"推进者"收敛成一个：拿到锁的会话跑循环、占端口、存盘；
  * 其余会话只读世界，不推进、不落盘。
  */
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 
 const LOCK_NAME = '.owner.lock'
@@ -56,6 +56,16 @@ export function acquireOwnerLock(stateDir: string): OwnerLock {
 }
 
 function acquireOnce(stateDir: string): OwnerLock {
+  // R526：目录不存在时要先建，**不能因此放弃所有权**。
+  //
+  // 现场：全新的 DSH_HOME 里 <profile>/state 还没有，openSync(...,'wx') 拿到 ENOENT，
+  // 于是 owned=false → 桥根本不启动（世界照建、端口不监听），日志里只有一行 dsh web。
+  // 看起来像"spawn 失败"，实际是这里静默退让了。
+  try {
+    mkdirSync(stateDir, { recursive: true })
+  } catch {
+    // 建不出来就继续走下面的 openSync：真失败会走既有的 catch 分支（返回被动）。
+  }
   const file = join(stateDir, LOCK_NAME)
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
