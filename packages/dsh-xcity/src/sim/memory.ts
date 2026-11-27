@@ -118,6 +118,40 @@ export function appendEpisode(agent: Agent, episode: Episode, nowTick = episode.
   return agent.episodes
 }
 
+/**
+ * R519：工单的完成/失败直接写一条情节记忆。
+ *
+ * 为什么单独一条通路：工单不是"活动"——它是外部（会话/团队）裁决的，
+ * `applyExternalTasks` 只改 task 状态、不产生 Activity，于是**做完一件大事在记忆里
+ * 没有任何痕迹**（H16 现场）。这里补的就是这一笔。
+ *
+ * 文案沿用 `summarizeActivity` 的两个约定：完成写"工单「…」"，失败写"没做完：…"
+ * （后者会被 `memoryMood` 记为负向，于是爽约/失手会真的影响心情）。
+ */
+export function recordTaskEpisode(
+  world: { agents: readonly Agent[] },
+  agentId: string,
+  title: string,
+  ok: boolean,
+  nowTick: number,
+  reason = '',
+): void {
+  const agent = world.agents.find((row) => row.id === agentId)
+  if (agent === undefined) return
+  const summary = ok
+    ? '工单「' + title + '」做完了'
+    : '没做完：工单「' + title + '」' + (reason === '' ? '没成' : reason)
+  appendEpisode(agent, {
+    tick: nowTick,
+    day: dayOf(nowTick),
+    kind: 'task',
+    summary,
+    with: [],
+    placeId: agent.placeId ?? '',
+    salience: ok ? 0.6 : 0.5,
+  }, nowTick)
+}
+
 /** 失败的活动要够长才记：否则每个瞬时 idle 都写一条"没做完"，记忆全是噪音。 */
 export const INTERRUPTED_MIN_TICKS = 15
 

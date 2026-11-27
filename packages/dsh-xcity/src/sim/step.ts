@@ -52,7 +52,7 @@ import type { CommsOutcome } from './comms.js'
 import type { DeliverOutcome } from './mailbox.js'
 import { deliverMessages } from './mailbox.js'
 import { runHeartbeats } from './heartbeat.js'
-import { DAY_TICKS, writeDayDigest } from './memory.js'
+import { DAY_TICKS, recordTaskEpisode, writeDayDigest } from './memory.js'
 import { advanceNeeds } from './needs.js'
 import { advanceInitiative } from './initiative.js'
 import { applyMeetAffinity } from './relationships.js'
@@ -312,10 +312,18 @@ function applyExternalTasks(
           carryingAgent.path = []
         }
       }
+      // R519：做完一件大事要留下痕迹——否则记忆链里只有"吃了顿饭"，没有"我干成了什么"。
+      if (task.owner !== null) {
+        recordTaskEpisode(world, task.owner, task.title, true, world.tick)
+      }
       events.push({ type: 'task.completed', payload: { taskId: task.id, agentId: task.owner, stationId: null } })
     } else {
       task.status = 'failed'
       task.failureReason = command.reason
+      // R519：失败也要记，但用"没做完："前缀（memoryMood 会把它算成负向）。
+      if (task.owner !== null) {
+        recordTaskEpisode(world, task.owner, task.title, false, world.tick, command.reason)
+      }
       events.push({ type: 'task.failed', payload: { taskId: task.id, reason: command.reason } })
     }
   }

@@ -85,7 +85,7 @@ function spreadHangout(world: World, agent: Agent): { x: number; z: number } | n
   // **一个人用这块歇脚点时保持原语义**：站在歇脚点不动（有测试与回退路径依赖这一点）。
   // 只有多人抢同一个点时才错位——那才是"叠成一坨"的现场。
   const sharing = world.agents.filter(
-    (row) => row.hangout !== null && row.hangout.x === base.x && row.hangout.z === base.z,
+    (row) => row.hangout != null && row.hangout.x === base.x && row.hangout.z === base.z,
   )
   if (sharing.length <= 1) return base
   const index = sharing.map((row) => row.id).sort().indexOf(agent.id)
