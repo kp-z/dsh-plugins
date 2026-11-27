@@ -48,6 +48,7 @@ import { deliverInitiative } from './adapters/slowvale/initiative-delivery.js'
 import { createSessionAsker } from './adapters/slowvale/ask-session.js'
 import { createDailyPlanner } from './bridge/daily-plan.js'
 import { createPlanStats } from './runtime/plan-stats.js'
+import { createTurnCost, DEFAULT_WARN_INPUT_CHARS } from './runtime/turn-cost.js'
 import { buildPlanPrompt, parsePlan } from './bridge/plan-prompt.js'
 import { renderMemoryContext } from './bridge/memory-context.js'
 import { acquireOwnerLock } from './runtime/owner-lock.js'
@@ -384,6 +385,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
 
   // R502：计划计数（问了几次、卡在哪一门、落了几条）。挂在 /api/world 上可读。
   const planStats = createPlanStats()
+
+  // R517：每轮输入体积计数（user/message 文本 + 工具结果字符数）。和计划计数一样只读，
+  // 阈值写在这里是为了接线处能一眼看到"线"在哪；语义与"不是计费"的说明见 turn-cost.ts。
+  const turnCost = createTurnCost({ warnInputChars: DEFAULT_WARN_INPUT_CHARS })
 
   // R500：每天 06:30 各自想一下今天。投递走会话，取回走 assistant 原文（见 ask-session）。
   const planAsker = createSessionAsker({
@@ -1014,12 +1019,40 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   let mainDialogueChannel: DialogueChannel | null = null
   let mainTurnSeq = 0
   const turnBySession = new Map<string, string>()
+  /**
+   * R517：每条会话当前这一轮的文本体积（user/message + 工具结果 + assistant 文本）。
+   * 在 turn/end 结算：一轮里可能有多步工具调用，提前结算会少算输入。
+   */
+  const pendingTurnChars = new Map<string, { inputChars: number; outputChars: number }>()
   if (typeof listen === 'function') {
     const disposeDialogue = listen('session/event', (session, event) => {
       const sessionId = typeof session?.id === 'string' ? session.id : ''
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const content = event.type === 'user/message' ? event.data?.['content'] ?? message?.content : message?.content
       const blocks = Array.isArray(content) ? content : []
+      // R517：只计数，不改任何行为。输入 = 这轮 user/message 文本 + 工具结果文本，
+      // 输出 = assistant 文本；结算放 turn/end（多步工具回合只算一轮）。
+      const text = textOfBlocks(blocks)
+      if (sessionId !== '') {
+        const pending = pendingTurnChars.get(sessionId)
+        if (event.type === 'user/message') {
+          // 一轮里可能有多条 user/message（用户文本 + 每次投递后的 runtime-context），累加不重置。
+          const inputChars = (pending?.inputChars ?? 0) + text.length
+          pendingTurnChars.set(sessionId, { inputChars, outputChars: pending?.outputChars ?? 0 })
+        } else if (event.type === 'tool/result' && pending !== undefined) {
+          pendingTurnChars.set(sessionId, { ...pending, inputChars: pending.inputChars + text.length })
+        } else if (event.type === 'assistant/message' && pending !== undefined) {
+          pendingTurnChars.set(sessionId, { ...pending, outputChars: pending.outputChars + text.length })
+        } else if (event.type === 'turn/end' && pending !== undefined) {
+          pendingTurnChars.delete(sessionId)
+          const warning = turnCost.observe(pending.inputChars, pending.outputChars)
+          if (warning !== null) {
+            logger.warn(
+              `[xcity-cost] 一轮输入 ${String(warning.inputChars)} 字符，超过 ${String(warning.warnInputChars)} 字符的提示线（约 30k token）。这是体积提示，不是计费。`,
+            )
+          }
+        }
+      }
       planAsker.observe(sessionId, event.type ?? '', event.data)
       const sms = smsReplies.observe(sessionId, event.type, event.data, blocks)
       if (sms === null) taskExecution?.observe(sessionId, event.type, event.data)
@@ -1064,7 +1097,6 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
 
       // ③ 对话气泡：只有它需要通道，前两件事不受影响。
       if (mainDialogueChannel === null) return
-      const text = textOfBlocks(blocks)
       if (text === '') return
       if (event.type === 'user/message') {
         const turnId = `main-${String(++mainTurnSeq)}`
@@ -1450,6 +1482,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         source: hub,
         tickMs: state.tickMs,
         plan: () => ({ ...planStats }),
+        // R517：每轮输入体积（字符）。和 plan 并列，人不必翻日志就知道上下文在不在膨胀。
+        turnCost: () => ({ ...turnCost.snapshot() }),
         // 客户端 iframe 该连哪个端口：由这里告诉它，不写死在客户端里。
         bridgeBase: 'http://' + resolved.slowvale.host + ':' + String(resolved.slowvale.port),
         maxLiveSessions: resolved.maxLiveSessions,

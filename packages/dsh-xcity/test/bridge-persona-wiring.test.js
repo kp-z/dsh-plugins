@@ -21,7 +21,10 @@
  * 所以负载高的时候只会慢一点，不会假红。
  */
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { after, test } from 'node:test'
 
 import { apply } from '../lib/index.js'
@@ -29,6 +32,15 @@ import { ContentRegistry, builtinPacks } from '../lib/content/index.js'
 import { createWorld } from '../lib/world/create.js'
 
 const PREFIX = '/agent-world'
+
+/**
+ * R517：每个用例用自己的 stateDir。
+ *
+ * 不这么做的话，node --test 会并行跑多个测试**进程**，它们共用默认的 `.agent-world`，
+ * 于是 R509 的进程锁把后来者判成"只读旁观者"并 warn 一条——断言"不该有警告"就假红。
+ * 用临时目录既符合真实语义（不同实例不同库），也让测试彼此隔离。
+ */
+const freshStateDir = () => mkdtempSync(join(tmpdir(), 'aw-wiring-'))
 
 /** 注册过的清理函数（`apply` 的 effect 是"先挂、卸载时跑"，假 ctx 必须照抄这个语义）。 */
 const disposers = []
@@ -123,7 +135,7 @@ test('装配：/api/say 搭话后，角色 agent 的人设 section 里是**那�
   const { ctx, routes, logs } = fakeCtx({ agentLoop, sessionController })
   // R37：这两个用例测的是**手写那套**（native）的行为，所以要显式选它。
   // 默认后端已经是 agent-teams 的套壳（角色不再由我们建会话）。
-  apply(ctx, { persistTicks: 0, persistEveryTicks: 0, autoStart: false, maxLiveSessions: 8, dialogueBackend: 'native' })
+  apply(ctx, { stateDir: freshStateDir(), persistTicks: 0, persistEveryTicks: 0, autoStart: false, maxLiveSessions: 8, dialogueBackend: 'native' })
 
   assert.equal(routes.length, 1, '应当注册了一个（且只有一个）前缀路由')
   const route = routes[0]
@@ -203,7 +215,7 @@ test('装配：人设读不到时**退化而不是静默**——/api/say 仍被�
   const agentLoop = { async createAgent() { throw new Error('不该走到这里') } }
 
   const { ctx, routes, logs } = fakeCtx({ agentLoop, sessionController: undefined })
-  apply(ctx, { persistEveryTicks: 0, autoStart: false, dialogueBackend: 'native' })
+  apply(ctx, { stateDir: freshStateDir(), persistEveryTicks: 0, autoStart: false, dialogueBackend: 'native' })
 
   assert.equal(routes.length, 1)
   // R30 起建桥是**惰性**的（真宿主上会话服务往往在插件之后才挂上）：

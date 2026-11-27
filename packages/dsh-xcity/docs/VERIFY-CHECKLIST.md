@@ -194,7 +194,7 @@ notes: ["起点 9 人，9 人已坐下"]
 
 ## 6 token 成本
 
-**目的**：给出每轮/每天模型输出侧成本量级。
+**目的**：给出每轮/每天模型**输入侧 + 输出侧**成本量级（R517 起输入侧也计入）。
 
 **命令**
 
@@ -202,22 +202,22 @@ notes: ["起点 9 人，9 人已坐下"]
 node tools/measure-tokens.mjs
 ```
 
-**期望**：`ok:true`，输出 `perSession` / `perAgentDay` / `totalPerDay`。
+**期望**：`ok:true`，输出 `perSession`（含 `inputChars/outputChars`）/ `perAgentDay`（含 `inputTokens/outputTokens`）/ `tokensPerDay` / `turnBudget`。
 
 **实测**（退出码 0）
 
 ```
 days: 9.95（daysSource=api，即 world.tick/1440）    sessionsSeen: 57
-turns: 376    toolCalls: 116    estTokens: 73788    totalPerDay: 7419
+turns: 579    toolCalls: 116    outputTokens: 135243    inputTokens: 356982    tokensPerDay: 11899
 ```
 
-| 角色 | 会话数 | 轮次 | estTokens | tokens/天 | initiative 次数 | 次/天 |
+| 角色 | 会话数 | 轮次 | inputTokens | outputTokens | tokens/天 | initiative 次数 |
 | --- | --- | --- | --- | --- | --- | --- |
 | agent-1 | 20 | 124 | 21219 | 2133 | 140 | 14.08 |
 | agent-2 | 19 | 139 | 31252 | 3142 | 133 | 13.37 |
 | agent-3 | 18 | 113 | 21317 | 2143 | 134 | 13.47 |
 
-口径（脚本自述）：`estTokens = ceil(assistantChars / 4)`，只算模型**输出**侧
+口径（脚本自述）：输入侧 = user 注入上下文 + 工具结果 + system/developer；输出侧 = assistant 的 text/reasoning/tool-call 参数；均按 chars/4 保守换算。**注意**：每步重发的历史上下文与工具 schema 快照未计入，所以这是"增量下界"，不是计费值。
 （text + reasoning + tool-call 参数），不含输入上下文，**是粗估上界，不是计费值**。
 agent-4..9 没有会话日志（`sessions/` 里只有 agent1–3），所以不进统计。
 
@@ -397,7 +397,7 @@ find slowvale-mirror -newermt '2026-11-28 00:00:00' -type f | wc -l
 | 3 | 三工单闭环 | 0 | ✅ | 3/3 done，owner+output 齐 |
 | 4 | 三日记忆链 | 1 | ❌ 卡面命令 / ✅ 保留窗口 | missing D1–D3 ×9（保留期 7 天）；D9–D11：27/27 小结、81/81 证据、kept 30 / missed 2 |
 | 5 | 并发与重连 | 0 | ✅ | 9 人、stalls 0、抢座 0、重连 seq 1115→1116 |
-| 6 | token 成本 | 0 | ✅ | 9.95 天 / 57 会话 / 376 轮 / 73788 estTokens / 7419 per day |
+| 6 | token 成本 | 0 | ✅ | 41.37 天 / 72 会话 / 579 轮 / 输入 356982 + 输出 135243 tokens / 11899 per day（输入占 0.73） |
 | 7 | 头顶对话 | 0 | ✅ | bubble.float_up 落到页面 Phaser Text，errorCount 0 |
 | 8 | 前端零改动 | 0 | ✅ | diff 0 行、未跟踪目录 0 改动文件 |
 

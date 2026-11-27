@@ -343,7 +343,7 @@
 | H11 ✅ | 承诺裁决校准（宽限期 + 承诺驱动赴约，见日志） | 实测 `kept 4 / missed 24`，多数是"证据不足"而非真的失约 | 证据不足时不再直接判 missed，而是有明确第三态；kept 率与判定依据可复算 |
 | H12 ✅ | 派单公平性（同批一人一张，见日志） | H6 里 agent-1 连做两张、agent-3 一张没拿到 | 三张单分给三人（同优先级时按最近最少接单）；有回归测试 |
 | H13 ✅ | 记忆进入决策（心情加权 + 计划带昨天，见日志） | 目前 `life.ts` 只看 needs/traits，记忆只用于对话 | 同处境下"记得对方欠我一次"与"不记得"的首选动作不同；golden 锁住 |
-| H14 | 输入侧成本 | 现有 `measure-tokens` 只算输出侧（≈8.2k/天），真实大头是输入 | 每次模型调用的输入字符也有数；给出每轮上限与超限告警 |
+| H14 ✅ | 输入侧成本 + 每轮告警（见日志） | 现有 `measure-tokens` 只算输出侧（≈8.2k/天），真实大头是输入 | 每次模型调用的输入字符也有数；给出每轮上限与超限告警 |
 | H15 | 座位不足压测 | 只跑到 9 人；公司地图 20 桌，超出后的行为没验过 | 24 人跑 60s：无重复精灵、等待/流失行为明确、tick 不低于标称 70% |
 | H16 | 工单进记忆链 | 模拟模式下工单不建 Activity，任务完成在记忆里只剩一句 | 完成工单后有可追溯的活动记录与情节记忆 |
 | H17 | 存档体积预算 | world.json 随人数与天数上涨，没有预算 | 给出每角色每天的字节数，并按预算裁剪；超出可复现 |
@@ -394,3 +394,11 @@
   测试：`test/life-memory.test.js` 8 条、`test/plan-prompt-yesterday.test.js` 3 条；`npm test` → **1065 tests / 1064 pass / 1 skip / 0 fail**；`life-golden` 哈希未变（golden 世界里没有工单记忆，mood=0，零影响）。
   调研文档：`docs/research/MEMORY-DECISION.md`（GA 的检索/反思/计划链路、Letta/Reflexion/Voyager/ACT-R 对照、以及"我们最小增量是什么"）。两条硬结论：GA 的记忆影响计划是**一天一次**不是每步检索；参考实现里 `extract_recency` 方向反了、权重是代码不是论文。
   已知偏差：**"爽约"目前不进心情**——承诺只改 status，不写情节记忆；按字面口径"记得别人欠我"还没实现。要补就得让 commitments.ts 写 episode，属下一轮。
+
+- 2026-11-28 04:44 · **H14 通过（勾选）**。
+  成本实测（`tools/measure-tokens.mjs` 补了输入侧，41.37 天 / 72 会话 / 579 轮）：**输入 356,982 + 输出 135,243 tokens ≈ 11,899/天，输入占 0.73**。此前只有输出侧（3,352/天），低估了 3.5 倍。
+  每轮增量输入：`p50 416 / p95 16,133 / max 167,514 字符`；构成 user 38% / 工具结果 36% / system 26%。p95 是 p50 的 39 倍——上限按 p95（≈4k token）设是合理的。
+  运行期计数（R517）：`src/runtime/turn-cost.ts` + 复用已有 `session/event` 监听（**没有新增 listener / effect**），超限只 `logger.warn` 一条并计入 `warns`；`/agent-world/api/world` 的 `runtime.turnCost` 已暴露。真机跑一轮：`{turns:8, inputChars:8022, outputChars:1020, avgInputChars:1003, warns:0}`。
+  修掉一个测试隔离缺陷：`bridge-persona-wiring` 用默认 `.agent-world`，`node --test` 并行时被 R509 进程锁判成旁观者 → 偶发假红。改成每个用例自己的临时 stateDir，连跑 3 次全量稳定。
+  测试：`test/turn-cost.test.js` 7 条；`npm test` 连跑 3 次 → **1072 tests / 1071 pass / 1 skip / 0 fail**（三次一致）。
+  口径诚实说明：这是**增量下界**。每步重发的历史上下文与工具 schema（一次 `request/header` 快照约 18k 字符，122 次共 2.2M 字符）没有计入，所以不能当计费值用；要估"计费输入"得乘重发次数，属另一个口径。

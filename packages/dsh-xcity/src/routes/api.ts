@@ -41,6 +41,8 @@ export interface ApiDeps {
   tickMs: number
   /** R502：每日计划的计数（问了几个、卡在哪、落了几条）。 */
   plan?: () => Record<string, unknown>
+  /** R517：每轮输入体积的计数（user/message + 工具结果的字符数）。 */
+  turnCost?: () => Record<string, unknown>
   /** 小镇桥（Slow Vale 适配层）的地址，如 http://127.0.0.1:7790；客户端 iframe 用它。 */
   bridgeBase?: string
   /**
@@ -356,6 +358,8 @@ export function buildSnapshot(deps: ApiDeps): SnapshotMessage {
       diagnostics: { ...deps.runtime.diagnostics },
       // R502：低频计划的计数；没有接就是空对象，前端不必判空。
       ...(deps.plan === undefined ? {} : { plan: deps.plan() }),
+      // R517：每轮输入体积的计数；没有接就是空对象，前端不必判空。
+      ...(deps.turnCost === undefined ? {} : { turnCost: deps.turnCost() }),
     },
     content: {
       packs: view.packs.map((p) => ({ id: p.id, name: p.name, version: p.version })),
