@@ -51,6 +51,7 @@ import type { CommsOutcome } from './comms.js'
 import type { DeliverOutcome } from './mailbox.js'
 import { deliverMessages } from './mailbox.js'
 import { runHeartbeats } from './heartbeat.js'
+import { DAY_TICKS, writeDayDigest } from './memory.js'
 import { advanceNeeds } from './needs.js'
 import { advanceInitiative } from './initiative.js'
 import { applyMeetAffinity } from './relationships.js'
@@ -172,6 +173,11 @@ function ingest(
       case 'agentActivity': {
         const agent = world.agents.find((item) => item.id === command.agentId)
         if (agent === undefined) break
+        // R494：角色接受玩家建议也不能打断正在进行的生活或工单。
+        if (command.trigger?.kind === 'player' && (
+          agent.state !== 'idle' || agent.carrying !== null || agent.activityId !== undefined ||
+          agent.activityUntil !== undefined || agent.targetStation !== null || agent.path.length > 0
+        )) break
         if (command.activity === 'idle') {
           agent.state = 'idle'
           agent.station = null
@@ -533,7 +539,8 @@ export function step(
 
   // ── 5.5 activity ──
   // 活动对账放在 emit 之前：这一 tick 结束的活动要能在同一 tick 的事件里被看见。
-  for (const activity of syncActivities(world)) {
+  const completedActivities = syncActivities(world)
+  for (const activity of completedActivities) {
     events.push(emitEvent(world, 'agent.state', {
       agentId: activity.agentId,
       activityId: activity.id,
@@ -550,6 +557,9 @@ export function step(
       }
     }
   }
+
+  // R497：换天时给每个角色写一条日小结（复用 Episode，kind='day'，幂等）。
+  if (world.tick > 0 && world.tick % DAY_TICKS === 0) writeDayDigest(world, world.tick / DAY_TICKS)
 
   // ── 5.6 needs ──
   // R477：这一 tick 的状态已经定格（活动也对过账），内在量按它变化。

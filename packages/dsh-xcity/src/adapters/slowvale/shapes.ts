@@ -144,7 +144,6 @@ export const SHAPES: readonly ShapeRule[] = [
   { method: 'GET', pattern: /^\/game\/role-changes$/, body: roleChanges },
   { method: 'GET', pattern: /^\/game\/relationship-map$/, body: relationshipMap },
   { method: 'GET', pattern: /^\/game\/map\/presences$/, body: () => ({ presences: [] }) },
-  { method: 'GET', pattern: /^\/game\/recap$/, body: () => ({ role_id: 'agent-1', anchor_kind: null, anchor_game_time: { day_number: 1, day_of_week: 4, modern_time: '08:00', minute_of_day: 480, current_datetime: '2026-01-01T08:00:00' }, now_game_time: { day_number: 1, day_of_week: 4, modern_time: '08:00', minute_of_day: 480, current_datetime: '2026-01-01T08:00:00' }, current_datetime: '2026-01-01T08:00:00', day_number: 1, current_day: 1, timeline: [], days: [], sections: [], summary: null }) },
   { method: 'GET', pattern: /^\/game\/package$/, body: () => ({ items: [], version: 1, money: 0 }) },
   { method: 'GET', pattern: /^\/game\/player\/(calls|stance)$/, body: () => ({ calls: [], stance: null }) },
   { method: 'GET', pattern: /^\/game\/player\/(declutter-quota|interaction-quota)$/, body: quota },

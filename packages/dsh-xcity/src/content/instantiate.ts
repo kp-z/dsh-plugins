@@ -140,6 +140,8 @@ export function instantiateAgents(
     // 它只负责"有哪些角色"。这里给 null，装配层再填。
     hangout: null,
     llm: seat.model ?? { provider: '', model: '', reasoningEffort: null },
+    // R497：没声明就用中庸值；差异化由内容写。
+    traits: seat.traits ?? { diligence: 0.5, duty: 0.5 },
     boundAgentId: null,
     // R477：开局给一点个体差异（同 seed 可复现），但都从"还行"开始。
     needs: {

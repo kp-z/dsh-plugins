@@ -18,6 +18,7 @@ import { sceneByPlace } from './scene-key.js'
 import type { SmsStore } from './sms.js'
 import { shapeFor } from './shapes.js'
 import { logNoticesOf, logsOf } from './logs.js'
+import { projectRecap } from './recap.js'
 import type { WorldLike } from './types.js'
 import {
   epochOf,
@@ -37,7 +38,6 @@ export interface RouteContext {
   log?: (line: string) => void
   /** 短信线程存储（世界侧，线程不属于会话）。 */
   sms: SmsStore
-  applyDirective?: ((roleId: string, text: string) => boolean) | null
   /** SSE 通道的当前连接数（给诊断端点用）。 */
   streamClients?: () => number
   realtimeSeq?: () => number
@@ -157,7 +157,6 @@ const NOT_IMPLEMENTED = new Set([
   '/game/finance/transactions',
   '/game/newspaper/issues',
   '/game/relationship-map',
-  '/game/recap',
   '/shop/entries',
   '/shop/overview',
 ])
@@ -345,6 +344,10 @@ export async function handleApi(
     sendJson(res, 200, logsBody(ctx, 'catchUp', url.searchParams))
     return true
   }
+  if (path === '/game/recap' && method === 'GET') {
+    sendJson(res, 200, projectRecap(world, ctx.opts, url.searchParams.get('role_id')))
+    return true
+  }
   if (path === '/game/player/message' && method === 'POST') {
     const body = await readBody(req)
     // 左下角聊天框发的是 {role_id, content}（前端 Q2），短信界面发的是 {thread_id, content}。
@@ -373,9 +376,7 @@ export async function handleApi(
       sentAt: new Date().toISOString(),
       tick: world.tick,
     })
-    // 玩家这句话如果是指令（去办公室工作），直接落到世界；不依赖模型回什么。
     const threadRoleId = threadId.startsWith('thread:') ? threadId.slice(7) : ''
-    if (threadRoleId !== '') ctx.applyDirective?.(threadRoleId, content)
     const thread = ctx.sms.get(threadId)
     const viewerId = smsViewerId(ctx)
     sendJson(res, 200, {

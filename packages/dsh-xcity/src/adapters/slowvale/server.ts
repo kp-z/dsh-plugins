@@ -26,10 +26,11 @@ import { createHash } from 'node:crypto'
 import { handleApi, type RouteContext } from './routes.js'
 import { serveStatic } from './static.js'
 import { debugScript } from './debug.js'
-import { epochOf, feedHeadOf, projectPhone, projectScene, projectSnapshot, publicStatusOf, type ProjectOptions } from './project.js'
+import { clockOf, deskVisualState, epochOf, feedHeadOf, officeDeskOf, projectPhone, projectScene, projectSnapshot, publicStatusOf, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
-import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat } from './visual.js'
+import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat, type VisualBeat } from './visual.js'
+import { loadOfficeDesks } from './stage.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
 
@@ -59,8 +60,6 @@ export interface BridgeOptions {
     content: string
     tick: number
   }) => Promise<string | null>
-  /** 玩家给角色发短信时，把这句话直接翻成世界动作（不依赖模型回话）。 */
-  applyDirective?: ((roleId: string, text: string) => boolean) | null
   /**
    * 给角色开一条属于 xcity 工作区的会话（照 cove-task 的做法）。
    *
@@ -109,6 +108,7 @@ function resumePathOf(req: import('node:http').IncomingMessage): string | null {
 }
 
 export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
+  const opts = { ...options.opts, officeDesks: loadOfficeDesks(options.assetsDir) }
   const log = options.log ?? (() => {})
   const clients = new Set<ServerResponse>()
   let timer: NodeJS.Timeout | null = null
@@ -132,7 +132,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   log('[slowvale] responder ' + (typeof options.respondSms === 'function' ? '已接' : '为空'))
 
   const ctx: RouteContext = {
-    opts: options.opts,
+    opts: opts,
     account: options.account,
     getWorld: options.getWorld,
     sms,
@@ -142,9 +142,6 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     log,
     streamClients: () => clients.size,
     realtimeSeq: () => envelopeSeq,
-    // 这个字段之前漏了：BridgeOptions 收了 applyDirective，却没传给 RouteContext，
-    // 于是 ctx.applyDirective 永远是 undefined，短信指令这条路静默失效。
-    applyDirective: options.applyDirective ?? null,
   }
 
   const writeEvent = (res: ServerResponse, event: string, data: unknown): void => {
@@ -156,7 +153,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   let lastCursor: { epoch: string; seq: number } | null = null
 
   const snapshotAt = (world: WorldLike, seq: number) =>
-    projectSnapshot(world, { ...options.opts, phone: sms.signal(), realtimeSeq: seq })
+    projectSnapshot(world, { ...opts, phone: sms.signal(), realtimeSeq: seq })
 
   const synchronizeWorld = (world: WorldLike, newcomer?: ServerResponse): string => {
     const epoch = epochOf(world)
@@ -164,7 +161,10 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       const replacing = lastCursor !== null
       lastCursor = { epoch, seq: envelopeSeq }
       lastPushedScene = null
+      lastSceneContent = null
       walkLengths.clear()
+      seatedDesks.clear()
+      approachingDesks.clear()
       if (replacing) {
         const snapshot = snapshotAt(world, envelopeSeq)
         for (const client of clients) if (client !== newcomer) writeEvent(client, 'resync', snapshot)
@@ -189,26 +189,28 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   let lastPushedScene: string | null = null
   /** 上一轮每个角色的剩余路径长度：用来判断"这一轮是不是刚开始走"。 */
   const walkLengths = new Map<string, number>()
+  const seatedDesks = new Map<string, string>()
+  const approachingDesks = new Map<string, string>()
 
   const pushSceneState = (): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
     synchronizeWorld(world)
-    const scene = projectSnapshot(world, options.opts).scene
+    const scene = projectSnapshot(world, opts).scene
     if (typeof scene !== 'string' || scene === '') return
     // 只在场景**变化**时推：每秒重发同一场景会让前端反复转场，
     // 每次转场都会打断上一个场景的 loader.start() → 报「资源加载无进展」。
     if (options.sceneStateOnChangeOnly === true && scene === lastPushedScene) return
     lastPushedScene = scene
     const cursor = nextCursor(world)
-    const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: options.opts.worldId, scene }))).toString('base64')
+    const payloadGz = gzipSync(Buffer.from(JSON.stringify({ world_id: opts.worldId, scene }))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
       cursor,
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'scene_state',
-      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [], scenes: [scene] },
+      route: { world_id: opts.worldId, broadcast: false, role_ids: [], scenes: [scene] },
       payload_gz: payloadGz,
     }
     lastCursor = cursor
@@ -238,7 +240,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'state',
-      route: { world_id: options.opts.worldId, broadcast: false, ...route },
+      route: { world_id: opts.worldId, broadcast: false, ...route },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -253,7 +255,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const pushSay = (actorId: string, text: string): boolean => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return false
-    const scene = projectSnapshot(world, options.opts).scene
+    const scene = projectSnapshot(world, opts).scene
     if (typeof scene !== 'string' || scene === '') return false
     const cursor = nextCursor(world)
     const tickMarker = 'tick-' + String(world.tick)
@@ -271,7 +273,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: tickMarker,
       kind: 'visual',
-      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
+      route: { world_id: opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -280,14 +282,14 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   }
 
   /** 推一个 independent 时间轴（一个角色的若干拍）。 */
-  const pushTimeline = (actorId: string, beats: Record<string, unknown>[]): boolean => {
+  const pushTimeline = (actorId: string, beats: VisualBeat[], endState?: Record<string, unknown>, commitState?: Record<string, unknown>): boolean => {
     const world = options.getWorld()
-    if (world === null || clients.size === 0 || beats.length === 0) return false
-    const scene = projectSnapshot(world, options.opts).scene
+    if (world === null || clients.size === 0 || (beats.length === 0 && endState === undefined)) return false
+    const scene = projectSnapshot(world, opts).scene
     if (typeof scene !== 'string' || scene === '') return false
     const cursor = nextCursor(world)
     const tickMarker = 'tick-' + String(world.tick)
-    const packet = independentTimeline({ epoch: cursor.epoch, seq: envelopeSeq, tickMarker, actorId, beats: beats as never })
+    const packet = independentTimeline({ epoch: cursor.epoch, seq: envelopeSeq, tickMarker, actorId, beats, endState, commitState })
     const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -295,7 +297,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: tickMarker,
       kind: 'visual',
-      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
+      route: { world_id: opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -307,11 +309,11 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const pushFurniture = (): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
-    const snapshot = projectSnapshot(world, options.opts)
+    const snapshot = projectSnapshot(world, opts)
     const scene = snapshot.scene
     if (typeof scene !== 'string' || scene === '') return
     const cursor = nextCursor(world)
-    const payload = { place_id: options.opts.place, furniture: [] }
+    const payload = { place_id: opts.place, furniture: [] }
     const body = gzipSync(Buffer.from(JSON.stringify(payload))).toString('base64')
     const envelope = {
       protocol_version: SLOWVALE_PROTOCOL_VERSION,
@@ -319,7 +321,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'furniture',
-      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [], scenes: [scene] },
+      route: { world_id: opts.worldId, broadcast: false, role_ids: [], scenes: [scene] },
       payload_gz: body,
     }
     lastCursor = cursor
@@ -327,13 +329,17 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   }
 
   /** 把当前场景的内容（runtime + 拓扑）推给前端。 */
+  let lastSceneContent: string | null = null
   const pushSceneContent = (): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
-    const snapshot = projectSnapshot(world, options.opts)
+    const snapshot = projectSnapshot(world, opts)
     const scene = snapshot.scene
     if (typeof scene !== 'string' || scene === '') return
-    const place = options.opts.place
+    const place = opts.place
+    // R496-06：这组内容是静态的；重复家具屏障会打断前端正在走路的角色。
+    if (lastSceneContent === scene) return
+    lastSceneContent = scene
     pushStatePart('place_runtime', place, { place_id: place, furniture: [], installed_appliances: [] }, { role_ids: [], scenes: [scene] })
     // furniture 信封：场景家具（这里先空）。前端把它当作场景可交互层的屏障事件。
     pushFurniture()
@@ -345,6 +351,23 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     )
   }
 
+  // R496-07：用原协议的时钟做持续更新，不拿家具更新当心跳。
+  const pushClock = (world: WorldLike): void => {
+    const cursor = nextCursor(world)
+    const clock = clockOf(world, opts.startDate)
+    const envelope = {
+      protocol_version: SLOWVALE_PROTOCOL_VERSION,
+      cursor,
+      prev: lastCursor,
+      tick_marker: 'tick-' + String(world.tick),
+      kind: 'clock',
+      route: { world_id: opts.worldId, broadcast: true, role_ids: [], scenes: [] },
+      payload_gz: gzipSync(Buffer.from(JSON.stringify(clock))).toString('base64'),
+    }
+    lastCursor = cursor
+    for (const res of clients) writeEvent(res, 'update', envelope)
+  }
+
   let statusEpoch: string | null = null
   let activeStatuses = new Map<string, string>()
   const pushActivityChanges = (world: WorldLike): void => {
@@ -354,7 +377,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const broadcast = { broadcast: true as const, role_ids: [], scenes: [] }
     const next = new Map<string, string>()
     for (const agent of world.agents) {
-      const status = publicStatusOf(world, agent, options.opts.startDate)
+      const status = publicStatusOf(world, agent, opts.startDate)
       if (status['active_activity'] === undefined) continue
       const signature = JSON.stringify(status)
       next.set(agent.id, signature)
@@ -372,7 +395,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (signal.rowId === lastPhone.rowId && signal.unread === lastPhone.unread) return
     lastPhone = signal
     const world = options.getWorld()
-    const roleId = world?.agents.find((agent) => agent.id === options.opts.viewerRoleId)?.id ?? world?.agents[0]?.id
+    const roleId = world?.agents.find((agent) => agent.id === opts.viewerRoleId)?.id ?? world?.agents[0]?.id
     if (!roleId) return
     pushStatePart('role_phone', roleId, projectPhone(signal), { role_ids: [roleId], scenes: [] })
   }
@@ -382,7 +405,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   const signalLogHead = (initial = false): void => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return
-    const roleId = world.agents.find((agent) => agent.id === options.opts.viewerRoleId)?.id ?? world.agents[0]?.id
+    const roleId = world.agents.find((agent) => agent.id === opts.viewerRoleId)?.id ?? world.agents[0]?.id
     if (!roleId) return
     const epoch = epochOf(world)
     const head = feedHeadOf(world)
@@ -396,7 +419,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       prev: lastCursor,
       tick_marker: 'tick-' + String(world.tick),
       kind: 'log_resync',
-      route: { world_id: options.opts.worldId, broadcast: false, role_ids: [roleId], scenes: [] },
+      route: { world_id: opts.worldId, broadcast: false, role_ids: [roleId], scenes: [] },
       payload_gz: null,
     }
     lastCursor = cursor
@@ -553,11 +576,37 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         // 世界侧驱动：谁开始移动，就给谁发一拍 walk（路径点来自内核 sim/pathfind）
         const world = options.getWorld()
         if (world !== null && clients.size > 0) {
+          pushClock(world)
           pushActivityChanges(world)
           const picked = pickWalkStarts(walkLengths, world.agents)
           walkLengths.clear()
           for (const [id, len] of picked.next) walkLengths.set(id, len)
-          for (const item of picked.started) pushTimeline(item.agentId, [walkBeat(item.path) as never])
+          for (const item of picked.started) {
+            const agent = world.agents.find((row) => row.id === item.agentId)
+            const desk = agent === undefined ? undefined : officeDeskOf(world, agent, opts, agent.targetStation)
+            if (desk === undefined) {
+              approachingDesks.delete(item.agentId)
+              pushTimeline(item.agentId, [walkBeat(item.path)])
+            } else {
+              approachingDesks.set(item.agentId, desk.id)
+            }
+          }
+          // R496-04：内核确认到站后，把走路和坐姿交给同一播放片段，坐姿是片段结束状态。
+          for (const agent of world.agents) {
+            const desk = officeDeskOf(world, agent, opts, agent.station)
+            if (desk === undefined) {
+              seatedDesks.delete(agent.id)
+              if (agent.state !== 'walking') approachingDesks.delete(agent.id)
+              continue
+            }
+            if (seatedDesks.get(agent.id) === desk.id) continue
+            const placeId = agent.placeId ?? opts.place
+            const beats = approachingDesks.get(agent.id) === desk.id ? [walkBeat([], undefined, desk.id)] : []
+            approachingDesks.delete(agent.id)
+            if (pushTimeline(agent.id, beats, deskVisualState(desk.id), {
+              place_id: placeId, scene: 'company', location: { place_id: placeId, x: desk.x, y: desk.y },
+            })) seatedDesks.set(agent.id, desk.id)
+          }
         }
       } catch (error: unknown) {
         log('[slowvale] 推送失败 ' + String(error))

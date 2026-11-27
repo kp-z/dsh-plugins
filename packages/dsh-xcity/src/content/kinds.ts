@@ -293,6 +293,11 @@ export interface RosterSeat {
    * 比一个人格形容词堆得很多的角色更像人）。
    */
   speechStyle: string
+  /**
+   * R497：性格两维（0-1）。不写就 0.5/0.5。
+   * 和 persona 一样是**内容**：代码只读数值，不按角色名分支。
+   */
+  traits?: { diligence: number; duty: number } | undefined
 }
 
 /** 角色库条目。 */

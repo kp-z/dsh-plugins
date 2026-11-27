@@ -18,8 +18,8 @@
  * - clock 必须带 day_number 与 current_datetime（前端拿它推日期）。
  */
 import type { WorldAgentLike, WorldLike } from './types.js'
-import { logHeadOf, logNoticesOf } from './logs.js'
-import { DEFAULT_CIRCUIT } from './stage.js'
+import { activityLabelOf, activityTypeOf, logHeadOf, logNoticesOf } from './logs.js'
+import { DEFAULT_CIRCUIT, type loadOfficeDesks } from './stage.js'
 import { sceneKeyOf } from './scene-key.js'
 import { MINUTES_PER_DAY, SLOWVALE_PROTOCOL_VERSION, TICKS_PER_GAME_MINUTE } from './types.js'
 
@@ -34,6 +34,7 @@ export interface ProjectOptions {
   singlePlace?: boolean
   /** 桥提供的实时水位；独立投影没有连接时使用世界 tick。 */
   realtimeSeq?: number | undefined
+  officeDesks?: ReturnType<typeof loadOfficeDesks> | undefined
   /** 短信信号：最后一条消息行号与未读数（前端靠它们判断要不要重拉线程）。 */
   phone?: { rowId: number; unread: number } | undefined
 }
@@ -92,24 +93,6 @@ function facingOf(radians: number | undefined): string {
 }
 
 /** 角色在城里的落点。没有 station 的人先放在默认地点。 */
-/** 活动类型映射：领域语义 -> 前端徽章查表能命中的类型名。
- *
- * 前端只认它自己那 61 个活动类名（ProgrammerActivity 之类），查不到会记一条
- * badge.activity_type 警告然后什么都不画。所以这是白名单，不是自由字符串。
- */
-function activityTypeOf(kind: string, skill?: string | null, purpose?: string | null): string {
-  // R478：吃饭/睡觉都复用 rest 活动，用 purpose 决定徽章，别把吃饭画成 RestActivity。
-  if (purpose === 'meal') return 'EatActivity'
-  if (purpose === 'sleep') return 'SleepActivity'
-  // R481：学习可能发生在 code 工位（skill=code）；用 purpose 保证徽章仍是“学习”。
-  if (purpose === 'study') return 'SkillStudyActivity'
-  if (kind === 'sleep') return 'SleepActivity'
-  if (kind === 'rest') return 'RestActivity'
-  if (kind === 'meet') return 'SpeakActivity'
-  if (kind === 'visit') return 'WaitActivity'
-  if (skill === 'research') return 'SkillStudyActivity'
-  return 'ProgrammerActivity'
-}
 
 /** 角色头顶的「正在做什么」；没有活动就不给字段（前端据此决定画不画徽章）。 */
 /** tick -> 游戏时间（ISO）。1 tick = 1 游戏分钟，与 clockOf 同一套换算。 */
@@ -139,9 +122,10 @@ function activeActivityOf(world: WorldLike, agent: WorldAgentLike, startDate: st
   const id = (agent as { activityId?: string }).activityId
   const live = activities.find((item) => item.id === id && item.status === 'active')
   if (live === undefined) return undefined
-  const label = activityLabelOf(live.kind, agent.activityPurpose)
+  const purpose = live.purpose ?? agent.activityPurpose
+  const label = activityLabelOf(live.kind, purpose)
   const activity = {
-    activity_type: activityTypeOf(live.kind, live.skill, agent.activityPurpose),
+    activity_type: activityTypeOf(live.kind, live.skill, purpose),
     name: label,
     description: live.taskAttemptId === undefined ? label : live.trigger?.text ?? label,
   }
@@ -161,29 +145,31 @@ export function publicStatusOf(world: WorldLike, agent: WorldAgentLike, startDat
   return activity === undefined ? { status: 'offline' } : { status: 'online', active_activity: activity }
 }
 
-/** 活动的中文标签（前端的忙碌文案会用它）。 */
-function activityLabelOf(kind: string, purpose?: string | null): string {
-  if (purpose === 'meal') return '吃饭'
-  if (purpose === 'sleep') return '睡觉'
-  if (purpose === 'study') return '学习'
-  if (purpose === 'social') return '聊天'
-  if (kind === 'work') return '干活'
-  if (kind === 'rest') return '休息'
-  if (kind === 'meet') return '交谈'
-  if (kind === 'visit') return '待着'
-  if (kind === 'sleep') return '睡觉'
-  return '忙'
-}
 /** 场所 id -> 前端场景资源键（presence.scene 必须是资源键，不是 place id）。 */
 function assetOfPlace(world: WorldLike, placeId: string): string {
   const place = world.places?.find((candidate) => candidate.id === placeId)
   return place === undefined ? sceneKeyOf(placeId) : place.asset
 }
 
-function presenceOf(agent: WorldAgentLike, place: string, asset: string = sceneKeyOf(place)): Record<string, unknown> {
-  const position = agent.position ?? {}
-  // 场所是角色自己的属性：之前拿工位 id 冒充，导致所有人在同一个"地点"里。
-  const placeId = agent.placeId ?? place
+export function officeDeskOf(world: WorldLike, agent: WorldAgentLike, opts: ProjectOptions, station: string | null | undefined) {
+  if (!station || assetOfPlace(world, agent.placeId ?? opts.place) !== 'company') return undefined
+  return opts.officeDesks?.get(station)
+}
+
+// R496-02：同一个坐点承载实时动作、角色 presence 和刷新快照。
+export function deskVisualState(id: string) {
+  return { body: { action: 'work', work_kind: 'programming', at: { kind: 'pose', id } } }
+}
+
+function actorPlacement(world: WorldLike, agent: WorldAgentLike, opts: ProjectOptions) {
+  const placeId = agent.placeId ?? opts.place
+  const desk = officeDeskOf(world, agent, opts, agent.station)
+  const location = { place_id: placeId, x: desk?.x ?? agent.position?.x ?? 0, y: desk?.y ?? agent.position?.z ?? 0 }
+  return { location, visual: desk === undefined ? undefined : deskVisualState(desk.id) }
+}
+
+function presenceOf(world: WorldLike, agent: WorldAgentLike, opts: ProjectOptions, asset: string): Record<string, unknown> {
+  const { location, visual } = actorPlacement(world, agent, opts)
   // HUD 的同场景列表直接读 presence 上的 name/gender/appearance/titles，
   // 少任何一个都会在渲染时抛（"reading 'map'" 就是 titles 缺失）。
   return {
@@ -193,13 +179,8 @@ function presenceOf(agent: WorldAgentLike, place: string, asset: string = sceneK
     appearance: DEFAULT_APPEARANCE,
     titles: [],
     scene: asset,
-    location: {
-      place_id: placeId,
-      x: typeof position.x === 'number' ? position.x : 0,
-      y: typeof position.z === 'number' ? position.z : 0,
-      facing: facingOf(agent.facing),
-    },
-    visual_state: {},
+    location: { ...location, facing: facingOf(agent.facing) },
+    visual_state: visual ?? {},
   }
 }
 
@@ -265,23 +246,22 @@ export const DEFAULT_APPEARANCE = {
  * （GameView 的 At() 会直接抛错）。角色（role）的 actor 还必须带 appearance，
  * 否则合成不出精灵——那是"人不见了但一切都 200"的典型症状。
  */
-function actorsOf(world: WorldLike, place: string): Record<string, Record<string, unknown>> {
+function actorsOf(world: WorldLike, opts: ProjectOptions): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {}
   for (const agent of world.agents) {
-    const position = agent.position ?? {}
-    // 场所是角色自己的属性；坐标是相对该场所的。
-    const placeId = agent.placeId ?? place
+    const { location, visual } = actorPlacement(world, agent, opts)
     out[agent.id] = {
       actor_id: agent.id,
       role_id: agent.id,
-      actorKind: 'role',
+      // R496-05：镜像用 actor_kind 识别居民；否则还会把同一角色挂成额外精灵。
+      actor_kind: 'role',
       name: agent.name,
       display_name: agent.name,
       appearance: DEFAULT_APPEARANCE,
-      place_id: placeId,
-      location: { place_id: placeId, x: typeof position.x === 'number' ? position.x : 0, y: typeof position.z === 'number' ? position.z : 0 },
+      place_id: location.place_id,
+      location,
       // anim 取自内核状态：之前恒为 'idle'，所以就算人在走、在干活，画面上也永远站着不动。
-      visual_state: { anim: animOf(agent), facing: facingOf(agent.facing) },
+      visual_state: { anim: animOf(agent), facing: facingOf(agent.facing), ...visual },
     }
   }
   return out
@@ -317,28 +297,20 @@ export function projectPhone(signal: ProjectOptions['phone']) {
 
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */
 export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<string, unknown> {
-  // 世界快照永远用配置里的默认场景；请求级的场景切换由 projectScene 处理
   const clock = clockOf(world, opts.startDate)
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
   for (const agent of world.agents) {
     const agentPlace = agent.placeId ?? opts.place
-    presence[agent.id] = presenceOf(agent, agentPlace, assetOfPlace(world, agentPlace))
+    presence[agent.id] = presenceOf(world, agent, opts, assetOfPlace(world, agentPlace))
     statuses[agent.id] = publicStatusOf(world, agent, opts.startDate)
   }
   const viewerAgent = world.agents.find((a) => a.id === opts.viewerRoleId) ?? world.agents[0]
-  // 场景必须跟着 viewer 的实际位置走：前端靠 committedScene 的**变化**去启动/切换场景，
-  // 一直给同一个场景就等于永远不触发切换，Phaser 连贴图都不会请求。
-  const viewerStation = viewerAgent === undefined || viewerAgent === null ? opts.place : viewerAgent.station
-  const livePlace = typeof viewerStation === 'string' ? viewerStation : opts.place
-  const scene = sceneKeyOf(livePlace)
+  // R493：Phaser 用地图资源键启动；同一场所内换工位不会切地图。
+  const livePlace = viewerAgent?.placeId ?? opts.place
+  const scene = assetOfPlace(world, livePlace)
   const viewerId = viewerAgent?.id ?? opts.viewerRoleId
   const viewerName = viewerAgent?.name ?? '访客'
-  // presence.scene 必须与 snapshot.scene 同一套 id（场景资源键），
-  // 否则前端认为「这个场景里没这个人」，场景就不会启动。
-  for (const entry of Object.values(presence)) {
-    (entry as { scene?: string }).scene = scene
-  }
   return {
     // gameState.role：HUD 的几乎所有组件都从这里取名字与外观
     // （缺了就是 "Cannot read properties of undefined (reading 'name')"，且整块 HUD 挂不出来）
@@ -365,8 +337,8 @@ export function projectSnapshot(world: WorldLike, opts: ProjectOptions): Record<
     // 快照与 /game/logs/recent 必须报同一个 head：前端靠它对齐日志游标，不一致会被当成整体重同步。
     feed_head_record_entry_id: feedHeadOf(world),
     role_public_statuses: statuses,
-role_presences: presence,
-    place_topology: { places: placesOf(scene, opts.singlePlace === true) },
+    role_presences: presence,
+    place_topology: { places: placesOf(livePlace, opts.singlePlace === true) },
     place_counts: { place_counts: {} },
     viewer: {
       core: {
@@ -418,10 +390,10 @@ role_presences: presence,
     story_flags: {},
     can_operate: true,
     market: { balance: 128000, money: 128000, holdings: [] },
-    actors: actorsOf(world, scene),
+    actors: actorsOf(world, opts),
     visual_timeline: [],
     // installed_appliances 是前端场景校验器要求的数组（缺了整份场景数据被判无效，画布就不启动）
-    scene_place_runtime_states: [{ place_id: scene, furniture: [], installed_appliances: [] }],
+    scene_place_runtime_states: [{ place_id: livePlace, furniture: [], installed_appliances: [] }],
     scene_farm_state: null,
   }
 }
@@ -441,7 +413,7 @@ export function projectScene(
   const presence: Record<string, unknown> = {}
   const statuses: Record<string, unknown> = {}
   for (const agent of world.agents) {
-    const entry = presenceOf(agent, scene) as { scene?: string }
+    const entry = presenceOf(world, agent, opts, assetOfPlace(world, agent.placeId ?? opts.place)) as { scene?: string }
     if (agent.id === opts.viewerRoleId) entry.scene = scene
     presence[agent.id] = entry
     statuses[agent.id] = publicStatusOf(world, agent, opts.startDate)
@@ -453,7 +425,7 @@ export function projectScene(
     scene,
     role_public_statuses: statuses,
     role_presences: presence,
-    actors: actorsOf(world, scene),
+    actors: actorsOf(world, opts),
     place_runtimes: [{ place_id: scene, installed_appliances: [] }],
     place_topology: { places: placesOf(scene, opts.singlePlace === true) },
     clock: clockOf(world, opts.startDate),

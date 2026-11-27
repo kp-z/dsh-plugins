@@ -320,6 +320,8 @@ export const defaultPack: ContentPack = {
             palette: 'skin.role.lead',
             appearance: 'model.agent.mv-tom',
             model: null,
+            // R497：干劲高、守约高——更像"会自己找事、答应了就做"。
+            traits: { diligence: 0.8, duty: 0.7 },
             persona:
               '带五个人的工程组长，排期与拍板的人。最怕的不是写错代码，而是"没人知道现在卡在谁身上"。' +
               '对进度比对代码更敏感，会主动把大活拆小。',
@@ -333,6 +335,7 @@ export const defaultPack: ContentPack = {
             palette: 'skin.role.engineer',
             appearance: 'model.agent.mv-lea',
             model: null,
+            traits: { diligence: 0.6, duty: 0.4 },
             persona: '主力工程师，团队里写代码最快的那个。习惯先把问题复现出来再动手，讨厌凭感觉改。',
             speechStyle:
               '务实、干脆，爱说「我先复现一下」「我本地过不了」。会不自觉地蹦出英文术语，' +
@@ -344,6 +347,7 @@ export const defaultPack: ContentPack = {
             palette: 'skin.role.engineer.2',
             appearance: 'model.agent.mv-jack',
             model: null,
+            traits: { diligence: 0.45, duty: 0.6 },
             persona: '工程师，稳的那一个。宁可慢半天也要把边界条件想清楚，最听不得"应该没问题"。',
             speechStyle:
               '语速慢，爱加限定条件：「如果并发上来呢」「边界是空的会怎样」。' +

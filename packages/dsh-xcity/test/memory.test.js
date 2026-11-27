@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DAY_TICKS, EPISODE_KEEP_DAYS, appendEpisode, dayOf, episodeOfActivity, pruneEpisodes, recordActivityEpisode, scoreEpisode, selectEpisodes } from '../lib/sim/memory.js'
+import { DAY_TICKS, EPISODE_KEEP_DAYS, appendEpisode, dayOf, episodeOfActivity, pruneEpisodes, recordActivityEpisode, scoreEpisode, selectEpisodes, summarizeDay, writeDayDigest } from '../lib/sim/memory.js'
 
 const ep = (tick, summary, salience = 0.3, kind = 'work') => ({ tick, day: dayOf(tick), kind, summary, with: [], placeId: 'place:office', salience })
 
@@ -66,6 +66,19 @@ test('R497：桥的 idle 活动不写成"完成"；短打断也不记', () => {
   assert.equal(agent.episodes.length, 1)
   assert.equal(agent.episodes[0].summary, '没做完：吃了顿饭')
   assert.equal(agent.episodes[0].salience, 0.2)
+})
+
+test('R497：日小结复用 Episode，只数真实条目，且幂等', () => {
+  const agent = { id: 'a', placeId: 'p', episodes: [] }
+  const world = { agents: [agent] }
+  for (let i = 0; i < 3; i++) appendEpisode(agent, ep(100 + i, '学习', 0.3, 'study'))
+  appendEpisode(agent, ep(200, '吃了顿饭', 0.3, 'meal'))
+  assert.equal(summarizeDay(agent.episodes, 1), '第1天：学习×3、吃了顿饭×1')
+  writeDayDigest(world, 1)
+  writeDayDigest(world, 1)
+  assert.equal(agent.episodes.filter((e) => e.kind === 'day').length, 1, '同一天写两次只留一条')
+  assert.equal(agent.episodes.at(-1).summary, '第1天：学习×3、吃了顿饭×1')
+  assert.equal(summarizeDay([], 2), null, '没发生任何事就不写小结')
 })
 
 test('R497：活动 → 记忆，只写真实字段；工单最值得记', () => {

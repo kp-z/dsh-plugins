@@ -65,9 +65,11 @@ export function actionBeat(action: string, extra: Record<string, unknown> = {}, 
   return beat
 }
 
-/** 走过去：路径点由后端算，前端只按点走。 */
-export function walkBeat(path: { x: number; y: number }[], durationMs?: number): VisualBeat {
-  return actionBeat('walk', { path }, durationMs)
+/** R496-03：镜像从 to_anchor 寻路；pose 的 approach 由地图决定。 */
+export function walkBeat(path: { x: number; y: number }[], durationMs?: number, poseId?: string): VisualBeat {
+  const end = path.at(-1)
+  const to_anchor = poseId !== undefined ? { kind: 'pose', id: poseId } : end === undefined ? { kind: 'current' } : { kind: 'point', ...end }
+  return actionBeat('walk', { to_anchor }, durationMs)
 }
 
 /** 在工位干活。 */
@@ -82,24 +84,20 @@ export function independentTimeline(input: {
   tickMarker: string
   actorId: string
   beats: VisualBeat[]
+  endState?: Record<string, unknown> | undefined
+  commitState?: Record<string, unknown> | undefined
 }): Record<string, unknown> {
   return {
     epoch: input.epoch,
     seq: input.seq,
     tick_marker: input.tickMarker,
-    kind: 'independent',
-    actorId: input.actorId,
-    beats: input.beats,
+    playback: { kind: 'independent', tracks: { [input.actorId]: input.beats } },
+    ...(input.endState === undefined ? {} : { end_states: { [input.actorId]: input.endState } }),
+    ...(input.commitState === undefined ? {} : { actor_commit_states: { [input.actorId]: input.commitState } }),
   }
 }
 
-/**
- * 把世界里的剩余路径点换成 beat 需要的 {x, y}。
- *
- * 坐标**不需要换算**：actorsOf 里就是 x = position.x、y = position.z，
- * 也就是世界坐标本身就是地图像素（舞台行走一直用这套）。这里只改字段名，
- * 不引入一个没有依据的缩放系数。
- */
+/** R496：仅换轴。异源办公室的工位必须另用地图 pose，不能把这里的点当作桌位。 */
 export function walkPathOf(agent: { path?: { x: number; z: number }[] }): { x: number; y: number }[] {
   return (agent.path ?? []).map((point) => ({ x: point.x, y: point.z }))
 }

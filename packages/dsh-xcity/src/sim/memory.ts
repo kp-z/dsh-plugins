@@ -89,6 +89,45 @@ export function recordActivityEpisode(
   appendEpisode(agent, episodeOfActivity(activity, endedAt, status), endedAt)
 }
 
+const KIND_TEXT: Record<string, string> = { ...PURPOSE_TEXT, work: '干活', day: '小结' }
+
+/** 一天的记忆压成一句：只数真实发生过的条数，不解释。 */
+export function summarizeDay(episodes: readonly Episode[], day: number): string | null {
+  const mine = episodes.filter((episode) => episode.day === day && episode.kind !== 'day')
+  if (mine.length === 0) return null
+  const counts = new Map<string, number>()
+  for (const episode of mine) {
+    const label = KIND_TEXT[episode.kind] ?? episode.kind
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+  const parts = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([label, n]) => label + '×' + String(n))
+  return '第' + String(day) + '天：' + parts.join('、')
+}
+
+/**
+ * 换天时给每个角色写一条日小结。
+ *
+ * 为什么复用 Episode 而不是新开 memories：一份"今天干了什么"已经有事实来源，
+ * 再存一份只会两处打架（用户要求：如无必要勿增实体）。同一天重复调用是幂等的。
+ */
+export function writeDayDigest(world: { agents: readonly Agent[] }, endedDay: number): void {
+  for (const agent of world.agents) {
+    const episodes = agent.episodes ?? []
+    if (episodes.some((episode) => episode.kind === 'day' && episode.day === endedDay)) continue
+    const summary = summarizeDay(episodes, endedDay)
+    if (summary === null) continue
+    appendEpisode(agent, {
+      tick: endedDay * DAY_TICKS,
+      day: endedDay,
+      kind: 'day',
+      summary,
+      with: [],
+      placeId: agent.placeId,
+      salience: 0.5,
+    })
+  }
+}
+
 export interface RecallOptions {
   /** 现在的 tick，用于算近因。 */
   nowTick: number

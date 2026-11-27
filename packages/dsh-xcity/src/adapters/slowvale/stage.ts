@@ -50,6 +50,25 @@ export function spawnOf(assetsDir: string, asset: string): { x: number; z: numbe
   }
 }
 
+// R496-01：两张办公室布局不同；只绑定确有对应电脑坐点的工位，不缩放内核坐标。
+export function loadOfficeDesks(assetsDir: string): ReadonlyMap<string, { id: string; x: number; y: number }> {
+  const desks = new Map<string, { id: string; x: number; y: number }>()
+  try {
+    const points = JSON.parse(readFileSync(join(assetsDir, 'assets/maps/company/interactions.json'), 'utf8')) as {
+      name?: string; class?: string; capabilities?: string[]; x: number; y: number
+    }[]
+    for (const point of points) {
+      const match = point.name?.match(/^desk_([0-9]|1[0-9])$/)
+      if (point.class !== 'pose' || !match || !point.capabilities?.includes('computer') ||
+        !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+      // seat-01 is reception; computer desks start at seat-02.
+      const station = 'station.seat-' + String(Number(match[1]) + 2).padStart(2, '0')
+      desks.set(station, { id: point.name!, x: point.x, y: point.y })
+    }
+  } catch { /* 桥也可服务没有办公室的资源集。 */ }
+  return desks
+}
+
 export const DEFAULT_CIRCUIT: readonly PlaceSpec[] = [
   { id: 'place:office.tech_company_1', asset: 'company', label: '科技公司 · 办公室' },
   { id: 'place:residential.apartment_1', asset: 'home_public', label: '公寓' },

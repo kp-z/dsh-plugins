@@ -903,14 +903,25 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const content = event.type === 'user/message' ? event.data?.['content'] ?? message?.content : message?.content
       const blocks = Array.isArray(content) ? content : []
-      taskExecution?.observe(sessionId, event.type, event.data)
       const sms = smsReplies.observe(sessionId, event.type, event.data, blocks)
+      if (sms === null) taskExecution?.observe(sessionId, event.type, event.data)
       if (event.type !== 'user/message' && event.type !== 'assistant/message' && event.type !== 'tool/result') return
       const world = state.currentWorld()
       if (world === null) return
-      if (sms?.reply) {
-        const peer = world.agents.find((agent) => agent.id === sms.reply.peerRoleId)
-        if (peer !== undefined) slowvaleBridgeHandle?.appendIncoming(peer.id, peer.name, sms.reply.text)
+      if (sms !== null) {
+        if (sms.reply) {
+          const peer = world.agents.find((agent) => agent.id === sms.reply.peerRoleId)
+          if (peer !== undefined) {
+            slowvaleBridgeHandle?.appendIncoming(peer.id, peer.name, sms.reply.text)
+            try {
+              sms.reply.acceptAction?.()
+            } catch (error: unknown) {
+              logger.warn('[xcity-sms] 已接受的建议未能入队：' + String(error))
+            }
+          }
+        }
+        // R494：短信回合的工具事件不触发工位或收工映射。
+        return
       }
       // 谁代表这条会话：显式绑定 > 当前激活会话的队长 > xcity 绑定表（规则见 runtime/session-events.ts）。
       const actor = actorForSession({
@@ -932,7 +943,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       }
 
       // ③ 对话气泡：只有它需要通道，前两件事不受影响。
-      if (mainDialogueChannel === null || sms !== null) return
+      if (mainDialogueChannel === null) return
       const text = textOfBlocks(blocks)
       if (text === '') return
       if (event.type === 'user/message') {
@@ -1204,41 +1215,35 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
               },
             })
           },
-          // 玩家给角色发短信：这句话本身就是指令时直接落到世界（不等模型回话）。
-          applyDirective: (peerId: string, text: string) => {
-            // peerId 是短信线程的 peer，也就是**世界里的 agentId**（thread:agent-1）。
-            // 之前这里当成角色 id 去 agents.json 反查，查不到就直接放弃——指令从来没发出去过。
-            if (peerId === '') return false
-            const world = state.currentWorld()
-            if (world === null) return false
-            if (!world.agents.some((agent) => agent.id === peerId)) return false
-            const directive = parseDirective(text, DEFAULT_CIRCUIT)
-            if (directive === null) return false
-            const base = directiveToCommand(directive, peerId)
-            if (base === null) return false
-            // 玩家的原话就是这次活动的触发来源：日志里的 decision 条目用它，不加工、不编。
-            const command = { ...base, trigger: { kind: 'player' as const, text } }
-            runtime.enqueue(command)
-            return true
-          },
           respondSms: async (input: { peerRoleId: string; content: string }) => {
+            const world = state.currentWorld()
+            if (world === null || !world.agents.some((agent) => agent.id === input.peerRoleId)) return null
+            const characterOf = (peerRoleId: string) => loadAgentMap(join(characterWorkspace, 'agents.json'))[peerRoleId] ?? null
+            const sessionOf = (characterId: string) => loadXcityBindings(bindingsPath).find((row) => row.characterId === characterId)?.sessionId ?? null
+            // R494：识别玩家建议仅用于提供选项；短信到达时不向世界发命令。
+            const directive = parseDirective(input.content, DEFAULT_CIRCUIT)
+            const place = world.places?.find((item) => item.id === directive?.placeId)
+            const command = directive === null || place === undefined ? null : directiveToCommand(directive, input.peerRoleId)
+            const suggestedAction = command === null ? undefined :
+              '去' + place?.name + (command.activity === 'work' ? '工作' : command.activity === 'rest' ? '休息' : '看看')
             try {
               return await respondViaSession(input, {
-                // R479：让回复知道"今天做了什么、现在在做什么"（读世界事实，不编）。
-                dayContext: (peerRoleId) => {
-                  const world = state.currentWorld()
-                  return world === null ? [] : summarizeDay(world, peerRoleId, world.tick)
+                characterOf,
+                sessionOf,
+                suggestedAction,
+                dayContext: (peerRoleId) => summarizeDay(world, peerRoleId, world.tick),
+                onForward: (peerRoleId, sessionId, text) => smsReplies.track(peerRoleId, sessionId, text, 'player-sms', command === null ? undefined : () => {
+                  // R494：延迟回话不能跨世界或已更换的绑定执行。
+                  const characterId = characterOf(peerRoleId)
+                  if (state.currentWorld() !== world || characterId === null || sessionOf(characterId) !== sessionId) return
+                  runtime.enqueue({ ...command, trigger: { kind: 'player', text: input.content } }, world)
+                }),
+                prompt: async (payload, signal) => {
+                  if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
+                  await sessionControllerService.prompt(payload as never, signal)
                 },
-                onForward: smsReplies.track,
-              characterOf: (peerRoleId) => loadAgentMap(join(dirname(resolved.slowvale.bindingsFile), 'agents.json'))[peerRoleId] ?? null,
-              sessionOf: (characterId) => loadXcityBindings(resolved.slowvale.bindingsFile).find((row) => row.characterId === characterId)?.sessionId ?? null,
-              prompt: async (payload, signal) => {
-                if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
-                await sessionControllerService.prompt(payload as never, signal)
-              },
               })
             } catch (error: unknown) {
-              // 转发失败不能只留在内存里：写日志，否则玩家看到的只是"没有回复"。
               logger.warn('[xcity-sms] 转发失败 peer=' + input.peerRoleId + '：' + String(error))
               return null
             }

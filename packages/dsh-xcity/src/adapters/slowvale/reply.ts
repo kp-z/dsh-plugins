@@ -2,6 +2,8 @@
 export const REPLY_OPEN = '<xcity-reply>'
 export const REPLY_CLOSE = '</xcity-reply>'
 export const REPLY_MAX_CHARS = 60
+// R494：角色明确接受本短信提供的已有动作；正文不是命令。
+export const ACCEPT_ACTION = '<xcity-action>accept</xcity-action>'
 
 export function extractFrontendReply(text: string): string | null {
   const opening = text.indexOf(REPLY_OPEN)

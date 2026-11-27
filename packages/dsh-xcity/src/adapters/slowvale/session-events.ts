@@ -9,7 +9,7 @@
  * 副作用（appendIncoming / runtime.enqueue / channel.publish）留在调用方。
  */
 
-import { extractFrontendReply } from './reply.js'
+import { ACCEPT_ACTION, extractFrontendReply, REPLY_CLOSE, REPLY_OPEN } from './reply.js'
 
 /** 世界上能被认出"是谁"的最小形状。 */
 export interface SessionActor {
@@ -87,7 +87,7 @@ export function activityForEvent(input: {
 
 /** Bind a delivered SMS prompt to the DSH turn that consumed it. */
 export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
-  type Pending = { peerRoleId: string; kind: 'player-sms' | 'initiative'; expiresAt: number }
+  type Pending = { peerRoleId: string; kind: 'player-sms' | 'initiative'; expiresAt: number; acceptAction?: (() => void) | undefined }
   type State = { queued: Map<string, Pending>; turn?: number; smsTurn?: number; pending?: Pending | undefined }
   const sessions = new Map<string, State>()
   const prune = (sessionId: string, state: State): void => {
@@ -97,9 +97,9 @@ export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
     if (state.queued.size === 0 && state.smsTurn === undefined) sessions.delete(sessionId)
   }
   return {
-    track(peerRoleId: string, sessionId: string, text: string, kind: 'player-sms' | 'initiative' = 'player-sms'): () => void {
+    track(peerRoleId: string, sessionId: string, text: string, kind: 'player-sms' | 'initiative' = 'player-sms', acceptAction?: () => void): () => void {
       const state = sessions.get(sessionId) ?? { queued: new Map<string, Pending>() }
-      const pending = { peerRoleId, kind, expiresAt: now() + ttlMs }
+      const pending = { peerRoleId, kind, expiresAt: now() + ttlMs, acceptAction }
       state.queued.set(text, pending)
       sessions.set(sessionId, state)
       return () => {
@@ -136,11 +136,16 @@ export function createSmsReplyTracker(ttlMs: number, now = Date.now) {
       prune(sessionId, state)
       if (state.smsTurn === undefined || state.turn !== state.smsTurn) return null
       const pending = state.pending
-      const text = type === 'assistant/message' && pending && now() < pending.expiresAt
-        ? extractFrontendReply(textOfBlocks(blocks)) : null
-      if (text === null || pending === undefined) return { reply: null }
+      if (type !== 'assistant/message' || !pending || now() >= pending.expiresAt) return { reply: null }
+      const raw = textOfBlocks(blocks)
+      const text = extractFrontendReply(raw)
+      if (text === null) return { reply: null }
       state.pending = undefined
-      return { reply: { peerRoleId: pending.peerRoleId, text, kind: pending.kind } }
+      // R494：只承认当前玩家短信的显式接受标记；聊天正文、工具块、主动短信都不能执行。
+      const tail = raw.slice(raw.indexOf(REPLY_CLOSE) + REPLY_CLOSE.length)
+      const acceptAction = pending.kind === 'player-sms' && raw.startsWith(REPLY_OPEN) && tail.trim() === ACCEPT_ACTION && tail.includes('\n')
+        ? pending.acceptAction : undefined
+      return { reply: { peerRoleId: pending.peerRoleId, text, kind: pending.kind, ...(acceptAction ? { acceptAction } : {}) } }
     },
   }
 }

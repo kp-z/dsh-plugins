@@ -20,9 +20,13 @@ function hhmm(tick: number): string {
   return hh + ':' + mm
 }
 
-/** 活动名：优先用触发文本里的生活线索，再退回 kind/skill。 */
+/** R494：事实用途优先；旧活动只信内核自己的说明，不把玩家原话当成经历。 */
 function labelOf(activity: Activity): string {
-  const text = activity.trigger?.text ?? ''
+  if (activity.purpose === 'meal') return '吃饭'
+  if (activity.purpose === 'sleep') return '睡觉'
+  if (activity.purpose === 'study') return '学习'
+  if (activity.purpose === 'social') return '聊天'
+  const text = activity.purpose === undefined && activity.trigger?.kind === 'self' ? activity.trigger.text ?? '' : ''
   if (text.includes('吃')) return '吃饭'
   if (text.includes('睡')) return '睡觉'
   if (text.includes('学')) return '学习'

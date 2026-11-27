@@ -49,9 +49,14 @@ export function parseDirective(text: string, places: readonly PlaceLike[]): Dire
       }
     }
   }
+  const workWord = WORK_WORDS.find((word) => input.includes(word))
+  if (placeId === null && workWord !== undefined && places.some((place) => place.id === 'place:office.tech_company_1')) {
+    placeId = 'place:office.tech_company_1'
+    matched = workWord
+  }
   if (placeId === null) return null
 
-  const wantsWork = WORK_WORDS.some((word) => input.includes(word))
+  const wantsWork = workWord !== undefined
   const kind: Directive['kind'] = wantsWork ? 'work' : placeId.includes('apartment') ? 'rest' : 'visit'
   return { kind, placeId, matched }
 }

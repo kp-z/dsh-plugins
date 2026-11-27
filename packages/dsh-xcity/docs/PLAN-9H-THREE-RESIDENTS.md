@@ -37,9 +37,9 @@
 ### H1 · 认知地基：三居民 + 记忆数据模型
 - **已定（调研见 research/MEMORY.md）**：不引入 Mem0/Zep/Graphiti/Cognee/Letta 任何平台——除 Mem0 OSS 外都要 Python/图库，且 Mem0 写入是每条一次 LLM（30 条/天≈30 次调用），纯亏。抄两条思想即可：Letta 的「文件 + 按需读」、Graphiti 的「失效不删行」。
 - **缺口是读回路径，不是向量检索**：`world.activities` 上限 64 条且是世界共享数组，3 人分摊只够 1.5–2.7 天；`WorldEventType` 没有 activity.*，events.jsonl 只写不读。
-- 设计：Episode JSONL（在 `endActivity` 唯一出口写；7 天滚动；不塞 world.json、不加协议枚举）+ `agent.memories[{day,lines}]`（复用已定形状）+ `persona.notes` 用最小字段（kind/text/source/createdAtTick，**先不上** confidence/supersedes/tombstone）。
-- 实现：`sim/memory.ts`（纯函数：append/prune/score/select）+ store 往返；决策只读结构化字段，不做文本检索。
-- 验收：单测覆盖裁剪与打分；老档不崩；三居民 traits 可区分；用 `tools/measure-baseline.mjs` 复跑并与 §11 基线对比（活动量、社交窗口），数字写进日志。
+- 设计（实际落地）：Episode 挂在 `agent.episodes`（7 天滚动、上限 150/人）；**不新增 `agent.memories`**——日小结就是 `kind='day'` 的 Episode（一份事实只有一个容器）；承诺数据模型已在 `types.ts`，但**裁决推迟到 H3/H7**（要先有人与人同场的伙伴证据）。
+- 实现：`sim/memory.ts`（append/prune/score/select/summarizeDay/writeDayDigest）+ `sim/activity.ts` 两个完成出口 + `sim/step.ts` 换天写小结；traits 由内容声明（seats[].traits），代码不按角色名分支。
+- 验收（已过）：`test/memory.test.js` 10 条；`npm test` 943/942/1 skip/0 fail；三居民 traits 0.8/0.7、0.6/0.4、0.45/0.6；三天仿真产生「第1天/第2天」日小结；`tools/measure-baseline.mjs` 复跑与 §11 完全一致（91 窗口 / 2 次社交），证明记忆改动没有改变行为。
 
 ### H2 · 动机引擎：B1 抽语法 → B2 换 argmax（**必须分两步提交**）
 - **已定（research/BEHAVIOR.md）**：现有阶梯优先级 = 给前几项极高常数效用的效用函数特例；HUNGER/ENERGY/SOCIAL_LOW 就是阶跃曲线。所以不是推倒重来。
@@ -175,7 +175,7 @@
 
 ## 12. 轮次状态（每小时任务只改这里 + 进度日志）
 
-- [ ] H1 认知地基：Episode/traits/commitments + memory.ts
+- [x] H1 认知地基：Episode/日小结/traits + memory.ts（承诺裁决移至 H3/H7）
 - [ ] H2 动机引擎：B1 抽 intentsOf → B2 argmax + golden
 - [ ] H3 低频计划：每日一次结构化承诺
 - [ ] H4 记忆接入：四处触发点 + Top-K
@@ -210,3 +210,6 @@
   修：新雇角色继承模板记忆的浅拷贝 bug（runtime 显式清空 episodes/commitments）；`EPISODE_MAX` 1200→150（原值永不生效）；打分权重 2.0→1.0 + 中文二字组切分（原实现「补测试的工单」匹配 0）；桥的 idle 活动不再写成「完成」；失败且 ≥15 tick 记「没做完：」；文案改正（原「和人一起和人聊了聊」「开始执行工单」）。
   证据：`npm test` → 942 tests / 941 pass / 1 skip / 0 fail；`test/memory.test.js` 9 条。
   留到后续轮次：模拟模式工单不建 Activity（⇒ 工单零记忆，H6）；`Episode.with` 目前恒空（H4/H7 关系链填）；world.json 体积随人数上升（H8 定预算）。
+
+- 2026-11-28 00:56 · **H1 完成（勾选）**。Episode/日小结/traits 落地；承诺只落数据模型，裁决移到 H3/H7（需伙伴证据）。
+  证据：943 tests / 942 pass / 1 skip / 0 fail；三天仿真日小结；基线指标与 §11 一致（改记忆不改行为）。

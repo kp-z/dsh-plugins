@@ -20,6 +20,7 @@ export interface WorldAgentLike {
   /** R478：这次活动的用途（meal/sleep/rest/social/study/work）；只影响徽章与动作。 */
   activityPurpose?: string | null
   station?: string | null
+  targetStation?: string | null
   position?: { x?: number; z?: number }
   /** 剩余路径点（内核 sim/movement 用同一套；坐标就是地图像素）。 */
   path?: { x: number; z: number }[]

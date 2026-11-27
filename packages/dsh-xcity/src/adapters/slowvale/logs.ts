@@ -27,6 +27,7 @@ export interface LogActivity {
   agentId: string
   kind: string
   skill?: string | undefined
+  purpose?: string | undefined
   placeId: string
   status: string
   startedAt: number
@@ -76,8 +77,17 @@ function timeOfTick(startDate: string, tick: number) {
   return { current_datetime: yyyy + '-' + mm + '-' + dd + 'T' + modern_time + ':00', day_number: dayIndex + 1, modern_time }
 }
 
-/** 前端徽章白名单里的活动类型名。 */
-export function activityTypeOf(kind: string, skill?: string | undefined): string {
+/** 活动类型映射：领域语义 -> 前端徽章查表能命中的类型名。
+ *
+ * 前端只认它自己那 61 个活动类名（ProgrammerActivity 之类），查不到会记一条
+ * badge.activity_type 警告然后什么都不画。所以这是白名单，不是自由字符串。
+ */
+export function activityTypeOf(kind: string, skill?: string | null, purpose?: string | null): string {
+  // R478：吃饭/睡觉都复用 rest 活动，用 purpose 决定徽章，别把吃饭画成 RestActivity。
+  if (purpose === 'meal') return 'EatActivity'
+  if (purpose === 'sleep') return 'SleepActivity'
+  // R481：学习可能发生在 code 工位（skill=code）；用 purpose 保证徽章仍是“学习”。
+  if (purpose === 'study') return 'SkillStudyActivity'
   if (kind === 'sleep') return 'SleepActivity'
   if (kind === 'rest') return 'RestActivity'
   if (kind === 'meet') return 'SpeakActivity'
@@ -86,8 +96,18 @@ export function activityTypeOf(kind: string, skill?: string | undefined): string
   return 'ProgrammerActivity'
 }
 
-const ACTIVITY_LABEL: Record<string, string> = {
-  work: '干活', rest: '休息', meet: '交谈', visit: '待着', sleep: '睡觉',
+/** 活动的中文标签（前端的忙碌文案会用它）。 */
+export function activityLabelOf(kind: string, purpose?: string | null): string {
+  if (purpose === 'meal') return '吃饭'
+  if (purpose === 'sleep') return '睡觉'
+  if (purpose === 'study') return '学习'
+  if (purpose === 'social') return '聊天'
+  if (kind === 'work') return '干活'
+  if (kind === 'rest') return '休息'
+  if (kind === 'meet') return '交谈'
+  if (kind === 'visit') return '待着'
+  if (kind === 'sleep') return '睡觉'
+  return '忙'
 }
 
 interface Draft {
@@ -160,7 +180,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
       })
     }
 
-    const label = ACTIVITY_LABEL[activity.kind] ?? activity.kind
+    const label = activityLabelOf(activity.kind, activity.purpose)
     const phase = (tick: number, lifecycle: 'start' | 'complete' | 'interrupt'): void => {
       drafts.push({
         at: tick,
@@ -173,7 +193,7 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
           phase: {
             kind: 'activity',
             activity_id: activity.id,
-            activity_type: activityTypeOf(activity.kind, activity.skill),
+            activity_type: activityTypeOf(activity.kind, activity.skill, activity.purpose),
             name: label + ' · ' + name,
             is_viewer_activity: activity.agentId === input.query?.get('role_id'),
             items: [{ lifecycle, content: label }],
