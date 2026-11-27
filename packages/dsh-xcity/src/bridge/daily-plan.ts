@@ -26,8 +26,6 @@ export interface DailyPlanDeps {
 export interface DailyPlanner {
   /** 每 tick 调一次；返回本 tick 真正发起的提问数。 */
   tick: (agents: readonly { id: string }[], tick: number) => number
-  /** 今天问过没有（测试与诊断用）。 */
-  askedOn: (agentId: string) => number | null
   /** 停掉在途提问（插件卸载）。 */
   stop: () => void
 }
@@ -60,9 +58,6 @@ export function createDailyPlanner(deps: DailyPlanDeps): DailyPlanner {
         })()
       }
       return started
-    },
-    askedOn(agentId) {
-      return asked.get(agentId) ?? null
     },
     stop() {
       stopped = true

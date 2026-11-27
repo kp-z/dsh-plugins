@@ -13,16 +13,10 @@
  * 纯函数：不碰 IO、不读时钟（nowTick 由调用方给），就地改传入的 world 并返回裁决结果。
  */
 import type { Activity, Agent, Commitment, CommitmentStatus, World } from '../domain/types.js'
-import { currentActivityOf } from './activity-view.js'
 import { DAY_TICKS, dayOf } from './memory.js'
 
 /** 每人同时 open 的承诺上限。超出时最旧的一条转 released——被挤掉不算违约。 */
 export const OPEN_MAX = 3
-/**
- * 忙碌宽限（游戏分钟）：到期时人还被活动占着，先不判 missed，最多顺延这么久。
- * 理由是"人腾不出手"，与证据无关——它与 R513 的 MISS_GRACE_TICKS 是两件事，别混。
- */
-export const BUSY_GRACE_TICKS = 60
 /**
  * R513 失约宽限（游戏分钟）：到期**没找到证据**不判 missed，再等到 dueTick + 这个值。
  *
@@ -30,7 +24,6 @@ export const BUSY_GRACE_TICKS = 60
  * 证据没落地（人可能过了点才碰上，episode/meet 也可能晚一步才写进 world），不是真的爽约。
  * 取值 180（≈3 小时）：够覆盖一个上午/下午的连续活动时段，迟到的碰面还能被同一时段的
  * meet 记到；又明显小于一个游戏日（DAY_TICKS=1440），前一天的承诺不会拖到第二天才判。
- * 与 BUSY_GRACE_TICKS 的区别：那个是"人还忙着"，这个是"还没有证据"。
  */
 export const MISS_GRACE_TICKS = 180
 /** 已裁决的承诺留几天（与情节记忆同窗口）；只留最近，避免 world.json 无限长。 */
@@ -159,7 +152,7 @@ export interface Settlement {
  * - missed：两个宽限都用完仍无证据。不因为"看起来忙/可能去过了"就改判。
  *
  * 两个 grace，理由不同，别混：
- * - BUSY_GRACE_TICKS：人还被活动占着 → 先不判 missed（"人腾不出手"）。
+
  * - MISS_GRACE_TICKS：没有证据 → 保持 open 到宽限结束（"没证据 ≠ 失约"）。
  */
 export function settleCommitments(world: World, nowTick: number): Settlement[] {
@@ -187,10 +180,11 @@ export function settleCommitments(world: World, nowTick: number): Settlement[] {
         continue
       }
 
-      // ② BUSY_GRACE_TICKS：人还在忙，先不定罪。
-      if (now <= row.dueTick + BUSY_GRACE_TICKS && rows.some((item) => isBusy(world, item.owner))) continue
-
-      // ③ MISS_GRACE_TICKS：没证据不等于失约，宽限用完才落 missed。
+      // ② 没证据不等于失约：宽限（MISS_GRACE_TICKS）用完才落 missed。
+      //
+      // 曾经这里还有一条"人还忙着就先不定罪"（BUSY_GRACE_TICKS=60）的分支。它被本行
+      // 完全覆盖——now <= due+60 必然也 <= due+180，所以那条分支永远不起作用。
+      // 留着它会让读者以为有两种宽限，实际只有一种（这是审计 R2 第 1 条）。
       if (now <= graceEnd) continue
 
       setStatus(world, row.id, 'missed')
@@ -241,11 +235,6 @@ function enforceOpenMax(world: World, agentId: string): void {
   // sort 稳定：同 tick 写入的按插入顺序，先来的算更旧。
   const oldestFirst = [...open].sort((left, right) => left.createdAtTick - right.createdAtTick)
   for (const row of oldestFirst.slice(0, open.length - OPEN_MAX)) setStatus(world, row.id, 'released')
-}
-
-/** 人是不是正忙着（有进行中的活动）。忙不判违约，见 settleCommitments。 */
-function isBusy(world: World, agent: Agent): boolean {
-  return currentActivityOf(world, agent) !== null
 }
 
 /**

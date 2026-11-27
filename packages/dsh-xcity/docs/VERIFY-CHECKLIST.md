@@ -1,7 +1,9 @@
 # 真机核对清单（可复跑）
 
-本文件的每一条都在 **2026-11-28 03:17–03:24（CST）** 的测试宿主上真跑过一遍；数字是实测，
-跑不通的地方写原因，不修数字。
+本文件分两轮，都是真机实跑、记的是实测数字，跑不通的地方写原因，不修数字：
+
+- **第 1–8 条**：2026-11-28 03:17–03:24（CST），测试宿主 3190/7791（现场见 §0）；
+- **第 9–15 条**：2026-11-28 05:13–05:19（CST），同一台宿主、世界已长到 24 人（现场见"第二轮现场"）。
 
 ## 0 环境与前置
 
@@ -388,6 +390,287 @@ find slowvale-mirror -newermt '2026-11-28 00:00:00' -type f | wc -l
 
 **判定**：✅
 
+## 第二轮现场（第 9–15 条的运行环境）
+
+首轮现场见 §0；本轮同机不同时点，规模也从 9 人长到 24 人，所以单列，不与上面混着看。
+
+| 项 | 值 |
+| --- | --- |
+| Web / 桥 | http://127.0.0.1:3190 / http://127.0.0.1:7791（同一进程 pid 46048） |
+| 正式 Desktop | 7788（pid 22874，**未触碰、未重启**） |
+| 世界 | `world-1nb10jy-b`，`seed=3586027534` |
+| 规模 | 24 人 / 18 张单 / 78 条活动 |
+| 本轮 tick | 开跑 80916（第 57 天）→ 收尾 83824（第 59 天）；`paused=false`、`runtime.running=true` |
+| 宿主存活 | `runtime.diagnostics`：ticks=12067、resets=0、dispatches=1、errors=0（宿主从存档第 50 天接上继续跑，不是新世界） |
+| 状态目录 | `packages/dsh-xcity/.testhome/profiles/xcity-3/state` |
+
+本轮 7 条都是只读：GET 快照 + 读 `world.json` / `events.jsonl` / 会话日志。
+没有 `build` / `test`，没有派单，没有重启宿主。以下命令都在包目录执行：
+
+```bash
+cd packages/dsh-xcity
+```
+
+## 9 承诺裁决（verify-commitments）
+
+**目的**：kept / missed 的裁决有没有证据撑住——正向抽查 missed（窗口里不该有任何证据）、
+反向抽查 kept（窗口里必须有证据），两边都不许出"suspicious"。
+
+**命令**
+
+```bash
+node tools/verify-commitments.mjs --base http://127.0.0.1:3190
+```
+
+**期望**：`ok:true`，`suspicious` 为空；`stale` 可非 0（活动环过期，脚本头部写明了这条豁免）。
+
+**实测**（两次，退出码都是 0）
+
+| 采点 | tick | commitments | 分布（按 id） | 按原始行 | missedChecked / keptChecked | stale | meetBlind | suspicious |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 80979 | 20 | kept 8 / missed 12 / open 0 / released 0 | kept 16 / missed 24 | 10 / 2 | 6 | 10 | `[]` |
+| 2 | 83346 | 20 | kept 6 / missed 14 / open 0 / released 0 | kept 12 / missed 28 | 10 / 3 | 3 | 10 | `[]` |
+
+第 2 次的覆盖下界：`coverage.episodeFloor=73441`、`activityFloor=82997`（两条证据通道各自还看得见的起点）。
+
+分布会在两次之间变（kept 8→6），因为承诺有一条是"到期未兑现才判 missed"，世界在跑。
+
+**判定**：✅（两次都 `suspicious=[]`）
+
+## 10 关系证据（verify-with）
+
+**目的**：情节里"和谁"（`episode.with`）必须有交互证据——同地点、时间重叠、且**双方都在社交活动里**；
+另外 `work`/`study` 情节不该带"同行者"（干活的人不是同伴）。
+
+**命令**
+
+```bash
+node tools/verify-with.mjs --base http://127.0.0.1:3190
+```
+
+**期望**：`ok:true`；`breakdown.workWith=0`；`unproven=[]`。
+
+**实测：同一命令五次，4 红 1 绿**
+
+| 采点 | tick | 参数 | ok | sampled / proven | unproven | workWith / socialWith | stale | claims |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 81012 | 默认 | false | 21 / 18 | 4 | 0 / 21 | 244 | 265 |
+| 2 | 82721 | 默认 | false | 19 / 18 | 1 | 0 / 19 | 262 | 281 |
+| 3 | 83348 | 默认 | true | 7 / 7 | 0 | 0 / 7 | 298 | 305 |
+| 4 | 85280 | `--sample 20` | false | 23 / 22 | 1 | 0 / 23 | 260 | 283 |
+| 5 | 85283 | `--sample 5` | false | 23 / 22 | 1 | 0 / 23 | 260 | 283 |
+
+第 1 次卡点原文（stderr）：
+
+```
+VERIFY FAIL unproven · 卡在: agent-1@80452(with=agent-11:no-overlap), agent-4@80455(with=agent-11:no-overlap),
+agent-19@80435(with=agent-11:no-overlap), agent-19@80435(with=agent-21:no-overlap)
+```
+
+第 2 次：`agent-2@81951(with=agent-10:no-overlap)`。
+第 4/5 次：`agent-12@84711(with=agent-7:no-overlap)`——注意 `--sample 20` 与 `--sample 5` 结果一字不差
+（每个角色只剩 1 条可核的 claim，sample 再大也抽不出更多），所以这不是抽样运气问题。
+
+**原因（不是记忆写错，是证据环太浅）**：
+
+- 活动环 `ACTIVITY_KEEP=64`（`src/sim/activity.ts:18`），24 人分 64 条 ⇒ 每人只留 **2–5 条**，
+  整环只覆盖 **444–876 tick（7.4–14.6 游戏小时）**；而情节留 7 天（`EPISODE_KEEP_DAYS=7`，约 10080 tick）。
+- 复核第 1 次那 4 条：tick=82683 时对手 `agent-11` 环里只剩 2 条、环底 **82026 > 80452**（`agent-21` 环底 81896），
+  也就是对手的覆盖窗口根本不在环里——"没证据"是因为证据被挤掉，不是因为没发生。
+- 第 4/5 次同款：tick=85355 复核 `agent-12@84711`，自己的 meet 是 84671–84711（正好压在情节 tick 上），
+  而 `agent-7` 环里只剩 3 条、环底 **84728 > 84711**——又是"自己还在、对手被挤掉"。
+- `tools/verify-with.mjs:94` 的 `stale` 只判"**自己**那条活动还在不在"，不判"**对手**那条还在不在"；
+  于是当自己那条还在环里、对手那条已经过期时，会落到 `no-overlap` 而不是 `stale`。
+- 第 3 次之所以绿：298 条 claim 已经 `stale`（305 条里只剩 7 条还可核），而这 7 条恰好都对得上。
+  也就是说这条命令在 24 人世界上的常态是"红 1–4 条"，绿只出现在"可核样本恰好都干净"的时刻。
+
+环的深度/跨度可复算：
+
+```bash
+curl -s http://127.0.0.1:3190/agent-world/api/world | node -e '
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const w=JSON.parse(s).world;const a=w.activities??[];const comp=a.filter(x=>x.status!=="active");const per=new Map();for(const x of a){per.set(x.agentId,(per.get(x.agentId)??0)+1)};const from=Math.min(...a.map(x=>x.startedAt)),to=Math.max(...a.map(x=>x.endedAt??x.endsAt??x.startedAt));console.log(JSON.stringify({tick:w.tick,agents:w.agents.length,rows:a.length,completed:comp.length,perAgent:[Math.min(...per.values()),Math.max(...per.values())],spanTicks:to-from,spanHours:Math.round((to-from)/60*10)/10}))})'
+```
+
+实测两次：`{tick:82683, rows:74, completed:64, perAgent:[2,5], spanTicks:876, spanHours:14.6}`、
+`{tick:83295, rows:79, completed:64, perAgent:[2,5], spanTicks:444, spanHours:7.4}`。
+
+**判定**：❌（按卡面口径 `unproven=0` 不成立：五次里四次红）；`workWith=0` ✅（五次都是 0）
+
+## 11 派单公平（verify-fairness）
+
+**目的**：最新一批 N 张单是不是"每张都有人、没人拿两张"（按顺序一人一张，不是堆给一个人）。
+
+**命令**
+
+```bash
+node tools/verify-fairness.mjs --base http://127.0.0.1:3190
+```
+
+**期望**：`ok:true`；本批每张有 `owner`；无 `duplicate-owner`（`distinctOwners == requiredOwners`）。
+
+**实测**（退出码 0，两次）
+
+```
+batch: tasks=3  createdAtTicks=[71621]  ids=[task-16, task-17, task-18]
+byOwner: {agent-1:1, agent-2:1, agent-3:1}
+workers: available=24  idleNow=0（第一次采点是 1）  requiredOwners=3  distinctOwners=3
+tasks: task-16 done/agent-1、task-17 done/agent-2、task-18 done/agent-3
+```
+
+注意本批是 **tick=71621（第 50 天）** 派的——之后宿主再没派过单，脚本等到的是"最后一批"，
+不是"刚派的"；判定只看这一批的内部公平性，与派单时间无关。
+
+**补记（不进 ok 判据）**：历史累计 `awarded` = agent-1 10、agent-2 5、agent-3 3、agent-4..24 全 0。
+18 张单全在 3 个会话角色身上，其余 21 人一张没接过——"同批公平"成立，但**跨批累积严重倾斜**。
+
+**判定**：✅
+
+## 12 存档预算（measure-snapshot）
+
+**目的**：单份存档多大、谁占的、会长到多少；预算 `budgetBytes = 2 MiB = 2097152`。
+
+**命令**
+
+```bash
+node tools/measure-snapshot.mjs
+```
+
+**期望**：`ok:true`，`projection.verdict="ok"`（`projectedBytes <= 2097152`）。
+
+**实测**（退出码 0，两次采点；中间跨了一次游戏日边界）
+
+| 采点 | day | 落盘 bytes | 紧凑 jsonBytes | episodes | 人均 B / 情节 | growth B/人/天 | 默认 projection | ratio | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 58 | 574109 | — | 1539 | 10480 / 64.1 | 180.7 | 574128 | 0.27 | ok |
+| 2 | 59 | 547752 | 294116 | 1475 | 10006 / 61.5 | 169.6 | 547774 | 0.26 | ok |
+
+采点 2 比 1 小了 **26357 B**：跨日触发记忆裁剪（episodes 1539 → 1475），裁剪真的在生效。
+
+构成（采点 2）：`world.agents` 240142 B（0.44）、`world.agents[].episodes` 210239 B（0.38）、
+`(键名与缩进)` 253687 B（0.46）——四成体积是 pretty-print 的键名与缩进。
+
+余量推演（同一份存档，只改 `--agents` / `--days`）：
+
+| 参数 | projectedBytes | ratio | verdict |
+| --- | --- | --- | --- |
+| `--agents 24 --days 30` | 347680 | 0.17 | ok |
+| `--agents 24 --days 90` | 832927 | 0.40 | ok |
+| `--agents 48 --days 90` | 1560798 | 0.74 | ok |
+
+口径提醒：projection 只让 agent 记忆按"人 × 天"线性长，而 episodes 另有 7 天 / 150 条上限，
+所以这是**上界估算**；`verdict=ok` 意思是"按线性增长也不会破 2 MiB"，不是"永远不破"。
+
+**判定**：✅
+
+## 13 运行期成本（runtime.turnCost）
+
+**目的**：每轮输入体积有没有计数与超限提示（插件拿不到计费 token，只能看字符量级）。
+
+**命令**
+
+```bash
+curl -s http://127.0.0.1:3190/agent-world/api/world | grep -o '"turnCost":{[^}]*}'
+```
+
+**期望**：响应 `runtime.turnCost` 存在，字段齐全 = `turns / inputChars / outputChars / avgInputChars / warns`
+（`src/runtime/turn-cost.ts:24-35` 的 `TurnCostSnapshot`）。
+
+**实测**（退出码 0）
+
+```text
+"turnCost":{"turns":65,"inputChars":198882,"outputChars":8777,"avgInputChars":3060,"warns":1}
+```
+
+- 5 个字段齐；`inputChars / turns = 198882 / 65 = 3059.7`，与 `avgInputChars=3060` 自洽。
+- `warns=1`：65 轮里有 1 轮输入超过提示线 120000 字符（`DEFAULT_WARN_INPUT_CHARS`）。
+- 三次取样（tick 82834 / 83032 / ≥83520）数值完全一致，因为按**轮**结算：计划一天只问一次，
+  日内不动；跨日（tick 83520）也没有立刻 +1——新一天的计划在 06:30 才触发。
+- 这**不是计费**：字符数 ≠ token，只用来发现上下文膨胀（见 `src/runtime/turn-cost.ts` 头部）。
+
+**判定**：✅
+
+## 14 记忆决策（计划提示词里的「昨天你怎么过的」）
+
+**目的**：06:30 的计划提示词里带前一天日小结，模型才可能"按昨天安排今天"（R516 补的结构性空缺）。
+
+**命令**
+
+```bash
+LOG=$(ls -t .testhome/sessions/*/xcity-agent1*/session.v4.jsonl.zstd | head -1)
+zstd -dc "$LOG" | grep -c '昨天你怎么过的'
+zstd -dc "$LOG" | grep -oE '## 昨天你怎么过的.{0,60}' | tail -1
+```
+
+**期望**：计数 ≥1（每条计划提示词各 1 次）；最后出现的那段是**前一天的真实小结**，不是空段。
+
+**实测**（05:19，三个有会话日志的角色）
+
+| 角色 | 命中次数 | 最新一段 |
+| --- | --- | --- |
+| agent-1 | 18 | `## 昨天你怎么过的\n第58天：和人聊了聊×3、吃了顿饭×2、干活×2、学习×2、睡了一觉×1` |
+| agent-2 | 14 | `## 昨天你怎么过的\n第58天：和人聊了聊×4、学习×3、吃了顿饭×2、睡了一觉×1、干活×1` |
+| agent-3 | 19 | `## 昨天你怎么过的\n第58天：干活×3、学习×3、吃了顿饭×2、和人聊了聊×2、睡了一觉×1` |
+
+同一条提示词的上下文也核过（agent-1，第 58 天那次计划）：`你是谁` 段是
+`角色：lead；干活劲头 80/100；责任心 70/100`（persona 不再是空串），
+`昨天` 段排在 `今天已经发生的事` 之前，正文写"现在是 06:30，新的一天开始了"。
+
+口径限制：24 人里只有 agent-1..3 有会话日志（其余 21 人是纯模拟，不跑模型），
+所以这条只能对 3 个真会话核对；21 个纯模拟角色没有提示词可查。
+
+**判定**：✅
+
+## 15 工单记忆（kind=task 的情节）
+
+**目的**：工单做完要在角色记忆里留痕（`recordTaskEpisode`，`src/sim/step.ts:317`），
+不能只有"吃了顿饭"没有"我干成了什么"。
+
+**命令**
+
+```bash
+curl -s http://127.0.0.1:3190/agent-world/api/world | node -e '
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+const w=JSON.parse(s).world, DAY=1440, dayOf=t=>Math.floor(Math.max(0,t)/DAY)+1
+const eps=w.agents.flatMap(a=>(a.episodes??[]).filter(e=>e.kind==="task").map(e=>({agent:a.id,tick:e.tick,day:e.day,summary:e.summary})))
+const floorDay=dayOf(w.tick)-6
+const doneInWindow=(w.tasks??[]).filter(t=>t.status==="done"&&typeof t.finishedAtTick==="number"&&dayOf(t.finishedAtTick)>=floorDay).map(t=>t.id)
+const done=(w.tasks??[]).filter(t=>t.status==="done").length
+console.log(JSON.stringify({tick:w.tick,day:dayOf(w.tick),doneTasks:done,taskEpisodes:eps.length,episodes:eps,doneInWindow},null,1))
+})'
+```
+
+**期望**：`taskEpisodes > 0`，且条数等于"保留窗口（最近 7 天）内完成的工单数"。
+
+**实测**（同一命令，两次采点，退出码 0）
+
+第 58 天（tick=83133）：
+
+```json
+{
+ "tick": 83133, "day": 58, "doneTasks": 18, "taskEpisodes": 2,
+ "episodes": [
+  { "agent": "agent-2", "tick": 73800, "day": 52, "summary": "工单「核对工单状态 #6」做完了" },
+  { "agent": "agent-3", "tick": 74648, "day": 52, "summary": "工单「出巡检结论 #6」做完了" }
+ ],
+ "doneInWindow": ["task-17", "task-18"]
+}
+```
+
+第 59 天（tick=83824）：`taskEpisodes=0`、`doneInWindow=[]`（day 52 的两条按 7 天窗口被裁掉了，
+`episodeDays` 只剩 53–59）。
+
+"只有 2 条"不是漏写：18 张单完成时都调了写记忆那一行，事件流里一条不少——
+
+```bash
+grep -c '"type":"task.completed"' .testhome/profiles/xcity-3/state/events.jsonl
+```
+
+实测 `18`（与 `doneTasks=18` 一致）。消失的是**留存**：`EPISODE_KEEP_DAYS=7`（`src/sim/memory.ts:13`），
+day 1–2 的 3 张、day 28–50 的 13 张共 16 张早已出窗；只剩 day 52 的两张，它们在进入第 59 天时也出窗。
+所以这条的正确口径是"窗口内完成的工单有没有留痕"，不是"存档里有没有 task 情节"——后者会随天数归零。
+
+**判定**：✅（机制在，且第 58 天窗口内 2 条对得上）／注意：第 59 天起为 0，属留存到期而非缺写
+
 ## 汇总
 
 | # | 项 | 退出码 | 判定 | 关键数字 |
@@ -401,10 +684,29 @@ find slowvale-mirror -newermt '2026-11-28 00:00:00' -type f | wc -l
 | 7 | 头顶对话 | 0 | ✅ | bubble.float_up 落到页面 Phaser Text，errorCount 0 |
 | 8 | 前端零改动 | 0 | ✅ | diff 0 行、未跟踪目录 0 改动文件 |
 
-## 需要决定的两件事
+### 第二轮（第 9–15 条，24 人 / 第 57–59 天）
+
+| # | 项 | 退出码 | 判定 | 关键数字 |
+| --- | --- | --- | --- | --- |
+| 9 | 承诺裁决 | 0 / 0 | ✅ | 20 条承诺（kept 6 / missed 14），抽查 missed 10 + kept 3，stale 3，suspicious 0 |
+| 10 | 关系证据 | 1 / 1 / 0 / 1 / 1 | ❌ 不稳定 | workWith 恒 0；unproven 4 → 1 → 0 → 1 → 1；环里每人只剩 2–5 条、跨度 7.4–14.6 h |
+| 11 | 派单公平 | 0 | ✅ | 第 6 批 3 张各 1 个 owner（agent-1/2/3），duplicate-owner 0 |
+| 12 | 存档预算 | 0 | ✅ | 落盘 547752 B（0.26 × 2 MiB）；48 人×90 天推演 1560798（0.74）仍 ok |
+| 13 | 运行期成本 | 0 | ✅ | turns 65 / 输入 198882 字符 / 输出 8777 / 均 3060 / 超限 1 轮 |
+| 14 | 记忆决策 | 0 | ✅ | 3 个真会话最后一条计划提示词都带「昨天你怎么过的」（18/14/19 次） |
+| 15 | 工单记忆 | 0 | ✅ 窗口内 | 第 58 天 2 条 kind=task（对应 task-17/18）；第 59 天出窗归 0，18 条 task.completed 一条不少 |
+
+## 需要决定的事
 
 1. **`--days` 语义与保留期冲突**（影响第 4 条能否在任何时候通过）：
    `verify-memory-chain.mjs` 查的是 D1..D{--days}，而记忆只留最近 7 天。
    宿主跑到第 8 天以后，这条命令必然失败。要么改成"最近 N 天"，要么在工具头部写明"只用于刚跑满 N 天的新世界"。
 2. **1 条测试常年 skip**（`test/slowvale-stage.test.js:19`，缺静态站）：
    要么补静态站 fixture 让它真跑，要么把 skip 原因写进验收口径，避免以后把"skipped 1"当成噪音忽略。
+3. **`verify-with` 的 stale 只判了一半**（第 10 条五次跑四次红的根因）：
+   `tools/verify-with.mjs:94` 只在"自己的活动过期"时记 stale，"对手的活动过期"会误判成 `no-overlap`。
+   24 人时活动环每人只剩 2–5 条（7–15 游戏小时），而情节留 7 天，所以任何长跑宿主上这条都会**周期性红**。
+   要么把"对手环底晚于情节 tick"也算 stale，要么在写情节时把对方的 activity id 一起存下来当证据。
+4. **工单留痕只有 7 天可见**（第 15 条）：18 张单做完，第 59 天存档里已经 0 条 `kind=task` 情节。
+   验收要么固定在"完工后 7 天内"跑，要么让完成痕迹进一个不被裁剪的字段（如日小结/累计计数），
+   否则"存档里查不到工单记忆"会被误读成"没写"。

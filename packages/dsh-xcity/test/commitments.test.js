@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  BUSY_GRACE_TICKS,
+
   MISS_GRACE_TICKS,
   OPEN_MAX,
   SETTLED_KEEP_DAYS,
@@ -183,7 +183,7 @@ test('R497：还在忙不算违约——忙碌宽限先顺延，两个宽限都�
 
   assert.deepEqual(settleCommitments(world, 1301), [], '刚过到期，人在忙，先顺延')
   assert.deepEqual(
-    settleCommitments(world, 1300 + BUSY_GRACE_TICKS),
+    settleCommitments(world, 1300 + MISS_GRACE_TICKS),
     [],
     '忙碌宽限窗口内（含右端）继续等',
   )
