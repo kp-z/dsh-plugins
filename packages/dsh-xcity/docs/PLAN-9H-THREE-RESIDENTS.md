@@ -178,7 +178,7 @@
 
 - [x] H1 认知地基：Episode/日小结/traits + memory.ts（承诺裁决移至 H3/H7）
 - [x] H2 动机引擎：决策点改到「活动结束」+ argmax + golden/分化回归
-- [ ] H3 低频计划：每日一次结构化承诺
+- [x] H3 低频计划：每日一次结构化承诺（真模型已验证）
 - [ ] H4 记忆接入：四处触发点 + Top-K
 - [ ] H5 气泡：playback.tracks + speaker_id（后端）
 - [ ] H6 工作链：三道门 + 三任务闭环 + 进度投影
@@ -263,3 +263,9 @@
   实测（最新一次）：`asked=3, noModel=3, promptError=3`。含义很具体：① 建会话时选的模型**没有留下**（hasXcityRoleModel 仍 false）；② `sessionController.prompt` **抛错**（不是超时、也不是忙）。
   另外从会话日志（`.testhome/sessions/.../session.v4.jsonl.zstd`）解压看到：这些会话确实在跑，但收到的是**主动短信**提示词，不是计划提示词——说明平台对这些 spawn 会话的投递路径与 UI 建的会话不同。
   结论：不要再从 `agents.create` 这条侧门硬接。下一轮改用**真实 UI 路径**建一个会话（网页里选模型），拿它的 sessionId 写进 bindings，再验证计划/短信/气泡——这条路径平台会自己处理启动与模型选择。
+
+- 2026-11-28 02:02 · **H3 通过（勾选）**。
+  根因：投递载荷形状错了。正确形状是 `{requestId, sessionId, mode:"queue", content:[{type:"text",text}]}`（对照 respond-sms.ts:62）；我之前发的 `{sessionId, message:{role,content}}` 让 sessionController 内部抛「reading 'length'」。改对之后：`asked=3, answered=3, applied=5`。
+  实测证据（tick 52585，真模型 deepseek-v4.1-flash）：三名居民各拿到 2–4 条结构化承诺，例如「去工地面谈今天的分工」（agent-1↔agent-3 双方各一条、id 相同）、「巡检东侧休息区记录破损点」（agent-1↔agent-2）、「和小铁把工具清点一遍」（agent-2↔agent-3）；状态按事实裁决为 open / missed / released，没有永远挂着。
+  附带：`runtime.plan` 计数（asked/answered/noBinding/noModel/noService/failed/applied/busy/timeout/promptError/lastPromptError）从此可定位任何一次失败。
+  留待 H7：裁决偏严——`episode.with` 目前恒空，只有 meeting 重叠能当证据，所以出现了 missed；填 `with` 之后要重跑这条验收。

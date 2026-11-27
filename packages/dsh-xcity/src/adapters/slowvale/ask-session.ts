@@ -6,12 +6,15 @@
  * 只能自己认轮次。这里只做"投递 → 认一轮 → 收文本"，不碰世界、不碰存储。
  */
 export interface SessionAskerDeps {
-  /** 投递一句用户消息；语义与 sessionController.prompt 一致（返回即受理）。 */
-  prompt: (payload: { sessionId: string; message: { role: 'user'; content: { type: 'text'; text: string }[] } }, signal: AbortSignal) => Promise<void>
+  /**
+   * 投递一句用户消息；形状必须与已有短信通道一致（respond-sms.ts:62），
+   * 否则 sessionController 内部会抛「reading 'length'」。返回即受理。
+   */
+  prompt: (payload: { requestId: string; sessionId: string; mode: 'queue'; content: { type: 'text'; text: string }[] }, signal: AbortSignal) => Promise<void>
   /** 超时多久放弃（毫秒）。缺省 120s：冷会话 + 长上下文的第一轮常常超过 45s。 */
   timeoutMs?: number
-  /** 失败原因（投递抛错 / 超时）。默认丢弃；接线方用它计数与定位。 */
-  onFailure?: (reason: 'prompt-error' | 'timeout') => void
+  /** 失败原因（投递抛错 / 超时）+ 错误文本。默认丢弃；接线方用它计数与定位。 */
+  onFailure?: (reason: 'prompt-error' | 'timeout', message?: string) => void
 }
 
 export interface SessionAsker {
@@ -70,13 +73,16 @@ export function createSessionAsker(deps: SessionAskerDeps): SessionAsker {
         }, timeoutMs)
         pending.set(sessionId, { resolve, timer, abort: controller })
       })
+      const requestId = 'xcity-plan-' + sessionId + '-' + String(Date.now())
       try {
         await deps.prompt({
+          requestId,
           sessionId,
-          message: { role: 'user', content: [{ type: 'text', text }] },
+          mode: 'queue',
+          content: [{ type: 'text', text }],
         }, controller.signal)
-      } catch {
-        deps.onFailure?.('prompt-error')
+      } catch (error: unknown) {
+        deps.onFailure?.('prompt-error', error instanceof Error ? error.message : String(error))
         settle(sessionId, null)
       }
       return await answer

@@ -16,11 +16,13 @@ export interface PlanStats {
   busy: number
   timeout: number
   promptError: number
+  /** 最近一次投递失败的原话（截断）；定位用，不是统计。 */
+  lastPromptError: string | null
 }
 
 export function createPlanStats(): PlanStats {
   return {
     asked: 0, answered: 0, noBinding: 0, noModel: 0, noService: 0,
-    failed: 0, applied: 0, busy: 0, timeout: 0, promptError: 0,
+    failed: 0, applied: 0, busy: 0, timeout: 0, promptError: 0, lastPromptError: null,
   }
 }

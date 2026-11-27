@@ -40,7 +40,7 @@ export interface ApiDeps {
   runtime: RuntimePort
   tickMs: number
   /** R502：每日计划的计数（问了几个、卡在哪、落了几条）。 */
-  plan?: () => Record<string, number>
+  plan?: () => Record<string, unknown>
   /** 小镇桥（Slow Vale 适配层）的地址，如 http://127.0.0.1:7790；客户端 iframe 用它。 */
   bridgeBase?: string
   /**

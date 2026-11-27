@@ -375,9 +375,12 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
 
   // R500：每天 06:30 各自想一下今天。投递走会话，取回走 assistant 原文（见 ask-session）。
   const planAsker = createSessionAsker({
-    onFailure: (reason) => {
+    onFailure: (reason, message) => {
       if (reason === 'timeout') planStats.timeout += 1
-      else planStats.promptError += 1
+      else {
+        planStats.promptError += 1
+        if (message !== undefined) planStats.lastPromptError = message.slice(0, 300)
+      }
     },
     prompt: async (payload, signal) => {
       if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')

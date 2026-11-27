@@ -12,7 +12,9 @@ test('R500：投递后收到 assistant 原文才算成功', async () => {
   asker.observe('s1', 'assistant/message', msg('[{"what":"写测试","due":"10:00"}]'))
   assert.equal(await answer, '[{"what":"写测试","due":"10:00"}]')
   assert.equal(sent[0].sessionId, 's1')
-  assert.equal(sent[0].message.content[0].text, '今天打算做什么？')
+  assert.equal(sent[0].mode, 'queue')
+  assert.equal(sent[0].content[0].text, '今天打算做什么？')
+  assert.ok(sent[0].requestId.startsWith('xcity-plan-'))
 })
 
 test('R500：超时返回 null，不挂在世界里', async () => {
