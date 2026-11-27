@@ -11,7 +11,7 @@
  * 决策纯函数：同样的 world 输入得到同样的选择，方便仿真与回放。
  */
 import { distance } from '../domain/geometry.js'
-import type { Agent, Station, World } from '../domain/types.js'
+import type { Agent, Episode, Station, World } from '../domain/types.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { needsOf } from './needs.js'
 import { affinityOf } from './relationships.js'
@@ -49,6 +49,15 @@ const SLEEP_TICKS = 480
 const SOCIAL_TICKS = 40
 const WORK_TICKS = 90
 const STUDY_TICKS = 90
+
+/**
+ * R515：记忆窗口（游戏分钟 = 一天）。只看最近一天里发生过的事——上周的成就感不该一直
+ * 压着今天的选择。
+ */
+export const MEMORY_MOOD_WINDOW = 1440
+
+/** R515：记忆加权的最大幅度（±10%）。再大就不是"微调"，会翻掉性格与需求的既有优先级。 */
+export const MEMORY_MOOD_WEIGHT = 0.1
 
 export type LifePurpose = 'meal' | 'rest' | 'sleep' | 'social' | 'work' | 'study'
 
@@ -294,31 +303,90 @@ function traitOf(agent: Agent, key: 'diligence' | 'duty'): number {
 }
 
 /**
+ * R515：一条记忆是好事、坏事还是闲事。只看已有字段（kind/summary），不新增 polarity 字段。
+ *
+ * - `没做完：` 开头 = 负向：`sim/memory.ts` 的 summarizeActivity 对 interrupted 活动只加这个
+ *   前缀（`没做完：干活` / `没做完：工单「X」`），它是"打算做的事没做成"的现有表达。
+ * - `工单` 开头 = 正向：同一函数对带工单触发的活动写 `工单「X」`，即真的把一张单办成了。
+ * - 其余（吃饭/睡觉/干活/学习/聊天/日小结）中性：日常琐事不构成心情。这一点是刻意的——
+ *   若把它们也算正向，golden 世界跑一天就有 30+ 条完成记忆，心情恒为 +1，加权退化成常数偏置，
+ *   那就不是"记忆影响决策"，而是"永远 +10%"。
+ *
+ * 已知盲区（不掩饰）：承诺的 kept/missed 目前不写情节记忆（`sim/commitments.ts` 只改
+ * Commitment.status），所以"守约/爽约"暂时不计入心情；要覆盖它得先让承诺产出记忆，那是另一件事。
+ */
+function moodPolarityOf(episode: Episode): -1 | 0 | 1 {
+  if (episode.summary.startsWith('没做完：')) return -1
+  if (episode.summary.startsWith('工单')) return 1
+  return 0
+}
+
+/**
+ * R515：最近的记忆 → 心情 [-1, 1]。没有可计分的记忆返回 0（= 零影响，老行为不变）。
+ *
+ * 分量：mood = clamp(Σ ±salience)，每条 salience 本来就在 [0,1]，所以正负相抵、到顶封边。
+ * 不做平均：按平均的话，一条 0.2 的小失误（"没做完：吃了顿饭"）就等于"一天全毁"；
+ * 按求和，小事就只是小事，几件重要的坏事才压得住。
+ * 纯函数：只读 episodes 与 nowTick，不看世界其他状态，无随机——同输入必须同结果。
+ */
+export function memoryMood(agent: Agent, nowTick: number): number {
+  const from = nowTick - MEMORY_MOOD_WINDOW
+  let mood = 0
+  for (const episode of agent.episodes ?? []) {
+    if (episode.tick < from || episode.tick > nowTick) continue
+    const sign = moodPolarityOf(episode)
+    if (sign === 0) continue
+    // salience 是 0-1 的"有多值得记住"；老档万一缺这个字段，按 0 处理——别让 NaN 流进决策。
+    const weight = Number.isFinite(episode.salience) ? Math.min(1, Math.max(0, episode.salience)) : 0
+    mood += sign * weight
+  }
+  return Math.min(1, Math.max(-1, mood))
+}
+
+/**
+ * R515：把心情折成"社交 vs 工作/学习"的乘数，幅度 ≤ MEMORY_MOOD_WEIGHT（±10%）。
+ *
+ * 方向：最近净是办成的事 → 坐得住干活、少掺和闲聊；净是没做完 → 想找人说话缓缓、少啃硬活。
+ * 吃饭/睡觉/休息恒为 1：它们由需求驱动，不该被心情动摇（intentOptions 里本来也提前 return）。
+ */
+export function memoryWeightOf(purpose: LifePurpose, mood: number): number {
+  const tilt = MEMORY_MOOD_WEIGHT * Math.min(1, Math.max(-1, mood))
+  if (purpose === 'work' || purpose === 'study') return 1 + tilt
+  if (purpose === 'social') return 1 - tilt
+  return 1
+}
+
+/**
  * R498-B2：把候选按性格加权后取最高分。
  *
  * 为什么不是纯权重：纯权重是弱机制——需求贴阈值时要做大 3 倍以上才翻得动。
  * 所以可见差异还要靠 L2 硬规则与承诺（H3/H7）；这里只先让"同样有空"的人分出偏好。
  */
-function weightedScore(option: IntentOption, agent: Agent): number {
+function weightedScore(option: IntentOption, agent: Agent, mood: number): number {
   const purpose = option.intent?.purpose
+  if (purpose === undefined) return option.score
+  // R515：记忆只做小幅乘数，叠在性格权重之上；meal/sleep/rest 的乘数恒为 1。
+  const remembered = memoryWeightOf(purpose, mood)
   if (purpose === 'work' || purpose === 'study') {
     // 干劲 0→×0.8，1→×1.2。
-    return option.score * (0.8 + 0.4 * traitOf(agent, 'diligence'))
+    return option.score * (0.8 + 0.4 * traitOf(agent, 'diligence')) * remembered
   }
   if (purpose === 'social') {
     // 越有干劲越不急着闲聊，但幅度要小：社交本身有需求驱动。
-    return option.score * (1.1 - 0.2 * traitOf(agent, 'diligence'))
+    return option.score * (1.1 - 0.2 * traitOf(agent, 'diligence')) * remembered
   }
-  return option.score
+  return option.score * remembered
 }
 
 export function chooseLife(world: World, agent: Agent): LifeIntent | null {
   const options = intentOptions(world, agent).filter((option) => option.intent !== null)
   if (options.length === 0) return null
+  // R515：心情一个 tick 只算一次——同一批候选看到的是同一份记忆。
+  const mood = memoryMood(agent, world.tick)
   let best = options[0]!
-  let bestScore = weightedScore(best, agent)
+  let bestScore = weightedScore(best, agent, mood)
   for (const option of options.slice(1)) {
-    const score = weightedScore(option, agent)
+    const score = weightedScore(option, agent, mood)
     // 同分保持旧顺序，保证确定性。
     if (score > bestScore) {
       best = option

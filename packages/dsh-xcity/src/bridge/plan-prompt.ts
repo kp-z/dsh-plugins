@@ -64,7 +64,7 @@ function dayStartOf(tick: number): number {
  *
  * @returns 给角色会话的一整段中文指令；调用方负责把它送出去。
  */
-export function buildPlanPrompt(input: PlanPromptInput): string {
+export function buildPlanPrompt(input: PlanPromptInput & { yesterday?: string }): string {
   const clock = clockOf(input.nowTick)
   const summary = input.todaySummary.length === 0
     ? ['（今天还没有任何记录）']
@@ -84,6 +84,12 @@ export function buildPlanPrompt(input: PlanPromptInput): string {
     '## 你是谁',
     input.persona,
     '',
+    // R516：把**昨天**也给他。原来的「今天已经发生的事」取的是当天 00:00 起的活动，
+    // 而典型作息 23:00–07:00 在睡觉——于是每天 06:30 生成计划时这一段基本是空的，
+    // 等于让人在没有昨天的情况下安排今天。
+    ...(input.yesterday === undefined || input.yesterday.trim() === ''
+      ? []
+      : ['## 昨天你怎么过的', input.yesterday.trim(), '']),
     '## 今天已经发生的事',
     ...summary,
     '',

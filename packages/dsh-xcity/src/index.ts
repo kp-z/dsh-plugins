@@ -434,10 +434,21 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const world = state.currentWorld()
       const agent = world?.agents.find((row) => row.id === agentId)
       const peers = (world?.agents ?? []).filter((row) => row.id !== agentId).map((row) => ({ id: row.id, name: row.name }))
+      // R516：昨天的日小结（00:00 那一刻写的，属于前一天）。没有就省略整段。
+      const yesterday = (agent?.episodes ?? [])
+        .filter((episode) => episode.kind === 'day' && episode.day === day - 1)
+        .map((episode) => episode.summary)
+        .join(' ')
       return buildPlanPrompt({
         agentName: agent?.name ?? agentId,
-        persona: '',
+        // R516：persona 一直是空串，模型每次都读到空的「## 你是谁」。先用角色+性格顶上，
+        // 不新造字段——traits 是我们已经有的东西。
+        persona: agent === undefined
+          ? ''
+          : '角色：' + agent.role + '；干活劲头 ' + String(Math.round((agent.traits?.diligence ?? 0.5) * 100)) + '/100' +
+            '；责任心 ' + String(Math.round((agent.traits?.duty ?? 0.5) * 100)) + '/100',
         todaySummary: world === null ? [] : summarizeDay(world, agentId, world.tick),
+        yesterday,
         knownPeers: peers,
         nowTick: world?.tick ?? day * 1440,
       })
