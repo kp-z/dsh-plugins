@@ -192,6 +192,42 @@ export const DEFAULT_NEEDS: AgentNeeds = { energy: 80, hunger: 80, social: 80 }
 export type ActivityPurpose = 'meal' | 'rest' | 'sleep' | 'social' | 'work' | 'study'
 
 /** 角色：一个真实 subagent 在小镇里的投影。 */
+/** R497：性格两维（0-1）。只进打分权重，不写角色特例分支。 */
+export interface AgentTraits {
+  /** 干劲：越想做点事（工作/学习）越容易压过闲散。 */
+  diligence: number
+  /** 守约：答应了的事权重更高。 */
+  duty: number
+}
+
+export type CommitmentStatus = 'open' | 'kept' | 'missed' | 'released'
+
+/** R497：一个具体承诺。到期由内核裁决，不靠 prompt 记性。 */
+export interface Commitment {
+  id: string
+  /** 对谁（角色 id）。 */
+  with: string
+  what: string
+  /** 绝对 tick；跨天也成立。 */
+  dueTick: number
+  status: CommitmentStatus
+  source: 'self' | 'player' | 'plan'
+  createdAtTick: number
+}
+
+/** R497：一条情节记忆。只记真实发生的事，不记推测。 */
+export interface Episode {
+  tick: number
+  /** 游戏第几天（1 起）。 */
+  day: number
+  kind: string
+  summary: string
+  with: string[]
+  placeId: string
+  /** 0-1：越值得记住越高（完成工单、守约、冲突等）。 */
+  salience: number
+}
+
 export interface Agent {
   id: string
   name: string
@@ -252,6 +288,12 @@ export interface Agent {
   activitySkill?: string | undefined
   /** R480：上一次由角色主动发起短信的 tick（限频，随存档）。 */
   lastInitiatedSmsTick?: number | undefined
+  /** R497：性格两维；缺省按 0.5/0.5 处理（老档）。 */
+  traits?: AgentTraits | undefined
+  /** R497：承诺；到期未处理由内核判 missed。 */
+  commitments?: Commitment[] | undefined
+  /** R497：情节记忆，按天滚动（见 sim/memory.ts）。 */
+  episodes?: Episode[] | undefined
   /** R480：主动短信按游戏日记数；换天时重置。 */
   initiatedSmsDay?: number | undefined
   /** R480：当天已发起的主动短信条数（上限 2）。 */

@@ -199,3 +199,9 @@
 - [ ] 没有重启正式 Desktop；测试只在 3190/7791
 - [ ] 新增概念已对照 §10 的 D1–D8，若越界先停下说明
 - [ ] PLAN 勾选与日志已更新，并提交
+
+- 2026-11-28 00:52 · **H1 进行中（约 70%）**。
+  已完成：`domain/types.ts` 新增 `AgentTraits/Commitment/Episode` 与 Agent 三字段；`sim/memory.ts`（按天裁剪/打分/Top-K/活动→记忆）；`sim/activity.ts` 两处完成出口写记忆；`test/memory.test.js` 6 条通过。
+  证据：`npm test` → 940 tests / 939 pass / 1 skip / 0 fail；一日仿真后三人各 11–12 条真实情节（末条「学习」）。
+  未完成：traits 落到花名册（目前只有类型）、承诺裁决（kept/missed/released）、每日 digest 写入 `agent.memories`、72h 对照 §11 复跑。
+  下一步：teammate `episode-review` 复核写入出口与体积风险（task-4），下一轮按复核结论收口 H1。

@@ -12,6 +12,7 @@
  */
 import type { Activity, Agent, World } from '../domain/types.js'
 import { nextLogSeq } from './journal.js'
+import { recordActivityEpisode } from './memory.js'
 
 /** 活动环形缓冲：只留最近这些条，世界不该因为活动记录无限膨胀。 */
 export const ACTIVITY_KEEP = 64
@@ -73,6 +74,8 @@ export function endActivity(world: World, agent: Agent, status: 'completed' | 'i
   activity.status = status
   activity.endedAt = world.tick
   activity.endedLogSeq = nextLogSeq(world)
+  // R497：完成的活动写一条情节记忆（打断的不算"发生过的事"）。
+  if (status === 'completed') recordActivityEpisode(world, activity, world.tick)
   return activity
 }
 
@@ -112,6 +115,8 @@ export function syncActivities(world: World): Activity[] {
       agent.activitySkill = undefined
       agent.activityUntil = undefined
       agent.activityTicks = undefined
+      // R497：同一出口补记忆，否则这里完成的活动永远进不了记忆。
+      recordActivityEpisode(world, live, world.tick)
       completed.push(live)
       continue
     }
