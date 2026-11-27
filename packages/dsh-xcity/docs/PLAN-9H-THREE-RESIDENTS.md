@@ -295,3 +295,10 @@
   附带确认（好消息）：同日计划已在新会话上跑通——`runtime.plan = {asked:3, answered:3, applied:4, promptError:0}`，说明 H3/H4 的通道在重启+重建会话后可复现，不是一次性偶然。
   验收工具：`tools/verify-tasks.mjs`（只读、纯 Node）已就位，三工单闭环判定=dashboard 每张有 owner、status=done、output 非空；世界词汇是 `done` 不是 `completed`。
   下一步：先查 dispatch 在编排层的落地路径（内容库 taskSet 解析 / 队列消费点），必要时把它变成可观测计数（dispatched/applied/noTaskSet），再重跑三工单。
+
+- 2026-11-28 02:46 · **H6 的第三层卡点：世界归属不清（多会话实例争同一个 stateDir）**。
+  现象：`/api/world` 的 `world.id` 不变，但 `tick` 会**倒退**（765 → 20），`tasks` 在派单后凭空消失；`dispatch` 计数增加、`errors=0`。
+  机制：世界属于**会话**（`state.activeSessionId`），而测试 profile 的 `autoStart: true` 让**每个**会话都起一套模拟循环，且共用同一个 `stateDir`（`.testhome/profiles/xcity-3/state`）——于是多个实例互相覆盖 `world.json`，HTTP 又按当时活跃的那个实例返回快照。
+  已排除：不是派单实现的问题（`state.dispatch` 抛错会进 `diagnostics.errors`，实测 0）；不是任务集缺失（`xcity_content tasks/task.town-inspection` 提供方链正常）；不是端口残留（已用 lsof 按端口清理，确认单监听）。
+  已修复并验证的两层：① 角色会话没有文件工具（profile 的 `dsh-base` 默认禁用 `tool-fs`）→ 已启用，模型现在**能看到**旧交付文件并按"代次已有交付"拒绝执行，说明能力到位；② 陈旧 `.xcity-results/*.md` → 已清理。
+  下一步（下一轮第一件事）：让世界只有一个所有者——`autoStart` 只对队长/观众会话生效，角色会话只作为 worker，不允许 open 世界；验收=连续 60s 采样 `world.id` 与 `tick` 单调不回退，再派单看工单留存。
