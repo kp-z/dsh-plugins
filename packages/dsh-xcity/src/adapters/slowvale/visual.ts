@@ -16,7 +16,7 @@
  * - `kind='independent'`：一个角色自己的 `beats[]`；
  * - `kind='group'`：`participants[]` + `steps[].tracks[actorId]`（多人同框时用）。
  *
- * 这里只实现 independent——一个人说一句话，够用了。
+ * 说话也走 independent（一拍 bubble），见 sayBeat。
  */
 /** 一拍的形状。前端按字段存在与否决定渲染方式：body / dialogue / bubble / toast。 */
 export interface VisualBeat {
@@ -28,14 +28,6 @@ export interface VisualBeat {
   /** 这一拍持续多久（ms）；不给就用前端默认。 */
   duration_ms?: number
 }
-
-/**
- * R511：**刻意不再提供**「构造一个 dialogue 包」的辅助函数。
- *
- * 它曾经存在，但生产路径上已经没有调用点：这个镜像前端的 dialogue 通道会在气泡绘制
- * 里抛 `reading 'map'`（见 PLAN H5），说话统一走 `sayBeat`。留着一个没人调的构造器
- * 只会让后来人以为那条路还能用。
- */
 
 /**
  * 造一拍：前端只认 body.action + 参数（动作表见 docs/DRIVE-MODEL.md）。

@@ -276,13 +276,11 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const actorId = next.value[0]
     const lines = next.value[1]
     pendingSay.delete(actorId)
-    const placeId = world.agents.find((agent) => agent.id === actorId)?.placeId ?? opts.place
-    const hearers = world.agents.filter((agent) => agent.id !== actorId).map((agent) => agent.id)
     const beats: VisualBeat[] = lines.map((text) => sayBeat(text))
     pushTimeline(actorId, beats)
   }
 
-  /** 推一个 independent 时间轴（一个角色的若干拍）。 */
+  /** 推一个 independent 时间轴（一个角色的若干拍）；说话也走这条（R507）。 */
   const pushTimeline = (actorId: string, beats: VisualBeat[], endState?: Record<string, unknown>, commitState?: Record<string, unknown>): boolean => {
     const world = options.getWorld()
     if (world === null || clients.size === 0 || (beats.length === 0 && endState === undefined)) return false

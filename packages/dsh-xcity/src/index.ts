@@ -352,7 +352,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     sessions: () => sessionsByAgent(loadXcityBindings(bindingsPath), loadAgentMap(join(characterWorkspace, 'agents.json'))),
     available: async (sessionId, signal) => {
       if (typeof sessionControllerService?.prompt !== 'function' || !hasXcityRoleModel(ctx, sessionId)) return false
-      return await isIdleSession(ctx, sessionId, signal) && hasXcityRoleModel(ctx, sessionId)
+      return await isIdleSession(ctx, sessionId, signal)
     },
     prompt: async (request, signal) => {
       if (typeof sessionControllerService?.prompt !== 'function' || !hasXcityRoleModel(ctx, request.sessionId)) {
