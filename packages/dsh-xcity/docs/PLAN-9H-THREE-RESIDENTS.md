@@ -251,3 +251,9 @@
   已验：`/api/xcity/spawn` 建 3 会话；手写 `characters/bindings.json`+`agents.json` 后 `GET /api/xcity/bindings` 返回三条映射；桥与插件接口是**同一个世界**（day 24 / 06:xx ↔ tick 33681 一致）。
   未过：跨过两次 06:30，`commitments` 仍 0。给三种跳过原因加了 `logger.warn('[xcity-plan] …')`（无绑定/没选模型/无会话服务），但 DSH 的日志不落 stdout（host.log 只有启动两行），无法据此判定。
   因此下一轮第一件事：给 `/agent-world/api/world` 的 `runtime.diagnostics` 增加计划计数（asked/skipped 三分支），让失败可观测——这是运维遥测，不是测试专用分支；然后再判定是“会话没选模型”还是“没有 sessionController”。
+
+- 2026-11-28 01:42 · **计划不再卡在“没选模型”，但回复仍不到（H3/H6 未过）**。
+  加：`/api/world` 的 `runtime.plan` 计数（asked/answered/noBinding/noModel/noService/failed/applied）；`slowvale.characterModel` 配置；`spawnCharacterSession` 的 `selectModel` 端口（建会话后立刻选模型，失败不拦建会话）。
+  实测三步演进：① 无绑定/无模型都 0、asked=3 failed=3（会话没选模型）；② 加了 `agent-default-model` 仍 noModel=3（默认只对 UI 建会话生效）；③ 建会话时显式选模型后 **noModel=0、asked=3、failed=3** ——卡点从“没选模型”前移到“投递后 45s 内没有 assistant 回复”。
+  宿主日志只有两条提供方加载：`llm-deepseek-api-key` 401、`llm-deepseek-account` 加载 2 个模型；我们选的是 `mmt-product`，无法从外部确认它在该宿主里是否真的注册成功。
+  下一步：① 让 `ask` 返回失败的**原因**（投递抛错 / 超时 / 会话不存在），别再一律 null；② 用宿主日志里确认可用的 `deepseek-account` 提供方复测，而不是只认 mmt-product。

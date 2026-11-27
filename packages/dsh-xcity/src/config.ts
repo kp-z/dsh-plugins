@@ -36,6 +36,14 @@ export interface SlowvaleConfig {
   bindingsFile: string
   /** 玩家自己扮演的角色 id；空串 = 取世界里的第一个角色。 */
   viewerRoleId: string
+  /**
+   * R503：新建角色会话时给它选的模型。
+   *
+   * 为什么是配置而不是写死：不同部署能用的提供方不同；不配就沿用宿主默认
+   * （UI 建会话时玩家自己选）。spawn 出来的会话否则没有 current()，一律被门控挡住。
+   */
+  /** 空字符串 = 没配（schemastery 没有 optional）。 */
+  characterModel: { provider: string; model: string }
   /** 跳过登录/授权/引导，直接落到场景里（演示与开发用）。 */
 }
 
@@ -54,6 +62,7 @@ export const DEFAULT_SLOWVALE: SlowvaleConfig = {
   email: 'demo@slowvale.dev',
   password: 'slowvale123',
   viewerRoleId: '',
+  characterModel: { provider: '', model: '' },
 }
 
 export const AgentWorldConfig = z.object({
@@ -185,6 +194,8 @@ export const AgentWorldConfig = z.object({
       viewerRoleId: z.string().default(''),
       /** 绑定表路径（谁代表谁）。不配就用 ~/.dsh/xcity/bindings.json。 */
       bindingsFile: z.string().default(join(homedir(), '.dsh', 'xcity', 'bindings.json')),
+      // schemastery 没有 optional()：用自然类型 + 解构兜底（见本文件头部约定）。
+      characterModel: z.object({ provider: z.string(), model: z.string() }).default({ provider: '', model: '' }),
     })
     .default(DEFAULT_SLOWVALE),
 })
@@ -249,6 +260,7 @@ function resolveSlowvale(input: Partial<SlowvaleConfig> | undefined): SlowvaleCo
     password: source.password ?? DEFAULT_SLOWVALE.password,
     viewerRoleId: source.viewerRoleId ?? DEFAULT_SLOWVALE.viewerRoleId,
     bindingsFile: source.bindingsFile ?? DEFAULT_SLOWVALE.bindingsFile,
+    characterModel: source.characterModel ?? DEFAULT_SLOWVALE.characterModel,
   }
 }
 

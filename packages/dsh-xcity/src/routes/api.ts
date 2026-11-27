@@ -39,6 +39,8 @@ export interface ApiDeps {
   service: WorldServicePort
   runtime: RuntimePort
   tickMs: number
+  /** R502：每日计划的计数（问了几个、卡在哪、落了几条）。 */
+  plan?: () => Record<string, number>
   /** 小镇桥（Slow Vale 适配层）的地址，如 http://127.0.0.1:7790；客户端 iframe 用它。 */
   bridgeBase?: string
   /**
@@ -352,6 +354,8 @@ export function buildSnapshot(deps: ApiDeps): SnapshotMessage {
       tickMs: deps.tickMs,
       messageDeliveryTicks: deps.runtime.messageDeliveryTicks,
       diagnostics: { ...deps.runtime.diagnostics },
+      // R502：低频计划的计数；没有接就是空对象，前端不必判空。
+      ...(deps.plan === undefined ? {} : { plan: deps.plan() }),
     },
     content: {
       packs: view.packs.map((p) => ({ id: p.id, name: p.name, version: p.version })),

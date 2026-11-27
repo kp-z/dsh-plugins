@@ -47,6 +47,7 @@ import { respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { deliverInitiative } from './adapters/slowvale/initiative-delivery.js'
 import { createSessionAsker } from './adapters/slowvale/ask-session.js'
 import { createDailyPlanner } from './bridge/daily-plan.js'
+import { createPlanStats } from './runtime/plan-stats.js'
 import { buildPlanPrompt, parsePlan } from './bridge/plan-prompt.js'
 import { promiseBetween, settleCommitments } from './sim/commitments.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
@@ -369,6 +370,9 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   if (taskExecution !== null) ctx.effect(() => () => taskExecution.stop(), 'xcity: task execution')
   let nextTaskHeartbeat = 0
 
+  // R502：计划计数（问了几次、卡在哪一门、落了几条）。挂在 /api/world 上可读。
+  const planStats = createPlanStats()
+
   // R500：每天 06:30 各自想一下今天。投递走会话，取回走 assistant 原文（见 ask-session）。
   const planAsker = createSessionAsker({
     prompt: async (payload, signal) => {
@@ -382,18 +386,25 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       if (world === null) return null
       const sessionId = sessionsByAgent(loadXcityBindings(bindingsPath), loadAgentMap(join(characterWorkspace, 'agents.json'))).get(agentId)
       if (sessionId === undefined) {
+        planStats.noBinding += 1
         logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：没有绑定会话')
         return null
       }
       if (!hasXcityRoleModel(ctx, sessionId)) {
+        planStats.noModel += 1
         logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：会话没选模型 session=' + sessionId)
         return null
       }
       if (typeof sessionControllerService?.prompt !== 'function') {
+        planStats.noService += 1
         logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：宿主没有会话服务')
         return null
       }
-      return await planAsker.ask(sessionId, prompt)
+      planStats.asked += 1
+      const answer = await planAsker.ask(sessionId, prompt)
+      if (answer === null) planStats.failed += 1
+      else planStats.answered += 1
+      return answer
     },
     promptFor: (agentId, day) => {
       const world = state.currentWorld()
@@ -419,7 +430,9 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       for (const row of commitments) {
         // 暂时不落"对自己"的承诺：没有对方可写，宁可少一条也不编一个对象。
         if (row.with === '') continue
-        promiseBetween(world, agentId, row.with, { what: row.what, dueTick: row.dueTick, source: 'plan' })
+        if (promiseBetween(world, agentId, row.with, { what: row.what, dueTick: row.dueTick, source: 'plan' }) !== null) {
+          planStats.applied += 1
+        }
       }
     },
     log: (line) => logger.info(line),
@@ -1259,14 +1272,24 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
               characterId: input.characterId,
               cwd,
               now: Date.now(),
+              // R503：spawn 出来的会话必须明确选模型，否则 current() 为空，全被门控挡住。
+              model: resolved.slowvale.characterModel.provider === '' ? undefined : resolved.slowvale.characterModel,
               ports: {
                 createAgent: async (args) => {
-                  // 宿主给的是 AgentHandle 版签名；这里只用到 sessionId + meta.cwd 两个字段。
                   const creator = (agentsService as unknown as {
                     create?: (input: Record<string, unknown>) => Promise<unknown>
                   })?.create
                   if (typeof creator !== 'function') throw new Error('宿主没有 agents 服务')
                   await creator.call(agentsService, { sessionId: args.sessionId, meta: { cwd: args.cwd } })
+                },
+                selectModel: async (sessionId, choice) => {
+                  const get = (agentsService as unknown as { get?: (id: string) => unknown })?.get
+                  const handle = typeof get === 'function' ? (get.call(agentsService, sessionId) as Record<string, unknown> | undefined) : undefined
+                  const model = handle?.['model'] as Record<string, unknown> | undefined
+                  const select = (model?.['select'] ?? model?.['set']) as ((input: unknown) => Promise<unknown>) | undefined
+                  if (typeof select !== 'function') return false
+                  await select.call(model, choice)
+                  return true
                 },
                 attachToWorkspace: async (sessionId, path) => {
                   const registry = workspaceRegistryService
@@ -1361,6 +1384,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         runtime,
         source: hub,
         tickMs: state.tickMs,
+        plan: () => ({ ...planStats }),
         // 客户端 iframe 该连哪个端口：由这里告诉它，不写死在客户端里。
         bridgeBase: 'http://' + resolved.slowvale.host + ':' + String(resolved.slowvale.port),
         maxLiveSessions: resolved.maxLiveSessions,
