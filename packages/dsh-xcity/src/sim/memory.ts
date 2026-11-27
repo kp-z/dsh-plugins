@@ -45,17 +45,34 @@ function spanOf(activity: Activity, endedAt: number): [number, number] {
 }
 
 /**
- * R510-2：这次活动期间"和谁待在一起"——同地点且时间重叠的其他角色。
+ * R512：只有**社交类活动**才产出"和谁"。
  *
- * 纯函数：只读 activities，不引入新状态；没有重叠就是空数组（老行为不变）。
+ * 真实取值比名字朴素：生活路径把 social 意图落到 `kind: 'meet'`（sim/life.ts 的
+ * selfLifeCommands、sim/step.ts 的命令处理），命令路径会同时写 `purpose: 'social'`，
+ * 老档可能只有其中一个。没有 converse/chat 这种 kind——`converse` 是内容库里
+ * tasks.requires 的 skill 名，不是活动类型。
+ * 同屋的 work/study/meal/sleep 不算"和谁一起"，只是碰巧在一间屋子里。
+ */
+function isSocialActivity(activity: Activity): boolean {
+  return activity.kind === 'meet' || activity.purpose === 'social'
+}
+
+/**
+ * R510-2 / R512：这次活动期间"和谁真的交谈过"——同地点、时间重叠、且双方都在社交活动里。
+ *
+ * 纯函数：只读 activities，不引入新状态；不是社交活动就是空数组。
  * 接受 endedAt 而不是读 tick：仍在进行的那一方用调用点的"现在"截断。
  */
 export function collaboratorsOf(activities: readonly Activity[], activity: Activity, endedAt: number): string[] {
+  // R512-1：自己在干活/吃饭/睡觉 → 不带人（同屋不算同行者）。
+  if (!isSocialActivity(activity)) return []
   const [from, to] = spanOf(activity, endedAt)
   const ids = new Set<string>()
   for (const other of activities) {
     if (other.id === activity.id || other.agentId === activity.agentId) continue
     if (other.placeId !== activity.placeId) continue
+    // R512-2：对方也必须真的在社交活动里——坐旁边干活的人没跟他说过话。
+    if (!isSocialActivity(other)) continue
     const [otherFrom, otherTo] = spanOf(other, endedAt)
     // R510-3：闭区间重叠（同一 tick 结束和开始算碰过面），和 commitments 的共享 meet 语义一致。
     if (Math.max(from, otherFrom) > Math.min(to, otherTo)) continue

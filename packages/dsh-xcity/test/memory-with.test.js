@@ -1,7 +1,9 @@
 /**
- * R510：情节记忆里的"和谁"。
+ * R510 / R512：情节记忆里的"和谁"。
  *
- * 只认已经发生的事实：同地点 + 时间重叠。没重叠就必须是 []（老行为不变）。
+ * 只认已经发生的**交谈**：同一地点 + 时间重叠 + 双方都在社交活动里（kind 'meet'，或
+ * purpose 'social'）。同屋的 work/study/meal/sleep/visit 一律不带人——那样办公室里每个
+ * 人都成了所有人的同行者。
  * 这里既测纯函数 collaboratorsOf，也测两个真实的完成出口（endActivity / syncActivities）。
  */
 import assert from 'node:assert/strict'
@@ -10,12 +12,12 @@ import test from 'node:test'
 import { endActivity, syncActivities } from '../lib/sim/activity.js'
 import { EPISODE_WITH_MAX, collaboratorsOf, recordActivityEpisode } from '../lib/sim/memory.js'
 
-/** R510-1：完整的一条活动；缺省是"刚完成"。 */
+/** R512-1：一条"真的在交谈"的活动；缺省是"刚完成"。 */
 function activity(overrides) {
   return {
     id: 'act-1',
     agentId: 'agent-a',
-    kind: 'work',
+    kind: 'meet',
     purpose: 'social',
     placeId: 'scene.office',
     stationId: 'station.desk-1',
@@ -33,13 +35,47 @@ function worldWith(activities, tick = 200) {
   return { tick, logSeq: 0, activitySeq: activities.length, activities, agents }
 }
 
-test('R510：一对一 —— 同地点且重叠，记忆里带上对方', () => {
+test('R512：同屋干活/学习/吃饭/睡觉/待着 —— 一律不带人', () => {
+  const me = activity({ id: 'act-1', agentId: 'agent-a', kind: 'work', purpose: 'work' })
+  const others = [
+    activity({ id: 'act-2', agentId: 'agent-b', kind: 'work', purpose: 'work' }),
+    activity({ id: 'act-3', agentId: 'agent-c', kind: 'work', purpose: 'study' }),
+    activity({ id: 'act-4', agentId: 'agent-d', kind: 'rest', purpose: 'meal' }),
+    activity({ id: 'act-5', agentId: 'agent-e', kind: 'sleep', purpose: 'sleep' }),
+    activity({ id: 'act-6', agentId: 'agent-f', kind: 'visit', purpose: undefined }),
+  ]
+  const rows = [me, ...others]
+  assert.deepEqual(collaboratorsOf(rows, me, 180), [])
+  // 每个人各自看出去也都是空的：同屋不是同行者，不因为"别人在聊"就沾上关系。
+  for (const row of others) {
+    assert.deepEqual(collaboratorsOf(rows, row, 180), [], row.kind + '/' + String(row.purpose))
+  }
+})
+
+test('R512：两人交谈 —— 记忆里互相带上对方', () => {
   const mine = activity({ id: 'act-1', agentId: 'agent-a', startedAt: 100, endedAt: 180 })
   const theirs = activity({ id: 'act-2', agentId: 'agent-b', startedAt: 120, endedAt: 200 })
   assert.deepEqual(collaboratorsOf([mine, theirs], mine, 180), ['agent-b'])
+  assert.deepEqual(collaboratorsOf([mine, theirs], theirs, 200), ['agent-a'])
 })
 
-test('R510：三个人在同一地点 —— 全部记下并按 id 排序', () => {
+test('R512：三人中两人聊天、第三人干活 —— 只带聊天的那个', () => {
+  const mine = activity({ id: 'act-1', agentId: 'agent-a' })
+  const chatty = activity({ id: 'act-2', agentId: 'agent-b', startedAt: 120, endedAt: 200 })
+  const worker = activity({ id: 'act-3', agentId: 'agent-c', kind: 'work', purpose: 'work' })
+  const rows = [mine, chatty, worker]
+  assert.deepEqual(collaboratorsOf(rows, mine, 180), ['agent-b'])
+  assert.deepEqual(collaboratorsOf(rows, chatty, 180), ['agent-a'])
+  assert.deepEqual(collaboratorsOf(rows, worker, 180), [])
+})
+
+test('R512：老档只有 purpose:\'social\'（kind 不是 meet）也算交谈', () => {
+  const mine = activity({ id: 'act-1', agentId: 'agent-a', kind: 'work', purpose: 'social' })
+  const theirs = activity({ id: 'act-2', agentId: 'agent-b', kind: 'work', purpose: 'social' })
+  assert.deepEqual(collaboratorsOf([mine, theirs], mine, 180), ['agent-b'])
+})
+
+test('R510：三个人在同一地点都在交谈 —— 全部记下并按 id 排序', () => {
   const mine = activity({ id: 'act-1', agentId: 'agent-a' })
   const rows = [
     mine,
@@ -126,6 +162,14 @@ test('R510：写记忆时带上 with；world 没有 activities 也照常写', ()
   assert.deepEqual(alone.agents[0].episodes.at(-1).with, [])
 })
 
+test('R512：写记忆时干活不带人 —— 同屋的同事不算同行者', () => {
+  const mine = activity({ id: 'act-1', agentId: 'agent-a', kind: 'work', purpose: 'work', status: 'active', startedAt: 100 })
+  const theirs = activity({ id: 'act-2', agentId: 'agent-b', status: 'active', startedAt: 120, endsAt: 9999, endedAt: undefined })
+  const world = worldWith([mine, theirs])
+  recordActivityEpisode(world, mine, 200)
+  assert.deepEqual(world.agents.find((row) => row.id === 'agent-a').episodes.at(-1).with, [])
+})
+
 test('R510：活动完成出口 endActivity —— 记忆自己带上"和谁"', () => {
   const mine = activity({ id: 'act-1', agentId: 'agent-a', status: 'active', startedAt: 100 })
   const theirs = activity({ id: 'act-2', agentId: 'agent-b', status: 'active', startedAt: 120, endsAt: 9999, endedAt: undefined })
@@ -139,9 +183,23 @@ test('R510：活动完成出口 endActivity —— 记忆自己带上"和谁"', 
   assert.equal(mine.status, 'completed')
 })
 
-test('R510：活动完成出口 syncActivities —— 到点完成也带着"和谁"', () => {
-  const mine = activity({ id: 'act-1', agentId: 'agent-a', purpose: 'work', status: 'active', startedAt: 100, endsAt: 150, endedAt: undefined })
+test('R510：活动完成出口 syncActivities —— 到点结束的聊天也带着"和谁"', () => {
+  const mine = activity({ id: 'act-1', agentId: 'agent-a', status: 'active', startedAt: 100, endsAt: 150, endedAt: undefined })
   const theirs = activity({ id: 'act-2', agentId: 'agent-b', status: 'active', startedAt: 120, endsAt: 9999, endedAt: undefined })
+  const world = worldWith([mine, theirs], 150)
+  const agentA = world.agents.find((row) => row.id === 'agent-a')
+  const agentB = world.agents.find((row) => row.id === 'agent-b')
+  Object.assign(agentA, { activityId: 'act-1', activityKind: 'meet', activityUntil: 150 })
+  Object.assign(agentB, { activityId: 'act-2', activityKind: 'meet', activityUntil: 9999 })
+  const completed = syncActivities(world)
+  assert.deepEqual(completed.map((row) => row.id), ['act-1'])
+  assert.deepEqual(agentA.episodes.at(-1).with, ['agent-b'])
+  assert.equal(agentB.episodes.length, 0, '还在忙的人不写记忆')
+})
+
+test('R512：活动完成出口 syncActivities —— work 到点完成 with 仍是 []', () => {
+  const mine = activity({ id: 'act-1', agentId: 'agent-a', kind: 'work', purpose: 'work', status: 'active', startedAt: 100, endsAt: 150, endedAt: undefined })
+  const theirs = activity({ id: 'act-2', agentId: 'agent-b', kind: 'work', purpose: 'work', status: 'active', startedAt: 120, endsAt: 9999, endedAt: undefined })
   const world = worldWith([mine, theirs], 150)
   const agentA = world.agents.find((row) => row.id === 'agent-a')
   const agentB = world.agents.find((row) => row.id === 'agent-b')
@@ -149,8 +207,7 @@ test('R510：活动完成出口 syncActivities —— 到点完成也带着"和�
   Object.assign(agentB, { activityId: 'act-2', activityKind: 'work', activityUntil: 9999 })
   const completed = syncActivities(world)
   assert.deepEqual(completed.map((row) => row.id), ['act-1'])
-  assert.deepEqual(agentA.episodes.at(-1).with, ['agent-b'])
-  assert.equal(agentB.episodes.length, 0, '还在忙的人不写记忆')
+  assert.deepEqual(agentA.episodes.at(-1).with, [])
 })
 
 test('R510：不同地点走真实出口 —— with 仍是 []', () => {
