@@ -18,8 +18,21 @@ import { DAY_TICKS, dayOf } from './memory.js'
 
 /** 每人同时 open 的承诺上限。超出时最旧的一条转 released——被挤掉不算违约。 */
 export const OPEN_MAX = 3
-/** 到期时人还在忙，最多顺延多久（游戏分钟）。过了这个窗口就不再等，按证据裁决。 */
+/**
+ * 忙碌宽限（游戏分钟）：到期时人还被活动占着，先不判 missed，最多顺延这么久。
+ * 理由是"人腾不出手"，与证据无关——它与 R513 的 MISS_GRACE_TICKS 是两件事，别混。
+ */
 export const BUSY_GRACE_TICKS = 60
+/**
+ * R513 失约宽限（游戏分钟）：到期**没找到证据**不判 missed，再等到 dueTick + 这个值。
+ *
+ * 理由是"没证据 ≠ 失约"：H10 收紧 episode.with 之后，missed 从 2 涨到 20，其中多数只是
+ * 证据没落地（人可能过了点才碰上，episode/meet 也可能晚一步才写进 world），不是真的爽约。
+ * 取值 180（≈3 小时）：够覆盖一个上午/下午的连续活动时段，迟到的碰面还能被同一时段的
+ * meet 记到；又明显小于一个游戏日（DAY_TICKS=1440），前一天的承诺不会拖到第二天才判。
+ * 与 BUSY_GRACE_TICKS 的区别：那个是"人还忙着"，这个是"还没有证据"。
+ */
+export const MISS_GRACE_TICKS = 180
 /** 已裁决的承诺留几天（与情节记忆同窗口）；只留最近，避免 world.json 无限长。 */
 export const SETTLED_KEEP_DAYS = 7
 
@@ -137,15 +150,17 @@ export interface Settlement {
 }
 
 /**
- * R497/R500：结算到期承诺。open 且 dueTick < nowTick 的才判；到期当 tick 不判（不误判）。
+ * R497/R513：结算到期承诺。open 且 dueTick < nowTick 的才判；到期当 tick 不判（不误判）。
  *
  * 判据（只认事实）：
- * - kept：窗口 [createdAtTick, dueTick] 内，任一方有 episode.with 含对方，或两人在同一地点
- *   各有 meet 活动且时间重叠；或显式 keepCommitment 已经标过。
- * - missed：以上都没有。不因为"看起来忙/可能去过了"就改判。
+ * - kept：证据窗口 [createdAtTick, min(now, dueTick + MISS_GRACE_TICKS)] 内，任一方有
+ *   episode.with 含对方，或两人在同一地点各有 meet 活动且时间重叠；或显式 keepCommitment
+ *   已经标过。宽限期内**任何时刻**出现证据都立刻判 kept，不等宽限结束。
+ * - missed：两个宽限都用完仍无证据。不因为"看起来忙/可能去过了"就改判。
  *
- * 缺省策略：releaseIfBusy 还没实现，所以对方还在忙不算违约——在 dueTick + BUSY_GRACE_TICKS 内
- * 保持 open 顺延；超过宽限仍无证据才判 missed。避免把"在干活"判成爽约。
+ * 两个 grace，理由不同，别混：
+ * - BUSY_GRACE_TICKS：人还被活动占着 → 先不判 missed（"人腾不出手"）。
+ * - MISS_GRACE_TICKS：没有证据 → 保持 open 到宽限结束（"没证据 ≠ 失约"）。
  */
 export function settleCommitments(world: World, nowTick: number): Settlement[] {
   const now = Math.max(0, Math.floor(nowTick))
@@ -159,14 +174,27 @@ export function settleCommitments(world: World, nowTick: number): Settlement[] {
 
       const rows = rowsOf(world, row.id)
       const pair = pairOf(rows, agent.id, row)
-      const busy = rows.some((item) => isBusy(world, item.owner))
-      if (busy && now <= row.dueTick + BUSY_GRACE_TICKS) continue
-
       const from = Math.min(row.createdAtTick, ...rows.map((item) => item.row.createdAtTick))
-      const kept = rows.some((item) => item.row.status === 'kept') || metInWindow(world, pair[0], pair[1], from, row.dueTick)
-      const status: CommitmentStatus = kept ? 'kept' : 'missed'
-      setStatus(world, row.id, status)
-      settled.push({ id: row.id, status: kept ? 'kept' : 'missed', pair })
+      const graceEnd = row.dueTick + MISS_GRACE_TICKS
+
+      // ① R513：证据先判。宽限内右端取 now（迟到的碰面也算），宽限后封在 graceEnd，不再倒填。
+      const kept =
+        rows.some((item) => item.row.status === 'kept') ||
+        metInWindow(world, pair[0], pair[1], from, Math.min(now, graceEnd))
+      if (kept) {
+        setStatus(world, row.id, 'kept')
+        settled.push({ id: row.id, status: 'kept', pair })
+        continue
+      }
+
+      // ② BUSY_GRACE_TICKS：人还在忙，先不定罪。
+      if (now <= row.dueTick + BUSY_GRACE_TICKS && rows.some((item) => isBusy(world, item.owner))) continue
+
+      // ③ MISS_GRACE_TICKS：没证据不等于失约，宽限用完才落 missed。
+      if (now <= graceEnd) continue
+
+      setStatus(world, row.id, 'missed')
+      settled.push({ id: row.id, status: 'missed', pair })
     }
   }
 

@@ -340,7 +340,7 @@
 | 轮次 | 主题 | 为什么（证据） | 验收 |
 |---|---|---|---|
 | H10 ✅ | 交互级关系证据（已做，见日志） | `Episode.with` 现在按"同屋"算（5 人同办公室互相成为同行者），承诺裁决因此既会误判也会漏判 | `with` 只在真的发生 meet/converse 时写入；抽查 10 条 `with` 都能指到一次交互事件 |
-| H11 | 承诺裁决校准 | 实测 `kept 4 / missed 24`，多数是"证据不足"而非真的失约 | 证据不足时不再直接判 missed，而是有明确第三态；kept 率与判定依据可复算 |
+| H11 ✅ | 承诺裁决校准（宽限期 + 承诺驱动赴约，见日志） | 实测 `kept 4 / missed 24`，多数是"证据不足"而非真的失约 | 证据不足时不再直接判 missed，而是有明确第三态；kept 率与判定依据可复算 |
 | H12 | 派单公平性 | H6 里 agent-1 连做两张、agent-3 一张没拿到 | 三张单分给三人（同优先级时按最近最少接单）；有回归测试 |
 | H13 | 记忆进入决策 | 目前 `life.ts` 只看 needs/traits，记忆只用于对话 | 同处境下"记得对方欠我一次"与"不记得"的首选动作不同；golden 锁住 |
 | H14 | 输入侧成本 | 现有 `measure-tokens` 只算输出侧（≈8.2k/天），真实大头是输入 | 每次模型调用的输入字符也有数；给出每轮上限与超限告警 |
@@ -367,3 +367,12 @@
   证据核对（新工具 `tools/verify-with.mjs`）：`ok:true, sampled 21, claims 418, proven 21, unproven 0, workWith 0`；`stale 397` 是活动环形缓冲（只留 64 条）造成的老情节，不算失败，脚本里已区分。
   承诺侧影响：`kept 34 / missed 20 / released 8`（收紧前 kept 42 / missed 2）。**这不是退步**——之前的高 kept 正是靠"同屋就算见了"刷出来的；现在 20 条 missed 里应该有一部分是"真的没碰面"，正好是 H11 要校准的对象。
   测试：`test/memory-with.test.js` 14 → **19 条**；`npm test` → **1044 tests / 1043 pass / 1 skip / 0 fail**。
+
+- 2026-11-28 03:57 · **H11 通过（勾选，含一处偏离）**。
+  先纠正一个判断：我原以为 22 条 missed 是"证据不足误判"，实测 **22 条里 0 条有交集**——不是误判，而是**承诺从来没影响过行为**：人许完愿照常上班/学习，然后被判失约。所以这轮做了两件事。
+  ① 承诺驱动行动（`life.ts`，R513）：`dueAppointmentOf()` 取"有约定对象、open、到期在 [now, now+180 分钟]"里最早的一条，`intentOptions()` 多一条 score=0.9 的赴约意图（高于上班 0.65 / 学习 0.5），`socialStationId()` 支持 `preferPeer`——先去找约定的人，而不是"最熟的人"。
+  ② 证据不足先不判（`commitments.ts`，R513）：新增 `MISS_GRACE_TICKS=180`，到期无证据 → 保持 open；宽限内出现证据立刻 kept；宽限结束仍无证据才 missed。**刻意没有新增第三态**（那是新概念，按规矩要先问你）。
+  实测（变更后的新承诺 10 条）：`kept 4 / missed 6`；对照同一天变更前的 22 条 **kept 0**。数值还不高，原因写在下面的偏差里。
+  核对工具 `tools/verify-commitments.mjs`：`ok:true, kept 9 / missed 19 / released 2, suspicious 0, stale 4, meetBlind 9`。`stale` 是"证据通道已过期、不敢下否定结论"，与 `verify-with.mjs` 同一条理由。
+  测试：`test/life-appointment.test.js` 3 条、`test/commitments*.test.js` 18 条；`npm test` → **1048 tests / 1047 pass / 1 skip / 0 fail**。
+  偏差（下一轮）：① kept 率只有 40%，因为赴约意图要求"对方闲着或已在聊 + 有空位"，两人不同时满足就还是错过；② `meetBlind 9/9`——活动环形只留 64 条，超期后"没交集"这一半只剩情节通道作证；③ `BUSY_GRACE_TICKS` 已被 `MISS_GRACE_TICKS` 完全覆盖，减法待定。

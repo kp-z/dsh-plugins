@@ -4,7 +4,7 @@ import test from 'node:test'
 import { ContentRegistry, builtinPacks } from '../lib/content/index.js'
 import { createWorld } from '../lib/world/create.js'
 import { step } from '../lib/sim/step.js'
-import { promiseBetween, settleCommitments } from '../lib/sim/commitments.js'
+import { MISS_GRACE_TICKS, promiseBetween, settleCommitments } from '../lib/sim/commitments.js'
 
 const content = new ContentRegistry()
 content.loadAll(builtinPacks())
@@ -29,13 +29,13 @@ test('R500：一次约定双方各一条，id 相同', () => {
   assert.equal(b[0].with, 'agent-1')
 })
 
-test('R500：到期后一定给出 kept/missed，不会永远 open', () => {
+test('R500/R513：两个宽限都过了一定给出 kept/missed，不会永远 open', () => {
   const w = world()
   w.tick = 600
   const written = promiseBetween(w, 'agent-1', 'agent-2', { what: '一起吃饭', dueTick: 610, source: 'plan' })
   assert.ok(written !== null)
-  // 宽限期（BUSY_GRACE_TICKS=60）内忙碌不算爽约，所以要多推一段。
-  while (w.tick <= 610 + 70) step(w, [], { selfLife: true })
+  // 到期后先走忙碌宽限（BUSY_GRACE_TICKS=60），再走失约宽限（MISS_GRACE_TICKS），所以要多推一段。
+  while (w.tick <= 610 + MISS_GRACE_TICKS + 70) step(w, [], { selfLife: true })
   const settled = settleCommitments(w, w.tick)
   const all = [...(w.agents[0].commitments ?? []), ...(w.agents[1].commitments ?? [])]
   assert.equal(all.filter((c) => c.status === 'open').length, 0, '到期不该还挂着 open：' + JSON.stringify(settled))

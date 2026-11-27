@@ -88,6 +88,33 @@ function available(agent: Agent): boolean {
   )
 }
 
+/** 赴约窗口：到期前多久开始往对方那边走（游戏分钟）。 */
+export const APPOINTMENT_WINDOW = 180
+
+/**
+ * R513：最该去赴的那个约。
+ *
+ * 取"有约定对象、状态 open、到期在 [now, now+APPOINTMENT_WINDOW]"里最早的一条。
+ * 自己一个人的承诺（with === ''）不算——那种没有约可赴。
+ */
+export function dueAppointmentOf(
+  world: World,
+  agent: Agent,
+): { with: string; what: string; dueTick: number } | null {
+  const now = world.tick
+  let best: { with: string; what: string; dueTick: number } | null = null
+  for (const commitment of agent.commitments ?? []) {
+    if (commitment.status !== 'open') continue
+    if (commitment.with === '') continue
+    if (commitment.dueTick < now) continue
+    if (commitment.dueTick - now > APPOINTMENT_WINDOW) continue
+    if (best === null || commitment.dueTick < best.dueTick) {
+      best = { with: commitment.with, what: commitment.what, dueTick: commitment.dueTick }
+    }
+  }
+  return best
+}
+
 /**
  * 最近的一个"有空位 + 有其中任一能力"的站点；没有就 null。
  *
@@ -124,7 +151,7 @@ function freeStation(
  * 2. 否则找最熟的空闲角色，挑离 TA 最近的 converse 座位（两个人都这么做，才会坐到一起）。
  * 没有第二个人 → null（留给 H4 主动发短信）。
  */
-function socialStationId(world: World, agent: Agent): string | null {
+function socialStationId(world: World, agent: Agent, preferPeer: string | null = null): string | null {
   let join: { stationId: string; affinity: number } | null = null
   for (const other of world.agents) {
     if (other.id === agent.id) continue
@@ -135,6 +162,8 @@ function socialStationId(world: World, agent: Agent): string | null {
     // 找同房间的另一个空位（会议椅是一人一座）。
     const seat = freeStation(world, agent, ['converse'], (candidate) => candidate.district === station.district)
     if (seat === null) continue
+    // R513：赴约优先——约定要见的人正在某个房间，就先去这个房间，而不是"最熟的人"。
+    if (preferPeer !== null && other.id === preferPeer) return seat.id
     const affinity = affinityOf(agent, other.id)
     if (join === null || affinity > join.affinity) join = { stationId: seat.id, affinity }
   }
@@ -142,7 +171,12 @@ function socialStationId(world: World, agent: Agent): string | null {
 
   const others = world.agents
     .filter((other) => other.id !== agent.id && other.state === 'idle' && other.targetStation === null && other.station === null)
-    .sort((a, b) => affinityOf(agent, b.id) - affinityOf(agent, a.id))
+    .sort((a, b) => {
+      // R513：赴约优先——约定的人闲着，就先找他。
+      if (a.id === preferPeer) return -1
+      if (b.id === preferPeer) return 1
+      return affinityOf(agent, b.id) - affinityOf(agent, a.id)
+    })
   const target = others[0]
   // R498：没人闲着也可以先坐下——第二个想聊天的人会从"加入"那条路过来。
   // 没有这一条，三人永远在忙，社交在结构上就不可能发生（实测三天 0 次）。
@@ -206,6 +240,27 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
   }
 
   const options: IntentOption[] = []
+
+  // 3.5) 赴约：答应过别人的事，快到点了就真的去。
+  //
+  // 为什么必须单独一条：实测 22 条 missed 里 **0 条有交集**——不是裁决误判，
+  // 而是承诺从来没影响过行为：人许完愿照常去上班/学习，然后被判失约。
+  const appointment = dueAppointmentOf(world, agent)
+  if (appointment !== null) {
+    const peer = world.agents.find((row) => row.id === appointment.with)
+    const stationId = peer === undefined ? null : socialStationId(world, agent, peer.id)
+    if (stationId !== null) {
+      options.push({
+        score: 0.9,
+        intent: {
+          purpose: 'social',
+          stationId,
+          ticks: SOCIAL_TICKS,
+          reason: '快到点了，去找' + (peer?.name ?? appointment.with) + '把答应的「' + appointment.what + '」办了',
+        },
+      })
+    }
+  }
 
   // 4) 想说话：有人才去。先加入已经在聊的人，否则找最熟的人、去他附近。
   if (needs.social < SOCIAL_LOW && world.agents.length > 1) {

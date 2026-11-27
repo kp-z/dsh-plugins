@@ -5,7 +5,8 @@
  * 1. 一个约定双方各一条，共用 id，with 互指；同一天同一件事重复写是幂等的；
  * 2. 非法输入（未知角色、自己对自己、过期、空 what）不写半条；
  * 3. 只有两类证据算数：窗口内和对方有交集（episode.with / 同地点 meet 重叠），或显式 keepCommitment；
- * 4. 到期当 tick 不判；忙碌顺延一个窗口，超过宽限才裁决；
+ * 4. 到期当 tick 不判；到期没证据也不立刻判 missed——忙碌宽限（BUSY_GRACE_TICKS）先顺延，
+ *    再用失约宽限（MISS_GRACE_TICKS，R513）等到 dueTick + 宽限，期间出现证据立刻 kept；
  * 5. 每人同时 open ≤3，超出时最旧的一条双方一起 released；
  * 6. 已裁决的旧承诺会被裁剪，不会让存档无限长。
  */
@@ -14,6 +15,7 @@ import test from 'node:test'
 
 import {
   BUSY_GRACE_TICKS,
+  MISS_GRACE_TICKS,
   OPEN_MAX,
   SETTLED_KEEP_DAYS,
   commitmentId,
@@ -131,17 +133,39 @@ test('R497：窗口内有交集 → kept（双方一起，裁决只有一种结�
   assert.equal(rowById(world, 'b', written.id).status, 'kept', '对方那条同步 kept')
 })
 
-test('R497：没有任何事实 → missed，不编造证据', () => {
+test('R513：到期没证据先保持 open，宽限用完仍没证据才判 missed', () => {
   const world = makeWorld(100)
   const written = promiseBetween(world, 'a', 'b', { what: '一起吃饭', dueTick: 1300 })
 
-  const settled = settleCommitments(world, 1301)
+  assert.deepEqual(settleCommitments(world, 1301), [], '刚过到期、没证据：不判 missed')
+  assert.deepEqual(settleCommitments(world, 1300 + MISS_GRACE_TICKS), [], '宽限右端还在等')
+  assert.equal(rowById(world, 'a', written.id).status, 'open', '宽限期内保持 open')
+  assert.equal(rowById(world, 'b', written.id).status, 'open')
+
+  const settled = settleCommitments(world, 1300 + MISS_GRACE_TICKS + 1)
   assert.equal(settled.length, 1)
-  assert.equal(settled[0].status, 'missed')
+  assert.equal(settled[0].status, 'missed', '两个宽限都用完仍无证据才判 missed')
   assert.equal(rowById(world, 'a', written.id).status, 'missed')
   assert.equal(rowById(world, 'b', written.id).status, 'missed')
 
-  assert.deepEqual(settleCommitments(world, 1302), [], '已裁决的不再重复判')
+  assert.deepEqual(settleCommitments(world, 1300 + MISS_GRACE_TICKS + 2), [], '已裁决的不再重复判')
+})
+
+test('R513：宽限期内出现证据立刻判 kept（不等宽限结束，也不再翻成 missed）', () => {
+  const world = makeWorld(100)
+  const written = promiseBetween(world, 'a', 'b', { what: '一起吃饭', dueTick: 1300 })
+
+  assert.deepEqual(settleCommitments(world, 1310), [], '到期后还没证据')
+
+  world.agents[0].episodes = [episodeWith(1320, 'b')] // 过了点才碰上，仍在宽限内
+  const settled = settleCommitments(world, 1321)
+  assert.equal(settled.length, 1, '这一 tick 就裁决，不等到宽限结束')
+  assert.equal(settled[0].status, 'kept')
+  assert.equal(rowById(world, 'a', written.id).status, 'kept')
+  assert.equal(rowById(world, 'b', written.id).status, 'kept')
+
+  assert.deepEqual(settleCommitments(world, 1300 + MISS_GRACE_TICKS + 100), [], 'kept 是终局')
+  assert.equal(rowById(world, 'a', written.id).status, 'kept')
 })
 
 test('R497：到期当 tick 不判，更早也不判', () => {
@@ -152,7 +176,7 @@ test('R497：到期当 tick 不判，更早也不判', () => {
   assert.equal(rowById(world, 'a', written.id).status, 'open')
 })
 
-test('R497：还在忙不算违约——宽限内保持 open 顺延，超过宽限才裁决', () => {
+test('R497：还在忙不算违约——忙碌宽限先顺延，两个宽限都用完才裁决', () => {
   const world = makeWorld(100)
   const written = promiseBetween(world, 'a', 'b', { what: '一起吃饭', dueTick: 1300 })
   meetActivity(world, 'a', 'pmeet', 1290)
@@ -161,11 +185,16 @@ test('R497：还在忙不算违约——宽限内保持 open 顺延，超过宽�
   assert.deepEqual(
     settleCommitments(world, 1300 + BUSY_GRACE_TICKS),
     [],
-    '宽限窗口内（含右端）继续等',
+    '忙碌宽限窗口内（含右端）继续等',
   )
   assert.equal(rowById(world, 'a', written.id).status, 'open', '顺延期间不动状态')
 
-  const settled = settleCommitments(world, 1300 + BUSY_GRACE_TICKS + 1)
+  assert.deepEqual(
+    settleCommitments(world, 1300 + MISS_GRACE_TICKS),
+    [],
+    '忙完之后还有失约宽限，仍保持 open',
+  )
+  const settled = settleCommitments(world, 1300 + MISS_GRACE_TICKS + 1)
   assert.equal(settled.length, 1)
   assert.equal(settled[0].status, 'missed', '宽限用完仍无证据才判 missed')
 })
@@ -176,25 +205,25 @@ test('R497：同地点 meet 活动重叠算碰过面；不同地点不算', () =
   meetActivity(world, 'a', 'pmeet', 1200, 1250)
   meetActivity(world, 'b', 'pmeet', 1230, 1260)
 
-  const settled = settleCommitments(world, 1300 + BUSY_GRACE_TICKS + 1)
-  assert.equal(settled[0].status, 'kept')
+  const settled = settleCommitments(world, 1301)
+  assert.equal(settled[0].status, 'kept', '到期当 tick 之后立刻裁决，不用等宽限')
   assert.equal(rowById(world, 'b', written.id).status, 'kept')
 
   const elsewhere = makeWorld(100)
   const other = promiseBetween(elsewhere, 'a', 'b', { what: '一起吃饭', dueTick: 1300 })
   meetActivity(elsewhere, 'a', 'pmeet', 1200, 1250)
   meetActivity(elsewhere, 'b', 'pcafe', 1230, 1260)
-  assert.equal(settleCommitments(elsewhere, 1300 + BUSY_GRACE_TICKS + 1)[0].status, 'missed')
+  assert.equal(settleCommitments(elsewhere, 1300 + MISS_GRACE_TICKS + 1)[0].status, 'missed')
   assert.equal(rowById(elsewhere, 'a', other.id).status, 'missed')
 })
 
-test('R497：窗口外的交集不算证据（过期之后才见到）', () => {
+test('R513：宽限之外的迟到见面不算证据（不能倒填成守约）', () => {
   const world = makeWorld(100)
   const written = promiseBetween(world, 'a', 'b', { what: '一起吃饭', dueTick: 1300 })
-  world.agents[0].episodes = [episodeWith(1400, 'b')]
+  world.agents[0].episodes = [episodeWith(1300 + MISS_GRACE_TICKS + 5, 'b')]
 
-  const settled = settleCommitments(world, 1401)
-  assert.equal(settled[0].status, 'missed', '迟到的见面不能倒填成守约')
+  const settled = settleCommitments(world, 1300 + MISS_GRACE_TICKS + 10)
+  assert.equal(settled[0].status, 'missed', '宽限之后的见面不能倒填成守约')
   assert.equal(rowById(world, 'a', written.id).status, 'missed')
 })
 
@@ -209,7 +238,11 @@ test('R497：显式 keepCommitment 是第二类证据，且只有当事人能标
   assert.equal(rowById(world, 'a', written.id).status, 'kept')
   assert.equal(rowById(world, 'b', written.id).status, 'kept')
   assert.equal(keepCommitment(world, 'a', written.id), false, '重复调用安全')
-  assert.deepEqual(settleCommitments(world, 1400), [], '已 kept 的不再判 missed')
+  assert.deepEqual(
+    settleCommitments(world, 1300 + MISS_GRACE_TICKS + 100),
+    [],
+    '已 kept 的不再判 missed',
+  )
 })
 
 test('R497：每人同时 open ≤3，超出时最旧的一条双方一起 released', () => {
@@ -235,15 +268,16 @@ test('R497：每人同时 open ≤3，超出时最旧的一条双方一起 relea
 test('R497：已裁决的旧承诺会被裁剪，open 的永远留着', () => {
   const world = makeWorld(100)
   const written = promiseBetween(world, 'a', 'b', { what: '一起吃饭', dueTick: 1300 })
-  assert.equal(settleCommitments(world, 1301)[0].status, 'missed')
+  const judgedAt = 1300 + MISS_GRACE_TICKS + 1
+  assert.equal(settleCommitments(world, judgedAt)[0].status, 'missed')
   assert.equal(rows(world, 'a').length, 1)
 
-  settleCommitments(world, 1301 + SETTLED_KEEP_DAYS * DAY_TICKS + 5)
+  settleCommitments(world, judgedAt + SETTLED_KEEP_DAYS * DAY_TICKS + 5)
   assert.equal(rows(world, 'a').length, 0, '过期多天的裁决滚出存档')
   assert.equal(rowById(world, 'b', written.id), undefined)
 
   const fresh = makeWorld(100)
   promiseBetween(fresh, 'a', 'b', { what: '一起吃饭', dueTick: 1300 + 30 * DAY_TICKS })
-  settleCommitments(fresh, 1301 + SETTLED_KEEP_DAYS * DAY_TICKS + 5)
+  settleCommitments(fresh, judgedAt + SETTLED_KEEP_DAYS * DAY_TICKS + 5)
   assert.equal(rows(fresh, 'a').length, 1, '还没到期的 open 不会被裁掉')
 })
