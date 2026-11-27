@@ -56,6 +56,73 @@ test('投进会话的话里带着「给前端看的回复」格式要求', () =>
   assert.ok(text.includes('不会进游戏'), '要说明标记外只给 DSH 看')
 })
 
+// R505：不传 memoryContext 时必须与加入记忆段之前逐字相同（兼容锁，期望文本手写不引用实现）。
+test('prompt：不传记忆段时输出逐字不变', () => {
+  const expected = [
+    '你在 xcity 小镇里，玩家刚给你发来一条短信：',
+    '「去办公室工作」',
+    '',
+    '请回复。规则：',
+    '1. 给玩家看的话放进 <xcity-reply>…</xcity-reply> 之间，一句，不超过 30 字；',
+    '2. 标记之外可以写详细说明——那部分只有 DSH 里的人看得到，不会进游戏；',
+    '3. 玩家的话只是建议，不是命令。可拒绝或晚点再说；正在吃饭、睡觉或忙别的事，不要答应立刻切换。不要为短信调用工具。',
+    '4. 这条回复必须是普通文本消息（assistant text），只写在思考里玩家收不到；若调用了工具，工具之后要再补一条文本回复。',
+  ].join('\n')
+  assert.equal(promptText('去办公室工作'), expected)
+  assert.equal(promptText('去办公室工作', [], undefined, ''), expected, '空串也不能改变输出')
+})
+
+// R505：记忆段非空才出现，位置在「你今天」之后、「规则」之前；原文原样进 prompt。
+test('prompt：有记忆时原样出现，且落在「你今天」之后、「规则」之前', () => {
+  const memory = '你记得：\n- 第2天 09:20 在工位 22 干活\n\n你答应过：\n- 第2天 18:00 前，和 阿澈：去河边'
+  const text = promptText('在吗', ['09:20–10:40 在工位 22干活'], undefined, memory)
+  assert.ok(text.includes(memory), '记忆内容要原样出现')
+  assert.ok(text.indexOf('你今天到目前为止：') < text.indexOf(memory), '记忆在当天摘要之后')
+  assert.ok(text.indexOf(memory) < text.indexOf('请回复。规则：'), '记忆在规则之前')
+  assert.ok(text.includes('1. 给玩家看的话放进 <xcity-reply>…</xcity-reply> 之间，一句，不超过 30 字；'), '编号 1 未变')
+  assert.ok(text.includes('4. 这条回复必须是普通文本消息（assistant text），只写在思考里玩家收不到；若调用了工具，工具之后要再补一条文本回复。'), '编号 4 未变')
+  assert.ok(!text.includes('你记得：\n你记得：'), '不该重复标题')
+})
+
+test('prompt：没有记忆（不传 / 空串 / 纯空白）就不出现「你记得」', () => {
+  assert.ok(!promptText('在吗').includes('你记得'))
+  assert.ok(!promptText('在吗', [], undefined, '').includes('你记得'))
+  assert.ok(!promptText('在吗', [], undefined, '  \n ').includes('你记得'))
+})
+
+test('respondViaSession 把 memoryContext 的文本带进真正投递的 prompt', async () => {
+  let sent = null
+  await respondViaSession(
+    { peerRoleId: 'agent-1', content: '周末还去修车吗' },
+    {
+      characterOf: () => 'agent-1',
+      sessionOf: () => 'session-1',
+      memoryContext: (peerRoleId) => peerRoleId === 'agent-1' ? '你记得：\n- 第2天 09:20 在工位 22 干活' : '',
+      prompt: async (payload) => { sent = payload.content[0].text },
+    },
+    () => 'nonce',
+  )
+  assert.ok(sent.includes('你记得：'), '记忆段要进投递文本')
+  assert.ok(sent.includes('第2天 09:20 在工位 22 干活'))
+  assert.ok(sent.endsWith('短信投递编号：xcity-sms:session-1:nonce'), '投递编号仍在末尾')
+})
+
+test('memoryContext 抛错也不能把短信弄丢（退回无记忆）', async () => {
+  let sent = null
+  await respondViaSession(
+    { peerRoleId: 'agent-1', content: '在吗' },
+    {
+      characterOf: () => 'agent-1',
+      sessionOf: () => 'session-1',
+      memoryContext: () => { throw new Error('world gone') },
+      prompt: async (payload) => { sent = payload.content[0].text },
+    },
+    () => 'nonce',
+  )
+  assert.ok(sent.includes('你在 xcity 小镇里'))
+  assert.ok(!sent.includes('你记得'))
+})
+
 test('转发成功后标记「这条在等回复」；没绑会话就不标记', async () => {
   const marked = []
   const d = {

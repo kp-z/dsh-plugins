@@ -16,6 +16,8 @@ export interface RespondSmsDeps {
   sessionOf: (characterId: string) => string | null
   /** R479：当天经历摘要（由世界事实生成；老调用方可以不给）。 */
   dayContext?: (peerRoleId: string) => string[]
+  /** R505：记忆上下文（「你记得 / 你答应过」，由 bridge/memory-context.ts 渲染；老调用方可以不给）。 */
+  memoryContext?: (peerRoleId: string) => string
   /** 宿主的会话投递。 */
   /** 已经真的把这条短信投进会话了（用来标记「下一次回复要写回游戏」）。 */
   suggestedAction?: string | undefined
@@ -56,7 +58,14 @@ export async function respondViaSession(
   } catch {
     dayLines = []
   }
-  const text = promptText(input.content, dayLines, deps.suggestedAction) + '\n\n短信投递编号：' + requestId
+  // R505：记忆取不到也不能把短信弄丢（与 dayContext 同口径，退回「没有记忆」）。
+  let memory = ''
+  try {
+    memory = deps.memoryContext?.(input.peerRoleId) ?? ''
+  } catch {
+    memory = ''
+  }
+  const text = promptText(input.content, dayLines, deps.suggestedAction, memory) + '\n\n短信投递编号：' + requestId
   const cancel = deps.onForward?.(input.peerRoleId, sessionId, text)
   try {
     await deps.prompt({ requestId, sessionId, mode: 'queue', content: [{ type: 'text', text }] }, new AbortController().signal)
@@ -91,13 +100,21 @@ export function initiativePromptText(reason: string, dayLines: readonly string[]
  * 为什么要把格式写进 prompt：同一次回复有两个读者——DSH 里的人要详细，
  * 游戏里的玩家只要一句。靠"模型自己猜"永远不稳定，所以给一个明确标记。
  */
-export function promptText(content: string, dayLines: readonly string[] = [], suggestedAction?: string): string {
+export function promptText(
+  content: string,
+  dayLines: readonly string[] = [],
+  suggestedAction?: string,
+  memoryContext = '',
+): string {
   const day = dayLines.length === 0 ? [] : ['你今天到目前为止：', ...dayLines.map((line) => '- ' + line), '']
+  // R505：记忆非空才成段（空白也算没有）；不传时输出与加入记忆前逐字相同。
+  const memory = memoryContext.trim() === '' ? [] : [memoryContext, '']
   return [
     '你在 xcity 小镇里，玩家刚给你发来一条短信：',
     '「' + content + '」',
     '',
     ...day,
+    ...memory,
     '请回复。规则：',
     '1. 给玩家看的话放进 ' + REPLY_OPEN + '…' + REPLY_CLOSE + ' 之间，一句，不超过 30 字；',
     '2. 标记之外可以写详细说明——那部分只有 DSH 里的人看得到，不会进游戏；',

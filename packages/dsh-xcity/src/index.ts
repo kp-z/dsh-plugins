@@ -49,6 +49,8 @@ import { createSessionAsker } from './adapters/slowvale/ask-session.js'
 import { createDailyPlanner } from './bridge/daily-plan.js'
 import { createPlanStats } from './runtime/plan-stats.js'
 import { buildPlanPrompt, parsePlan } from './bridge/plan-prompt.js'
+import { renderMemoryContext } from './bridge/memory-context.js'
+import { scoreEpisode, selectEpisodes } from './sim/memory.js'
 import { promiseBetween, settleCommitments } from './sim/commitments.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
@@ -1346,6 +1348,20 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
                 sessionOf,
                 suggestedAction,
                 dayContext: (peerRoleId) => summarizeDay(world, peerRoleId, world.tick),
+                // R505：让他记得自己干过什么、答应过谁——不再是每次都从零开始聊。
+                memoryContext: (peerRoleId) => {
+                  const agent = world.agents.find((row) => row.id === peerRoleId)
+                  if (agent === undefined) return ''
+                  return renderMemoryContext({
+                    episodes: agent.episodes ?? [],
+                    commitments: agent.commitments ?? [],
+                    nowTick: world.tick,
+                    // R505：承诺里存 id，模型该看到人名。
+                    nameOf: (id) => world.agents.find((row) => row.id === id)?.name ?? id,
+                    selectEpisodes,
+                    scoreEpisode,
+                  })
+                },
                 onForward: (peerRoleId, sessionId, text) => smsReplies.track(peerRoleId, sessionId, text, 'player-sms', command === null ? undefined : () => {
                   // R494：延迟回话不能跨世界或已更换的绑定执行。
                   const characterId = characterOf(peerRoleId)

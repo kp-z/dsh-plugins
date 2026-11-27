@@ -179,7 +179,7 @@
 - [x] H1 认知地基：Episode/日小结/traits + memory.ts（承诺裁决移至 H3/H7）
 - [x] H2 动机引擎：决策点改到「活动结束」+ argmax + golden/分化回归
 - [x] H3 低频计划：每日一次结构化承诺（真模型已验证）
-- [ ] H4 记忆接入：四处触发点 + Top-K
+- [x] H4 记忆接入：短信提示词带记忆 + Top-K（真机验证）
 - [ ] H5 气泡：playback.tracks + speaker_id（后端）
 - [ ] H6 工作链：三道门 + 三任务闭环 + 进度投影
 - [ ] H7 三日链：72h 连贯与承诺兑现
@@ -269,3 +269,9 @@
   实测证据（tick 52585，真模型 deepseek-v4.1-flash）：三名居民各拿到 2–4 条结构化承诺，例如「去工地面谈今天的分工」（agent-1↔agent-3 双方各一条、id 相同）、「巡检东侧休息区记录破损点」（agent-1↔agent-2）、「和小铁把工具清点一遍」（agent-2↔agent-3）；状态按事实裁决为 open / missed / released，没有永远挂着。
   附带：`runtime.plan` 计数（asked/answered/noBinding/noModel/noService/failed/applied/busy/timeout/promptError/lastPromptError）从此可定位任何一次失败。
   留待 H7：裁决偏严——`episode.with` 目前恒空，只有 meeting 重叠能当证据，所以出现了 missed；填 `with` 之后要重跑这条验收。
+
+- 2026-11-28 02:18 · **H4 通过（勾选）**。
+  实现：`bridge/memory-context.ts`（纯函数，注入 selectEpisodes/scoreEpisode，一字符=1 的 400 字预算；先丢分低的记忆，最后才丢承诺）；`respond-sms.ts` 增加可选 `memoryContext`，不传时输出**逐字不变**（有兼容锁）；`index.ts` 注入真实记忆 + 人名映射（`nameOf`）。
+  真机证据：向 agent-1 发「你记得答应过我什么吗？」→ 回复「记得：14点前跟小蓝找阿金对单，15点前跟小铁去仓库补货。」世界里确实有 14:00/小蓝「找阿金确认今天的派工单」(kept) 与 15:00/小铁「去仓库盘点缺的货补齐」(kept) 两条，**时间、对象、事项都对得上**，不是编的。
+  测试：`test/memory-context.test.js` 15 条、`test/slowvale-respond-sms.test.js` 21 条；`npm test` → 1013 pass / 1 skip / 0 fail。
+  偏差记录：模型会把「确认派工单」说成「对单」——是转述不是新事实；H7 抽查时要按语义比对，不要按字面 grep。
