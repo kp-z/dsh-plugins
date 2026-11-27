@@ -8,8 +8,10 @@
 export interface SessionAskerDeps {
   /** 投递一句用户消息；语义与 sessionController.prompt 一致（返回即受理）。 */
   prompt: (payload: { sessionId: string; message: { role: 'user'; content: { type: 'text'; text: string }[] } }, signal: AbortSignal) => Promise<void>
-  /** 超时多久放弃（毫秒）。缺省 45s。 */
+  /** 超时多久放弃（毫秒）。缺省 120s：冷会话 + 长上下文的第一轮常常超过 45s。 */
   timeoutMs?: number
+  /** 失败原因（投递抛错 / 超时）。默认丢弃；接线方用它计数与定位。 */
+  onFailure?: (reason: 'prompt-error' | 'timeout') => void
 }
 
 export interface SessionAsker {
@@ -46,7 +48,7 @@ export function textOfMessage(data: unknown): string {
 
 export function createSessionAsker(deps: SessionAskerDeps): SessionAsker {
   const pending = new Map<string, Pending>()
-  const timeoutMs = deps.timeoutMs ?? 45_000
+  const timeoutMs = deps.timeoutMs ?? 120_000
 
   const settle = (sessionId: string, text: string | null): void => {
     const entry = pending.get(sessionId)
@@ -62,7 +64,10 @@ export function createSessionAsker(deps: SessionAskerDeps): SessionAsker {
       if (pending.has(sessionId)) return null
       const controller = new AbortController()
       const answer = new Promise<string | null>((resolve) => {
-        const timer = setTimeout(() => settle(sessionId, null), timeoutMs)
+        const timer = setTimeout(() => {
+          deps.onFailure?.('timeout')
+          settle(sessionId, null)
+        }, timeoutMs)
         pending.set(sessionId, { resolve, timer, abort: controller })
       })
       try {
@@ -71,6 +76,7 @@ export function createSessionAsker(deps: SessionAskerDeps): SessionAsker {
           message: { role: 'user', content: [{ type: 'text', text }] },
         }, controller.signal)
       } catch {
+        deps.onFailure?.('prompt-error')
         settle(sessionId, null)
       }
       return await answer

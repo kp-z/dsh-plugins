@@ -257,3 +257,9 @@
   实测三步演进：① 无绑定/无模型都 0、asked=3 failed=3（会话没选模型）；② 加了 `agent-default-model` 仍 noModel=3（默认只对 UI 建会话生效）；③ 建会话时显式选模型后 **noModel=0、asked=3、failed=3** ——卡点从“没选模型”前移到“投递后 45s 内没有 assistant 回复”。
   宿主日志只有两条提供方加载：`llm-deepseek-api-key` 401、`llm-deepseek-account` 加载 2 个模型；我们选的是 `mmt-product`，无法从外部确认它在该宿主里是否真的注册成功。
   下一步：① 让 `ask` 返回失败的**原因**（投递抛错 / 超时 / 会话不存在），别再一律 null；② 用宿主日志里确认可用的 `deepseek-account` 提供方复测，而不是只认 mmt-product。
+
+- 2026-11-28 01:56 · **会话三条线仍卡在平台接缝（H3/H5/H6 未过）**。
+  本轮新增可观测：`runtime.plan` 增加 busy/timeout/promptError；`ask-session` 接受 `onFailure` 回调；计划提问前先 `isIdleSession`，忙就不挤进去。
+  实测（最新一次）：`asked=3, noModel=3, promptError=3`。含义很具体：① 建会话时选的模型**没有留下**（hasXcityRoleModel 仍 false）；② `sessionController.prompt` **抛错**（不是超时、也不是忙）。
+  另外从会话日志（`.testhome/sessions/.../session.v4.jsonl.zstd`）解压看到：这些会话确实在跑，但收到的是**主动短信**提示词，不是计划提示词——说明平台对这些 spawn 会话的投递路径与 UI 建的会话不同。
+  结论：不要再从 `agents.create` 这条侧门硬接。下一轮改用**真实 UI 路径**建一个会话（网页里选模型），拿它的 sessionId 写进 bindings，再验证计划/短信/气泡——这条路径平台会自己处理启动与模型选择。

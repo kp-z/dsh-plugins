@@ -375,6 +375,10 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
 
   // R500：每天 06:30 各自想一下今天。投递走会话，取回走 assistant 原文（见 ask-session）。
   const planAsker = createSessionAsker({
+    onFailure: (reason) => {
+      if (reason === 'timeout') planStats.timeout += 1
+      else planStats.promptError += 1
+    },
     prompt: async (payload, signal) => {
       if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
       await sessionControllerService.prompt(payload as never, signal)
@@ -398,6 +402,11 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       if (typeof sessionControllerService?.prompt !== 'function') {
         planStats.noService += 1
         logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：宿主没有会话服务')
+        return null
+      }
+      // 会话正在跑别的轮次（主动短信/工单）时不要挤进去：挤进去只会互相打断。
+      if (!(await isIdleSession(ctx, sessionId, new AbortController().signal))) {
+        planStats.busy += 1
         return null
       }
       planStats.asked += 1
@@ -1285,7 +1294,18 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
                 selectModel: async (sessionId, choice) => {
                   const get = (agentsService as unknown as { get?: (id: string) => unknown })?.get
                   const handle = typeof get === 'function' ? (get.call(agentsService, sessionId) as Record<string, unknown> | undefined) : undefined
-                  const model = handle?.['model'] as Record<string, unknown> | undefined
+                  // R504：只创建不启动的会话收不到消息；但启动会重置模型选择，
+                  // 所以顺序必须是**先启动、再选模型**（实测反了会出现 noModel=3）。
+                  const start = (handle?.['start'] ?? handle?.['resume']) as ((input?: unknown) => Promise<unknown>) | undefined
+                  if (typeof start === 'function') {
+                    try {
+                      await start.call(handle)
+                    } catch {
+                      // 启动失败不拦建会话：至少会话在，玩家还能从 UI 打开。
+                    }
+                  }
+                  const fresh = typeof get === 'function' ? (get.call(agentsService, sessionId) as Record<string, unknown> | undefined) : handle
+                  const model = fresh?.['model'] as Record<string, unknown> | undefined
                   const select = (model?.['select'] ?? model?.['set']) as ((input: unknown) => Promise<unknown>) | undefined
                   if (typeof select !== 'function') return false
                   await select.call(model, choice)

@@ -12,8 +12,15 @@ export interface PlanStats {
   noService: number
   failed: number
   applied: number
+  /** 会话正忙（在跑别的轮次），本轮跳过。 */
+  busy: number
+  timeout: number
+  promptError: number
 }
 
 export function createPlanStats(): PlanStats {
-  return { asked: 0, answered: 0, noBinding: 0, noModel: 0, noService: 0, failed: 0, applied: 0 }
+  return {
+    asked: 0, answered: 0, noBinding: 0, noModel: 0, noService: 0,
+    failed: 0, applied: 0, busy: 0, timeout: 0, promptError: 0,
+  }
 }
