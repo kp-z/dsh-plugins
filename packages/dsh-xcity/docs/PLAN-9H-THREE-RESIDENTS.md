@@ -275,3 +275,9 @@
   真机证据：向 agent-1 发「你记得答应过我什么吗？」→ 回复「记得：14点前跟小蓝找阿金对单，15点前跟小铁去仓库补货。」世界里确实有 14:00/小蓝「找阿金确认今天的派工单」(kept) 与 15:00/小铁「去仓库盘点缺的货补齐」(kept) 两条，**时间、对象、事项都对得上**，不是编的。
   测试：`test/memory-context.test.js` 15 条、`test/slowvale-respond-sms.test.js` 21 条；`npm test` → 1013 pass / 1 skip / 0 fail。
   偏差记录：模型会把「确认派工单」说成「对单」——是转述不是新事实；H7 抽查时要按语义比对，不要按字面 grep。
+
+- 2026-11-28 02:22 · **H5 仍未过，但范围收窄了**。
+  已改：对话包改为**入队 + 推送周期发送**（同 tick 的包会被前端字符串比较丢弃，这点已核实于 GameView 4851），同一角色多句合成一个时间轴；`audience` 从 place 改成 role_ids（前端记录对话时按名单取参与者）。
+  实测三种组合：① 扁平包 → 静默丢弃；② playback + broadcast 路由 → **不报错但也没有气泡**（被路由过滤掉）；③ playback + role_ids 路由 → 报 `[visual_playback]`（此前抓到过消息 `Cannot read properties of undefined (reading 'map')`），气泡不出现。
+  诊断受阻：错误经前端自己的上报函数打日志，我 patch `console.error` 拿到过消息但拿不到 Error 栈；`fetch`/`sendBeacon` 里也没有上报体。下一轮改用**逐字段二分**：只发 `dialogue.text`（不带 speaker_id/audience）、再逐个加回，定位是哪一字段触发。
+  纪律：前端零改动（`git status` 可证），全部在适配层。

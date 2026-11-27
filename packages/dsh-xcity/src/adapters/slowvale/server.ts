@@ -250,38 +250,38 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   /**
    * 让某个角色在场景里说一句话（visual 包，一拍 dialogue）。
    *
-   * 对话在这套前端里不是接口，是视觉时间轴上的一拍；这条是唯一的出口。
+   * R506：**不能立刻发**。前端按 tick_marker 字符串比较丢弃"同一 tick 的后续包"
+   * （GameView 4851），而时钟包每轮都会推进这个水位。所以这里只入队，
+   * 由推送周期在 pushClock **之前**发，标记才不会撞。
    */
+  const pendingSay = new Map<string, string[]>()
   const pushSay = (actorId: string, text: string): boolean => {
     const world = options.getWorld()
     if (world === null || clients.size === 0) return false
-    const scene = projectSnapshot(world, opts).scene
-    if (typeof scene !== 'string' || scene === '') return false
-    const cursor = nextCursor(world)
-    const tickMarker = 'tick-' + String(world.tick)
-    const placeId = world.agents.find((agent) => agent.id === actorId)?.placeId ?? opts.place
-    const packet = independentDialogue({
-      epoch: cursor.epoch,
-      seq: envelopeSeq,
-      tickMarker,
-      actorId,
-      beat: { text },
-      // 先给角色名单：place 需要前端知道当前 viewer 所在地点，名单更稳。
-      audience: { kind: 'role_ids', role_ids: [actorId, opts.viewerRoleId] },
-    })
-    const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
-    const envelope = {
-      protocol_version: SLOWVALE_PROTOCOL_VERSION,
-      cursor,
-      prev: lastCursor,
-      tick_marker: tickMarker,
-      kind: 'visual',
-      route: { world_id: opts.worldId, broadcast: false, role_ids: [actorId], scenes: [scene] },
-      payload_gz: body,
-    }
-    lastCursor = cursor
-    for (const res of clients) writeEvent(res, 'update', envelope)
+    const lines = pendingSay.get(actorId)
+    if (lines === undefined) pendingSay.set(actorId, [text])
+    else lines.push(text)
     return true
+  }
+
+  /**
+   * 每轮只发一个角色的待说话：其余留到下一轮（tick 已推进，标记不会再撞）。
+   * 多拍合成**一个**时间轴，同角色连说几句也不会互相盖掉。
+   */
+  const flushSay = (world: WorldLike): void => {
+    const next = pendingSay.entries().next()
+    if (next.done === true) return
+    const actorId = next.value[0]
+    const lines = next.value[1]
+    pendingSay.delete(actorId)
+    const placeId = world.agents.find((agent) => agent.id === actorId)?.placeId ?? opts.place
+    const hearers = world.agents.filter((agent) => agent.id !== actorId).map((agent) => agent.id)
+    const beats: VisualBeat[] = lines.map((text) => ({
+      // R506：用角色名单而不是地点——前端记录对话时按 role_ids 取参与者，
+      // place 会让它在取名单时落空（实测 visual_playback 报 reading 'map'）。
+      dialogue: { speaker_id: actorId, text, audience: { kind: 'role_ids', role_ids: [actorId, ...hearers] } },
+    }))
+    pushTimeline(actorId, beats)
   }
 
   /** 推一个 independent 时间轴（一个角色的若干拍）。 */
@@ -579,6 +579,8 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         // 世界侧驱动：谁开始移动，就给谁发一拍 walk（路径点来自内核 sim/pathfind）
         const world = options.getWorld()
         if (world !== null && clients.size > 0) {
+          // R506：对话必须在时钟包之前发——时钟会推进 tick_marker 水位。
+          flushSay(world)
           pushClock(world)
           pushActivityChanges(world)
           const picked = pickWalkStarts(walkLengths, world.agents)
