@@ -144,7 +144,9 @@ function socialStationId(world: World, agent: Agent): string | null {
     .filter((other) => other.id !== agent.id && other.state === 'idle' && other.targetStation === null && other.station === null)
     .sort((a, b) => affinityOf(agent, b.id) - affinityOf(agent, a.id))
   const target = others[0]
-  if (target === undefined) return null
+  // R498：没人闲着也可以先坐下——第二个想聊天的人会从"加入"那条路过来。
+  // 没有这一条，三人永远在忙，社交在结构上就不可能发生（实测三天 0 次）。
+  if (target === undefined) return freeStation(world, agent, ['converse'])?.id ?? null
   // 两人都用"中点"选房间：A 和 B 算出同一个中点、落到同一个 district，
   // 才不会一个去东屋一个去西屋（之前 25 次 meet 只有 10 对关系就是这么来的）。
   const midpoint = {

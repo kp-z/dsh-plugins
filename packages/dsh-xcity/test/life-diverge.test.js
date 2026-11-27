@@ -4,48 +4,35 @@ import test from 'node:test'
 import { ContentRegistry, builtinPacks } from '../lib/content/index.js'
 import { createWorld } from '../lib/world/create.js'
 import { step } from '../lib/sim/step.js'
-import { chooseLife, selfLifeCommands } from '../lib/sim/life.js'
 
 const content = new ContentRegistry()
 content.loadAll(builtinPacks())
 const OFFICE = { id: 'place:office.tech_company_1', name: 'Office', asset: 'company', spawn: { x: 480, z: 800 } }
 
-function world(agents = 3) {
-  return createWorld({ content, scene: 'scene.office', name: 'diverge', maxAgents: agents, places: [OFFICE] })
-}
-
-/** 同一个处境（饿了不饿、空闲、上班时段、有人可聊），只换干劲。 */
-function choiceWith(diligence) {
-  const w = world()
-  w.tick = 600
-  for (const agent of w.agents) {
-    agent.traits = { diligence, duty: 0.5 }
-    agent.needs = { energy: 80, hunger: 80, social: 10 }
+function run(equalTraits, ticks = 1440) {
+  const w = createWorld({ content, scene: 'scene.office', name: 'ab', maxAgents: 3, places: [OFFICE] })
+  if (equalTraits) for (const a of w.agents) a.traits = { diligence: 0.5, duty: 0.5 }
+  const seqs = w.agents.map(() => [])
+  let stuck = 0
+  for (let i = 0; i < ticks; i++) {
+    step(w, [], { selfLife: true })
+    for (const a of w.agents) if (a.state === 'idle' && a.targetStation !== null) stuck += 1
+    w.agents.forEach((a, idx) => seqs[idx].push((a.activityPurpose ?? a.state).slice(0, 4)))
   }
-  return w.agents.map((agent) => chooseLife(w, agent)?.purpose ?? null)
+  return { seqs, stuck, world: w }
 }
 
-test('R498-B2：同一处境下，干劲高的去干活，干劲低的去聊天', () => {
-  assert.deepEqual(choiceWith(0.95), ['work', 'work', 'work'])
-  assert.deepEqual(choiceWith(0.1), ['social', 'social', 'social'])
+test('R498：只改性格，同种子的行为就不同（性格有因果作用）', () => {
+  const withTraits = run(false)
+  const equal = run(true)
+  const differ = withTraits.seqs[0].filter((v, i) => v !== equal.seqs[0][i]).length
+  assert.ok(differ > 100, '干劲 0.8 与 0.5 应导致大量不同的选择，实际 ' + String(differ))
 })
 
-test('R498-B2：两两分化率——量化到天，不靠感觉', () => {
-  const w = world(3)
-  let pairs = 0
-  let differ = 0
-  for (let i = 0; i < 3 * 1440; i++) {
-    const picks = w.agents.map((agent) => chooseLife(w, agent)?.purpose ?? null)
-    for (let a = 0; a < picks.length; a++) {
-      for (let b = a + 1; b < picks.length; b++) {
-        if (picks[a] === null || picks[b] === null) continue
-        pairs += 1
-        if (picks[a] !== picks[b]) differ += 1
-      }
-    }
-    step(w, selfLifeCommands(w))
-  }
-  // 记录真实值，别把目标当结果：三人几乎总在忙，可比较的对本来就少。
-  console.log('[R498] 可比较对=' + String(pairs) + ' 不同=' + String(differ))
-  assert.ok(pairs > 0, '三天的仿真里至少要有可比较的时刻')
+test('R498：活动结束即决策，不许把角色卡成 idle+targetStation', () => {
+  const { stuck, world } = run(false, 3 * 1440)
+  assert.equal(stuck, 0, '任何一 tick 出现 idle 却有目标工位就是状态机被打断')
+  const purposes = new Set(world.activities.map((a) => a.purpose ?? a.kind))
+  assert.ok(purposes.has('social'), '三天里必须有真实社交，否则等于没有生活')
+  assert.ok(world.agents.every((a) => a.needs.social > 10), '社交需求要被真的补回来')
 })

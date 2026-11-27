@@ -44,6 +44,7 @@ import { arriveTravelers, beginTravel } from './travel.js'
 import { endActivity, liveActivityOf, startActivity, syncActivities } from './activity.js'
 import { advanceWork } from './interaction.js'
 import { advanceIdle } from './idle.js'
+import { chooseLife } from './life.js'
 import { recoverStalledTasks } from './recovery.js'
 import type { StepContext } from '../protocol/idle.js'
 import { dispatchComms } from './comms.js'
@@ -170,95 +171,9 @@ function ingest(
       case 'taskLink':
         requests.external.push(command)
         break
-      case 'agentActivity': {
-        const agent = world.agents.find((item) => item.id === command.agentId)
-        if (agent === undefined) break
-        // R494：角色接受玩家建议也不能打断正在进行的生活或工单。
-        if (command.trigger?.kind === 'player' && (
-          agent.state !== 'idle' || agent.carrying !== null || agent.activityId !== undefined ||
-          agent.activityUntil !== undefined || agent.targetStation !== null || agent.path.length > 0
-        )) break
-        if (command.activity === 'idle') {
-          agent.state = 'idle'
-          agent.station = null
-          agent.targetStation = null
-          agent.path = []
-          endActivity(world, agent, 'completed')
-          break
-        }
-        // "去某地待着"不需要工位：场所里没有椅子也该能站着（内容没建模的地方多得是）。
-        const wants = command.activity === 'meet' ? ['converse'] : command.activity === 'rest' ? ['rest'] : [command.skill ?? 'code']
-        // 场所：命令没说就用角色当前所在地；说了但这个世界没有那个场所，
-        // 就就地做（老档/单场所世界不该因为一个陌生 id 把人派到虚空里）。
-        // 跨场所 = 先出行，到了再重放这次活动。
-        const places = world.places ?? []
-        const requested = command.placeId ?? agent.placeId
-        // 没有场所表的老世界：当作"只有一处"，也不按场所过滤站点。
-        const placeId = places.length === 0 || places.some((place) => place.id === requested) ? requested : agent.placeId
-        if (placeId !== agent.placeId) {
-          beginTravel(world, agent, placeId, {
-            kind: command.activity === 'meet'
-              ? 'meet'
-              : command.activity === 'rest'
-                ? 'rest'
-                : command.activity === 'visit'
-                  ? 'visit'
-                  : 'work',
-            ticks: Math.max(5, Math.round(command.ticks)),
-            skill: command.skill,
-            trigger: command.trigger,
-          })
-          break
-        }
-        if (command.activity === 'visit') {
-          agent.state = 'idle'
-          agent.station = null
-          agent.targetStation = null
-          agent.path = []
-          startActivity(world, agent, { kind: 'visit', ticks: Math.max(5, Math.round(command.ticks)), trigger: command.trigger })
-          break
-        }
-        // R478：调用方可以指定站点（吃饭去 breakroom、休息去休息位）；指定失效就退回能力搜索。
-        const eligible = (candidate: World['stations'][number]): boolean =>
-          (places.length === 0 || candidate.placeId === placeId) &&
-          candidate.capabilities.some((capability) => wants.includes(capability)) &&
-          occupancyOf(world, candidate.id) < candidate.capacity
-        const requestedStation = command.stationId === undefined
-          ? undefined
-          : world.stations.find((candidate) => candidate.id === command.stationId)
-        const preferred = requestedStation !== undefined && eligible(requestedStation) ? requestedStation : undefined
-        // R482：指定站点满了时优先同房间的另一个空位（两人约好去同一屋，别一个被挤到别的屋）。
-        const sameRoom = requestedStation === undefined
-          ? undefined
-          : world.stations.find((candidate) => candidate.district === requestedStation.district && eligible(candidate))
-        const station = preferred ?? sameRoom ?? world.stations.find(eligible)
-        if (station === undefined) break
-        const path = findPath(world.nav, agent.position, stationSlot(station, occupancyOf(world, station.id)))
-        // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
-        // 用老字段承载，syncActivities 会在下一 tick 采纳成正式活动。
-        agent.activityKind = command.activity
-        // R478：用途标签（吃饭/睡觉/学习…）；不传就按命令类型推一个默认值。
-        agent.activityPurpose = command.purpose ?? (command.activity === 'meet' ? 'social' : command.activity === 'work' ? 'work' : command.activity === 'rest' ? 'rest' : undefined)
-        agent.activitySkill = command.skill
-        agent.activityTrigger = command.trigger
-        agent.activityTicks = Math.max(5, Math.round(command.ticks))
-        if (path.length === 0) {
-          // R478：已经在站点上（刚干完一轮、原地再开）——直接开始，
-          // 不要把命令丢掉；否则要等待命行为把人挪开，白白空转 90 tick。
-          agent.station = station.id
-          agent.targetStation = null
-          agent.state = command.activity === 'meet' ? 'talking' : command.activity === 'rest' ? 'sleeping' : 'working'
-          agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
-          break
-        }
-        agent.state = 'walking'
-        agent.station = null
-        agent.targetStation = station.id
-        agent.path = path
-        // R478：走路时间不算进活动时长——到站后由 movement 按 activityTicks 起算。
-        agent.activityUntil = undefined
+      case 'agentActivity':
+        applyAgentActivity(world, command)
         break
-      }
       case 'moveAgent': {
         // 键盘操控落地（P4）。**服务端权威**：位置写进世界，客户端才不会被同步拽回去。
         const agent = world.agents.find((item) => item.id === command.agentId)
@@ -558,6 +473,10 @@ export function step(
     }
   }
 
+  // R498：活动刚结束的那一刻就决定下一步（走命令处理，保住 walking 状态机）。
+  // 只有运行时显式开启时才做：否则"只给人下命令"的老行为（含测试）会被改掉。
+  if (context.selfLife === true) runSelfLifeDecisions(world)
+
   // R497：换天时给每个角色写一条日小结（复用 Episode，kind='day'，幂等）。
   if (world.tick > 0 && world.tick % DAY_TICKS === 0) writeDayDigest(world, world.tick / DAY_TICKS)
 
@@ -591,4 +510,126 @@ export function step(
     delivered: mailbox.delivered,
     recovered: recovery.recovered,
   }
+}
+
+/**
+ * R498：把一个 agentActivity 命令落到角色身上。
+ *
+ * 抽出来是为了**复用**：既给 ingest 的命令用，也给「活动刚结束」的自选下一步用。
+ * 上一轮直接在 step 里 startActivity，绕过了这里的 walking 状态机，人卡死不动。
+ */
+/**
+ * R498：对「刚结束活动、现在真的空着」的人问一次 chooseLife，并立刻落下。
+ *
+ * 实测：一天 4320 个采样点里真正空闲只有 36 个——决策点几乎全在活动结束时被错过。
+ * 这里用 applyAgentActivity 落，而不是自己拼状态。
+ */
+export function runSelfLifeDecisions(world: World): void {
+  for (const agent of world.agents) {
+    if (agent.state !== 'idle') continue
+    if (agent.carrying !== null || agent.activityId !== undefined || agent.activityUntil !== undefined) continue
+    if (agent.targetStation !== null || agent.path.length > 0) continue
+    const intent = chooseLife(world, agent)
+    if (intent === null) continue
+    applyAgentActivity(world, {
+      kind: 'agentActivity',
+      agentId: agent.id,
+      activity: intent.purpose === 'social' ? 'meet' : intent.purpose === 'work' || intent.purpose === 'study' ? 'work' : 'rest',
+      ticks: intent.ticks,
+      ...(intent.stationId === null ? {} : { stationId: intent.stationId }),
+      ...(intent.skill === undefined ? {} : { skill: intent.skill }),
+      purpose: intent.purpose,
+      trigger: { kind: 'self', text: intent.reason },
+    })
+  }
+}
+
+export function applyAgentActivity(world: World, command: Extract<WorldCommand, { kind: 'agentActivity' }>): void {
+        const agent = world.agents.find((item) => item.id === command.agentId)
+        if (agent === undefined) return
+        // R494：角色接受玩家建议也不能打断正在进行的生活或工单。
+        if (command.trigger?.kind === 'player' && (
+          agent.state !== 'idle' || agent.carrying !== null || agent.activityId !== undefined ||
+          agent.activityUntil !== undefined || agent.targetStation !== null || agent.path.length > 0
+        )) return
+        if (command.activity === 'idle') {
+          agent.state = 'idle'
+          agent.station = null
+          agent.targetStation = null
+          agent.path = []
+          endActivity(world, agent, 'completed')
+          return
+        }
+        // "去某地待着"不需要工位：场所里没有椅子也该能站着（内容没建模的地方多得是）。
+        const wants = command.activity === 'meet' ? ['converse'] : command.activity === 'rest' ? ['rest'] : [command.skill ?? 'code']
+        // 场所：命令没说就用角色当前所在地；说了但这个世界没有那个场所，
+        // 就就地做（老档/单场所世界不该因为一个陌生 id 把人派到虚空里）。
+        // 跨场所 = 先出行，到了再重放这次活动。
+        const places = world.places ?? []
+        const requested = command.placeId ?? agent.placeId
+        // 没有场所表的老世界：当作"只有一处"，也不按场所过滤站点。
+        const placeId = places.length === 0 || places.some((place) => place.id === requested) ? requested : agent.placeId
+        if (placeId !== agent.placeId) {
+          beginTravel(world, agent, placeId, {
+            kind: command.activity === 'meet'
+              ? 'meet'
+              : command.activity === 'rest'
+                ? 'rest'
+                : command.activity === 'visit'
+                  ? 'visit'
+                  : 'work',
+            ticks: Math.max(5, Math.round(command.ticks)),
+            skill: command.skill,
+            trigger: command.trigger,
+          })
+          return
+        }
+        if (command.activity === 'visit') {
+          agent.state = 'idle'
+          agent.station = null
+          agent.targetStation = null
+          agent.path = []
+          startActivity(world, agent, { kind: 'visit', ticks: Math.max(5, Math.round(command.ticks)), trigger: command.trigger })
+          return
+        }
+        // R478：调用方可以指定站点（吃饭去 breakroom、休息去休息位）；指定失效就退回能力搜索。
+        const eligible = (candidate: World['stations'][number]): boolean =>
+          (places.length === 0 || candidate.placeId === placeId) &&
+          candidate.capabilities.some((capability) => wants.includes(capability)) &&
+          occupancyOf(world, candidate.id) < candidate.capacity
+        const requestedStation = command.stationId === undefined
+          ? undefined
+          : world.stations.find((candidate) => candidate.id === command.stationId)
+        const preferred = requestedStation !== undefined && eligible(requestedStation) ? requestedStation : undefined
+        // R482：指定站点满了时优先同房间的另一个空位（两人约好去同一屋，别一个被挤到别的屋）。
+        const sameRoom = requestedStation === undefined
+          ? undefined
+          : world.stations.find((candidate) => candidate.district === requestedStation.district && eligible(candidate))
+        const station = preferred ?? sameRoom ?? world.stations.find(eligible)
+        if (station === undefined) return
+        const path = findPath(world.nav, agent.position, stationSlot(station, occupancyOf(world, station.id)))
+        // 活动的身份在到达时创建（见 transition 段）；这里只记下"要做什么"，
+        // 用老字段承载，syncActivities 会在下一 tick 采纳成正式活动。
+        agent.activityKind = command.activity
+        // R478：用途标签（吃饭/睡觉/学习…）；不传就按命令类型推一个默认值。
+        agent.activityPurpose = command.purpose ?? (command.activity === 'meet' ? 'social' : command.activity === 'work' ? 'work' : command.activity === 'rest' ? 'rest' : undefined)
+        agent.activitySkill = command.skill
+        agent.activityTrigger = command.trigger
+        agent.activityTicks = Math.max(5, Math.round(command.ticks))
+        if (path.length === 0) {
+          // R478：已经在站点上（刚干完一轮、原地再开）——直接开始，
+          // 不要把命令丢掉；否则要等待命行为把人挪开，白白空转 90 tick。
+          agent.station = station.id
+          agent.targetStation = null
+          agent.state = command.activity === 'meet' ? 'talking' : command.activity === 'rest' ? 'sleeping' : 'working'
+          agent.activityUntil = world.tick + Math.max(5, Math.round(command.ticks))
+          return
+        }
+        agent.state = 'walking'
+        agent.station = null
+        agent.targetStation = station.id
+        agent.path = path
+        // R478：走路时间不算进活动时长——到站后由 movement 按 activityTicks 起算。
+        agent.activityUntil = undefined
+        return
 }

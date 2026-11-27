@@ -322,6 +322,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
         idleBehaviors: idleActionsEnabled ? service.content().idleBehaviors() : [],
         // R471：关掉待命行为时，没有目标就站定，不再“自己去歇脚点”。
         idleAmbient: idleActionsEnabled,
+        // R498：角色在活动结束时自己决定下一步（与 selfLifeCommands 同一个开关）。
+        selfLife: options.selfLifeEnabled === true,
         ...(options.sessionWorkers === undefined ? {} : { sessionWorkers: options.sessionWorkers(world) }),
       })
     } catch (error) {

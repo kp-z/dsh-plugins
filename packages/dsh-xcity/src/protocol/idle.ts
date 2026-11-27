@@ -99,4 +99,6 @@ export interface StepContext {
   readonly idleBehaviors?: readonly IdleBehaviorPlan[]
   /** R471：没有目标时是否允许待命走动（默认 true；运行时按 idleActionsEnabled 传）。 */
   readonly idleAmbient?: boolean
+  /** R498：是否允许角色在活动结束时自己决定下一步。缺省 false = 老行为（测试与老调用方不变）。 */
+  readonly selfLife?: boolean
 }
