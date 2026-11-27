@@ -11,6 +11,9 @@
  *   [2] 无抢座：同一次采样里某个工位的占用数超过它的 capacity（座位 cap=1，休息区 cap=6）；
  *   [2] agent 数稳定：全程与起点一致；
  *   [3] 断线重连可用：断开再连后能收到帧，且 cursor 前进（epoch 换世代或 seq 变大）。
+ * 只报告不判定（[2.2]，卡 task-27）：seating（站点数/总容量/峰值占用/峰值需求/没座位峰值）、
+ *   waiting（没 station 的人峰值、窗口内"连续没 station"的最久秒数）、
+ *   pressure（超容量事件数、同坐标叠人事件数）。overCapacityEvents > 0 会写进 notes。
  * 失败时 stderr 一行卡点（unreachable / no-samples / stall / seat-conflict / agent-count-unstable / reconnect），退出码 1。
  *
  * --agents 只用来报告"世界人数是否等于压测目标"，**不参与 ok**：人数由宿主的世界决定，本脚本不改世界。
@@ -75,12 +78,21 @@ for (const station of origin === null ? [] : origin.stations ?? []) {
   }
 }
 
+// [1.2] 站点规模：总容量决定 24 人坐不坐得下（只报告，见 [2.2]）
+const stationTotal = capacityOf.size;
+const totalCapacity = [...capacityOf.values()].reduce((sum, capacity) => sum + capacity, 0);
+
 // [2] 每秒采样一次，持续 --seconds（t=0..seconds 共 seconds+1 次）
 const samples = [];
 const counts = [];
 const seatRows = new Map();   // 工位+人员 → 抢座事件（跨采样去重，记次数）
+const duplicateRows = new Map(); // 坐标+人员 → 同坐标叠人事件（跨采样去重，记次数）
+const noStationRuns = new Map(); // agent → { since, longestSec }：这段没 station 从哪开始、已结算的最长
 let pausedSamples = 0;
 let failedSamples = 0;
+let occupiedMax = 0;   // [2.2] 峰值占用：一个采样里最多几人坐在 station 上
+let demandMax = 0;     // [2.2] 峰值需求：一个采样里最多几人在场（都要座位）
+let unseatedMax = 0;   // [2.2] 没座位的人峰值
 
 if (origin !== null) {
   const startAt = Date.now();
@@ -101,10 +113,48 @@ if (origin !== null) {
       id: agent.id,
       state: agent.state ?? null,
       station: typeof agent.station === 'string' ? agent.station : '',
+      x: agent.position?.x,
+      z: agent.position?.z,
     }));
+    const at = Date.now();
     counts.push(agents.length);
     if (world.paused === true) pausedSamples += 1;
-    samples.push({ at: Date.now(), tick: world.tick });
+    samples.push({ at, tick: world.tick });
+
+    // [2.2] 座位压力：需求 = 在场人数，占用 = 有 station 的人，没座位 = 两者之差
+    const seated = agents.filter((agent) => agent.station !== '').length;
+    occupiedMax = Math.max(occupiedMax, seated);
+    demandMax = Math.max(demandMax, agents.length);
+    unseatedMax = Math.max(unseatedMax, agents.length - seated);
+
+    // [2.2] 同坐标叠人：两个及以上 agent 落在完全相同的 (x, z) 就是一格多人
+    const byPosition = new Map();
+    for (const agent of agents) {
+      if (!Number.isFinite(agent.x) || !Number.isFinite(agent.z)) continue;
+      const key = agent.x + ',' + agent.z;
+      const ids = byPosition.get(key) ?? [];
+      ids.push(agent.id);
+      byPosition.set(key, ids);
+    }
+    for (const [position, ids] of byPosition) {
+      if (ids.length < 2) continue;
+      const key = position + '|' + [...ids].sort().join(',');
+      const row = duplicateRows.get(key) ?? { position, agents: [...ids].sort(), samples: 0 };
+      row.samples += 1;
+      duplicateRows.set(key, row);
+    }
+
+    // [2.2] 谁连续没 station：逐人记这段空座的起点，坐下时结算秒数
+    for (const agent of agents) {
+      const run = noStationRuns.get(agent.id) ?? { since: null, longestSec: 0 };
+      if (agent.station === '') {
+        if (run.since === null) run.since = at;
+      } else if (run.since !== null) {
+        run.longestSec = Math.max(run.longestSec, (at - run.since) / 1000);
+        run.since = null;
+      }
+      noStationRuns.set(agent.id, run);
+    }
 
     const byStation = new Map();
     for (const agent of agents) {
@@ -149,6 +199,34 @@ const ticksPerSecond = first === null || last === null || spanSec <= 0
 const counts0 = counts[0] ?? null;
 const agentCountStable = counts.length > 0 && counts0 !== null && counts.every((count) => count === counts0);
 const conflictRows = [...seatRows.values()];
+const duplicateRowsList = [...duplicateRows.values()];
+
+// [2.2] 座位压力汇总：只报告，不进 ok（卡 task-27）
+// 窗口结束时还没坐下的人要把最后一段算进去，否则"一直在等"会显示成 0 秒。
+const lastAt = last === null ? null : last.at;
+for (const run of noStationRuns.values()) {
+  if (run.since !== null && lastAt !== null) {
+    run.longestSec = Math.max(run.longestSec, (lastAt - run.since) / 1000);
+  }
+}
+const longestNoStationSec = Number(
+  [...noStationRuns.values()].reduce((max, run) => Math.max(max, run.longestSec), 0).toFixed(1),
+);
+const overCapacityEvents = conflictRows.reduce((sum, row) => sum + row.samples, 0);
+const duplicatePositionEvents = duplicateRowsList.reduce((sum, row) => sum + row.samples, 0);
+const seating = {
+  stations: stationTotal,
+  totalCapacity,
+  occupiedMax,
+  peakDemand: demandMax,
+  // 与 waiting.agentsWithoutStationMax 是同一个数：这里按"座位"看，那里按"人"看。
+  unseatedMax,
+};
+const waiting = {
+  agentsWithoutStationMax: unseatedMax,
+  longestNoStationSec,
+};
+const pressure = { overCapacityEvents, duplicatePositionEvents };
 
 // [3] 断线重连：先读一段事件流，断开，再 fetch 一条新的，看 cursor 是否前进
 function parseFrame(raw) {
@@ -269,6 +347,11 @@ if (origin !== null && counts0 !== null && counts0 !== agentsExpected) {
 }
 if (failedSamples > 0) notes.push('快照失败 ' + failedSamples + ' 次（采样有洞，停滞判定可能漏），最后一次: ' + String(fetchError));
 if (pausedSamples > 0) notes.push('采样期间世界 paused=true 共 ' + pausedSamples + ' 次（暂停会算成 tick 停滞）');
+// [2.2] 超容量是"座位不够"的硬证据，必须写进 notes（判定仍看 [4]，不因它改 ok）
+if (overCapacityEvents > 0) {
+  notes.push('采样期间出现 ' + overCapacityEvents + ' 次超容量（' + conflictRows.length
+    + ' 组站点/人员组合，见 details.seatConflicts）');
+}
 if (origin !== null) {
   const originAgents = origin.agents ?? [];
   const seated = originAgents.filter((agent) => typeof agent.station === 'string' && agent.station !== '').length;
@@ -286,6 +369,10 @@ const summary = {
   stalls: stallRows.length,
   seatConflicts: conflictRows.length,
   agentCountStable,
+  // [2.2] 座位压力：只报告，不进 ok（卡 task-27）
+  seating,
+  waiting,
+  pressure,
   reconnect,
   agentCount: counts0,
   tickRange: first === null ? null : [first.tick, last.tick],
@@ -303,6 +390,8 @@ const summary = {
   details: {
     stalls: stallRows,
     seatConflicts: conflictRows,
+    // [2.2] 同坐标叠人：每行是"一处坐标 + 这批人 + 出现了几次采样"
+    duplicatePositions: duplicateRowsList,
     agentsPerSample: counts,
   },
   notes,

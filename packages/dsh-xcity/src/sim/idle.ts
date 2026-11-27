@@ -28,6 +28,7 @@ import { findPath, cellOf, isWalkable } from './pathfind.js'
 import { angleTo, distance, stepToward } from '../domain/geometry.js'
 import { idleSlotAt, paceGoal } from './idle-behavior.js'
 import type { IdleBehaviorPlan } from '../protocol/idle.js'
+import type { Agent } from '../domain/types.js'
 import type { World } from '../domain/types.js'
 import { holdsUnfinishedTask } from './recovery.js'
 
@@ -70,6 +71,32 @@ export interface IdleOutcome {
  * @param world - 世界（就地修改）。
  * @param behaviors - 待命行为目录（来自内容库 `actions`；空数组 = 不编排，退回老行为）。
  */
+/**
+ * R518：把"大家的同一个歇脚点"错开成每人一个点。
+ *
+ * 用黄金角（137.5°）排布，间距 1.1～3 个世界单位：确定性、无随机、与 agent.id 绑定，
+ * 同一世界同一批人每次算出来的位置都一样。落点不在可行走区域就退回原点。
+ */
+function spreadHangout(world: World, agent: Agent): { x: number; z: number } | null {
+  const base = agent.hangout
+  // 没有歇脚点时**必须返回 null**：调用方靠 null 走"收成 idle 并报 repair"的兜底，
+  // 这里若编一个点出来，那条兜底就永远进不去（R69 的静默卡死会复活）。
+  if (base === null) return null
+  // **一个人用这块歇脚点时保持原语义**：站在歇脚点不动（有测试与回退路径依赖这一点）。
+  // 只有多人抢同一个点时才错位——那才是"叠成一坨"的现场。
+  const sharing = world.agents.filter(
+    (row) => row.hangout !== null && row.hangout.x === base.x && row.hangout.z === base.z,
+  )
+  if (sharing.length <= 1) return base
+  const index = sharing.map((row) => row.id).sort().indexOf(agent.id)
+  if (index < 0) return base
+  const angle = (index * 137.508 * Math.PI) / 180
+  const radius = 1.1 + 1.1 * Math.sqrt(index)
+  const spot = { x: base.x + Math.cos(angle) * radius, z: base.z + Math.sin(angle) * radius }
+  if (world.nav === null) return spot
+  return isWalkable(world.nav, cellOf(world.nav, spot)) ? spot : base
+}
+
 export function advanceIdle(world: World, behaviors: readonly IdleBehaviorPlan[] = [], options: { allowAmbient?: boolean } = {}): IdleOutcome {
   const allowAmbient = options.allowAmbient !== false
   const advanced: string[] = []
@@ -136,7 +163,13 @@ export function advanceIdle(world: World, behaviors: readonly IdleBehaviorPlan[]
     }
     if (agent.state !== 'idle' && !resting && !ambientWalking) continue
 
-    const home = agent.hangout
+    // R518：待命的人不能都站在同一个点上。
+    //
+    // 现场：24 人压测时 **11 个角色的坐标完全重合**——因为 `agent.hangout` 是同一块区域里的
+    // 同一个点，所有没活干的人都精确落在那儿。前端就是 11 个精灵叠成一坨。
+    // 这里按 agent.id 给一个稳定的错位（黄金角分布，谁都不会刚好落在别人身上），
+    // 走不通就退回原点——宁可重叠，也不要把人放进墙里。
+    const home = spreadHangout(world, agent)
     if (home === null) {
       // 待命流程连"往哪走"都不知道（没有歇脚点）→ 不能把他留在 `walking` 上：
       // 那正是 movement 原来那条守卫防的静默卡死，现在由能看见这个人的一方收尾。
