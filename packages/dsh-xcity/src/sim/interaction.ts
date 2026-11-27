@@ -20,6 +20,7 @@
  * `celebrating` 这个状态留给渲染层对完工事件做反应，不必让模拟内核多维护一个计时器。
  */
 import { DEFAULT_TASK_TICKS } from '../domain/constants.js'
+import { activityKindOf } from './activity-view.js'
 import type { World } from '../domain/types.js'
 
 /** 一次干活推进的结果。 */
@@ -57,7 +58,8 @@ export function advanceWork(world: World, sessionWorkers?: ReadonlySet<string>):
     // 不修就会永远占着工位——调度器不会再派活，idle 也不会认领 working。
     if (taskId === null) {
       // R364：工具调用映射的“在工位 work”也是带期限的活动，不是坏数据。
-      if (agent.activityKind === 'work' && agent.activityUntil !== undefined && world.tick < agent.activityUntil) continue
+      // R485：活动类型从唯一读入口取（Activity 优先，老字段兜底）。
+      if (activityKindOf(world, agent) === 'work' && agent.activityUntil !== undefined && world.tick < agent.activityUntil) continue
       agent.state = 'idle'
       agent.station = null
       agent.targetStation = null

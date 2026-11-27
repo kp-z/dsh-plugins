@@ -11,7 +11,8 @@
  * 只在**到站之后**（`station !== null`）按用途恢复——走路去吃饭的路上不该算吃过了。
  */
 import { DEFAULT_NEEDS } from '../domain/types.js'
-import type { ActivityPurpose, AgentNeeds, AgentState, World } from '../domain/types.js'
+import type { ActivityPurpose, Agent, AgentNeeds, AgentState, World } from '../domain/types.js'
+import { activityPurposeOf } from './activity-view.js'
 
 /** 满值。所有量都夹在 [0, NEED_MAX]。 */
 export const NEED_MAX = 100
@@ -62,10 +63,12 @@ export function needsOf(agent: { needs?: AgentNeeds | undefined }): AgentNeeds {
   return agent.needs ?? { ...DEFAULT_NEEDS }
 }
 
-function rateFor(agent: { state: AgentState; station: string | null; activityPurpose?: ActivityPurpose | undefined }): { energy: number; hunger: number; social: number } {
+function rateFor(world: World, agent: Agent): { energy: number; hunger: number; social: number } {
   // 只在到站后按用途恢复：走路去吃饭的路上不算吃过。
-  if (agent.station !== null && agent.activityPurpose !== undefined) {
-    return PURPOSE_RATE[agent.activityPurpose] ?? STATE_RATE[agent.state] ?? STATE_RATE.idle
+  // R485：用途从“活动读入口”取（Activity 优先，老字段兜底）。
+  const purpose: ActivityPurpose | undefined = activityPurposeOf(world, agent)
+  if (agent.station !== null && purpose !== undefined) {
+    return PURPOSE_RATE[purpose] ?? STATE_RATE[agent.state] ?? STATE_RATE.idle
   }
   return STATE_RATE[agent.state] ?? STATE_RATE.idle
 }
@@ -79,7 +82,7 @@ function rateFor(agent: { state: AgentState; station: string | null; activityPur
 export function advanceNeeds(world: World): void {
   for (const agent of world.agents) {
     const needs = needsOf(agent)
-    const rate = rateFor(agent)
+    const rate = rateFor(world, agent)
     agent.needs = {
       energy: clamp(needs.energy - BASE_DECAY.energy + rate.energy),
       hunger: clamp(needs.hunger - BASE_DECAY.hunger + rate.hunger),

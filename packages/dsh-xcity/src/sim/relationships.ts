@@ -5,6 +5,7 @@
  * 互动完成时双方各 +2；同一 tick 同一对只加一次（step 里用 Set 去重）。
  */
 import type { Activity, Agent, World } from '../domain/types.js'
+import { activityKindOf } from './activity-view.js'
 
 export const DEFAULT_AFFINITY = 50
 /** 一次聊天加多少。 */
@@ -47,7 +48,7 @@ export function applyMeetAffinity(world: World, activity: Activity, seen: Set<st
     if (other.id === self.id || other.station === null) continue
     const otherStation = world.stations.find((item) => item.id === other.station)
     if (otherStation === undefined || otherStation.district !== station.district) continue
-    if (other.state !== 'talking' && other.activityKind !== 'meet') continue
+    if (other.state !== 'talking' && activityKindOf(world, other) !== 'meet') continue
 
     const key = [self.id, other.id].sort().join('|')
     if (seen.has(key)) continue

@@ -26,6 +26,9 @@ export { describeKind, idleSlotAt, lookFacing, paceGoal, quarterFacing, quarterO
 export type { CommsOutcome } from './comms.js'
 export { dispatchComms } from './comms.js'
 
+// R485：活动的唯一读入口（Activity 优先，老字段兜底）。
+export { activityKindOf, activityPurposeOf, activitySkillOf, currentActivityOf } from './activity-view.js'
+
 // R482：关系（affinity 只存变化，按同屋聊天加）。
 export { affinityOf, applyMeetAffinity, bumpAffinity, DEFAULT_AFFINITY } from './relationships.js'
 export type { AffinityBump } from './relationships.js'

@@ -8,6 +8,7 @@
  * 1 tick = 1 游戏分钟；一天 1440 tick。
  */
 import type { Activity, World } from '../domain/types.js'
+import { currentActivityOf } from './activity-view.js'
 
 /** 一条摘要最多多少字（prompt 预算，见 4.4）。 */
 const MAX_SUMMARY_CHARS = 300
@@ -59,7 +60,9 @@ export function summarizeDay(world: World, agentId: string, nowTick: number): st
   const day = Math.floor(nowTick / 1440)
   const dayStart = day * 1440
   const mine = (world.activities ?? []).filter((activity) => activity.agentId === agentId)
-  const current = mine.find((activity) => activity.status === 'active') ?? null
+  // R485：当前活动从唯一读入口取；老存档没有 activityId 时退回扫 active。
+  const agent = (world.agents ?? []).find((item) => item.id === agentId)
+  const current = (agent === undefined ? null : currentActivityOf(world, agent)) ?? mine.find((activity) => activity.status === 'active') ?? null
   const done = mine
     .filter((activity) => activity.status === 'completed' && activity.endedAt !== undefined && activity.endedAt >= dayStart && activity.startedAt <= nowTick)
     .sort((a, b) => a.startedAt - b.startedAt)

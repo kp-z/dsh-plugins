@@ -6,8 +6,8 @@
 
 ## 执行指针
 
-- **当前小时：H2**
-- 上一轮：第一轮 H1–H7 已完成；第二轮 H1（真宿主+prompt 投递）已完成，AI 回信卡在凭据。
+- **当前小时：H3**
+- 上一轮：第一轮 H1–H7 完成；第二轮 H1（真宿主+prompt 投递）完成，H2（活动读入口）完成；AI 回信卡在凭据。
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（每小时，投递到本会话）
 - 推进规则：DoD 全过才改成下一小时；没做完下一轮继续，不跳。
 - **不要重启正式桌面进程**；真机验收用独立 profile/独立桥。
@@ -120,6 +120,14 @@ DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini --port 3189 --no-open
 - project.ts 在适配层，读 WorldLike 不是 World；需要一个小适配（只读 activityId/activities）。
 - 回滚：新文件 + 调用点。
 
+### 4.1 实测（2026-11-27 09:25）
+
+- 新增 `sim/activity-view.ts`：`currentActivityOf`（按 `activityId` 找 active 记录）+ `activityPurposeOf / activitySkillOf / activityKindOf`（Activity 优先，老字段兜底）。
+- 已切换的读：`needs.ts` 的恢复率、`day-summary.ts` 的“现在…”行、`relationships.ts` 的同屋 meet 判定、`interaction.ts` 的“到站但没单”保护。
+- 写入路径没动（movement/idle/step 仍写老字段）；`project.ts` 在适配层、不能 import sim，仍直接读 activities——记为下一轮统一。
+- 新增 `test/activity-view.test.js` 4 条：选择器、Activity 优先/老字段兜底、needs 真的按 Activity 的 meal 恢复、240 tick 仿真 activityId 不漂移。
+- 全量 **926 条，925 通过、1 跳过**；72h sim 分布与 H6 基线同量级（sleep 31–33%、work 10–23%、study 23–35%、meal ~6%、social 2–5%、walking 8–14%、切换 0.9–1.0/h）。
+
 ## 5. H3 · 绑定统一（R486）
 
 ### 目标
@@ -224,3 +232,5 @@ DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini --port 3189 --no-open
 
 - 2026-11-27 08:10 · **H1 完成（宿主/prompt 投递；AI 回信未验）**。用 CLI 建最小 profile `h7mini`（base+web+dsh-xcity，无 agent-teams），3189/7799 数秒内起来；新建会话并绑到 agent-1 后，短信 prompt 与主动短信 prompt 都**真的进了会话**，且带 H3 当天摘要（睡觉/吃饭/学习）与唯一编号。
   卡点：最小 `DSH_HOME` 里模型请求「API 密钥无效 AUTH」，没有 assistant 回复，因此没有写回「通讯」；复制凭据不够（refs 指向 CLI 进程没有的环境变量）。临时宿主已停、凭据副本已删。
+- 2026-11-27 09:25 · **H2 完成**。新增 `sim/activity-view.ts`（`currentActivityOf` + purpose/skill/kind 的“Activity 优先、老字段兜底”）；needs/当天摘要/关系/交互的读切过去，写入路径不动。
+  证据：`test/activity-view.test.js` 4 条（含 240 tick 不变量）；全量 926 条，925 通过、1 跳过；72h sim 分布与 H6 同量级。已知：`project.ts` 在适配层仍直读 activities，留到下一轮。

@@ -11268,3 +11268,10 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 约 10:11 **主动短信 prompt 也进了会话**（念头：今天有点想找人聊聊；带当天摘要与 `xcity-init:…:2051` 编号）。
 - 卡点：最小 `DSH_HOME` 的模型请求报「API 密钥无效 AUTH」，没有 assistant 回复 → 没有写回「通讯」；线程 API 里只有玩家那条。复制 `.credentials.yaml` 不够（refs 指向 CLI 进程没有的环境变量）。
 - 结论：宿主/绑定/prompt 投递已验证；AI 回信文本卡在凭据，不是代码。临时宿主已停，凭据副本已删；计划指针推进到 H2（活动读模型统一）。
+
+## 2026-11-27 09:25：第二轮 H2 活动读入口
+
+- 新增 `sim/activity-view.ts`：`currentActivityOf`（按 `agent.activityId` 找 active 记录）+ `activityPurposeOf / activitySkillOf / activityKindOf`（Activity 优先，老字段兜底）。
+- 切换的读：needs 的恢复率、day-summary 的“现在…”行、relationships 的同屋 meet 判定、interaction 的“到站但没单”保护。
+- 写入路径不动（movement/idle/step 仍写老字段）；`project.ts` 在适配层仍直读 activities，留到下一轮。
+- 证据：`test/activity-view.test.js` 4 条（选择器、兜底、needs 按 Activity meal 恢复、240 tick 不漂移）；全量 926 条，925 通过、1 跳过；72h sim 分布与 H6 同量级（sleep 31–33%、work 10–23%、study 23–35%、meal ~6%、social 2–5%、walking 8–14%）。
