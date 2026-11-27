@@ -35,27 +35,32 @@
 每轮的固定队形：**Lead（主设计/取舍/集成）+ 2~3 个 subagent（调研 / 实现 / 验证）**，用 team_task_create 建卡、claim→complete 留痕。时间盒 ≥50 分钟，验收是下限，过了验收继续加固，不提前收工。
 
 ### H1 · 认知地基：三居民 + 记忆数据模型
-- 调研：Episode/情节记忆的最小形状（对比 Generative Agents memory stream；只取可落地部分）。
-- 设计：`domain/types.ts` 加 `traits`（4 维 0-1）、`commitments[]`、`memories[]`、`Episode`；落盘与裁剪策略；老档兼容。
-- 实现：`sim/memory.ts`（纯函数：append/decay/prune/score/select）+ store 往返。
-- 验收：单测覆盖裁剪与检索打分；老档读入不崩；三居民 traits 可区分。
+- **已定（调研见 research/MEMORY.md）**：不引入 Mem0/Zep/Graphiti/Cognee/Letta 任何平台——除 Mem0 OSS 外都要 Python/图库，且 Mem0 写入是每条一次 LLM（30 条/天≈30 次调用），纯亏。抄两条思想即可：Letta 的「文件 + 按需读」、Graphiti 的「失效不删行」。
+- **缺口是读回路径，不是向量检索**：`world.activities` 上限 64 条且是世界共享数组，3 人分摊只够 1.5–2.7 天；`WorldEventType` 没有 activity.*，events.jsonl 只写不读。
+- 设计：Episode JSONL（在 `endActivity` 唯一出口写；7 天滚动；不塞 world.json、不加协议枚举）+ `agent.memories[{day,lines}]`（复用已定形状）+ `persona.notes` 用最小字段（kind/text/source/createdAtTick，**先不上** confidence/supersedes/tombstone）。
+- 实现：`sim/memory.ts`（纯函数：append/prune/score/select）+ store 往返；决策只读结构化字段，不做文本检索。
+- 验收：单测覆盖裁剪与打分；老档不崩；三居民 traits 可区分；72h 仿真统计真实「每人每天活动条数」并写回文档（替换 8–14 的估算）。
 
-### H2 · 动机引擎：从固定优先级到效用打分
-- 调研：Utility AI / BDI / Generative Agents 的 plan 结构；只抄「打分 + 可解释」。
-- 设计：候选动作集合、打分公式、可解释理由（写进 trigger.text）、性格如何改变权重；保留硬约束（夜睡/饥饿保护）。
-- 实现：`sim/life.ts` 重构为 `scoreIntents()`；参数集中；不新增开关。
-- 验收：同需求不同 traits 的两角色选择不同（固定种子可复现）；24h/72h 仿真分布不崩（睡眠 30% 左右、无长期 0 需求）；饮食/工作不被饿死。
+### H2 · 动机引擎：B1 抽语法 → B2 换 argmax（**必须分两步提交**）
+- **已定（research/BEHAVIOR.md）**：现有阶梯优先级 = 给前几项极高常数效用的效用函数特例；HUNGER/ENERGY/SOCIAL_LOW 就是阶跃曲线。所以不是推倒重来。
+- B1：抽 `intentsOf()`，行为完全不变，`test/life-choice.test.js` 全绿即证明；B2：换 argmax，用 golden 逐 tick 比对钉住等价，再调数值。
+- traits **只 2 维**：`diligence`（干劲）/ `duty`（守约）。**不加社交性**——社交已由 needs.social + affinity 承载，再加会打架。
+- 关键边界（已算）：纯权重是弱机制，需求贴阈值时需要权重比 >3.33 才翻转；所以可见差异必须来自 **L2 硬规则 + L3 承诺**，不能只调权重。
+- 验收：同需求两角色 24h 选择分化 ≥25%（达不到就加 L2 硬规则，不继续调权重）；72h 生活不崩（睡眠≈30%、无长期 0 需求）。
 
-### H3 · 低频计划：一天一次的自述计划与承诺
-- 调研：低频 LLM planning 的 prompt 结构与失败降级。
-- 设计：每游戏日 06:30 生成「今日打算」+ 可选承诺；承诺结构 {with, what, dueTick}；超时/模型不可用 → 保留旧计划。
-- 实现：复用 `respondViaSession` 通道与 tracker（不新建桥）；计划落 `agent.plan`，进 prompt 与日志。
-- 验收：测试 profile 真跑一次，能看到计划文本与承诺；拔掉模型仍能过日子。
+### H3 · 低频计划：一天一次，只产出结构化承诺
+- **已定**：模型必须低频且产出**数据不是散文**——`{what, with, dueTick}`；**不存 `plan` 散文字段**（没人消费的字段是冗余）。
+- 节奏：1 次/人/游戏日（上限 3 次/日）；短信另计 ≤6 次/日；总计 ≤9 次/日，与 tick 无关（可测 KPI）。
+- 承诺：`Commitment` 4 字段 + status + source，**双方各写一条**；到期前 10 tick 升为硬门（爽约观感最贵）；到期由 `sim/` 裁决 kept/missed/released，prompt 只负责「讲得出来」。
+- 事件：复用 `agent.intent`，**不新增** `agent.commitment` 枚举（避免协议版本 bump）。
+- 实现：复用 `respondViaSession` 通道与 tracker；模型不可用 → 保留旧承诺，生活照常。
+- 验收：真跑一次能看到结构化承诺；拔掉模型仍能过日子；每日模型调用次数有记录。
 
 ### H4 · 记忆检索接入对话与决定
-- 设计：检索触发点（回短信 / 主动短信 / 每日计划 / 关键决定）；Top-K=6，预算 ≤400 字；记忆注入格式（时间+事件+影响）。
-- 实现：`promptText` 增加「你记得」段；决定时读 commitments/关系。
-- 验收：问「上次你答应我什么」能答对；答错率与幻觉（编造未发生事件）为 0（用世界记录核对）。
+- 设计：**四个触发点**（回短信 / 主动短信 / 每日计划 / 决策打分），前三个做 Top-K 文本检索（K=6，≤400 字，recency+importance+关键词），决策只读结构化字段。
+- 预算：每天模型调用从「每条事件一次」降到约 **3 次**（每日计划 1 + 对话按需）；记录实际次数。
+- 实现：`promptText` 增加「你记得」段；承诺与关系直接进结构化决策。
+- 验收：问「上次你答应我什么」能答对；抽查 10 条记忆与世界记录一致率 100%；无编造事件。
 
 ### H5 · 气泡：后端驱动、前端零改动
 - 调研：确认 `_spawnSpeechBubble` 全部字段与限制（speaker_id 必需、时长、同场景、遮挡）。
@@ -100,11 +105,15 @@
 
 ## 6. 已确认的前置事实（本轮证据）
 
-1. **气泡只差一个字段**：`GameView.js:93878-93888` 的 `_spawnSpeechBubble` 要求 `dialogue.speaker_id`，可选 `text`/`tone`，并做同场景/可见性校验；而 `visual.ts:47-55` 的 `independentDialogue` 只发 `{text, duration_ms}`。→ H5 是后端小改，不需要动前端。
+1. **气泡是「包形状 + 字段」双重问题（已核实，修正早前判断）**：前端只认 `playback:{kind,tracks}`（GameView.js:4853,5106-5134）；`independentDialogue` 发的扁平 `{kind,actorId,beats}` 会被**静默丢弃**（:4868-4873），而信封校验仍通过，所以不报错。`_spawnSpeechBubble` 另需 `dialogue.speaker_id`（:93879），`duration_ms` 前端**从不读**（时长按文本长度算，:92742-92743），气泡位置由 sprite 固定（:92712）。→ H5 改用 `independentTimeline` + `dialogue{speaker_id,text}`，不改前端。
 2. **任务认领被硬编码模型门控**：`bridge/dsh-adapter.ts:50-59` 要求 `provider === 'mmt-vision'` 且模型名归一化后匹配 `deepseekv41`。任何别的可用模型都会被判「没有模型」，于是 `index.ts:337-341` 的 `available/prompt` 全拒绝，调度器报 `no-worker`。→ H6 第一件事是把门控改成「有 provider+model 选中且会话可用」，并为旧行为留测试；不是改常量。
 3. **记忆容量不足**：`sim/activity.ts:17` 只保留 64 条已完成活动，跨天记忆不能建立在它上面。→ H1 需要独立 append-only 情节存储。
 4. **测试 profile 位置**：当前隔离 home 在 `/tmp/xcity-scene-profile.khLDCM`（临时目录，可能被清理）。→ H1 起把测试 home 固化到仓库内 `.testhome/`（gitignore），端口 3189/7799。
 5. **模型可用性仍未证明**：之前隔离环境的模型调用报 AUTH/无模型。→ H6 必须用「一次真实模型回合」作为证据，不能只看接口返回。
+6. **领单是四道门串联**：模型门（provider 硬等值 mmt-vision + 型号正则）→ 会话门（prompt 存在且会话空闲）→ 绑定门（角色↔会话一对一唯一）→ 调度门（slowvale 开启时 `sessionWorkers` 初始为空集，本地单因此永远 `no-worker`，scheduler.ts:116-125）。→ H6 要逐门定位，不能只改模型常量。
+7. **本地单进度在模拟层不推进**：`interaction.ts:97` 对「接了 DSH 会话的本地单」直接 continue，进度 0→1；头顶进度因 `project.ts:132` 对 taskAttemptId 直接 return 而缺失。→ H6 增加一个纯投影函数：`p=min(0.95,(tick-startedAt)/estimateTicks)` 写 `task.progress` + 补锚点字段，重复调模型不存在（attempt 去重 + 1s 心跳节流）。
+8. **技能留痕有断点**：`index.ts:713-717` 在接 taskExecution 时提前 return，走不到 `:753-755` 的 persona.skills 写入 ⇒ `xcity_report{skill}` 被接受但不留痕，只剩 XP。→ H6 修这一段；「作品/名声」字段属于新增概念，**须用户确认后再做**。
+9. **失败单不可重试**：调度只挑 ready、recovery 只救 in_progress。→ H8 决定是否允许重试，先记录不擅自改。
 
 
 ## 7. 测试环境（已跑通）
@@ -129,4 +138,20 @@
 
 - 2026-11-28 00:20 · **R0 计划完成**。产出本文件；team 任务 task-1/2/3（记忆/行为/工作链调研）已派出并 claim；定时任务 `schedule-9a956fec-5367-4b55-b76c-c996bda54605`（01:00 起每小时，共 9 轮）。
   证据：三居民测试宿主已启动（3190/7791），确认 agent-1/2/3 在 company 场景；气泡缺口与模型门控硬编码已定位（见 §6）。
+
+
+## 10. 已拍板的设计决定（本轮，供每小时执行直接采用）
+
+| # | 决定 | 理由 | 可回退方式 |
+|---|---|---|---|
+| D1 | 不引入任何外部记忆平台（Mem0/Zep/Graphiti/Letta/Cognee） | 除 Mem0 OSS 外都要 Python/图库；Mem0 写入每条一次 LLM（30 次/天）成本压过收益 | 未加依赖，天然可回退 |
+| D2 | 记忆 = Episode JSONL（7 天滚动）+ 每日 digest + persona 最小 notes | 真正的缺口是 64 条活动被裁掉、事件只写不读，不是缺向量库 | 删文件即可 |
+| D3 | 语义层先只存 kind/text/source/createdAtTick | 「如无必要勿增实体」；confidence/supersedes 等以后需要再加 | 加字段向后兼容 |
+| D4 | traits 只 2 维（diligence/duty） | 社交已由 needs+affinity 承载，重复维度会互相打架 | 删字段即可 |
+| D5 | 承诺双方各写一条，到期前 10 tick 升硬门 | 只写一方会导致「单人赴约」像 bug；算例证明纯权重压不过干劲 | 去掉升门逻辑 |
+| D6 | 模型产出结构化承诺，不存散文 plan | 散文 plan 无人消费，且会与 persona notes 形成两处「心里话」 | 不建该字段 |
+| D7 | 复用 agent.intent 事件，不新增枚举 | 避免协议版本 bump 与前端未知事件 | 不改 |
+| D8 | 气泡用 independentTimeline(playback.tracks) + dialogue{speaker_id,text} | 前端只认 playback；扁平包会被静默丢弃 | 单文件改动 |
+
+> 以上 8 条如用户不同意，可在 H1 开始前单项撤销；H1 起按此执行，不再逐轮讨论。
 
