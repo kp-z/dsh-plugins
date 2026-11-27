@@ -18,13 +18,6 @@
  *
  * 这里只实现 independent——一个人说一句话，够用了。
  */
-export interface DialogueBeat {
-  /** 说话内容。 */
-  text: string
-  /** 气泡停留时长（ms）；不给就用前端默认。 */
-  durationMs?: number
-}
-
 /** 一拍的形状。前端按字段存在与否决定渲染方式：body / dialogue / bubble / toast。 */
 export interface VisualBeat {
   beat_type?: string
@@ -36,32 +29,13 @@ export interface VisualBeat {
   duration_ms?: number
 }
 
-/** 构造一个"某角色说了一句话"的 visual 包。 */
 /**
- * R499：头顶气泡。
+ * R511：**刻意不再提供**「构造一个 dialogue 包」的辅助函数。
  *
- * 前端只认 `playback:{kind,tracks}`（GameView 5106-5134）；扁平 `{actorId,beats}` 会被
- * **静默丢弃**，信封校验却照样通过——所以"不报错但没气泡"。`_spawnSpeechBubble` 还要求
- * `dialogue.speaker_id`（:93879）；时长由前端按文本长度算，`duration_ms` 不读。
+ * 它曾经存在，但生产路径上已经没有调用点：这个镜像前端的 dialogue 通道会在气泡绘制
+ * 里抛 `reading 'map'`（见 PLAN H5），说话统一走 `sayBeat`。留着一个没人调的构造器
+ * 只会让后来人以为那条路还能用。
  */
-export function independentDialogue(input: {
-  epoch: string
-  seq: number
-  tickMarker: string
-  actorId: string
-  beat: DialogueBeat
-  /** 谁能看见这句话。前端缺它会直接抛「[dialogue] 缺少 audience」。 */
-  audience: { kind: 'place'; place_id: string } | { kind: 'role_ids'; role_ids: string[] }
-}): Record<string, unknown> {
-  const dialogue: Record<string, unknown> = { speaker_id: input.actorId, text: input.beat.text, audience: input.audience }
-  return independentTimeline({
-    epoch: input.epoch,
-    seq: input.seq,
-    tickMarker: input.tickMarker,
-    actorId: input.actorId,
-    beats: [{ dialogue }],
-  })
-}
 
 /**
  * 造一拍：前端只认 body.action + 参数（动作表见 docs/DRIVE-MODEL.md）。

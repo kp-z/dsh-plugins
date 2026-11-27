@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SmsStore } from '../lib/adapters/slowvale/sms.js'
 import { loadXcityBindings, characterOfSession } from '../lib/adapters/slowvale/xcity.js'
-import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts, groupTimeline, sayBeat } from '../lib/adapters/slowvale/visual.js'
+import { walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts, groupTimeline, sayBeat } from '../lib/adapters/slowvale/visual.js'
 
 test('短信：没有 responder 时也要收下（回执语义）', async () => {
   const store = new SmsStore()
@@ -55,21 +55,19 @@ test('绑定投影：只认活着的行，归档的不算', () => {
   assert.equal(characterOfSession(bindings, 's1'), null)
 })
 
-test('visual：tick_marker 与 cursor 必须一致，且带 actorId', () => {
-  const packet = independentDialogue({
+test('visual：tick_marker 与 cursor 必须一致，且走 playback.tracks', () => {
+  // R511：说话统一走 sayBeat（bubble.float_up）。原来的 independentDialogue 在生产路径上
+  // 已经没人调用（dialogue 通道在该镜像前端会抛 reading 'map'），残留只会误导后来人。
+  const packet = independentTimeline({
     epoch: 'epoch-w1',
     seq: 7,
     tickMarker: 'tick-42',
     actorId: 'agent-1',
-    beat: { text: '今天风不小。' },
-    audience: { kind: 'role_ids', role_ids: ['agent-1'] },
+    beats: [sayBeat('今天风不小。')],
   })
   assert.equal(packet['tick_marker'], 'tick-42')
-  // R499：前端只认 playback.tracks；扁平 {actorId,beats} 会被静默丢弃。
   const tracks = packet['playback']?.tracks
-  assert.deepEqual(tracks['agent-1'][0].dialogue, {
-    speaker_id: 'agent-1', text: '今天风不小。', audience: { kind: 'role_ids', role_ids: ['agent-1'] },
-  })
+  assert.deepEqual(tracks['agent-1'][0].bubble, { text: '今天风不小。', float_up: true })
   assert.equal(packet['actorId'], undefined, '顶层不许再放 actorId，避免两套形状并存')
 })
 
