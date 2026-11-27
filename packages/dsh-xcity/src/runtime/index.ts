@@ -32,6 +32,7 @@ import { STALLED_DIAGNOSTIC_CAP } from '../protocol/index.js'
 import { nullEventSink } from '../protocol/index.js'
 import type { StepResult } from '../sim/index.js'
 import { selfLifeCommands, step } from '../sim/index.js'
+import { describeTrim, trimToSnapshotBudget } from '../sim/memory.js'
 import { stalledTasksOf } from '../sim/recovery.js'
 
 // 诊断计数的形状定义在协议层（`protocol/ports/runtime.ts`）——路由要把它们发给面板，
@@ -51,6 +52,8 @@ export interface PersistOptions {
    * "世界是第 700 tick 的、事件却只到 650"这种对不上的存档。
    */
   checkpointEveryTicks: number
+  /** 一行日志的去处（宿主 logger），目前只用于"存档超预算被裁"这一件事。不给就不记。 */
+  log?: (line: string) => void
 }
 
 /** 建运行时需要的依赖。 */
@@ -172,6 +175,17 @@ export function createRuntime(options: RuntimeOptions): Runtime {
    */
   const packVersions = () => service.content().view().packs.map((p) => ({ id: p.id, version: p.version }))
 
+  /**
+   * R520：写快照前把世界裁进体积预算。
+   *
+   * 两个写盘点（周期 checkpoint 与关停写盘）共用它——各写一遍的话，改一处忘一处，
+   * 症状是"平时 2 MB 停得住、退出时又长回去了"。
+   */
+  const trimBeforeSave = (world: World): void => {
+    const trimmed = trimToSnapshotBudget(world)
+    if (trimmed.dropped > 0) persist?.log?.(describeTrim(trimmed))
+  }
+
   const flush = async (): Promise<void> => {
     if (persist === undefined) return
 
@@ -180,7 +194,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     try {
       if (batch.length > 0) await persist.store.appendEvents(batch)
       const world = service.currentWorld()
-      if (world !== null) await persist.store.saveWorld(world, packVersions())
+      if (world !== null) {
+        trimBeforeSave(world)
+        await persist.store.saveWorld(world, packVersions())
+      }
       persistedSeq = world?.seq ?? persistedSeq
     } catch (error) {
       diagnostics.persistErrors += 1
@@ -203,7 +220,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     try {
       if (batch.length > 0) persist.store.appendEventsSync(batch)
       const world = service.currentWorld()
-      if (world !== null) persist.store.saveWorldSync(world, packVersions())
+      if (world !== null) {
+        trimBeforeSave(world)
+        persist.store.saveWorldSync(world, packVersions())
+      }
       persistedSeq = world?.seq ?? persistedSeq
     } catch (error) {
       diagnostics.persistErrors += 1

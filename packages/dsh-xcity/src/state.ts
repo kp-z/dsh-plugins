@@ -38,6 +38,7 @@ import type {
   WorldServicePort,
 } from './protocol/index.js'
 import { emitEvent, noteTasksAdded } from './sim/journal.js'
+import { describeTrim, trimToSnapshotBudget } from './sim/memory.js'
 import { DEFAULT_MIN_GAP, hangoutsForWorld } from './world/hangouts.js'
 import { join } from 'node:path'
 import { createWorldStore, loadWorldSync } from './store/index.js'
@@ -72,6 +73,13 @@ export interface PluginStateOptions {
    * 于是单测可以直接喂临时目录。
    */
   storeDir?: string | null
+  /**
+   * 一行日志的去处（宿主 logger）。不给就不记。
+   *
+   * 目前只有**存档裁剪**用它：那种事一天最多发生一两次，但一旦发生就说明
+   * "有东西长得比预期快"，必须让人在宿主日志里看见，而不是只留在存档里。
+   */
+  log?: (line: string) => void
 }
 
 /**
@@ -112,6 +120,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
   const tickMs = config.tickMs > 0 ? config.tickMs : DEFAULT_TICK_MS
   const externalRoot = options.externalRoot ?? null
   const storeDir = options.storeDir ?? null
+  const log = options.log ?? (() => {})
   const initialAgents = options.initialAgents ?? 'all'
   const sessionInitialAgents = options.sessionInitialAgents ?? 'captain'
   let activeSessionId: string | null = null
@@ -336,6 +345,11 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     if (storeDir === null || activeSessionId === null || state.world === null) return
     const dir = sessionDir(activeSessionId)
     if (dir === null) return
+    // R520：落盘前先把世界裁进体积预算。裁剪放在**保存前**而不是别处，因为
+    // 只有这里知道"马上要写一个存档"——写盘、快照传输、读档都在为体积付账。
+    // 只裁最老的情节（见 sim/memory.ts），日小结与承诺不动。
+    const trimmed = trimToSnapshotBudget(state.world)
+    if (trimmed.dropped > 0) log(describeTrim(trimmed))
     try {
       createWorldStore(dir).saveWorldSync(state.world, contentPort.view().packs)
     } catch {

@@ -154,6 +154,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     storeDir,
     sessionInitialAgents: 'all',
     places: cityPlaces,
+    // R520：存档被裁必须看得见——不然"我的角色怎么忘事"只能靠猜。
+    log: (line) => logger.info(line),
   })
   /** R175：sessionQuery 是软依赖；先 inject 捕获，避免请求时 ctx.get 拿不到。 */
   let sessionQueryService:
@@ -491,6 +493,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           persist: {
             store: createWorldStore(storeDir),
             checkpointEveryTicks: resolved.persistEveryTicks,
+            log: (line) => logger.info(line),
           },
         }),
     onError: (error) =>

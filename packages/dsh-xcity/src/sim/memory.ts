@@ -1,10 +1,11 @@
 /**
  * R497：情节记忆。为什么需要它：`world.activities` 只留 64 条（实测 3 人 1.7–1.9 天），
- * 而"上周二干了什么"必须有地方可读。这里只做**纯函数**：追加、按天裁剪、打分、取 Top-K。
+ * 而"上周二干了什么"必须有地方可读。这里只做**纯函数**：追加、按天裁剪、打分、取 Top-K，
+ * 以及 R520 的"按存档体积预算再裁一道"。
  *
  * 不引入向量库：3 个居民、每天十来条，关键词 + 近因 + 重要性足够；超过 2000 条再考虑。
  */
-import type { Activity, Agent, Episode } from '../domain/types.js'
+import type { Activity, Agent, Episode, World } from '../domain/types.js'
 
 /** 一天多少 tick（1 tick = 1 游戏分钟）。 */
 export const DAY_TICKS = 1440
@@ -12,6 +13,29 @@ export const DAY_TICKS = 1440
 export const EPISODE_KEEP_DAYS = 7
 /** 单角色硬上限（防止异常世界把存档撑大）。 */
 export const EPISODE_MAX = 150
+
+/**
+ * R520：存档体积预算（2 MiB）。
+ *
+ * 依据是**实测的平台期**，不是拍脑袋的余量：24 人 / 第 53 天的 world.json 是 520 KB，
+ * 而情节已被 7 天窗口封顶（人均 44–68 条），所以体积到 24 人这个平台就稳住了，
+ * 平台实测约 1.2 MB——2 MiB 意味着**常规运行永远碰不到它**，只有某个字段真的开始疯长
+ * （消息、活动、异常世界）时才会触闸。内网磁盘与快照传输 2 MiB 都毫无压力。
+ *
+ * 为什么量的是"排版后的字节"而不是 280 KB 那份紧凑 JSON：落盘用 2 空格缩进，
+ * 其中 46% 是缩进与重复键名，**这是刻意留的**——review 存档时要能直接读。
+ * 所以预算是按"人读的那份文件"算的，压缩省不出来的那部分也得算进去。
+ *
+ * 预算管的是 **world 那一段**（见 `snapshotBytes`），文件里的外壳（内容包清单）另占约 5 KB；
+ * 它是固定的，所以整个 world.json 最多比预算大这么多，不会跟着世界一起长。
+ *
+ * 它是 EPISODE_MAX / EPISODE_KEEP_DAYS 之外**额外的一道闸**，不改那两个默认值：
+ * 那两个管"一个人记多少条"，这个管"整个存档多大"。
+ */
+export const SNAPSHOT_BUDGET_BYTES = 2 * 1024 * 1024
+
+/** 裁剪时每丢这么多条才重新量一次体积：全量序列化不便宜，逐条量会变成 O(n²)。 */
+const TRIM_MEASURE_EVERY = 32
 
 export function dayOf(tick: number): number {
   return Math.floor(Math.max(0, tick) / DAY_TICKS) + 1
@@ -116,6 +140,89 @@ export function appendEpisode(agent: Agent, episode: Episode, nowTick = episode.
   const next = [...(agent.episodes ?? []), episode]
   agent.episodes = pruneEpisodes(next, nowTick)
   return agent.episodes
+}
+
+/**
+ * R520：存档里 world 那一段的字节数。
+ *
+ * 三处对齐 `store/worldStore.ts`，否则量出来的数跟文件对不上、预算是假的：
+ * ① 不写 `world.events`——那是活客户端的补洞窗口，落盘时会剥掉；
+ * ② 按存档的排版量（2 空格缩进）；
+ * ③ 包在一个顶层对象里量——存档外壳正是把 world 嵌在顶层，缩进层级一致，
+ *    于是与真实文件只差外壳本身（内容包清单，实测约 5 KB；它是固定的，不随世界长大）。
+ *
+ * 用字节而不是字符串长度：中文摘要一个字 3 字节，按字符数量会低估三倍。
+ */
+export function snapshotBytes(world: World): number {
+  const { events: _ring, ...snapshot } = world
+  return Buffer.byteLength(JSON.stringify({ world: snapshot }, null, 2))
+}
+
+export interface TrimResult {
+  /** 裁掉了几条情节。 */
+  dropped: number
+  /** 裁完之后 world 那一段的字节数（见 `snapshotBytes`）。 */
+  bytes: number
+}
+
+/**
+ * R520：把世界裁进快照预算。**就地改 world**（只动情节），返回裁掉的条数与裁后的字节数。
+ *
+ * 规则，全为确定性，没有随机：
+ * 1. 只裁 `agent.episodes`。**日小结（kind === 'day'）永远不裁**——它是那一天唯一的一句话摘要，
+ *    丢掉就再也算不出来；承诺、任务、站点一概不动（它们本来也不在这里面）。
+ * 2. 按 `agent.id` 排序后**轮流**丢每人最老的一条：不先把一个人的记忆掏空，也不随机挑。
+ * 3. 体积落到预算内就停；谁都丢不动了（只剩日小结）也停，不空转。
+ *
+ * @param world - 世界本体（会被改）。
+ * @param budgetBytes - 预算字节数，缺省 `SNAPSHOT_BUDGET_BYTES`。
+ */
+export function trimToSnapshotBudget(world: World, budgetBytes: number = SNAPSHOT_BUDGET_BYTES): TrimResult {
+  const budget = Number.isFinite(budgetBytes) ? Math.max(0, Math.floor(budgetBytes)) : SNAPSHOT_BUDGET_BYTES
+  let bytes = snapshotBytes(world)
+  if (bytes <= budget) return { dropped: 0, bytes }
+
+  const queues = [...world.agents]
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map((agent) => ({
+      agent,
+      // 候选按 tick 从老到新；同一 tick 保留写入顺序（Array#sort 稳定）。
+      pending: [...(agent.episodes ?? [])]
+        .filter((episode) => episode.kind !== 'day')
+        .sort((left, right) => left.tick - right.tick),
+      next: 0,
+    }))
+
+  let dropped = 0
+  let exhausted = false
+  while (!exhausted && bytes > budget) {
+    let progress = false
+    for (const queue of queues) {
+      const victim = queue.pending[queue.next]
+      if (victim === undefined) continue
+      queue.next += 1
+      queue.agent.episodes = (queue.agent.episodes ?? []).filter((episode) => episode !== victim)
+      dropped += 1
+      progress = true
+      if (dropped % TRIM_MEASURE_EVERY === 0) {
+        bytes = snapshotBytes(world)
+        if (bytes <= budget) break
+      }
+    }
+    if (!progress) exhausted = true
+  }
+
+  bytes = snapshotBytes(world)
+  return { dropped, bytes }
+}
+
+/**
+ * 裁剪结果的一句话（宿主日志用）。
+ *
+ * 放在这里而不是各个落盘点：措辞只有一处，两个写盘点不会各写一套。
+ */
+export function describeTrim(result: TrimResult): string {
+  return `存档超过体积预算，裁掉 ${result.dropped} 条最老的情节（现在 ${result.bytes} 字节）`
 }
 
 /**
