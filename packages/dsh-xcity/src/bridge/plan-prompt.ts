@@ -12,11 +12,22 @@
  * 纯函数：没有 `Date.now()`、没有 `Math.random()`、不读文件、不调模型。
  * 于是"提示词里确实写进了今天的摘要""非法的 due 确实被丢了"这两件事可以被单测证明，
  * 而不是只能读代码相信。1 tick = 1 游戏分钟；一天 1440 tick（与 `sim/day-summary.ts` 同口径）。
+ *
+ * R524：另外负责"过去那几条记忆怎么挑、怎么写"（{@link planMemories}）——
+ * 只渲染，不自己打分，Top-K 仍交给 `sim/memory.ts`。
  */
-import type { Commitment } from '../domain/types.js'
+import type { Commitment, Episode } from '../domain/types.js'
 
 /** 一天最多几条：不是性能考虑，是**只有两条才做得完**。 */
 export const MAX_PLAN_ITEMS = 2
+/**
+ * R524：计划提示词最多带几条「你还记得」。
+ *
+ * 为什么不把他记得的全塞进去：情节留 7 天（`EPISODE_KEEP_DAYS`），实测人均 44–68 条，
+ * 全塞就是几十行；而 H14 实测**每轮增量输入 p95 已经 16k 字符**，计划只是一次 06:30 的提问，
+ * 不该再为"昨天以前的事"付这笔钱。相关性打分照旧走 `sim/memory.ts` 的 `selectEpisodes`。
+ */
+export const MAX_PLAN_MEMORIES = 5
 /** 提示词里要的字数上限（软预算，模型照着写）。 */
 const WHAT_PROMPT_CHARS = 20
 /**
@@ -56,6 +67,66 @@ function dayStartOf(tick: number): number {
   return Math.floor(Math.max(0, tick) / DAY_TICKS) * DAY_TICKS
 }
 
+/** 一条情节 → 「你还记得」里的一行：只说哪天、做了什么。 */
+function memoryLine(episode: Episode): string {
+  return '第' + String(episode.day) + '天：' + episode.summary
+}
+
+export interface PlanMemoryInput {
+  /** 这个角色的情节记忆（`agent.episodes`；可以为空）。 */
+  episodes: readonly Episode[]
+  /** 现在几点（绝对 tick），只用于近因打分。 */
+  nowTick: number
+  /** 取分数最高的若干条 —— 由调用方接 `sim/memory.ts` 的 `selectEpisodes`（bridge 不许值 import 模拟内核）。 */
+  selectEpisodes: (
+    episodes: readonly Episode[],
+    options: { nowTick: number; k?: number },
+  ) => Episode[]
+}
+
+/**
+ * R524：挑出计划提示词要带的「你还记得」。
+ *
+ * 三条口径：
+ * 1. **跳过日小结**（`kind === 'day'`）：昨天那一句已经由「## 昨天你怎么过的」单独给了，
+ *    第 3 天的日小结再进这份清单只是同一件事说两遍，还会挤掉真正的细节。
+ * 2. **不自己打分**：入选与排序全交给注入的 `selectEpisodes`（= `sim/memory.ts` 同一份打分），
+ *    否则同一份记忆在聊天（`bridge/memory-context.ts`）和计划里会挑出不同条目。
+ * 3. **只写天、不写时刻**：安排今天只需要知道"哪天做过什么"，分钟级时刻是给对话用的。
+ *
+ * @returns 0..{@link MAX_PLAN_MEMORIES} 行；空数组 = 提示词里整段省略。
+ */
+export function planMemories(input: PlanMemoryInput): string[] {
+  const candidates = input.episodes.filter((episode) => episode.kind !== 'day')
+  // R524-2：**同一句话只留一条**。
+  //
+  // 现场：真机跑出来 5 条全是「第89天：工单「检查走廊的应急灯是否亮」」——同一张单被重复
+  // 派了 5 次，5 条情节的文案一模一样。检索分再高，这也是浪费：同一个意思占满 5 个名额，
+  // 把别的记忆挤掉。去重按渲染后的句子判（不同天但同一件事也合并，取排序靠前的那条）。
+  // 正经事优先：办成的工单、守约、没做成。日常琐事（吃饭/歇着/聊两句）只在不够 3 条时补。
+  // 理由：现场跑出来 5 条里 4 条是「吃了顿饭」——那些事不值得占计划的名额。
+  const noteworthy = candidates.filter((episode) =>
+    episode.kind === 'task' ||
+    episode.summary.startsWith('守约：') ||
+    episode.summary.startsWith('没做完：'),
+  )
+  const ordered = [
+    ...input.selectEpisodes(noteworthy, { nowTick: input.nowTick, k: MAX_PLAN_MEMORIES }),
+    ...input.selectEpisodes(candidates, { nowTick: input.nowTick, k: MAX_PLAN_MEMORIES * 4 }),
+  ]
+  const seen = new Set<string>()
+  const picked: string[] = []
+  for (const episode of ordered) {
+    // 去重键用 **summary**（不含天数前缀）：同一件事在不同天各记一条，也要只留一条。
+    if (seen.has(episode.summary)) continue
+    seen.add(episode.summary)
+    const line = memoryLine(episode)
+    picked.push(line)
+    if (picked.length >= MAX_PLAN_MEMORIES) break
+  }
+  return picked
+}
+
 /**
  * R500-1：拼出"今天想做什么"的指令。
  *
@@ -64,7 +135,14 @@ function dayStartOf(tick: number): number {
  *
  * @returns 给角色会话的一整段中文指令；调用方负责把它送出去。
  */
-export function buildPlanPrompt(input: PlanPromptInput & { yesterday?: string }): string {
+export function buildPlanPrompt(
+  input: PlanPromptInput & {
+    /** 昨天的小结（`writeDayDigest` 写的那一句）；没有就整段省略。 */
+    yesterday?: string
+    /** 「你还记得」的每一行（{@link planMemories} 的输出）；空数组也整段省略。 */
+    memories?: readonly string[]
+  },
+): string {
   const clock = clockOf(input.nowTick)
   const summary = input.todaySummary.length === 0
     ? ['（今天还没有任何记录）']
@@ -90,6 +168,11 @@ export function buildPlanPrompt(input: PlanPromptInput & { yesterday?: string })
     ...(input.yesterday === undefined || input.yesterday.trim() === ''
       ? []
       : ['## 昨天你怎么过的', input.yesterday.trim(), '']),
+    // R524：昨天以前的事（检索出来的几条）夹在「昨天」与「今天」之间——先读过去、再读今天，
+    // 模型才是在有历史的情况下安排今天。没有就不留空标题（模型会把空标题当"确实没有"读）。
+    ...(input.memories === undefined || input.memories.length === 0
+      ? []
+      : ['## 你还记得', ...input.memories.map((line) => '- ' + line), '']),
     '## 今天已经发生的事',
     ...summary,
     '',

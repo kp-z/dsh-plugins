@@ -49,7 +49,7 @@ import { createSessionAsker } from './adapters/slowvale/ask-session.js'
 import { createDailyPlanner } from './bridge/daily-plan.js'
 import { createPlanStats } from './runtime/plan-stats.js'
 import { createTurnCost, DEFAULT_WARN_INPUT_CHARS } from './runtime/turn-cost.js'
-import { buildPlanPrompt, parsePlan } from './bridge/plan-prompt.js'
+import { buildPlanPrompt, parsePlan, planMemories } from './bridge/plan-prompt.js'
 import { renderMemoryContext } from './bridge/memory-context.js'
 import { acquireOwnerLock } from './runtime/owner-lock.js'
 import { scoreEpisode, selectEpisodes } from './sim/memory.js'
@@ -446,6 +446,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         .filter((episode) => episode.kind === 'day' && episode.day === day - 1)
         .map((episode) => episode.summary)
         .join(' ')
+      const nowTick = world?.tick ?? day * 1440
       return buildPlanPrompt({
         agentName: agent?.name ?? agentId,
         // R516：persona 一直是空串，模型每次都读到空的「## 你是谁」。先用角色+性格顶上，
@@ -456,8 +457,12 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
             '；责任心 ' + String(Math.round((agent.traits?.duty ?? 0.5) * 100)) + '/100',
         todaySummary: world === null ? [] : summarizeDay(world, agentId, world.tick),
         yesterday,
+        // R524：昨天以前的记忆。「更多」不等于「更好」：全量塞会直接顶到每轮输入的预算上
+        // （H14 实测增量输入 p95 16k 字符），所以只取最相关的几条，打分与 Top-K 仍走
+        // sim/memory.ts（与对话里那份记忆是同一份打分，不另写一套检索）。
+        memories: planMemories({ episodes: agent?.episodes ?? [], nowTick, selectEpisodes }),
         knownPeers: peers,
-        nowTick: world?.tick ?? day * 1440,
+        nowTick,
       })
     },
     parse: (text, agentId) => {
