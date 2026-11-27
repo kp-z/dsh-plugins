@@ -14,6 +14,7 @@ import test from 'node:test'
 
 import { projectScene, projectSnapshot, clockOf } from '../lib/adapters/slowvale/project.js'
 import { createSlowvaleBridge } from '../lib/adapters/slowvale/server.js'
+import { loadOfficeDesks } from '../lib/adapters/slowvale/stage.js'
 
 const WORLD = {
   id: 'w1',
@@ -47,12 +48,52 @@ test('快照：没有 station 的人落在默认地点，不会给出空 place_i
   assert.equal(snap.role_presences['agent-2'].location.place_id, 'downtown_street')
 })
 
+test('R493：换工位不换地图，换场所才换地图', () => {
+  const office = 'place:office.tech_company_1'
+  const beach = 'place:outdoor.sunset_beach'
+  const viewer = { ...WORLD.agents[0], placeId: office }
+  const other = { ...WORLD.agents[1], placeId: beach }
+  const opts = { ...OPTS, place: office, singlePlace: true }
+  for (const station of [null, 'station.seat-05', 'station.lounge-01']) {
+    const snap = projectSnapshot({ ...WORLD, agents: [{ ...viewer, station }, other] }, opts)
+    assert.equal(snap.scene, 'company')
+    assert.equal(snap.role_presences[viewer.id].scene, 'company')
+    assert.equal(snap.role_presences[other.id].scene, 'beach')
+    assert.equal(snap.place_topology.places[office].scene, 'company')
+    assert.equal(snap.scene_place_runtime_states[0].place_id, office)
+  }
+  assert.equal(projectSnapshot({ ...WORLD, agents: [{ ...viewer, placeId: beach }] }, opts).scene, 'beach')
+  assert.equal(projectSnapshot(WORLD, opts).scene, 'company', '旧数据缺 placeId 时用桥配置')
+})
+
 test('场景快照：校验需要的字段一个都不少', () => {
   const scene = projectScene(WORLD, OPTS)
   for (const key of ['world_id', 'cursor', 'tick_marker', 'scene', 'role_public_statuses', 'role_presences', 'actors', 'place_runtimes']) {
     assert.ok(key in scene, '缺少 ' + key + ' 会被前端判成无效场景快照')
   }
   assert.equal(scene.scene, 'downtown_street')
+})
+
+test('R496：世界和场景快照用同一个真实电脑坐点，不把世界坐标当像素', () => {
+  const site = makeSite()
+  const maps = join(site, 'assets', 'maps', 'company')
+  mkdirSync(maps, { recursive: true })
+  writeFileSync(join(maps, 'interactions.json'), JSON.stringify([
+    { class: 'pose', name: 'desk_2', capabilities: ['computer'], x: 118, y: 246 },
+    { class: 'target', name: 'desk_2_approach', x: 118, y: 286 },
+  ]))
+  const place = 'place:office.tech_company_1'
+  const world = { ...WORLD, agents: [{ ...WORLD.agents[0], placeId: place, station: 'station.seat-04', position: { x: 24, z: -6 } }] }
+  const opts = { ...OPTS, place, officeDesks: loadOfficeDesks(site) }
+  for (const snapshot of [projectSnapshot(world, opts), projectScene(world, { ...opts, scene: 'company' })]) {
+    const role = snapshot.role_presences['agent-1']
+    assert.equal(role.location.x, 118)
+    assert.equal(role.location.y, 246)
+    assert.deepEqual(role.visual_state.body, { action: 'work', work_kind: 'programming', at: { kind: 'pose', id: 'desk_2' } })
+    assert.equal(snapshot.actors['agent-1'].actor_kind, 'role')
+    assert.deepEqual(snapshot.actors['agent-1'].location, { place_id: place, x: 118, y: 246 })
+  }
+  assert.deepEqual(world.agents[0].position, { x: 24, z: -6 })
 })
 
 test('时钟：一天 1440 tick，跨天要进位', () => {

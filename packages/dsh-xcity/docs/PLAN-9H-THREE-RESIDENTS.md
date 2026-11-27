@@ -233,3 +233,10 @@
   **未通过**：在测试宿主（3190/7791）注入台词 `POST /api/xcity/say` 后，前端记录 `console.error("[visual_playback] Cannot read properties of undefined (reading 'map')")`，气泡未绘制（Text/BitmapText 钩子均未捕获台词文本；只捕获到角色名）。
   复现：`curl -X POST http://127.0.0.1:7791/api/xcity/say -H content-type:application/json -d '{"roleId":"agent-1","text":"x"}'`，页面 console 即报上述错误。
   下一步（H5 续）：① 用 walk+dialogue 同一 timeline 注入，判断是 dialogue 拍还是 packet 形状触发；② 顺带修 `[display-gap] badge.activity_type 未登记: EatActivity`（吃饭徽章缺登记，属可见错误）。
+
+- 2026-11-28 01:22 · **H3 进行中（接线完成，真模型端到端待会话绑定）**。
+  已落：`sim/commitments.ts`（双方各一条、幂等 id、kept/missed、忙碌宽限 60 tick、open 上限 3）；`bridge/plan-prompt.ts`（结构化提示 + 严格解析，9 类拒绝原因）；`bridge/daily-plan.ts`（06:30 一次、失败不阻塞）；`adapters/slowvale/ask-session.ts`（投递→认一轮→取 assistant 原文，超时 45s）；`index.ts` 接线（onTick 触发 + 每 60 tick 结算，asker 清理并入既有 effect，不新增 disposer）。
+  证据：`npm test` → 989 / 988 pass / 1 skip / 0 fail；新增 `test/daily-plan.test.js`(4)、`test/daily-plan-world.test.js`(1，真 planner+真解析+真承诺落地，仅模型是假数据)、`test/ask-session.test.js`(5)、`test/commitments*.test.js`(14+3)、`test/plan-prompt.test.js`(17)。
+  修的口径：due 已过改为**顺延次日**（1 游戏小时=6 秒，问完答完世界已过几十分钟，否则「今天上午」全被判过期）。
+  决策：`with===""` 的自承诺暂不落（没有对方可写，宁可少一条也不编）；id 统一由 `promiseBetween` 派生，丢弃解析器占位 id。
+  未过：真模型端到端。测试宿主 `POST /api/xcity/spawn` 返回「会话已建，但没挂进工作区」，`/api/xcity/bindings` 仍为空 ⇒ 计划提问拿不到会话。这是 H6 的前置（会话注册），不是 H3 逻辑问题。

@@ -151,24 +151,25 @@ test('token 稳定：登录与刷新返回同一个 token（换来换去会被�
   }
 })
 
-test('applyDirective 端口真的被路由调用了（漏传过一次，指令静默失效）', async () => {
-  const calls = []
+test('R494：没有角色会话也能收下建议，但不会改变角色', async () => {
   const bridge = await createSlowvaleBridge({
     host: '127.0.0.1', port: 0, assetsDir, pushMs: 0,
     account: { email: 'a@b.c', password: 'x' },
     opts: { worldId: 'w1', viewerRoleId: '', place: 'place:office.tech_company_1', startDate: '2026-01-01' },
     getWorld: () => world,
-    applyDirective: (peerId, text) => { calls.push({ peerId, text }); return true },
   })
   try {
     const base = 'http://127.0.0.1:' + String(bridge.port)
-    await fetch(base + '/api/game/player/message', {
+    const before = structuredClone(world)
+    const response = await fetch(base + '/api/game/player/message', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ thread_id: 'thread:agent-1', content: '你去办公室工作吧' }),
     })
-    assert.equal(calls.length, 1, '路由必须调用 applyDirective')
-    assert.equal(calls[0].peerId, 'agent-1', '传的是世界 agentId，不是角色 id')
-    assert.equal(calls[0].text, '你去办公室工作吧')
+    const ack = await response.json()
+    assert.equal(ack.ok, true)
+    assert.equal(ack.messages.length, 1)
+    assert.equal(ack.messages[0].content, '你去办公室工作吧')
+    assert.deepEqual(world, before)
   } finally {
     await bridge.close()
   }

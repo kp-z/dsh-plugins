@@ -1,8 +1,6 @@
 /**
  * RouteContext 的每个字段都必须真的被赋值。
  *
- * 这条守卫来自一次真 bug：BridgeOptions 收了 applyDirective，但构造 ctx 时漏了它，
- * 路由里 ctx.applyDirective?.() 于是永远走空——不报错、不打日志、指令静默消失。
  * 只读源码做静态比对，不需要起桥。
  */
 import assert from 'node:assert/strict'

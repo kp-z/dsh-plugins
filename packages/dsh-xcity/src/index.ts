@@ -45,6 +45,10 @@ import { shouldRestartWorld } from './runtime/watchdog.js'
 import { characterOfSession, loadAgentMap, loadXcityBindings, sessionsByAgent } from './adapters/slowvale/xcity.js'
 import { respondViaSession } from './adapters/slowvale/respond-sms.js'
 import { deliverInitiative } from './adapters/slowvale/initiative-delivery.js'
+import { createSessionAsker } from './adapters/slowvale/ask-session.js'
+import { createDailyPlanner } from './bridge/daily-plan.js'
+import { buildPlanPrompt, parsePlan } from './bridge/plan-prompt.js'
+import { promiseBetween, settleCommitments } from './sim/commitments.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
 import { DEFAULT_CIRCUIT, spawnOf } from './adapters/slowvale/stage.js'
@@ -364,6 +368,51 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   }) : null
   if (taskExecution !== null) ctx.effect(() => () => taskExecution.stop(), 'xcity: task execution')
   let nextTaskHeartbeat = 0
+
+  // R500：每天 06:30 各自想一下今天。投递走会话，取回走 assistant 原文（见 ask-session）。
+  const planAsker = createSessionAsker({
+    prompt: async (payload, signal) => {
+      if (typeof sessionControllerService?.prompt !== 'function') throw new Error('宿主没有会话服务')
+      await sessionControllerService.prompt(payload as never, signal)
+    },
+  })
+  const dailyPlanner = createDailyPlanner({
+    ask: async (agentId, prompt) => {
+      const world = state.currentWorld()
+      if (world === null) return null
+      const sessionId = sessionsByAgent(loadXcityBindings(bindingsPath), loadAgentMap(join(characterWorkspace, 'agents.json'))).get(agentId)
+      if (sessionId === undefined || !hasXcityRoleModel(ctx, sessionId)) return null
+      return await planAsker.ask(sessionId, prompt)
+    },
+    promptFor: (agentId, day) => {
+      const world = state.currentWorld()
+      const agent = world?.agents.find((row) => row.id === agentId)
+      const peers = (world?.agents ?? []).filter((row) => row.id !== agentId).map((row) => ({ id: row.id, name: row.name }))
+      return buildPlanPrompt({
+        agentName: agent?.name ?? agentId,
+        persona: '',
+        todaySummary: world === null ? [] : summarizeDay(world, agentId, world.tick),
+        knownPeers: peers,
+        nowTick: world?.tick ?? day * 1440,
+      })
+    },
+    parse: (text, agentId) => {
+      const world = state.currentWorld()
+      if (world === null) return []
+      const peers = world.agents.filter((row) => row.id !== agentId).map((row) => row.id)
+      return parsePlan(text, { nowTick: world.tick, agentId, peerIds: peers }).commitments
+    },
+    apply: (agentId, commitments) => {
+      const world = state.currentWorld()
+      if (world === null) return
+      for (const row of commitments) {
+        // 暂时不落"对自己"的承诺：没有对方可写，宁可少一条也不编一个对象。
+        if (row.with === '') continue
+        promiseBetween(world, agentId, row.with, { what: row.what, dueTick: row.dueTick, source: 'plan' })
+      }
+    },
+    log: (line) => logger.info(line),
+  })
   const runtime = createRuntime({
     service: state,
     tickMs: state.tickMs,
@@ -385,6 +434,12 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     // D41/R43：每隔一段 tick 把团队状态同步回小镇。**同步返回**（见 onTick 说明），
     // 真正的读与算丢给一个不等待的 promise。
     onTick: (tick) => {
+      // R500：到点问计划；到期承诺由内核裁决（不做 IO）。
+      const world = state.currentWorld()
+      if (world !== null) {
+        dailyPlanner.tick(world.agents, tick)
+        if (tick % 60 === 0) settleCommitments(world, tick)
+      }
       if (taskExecution !== null && Date.now() >= nextTaskHeartbeat) {
         nextTaskHeartbeat = Date.now() + 1000
         void taskExecution.heartbeat()
@@ -487,6 +542,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   // 而挂清理这一步抛了（比如 ctx 形状不对），定时器就**已经泄漏了**，没有任何人再能停它。
   ctx.effect(() => () => {
     runtime.stop()
+    planAsker.stop()
     state.deactivate()
   }, 'agent-world: runtime')
 
@@ -903,6 +959,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const message = event.data?.['message'] as { content?: unknown } | undefined
       const content = event.type === 'user/message' ? event.data?.['content'] ?? message?.content : message?.content
       const blocks = Array.isArray(content) ? content : []
+      planAsker.observe(sessionId, event.type ?? '', event.data)
       const sms = smsReplies.observe(sessionId, event.type, event.data, blocks)
       if (sms === null) taskExecution?.observe(sessionId, event.type, event.data)
       if (event.type !== 'user/message' && event.type !== 'assistant/message' && event.type !== 'tool/result') return

@@ -84,6 +84,25 @@ test('同轮自动补的上下文不算插队，短信回复照常回写', () =>
   )
 })
 
+test('R494：主动短信、过期、错轮和引用的标记都不能接受动作', () => {
+  const marker = '<xcity-action>accept</xcity-action>'
+  const reply = '<xcity-reply>愿意。</xcity-reply>\n' + marker
+  for (const entry of [
+    { kind: 'initiative', turn: 1, now: 0, response: reply },
+    { kind: 'player-sms', turn: 2, now: 0, response: reply },
+    { kind: 'player-sms', turn: 1, now: 10, response: reply },
+    { kind: 'player-sms', turn: 1, now: 0, response: '引用：\n' + reply },
+  ]) {
+    let time = 0
+    const tracker = createSmsReplyTracker(10, () => time)
+    tracker.track('agent-1', 'lin', '短信', entry.kind, () => assert.fail('不能执行'))
+    tracker.observe('lin', 'user/message', { turn: 1 }, [text('短信')])
+    time = entry.now
+    const result = tracker.observe('lin', 'assistant/message', { turn: entry.turn }, [text(entry.response)])
+    assert.equal(result?.reply?.acceptAction, undefined)
+  }
+})
+
 test('干活映射：工具调用去工位、工具返回收工、别的什么都不做', () => {
   const call = activityForEvent({ type: 'assistant/message', blocks: [{ type: 'tool-call', name: 'read_file' }], agentId: 'agent-1', skillOf: () => 'research' })
   assert.deepEqual(call, { kind: 'agentActivity', agentId: 'agent-1', activity: 'work', ticks: 60, skill: 'research' })
