@@ -13,6 +13,8 @@
 import type { Activity, ActivityPurpose, Agent, World } from '../domain/types.js'
 import { nextLogSeq } from './journal.js'
 import { recordActivityEpisode } from './memory.js'
+// 只借一个纯判定（"有没有临近的约"）。life.ts 不 import activity.ts，所以没有环。
+import { dueAppointmentOf } from './life.js'
 
 /**
  * R522：活动环按**人数**扩容，每人留 24 条**已完成**活动。
@@ -124,6 +126,21 @@ export function syncActivities(world: World): Activity[] {
       const task = world.tasks.find((row) => row.id === agent.carrying)
       if (task?.attemptId !== live.taskAttemptId || task.status !== 'in_progress') endActivity(world, agent, 'interrupted')
       continue
+    }
+    // R523-3：赴约临近时，可以**提前结束日常活动**（干活/学习）去赴约。
+    //
+    // 现场：同一地点、双方社交却没有时间重叠——因为一方坐到对方房间里等，对方还在
+    // 埋头干完手上那段活，等干完窗口已经过去。承诺既然是他自己许的，就该让他提前收手；
+    // 任务型活动（taskAttemptId）不在此列，那是有外部的单。
+    if (
+      live !== null &&
+      live.status === 'active' &&
+      (live.purpose === 'work' || live.purpose === 'study') &&
+      agent.activityUntil !== undefined &&
+      agent.activityUntil > world.tick + 1 &&
+      dueAppointmentOf(world, agent) !== null
+    ) {
+      agent.activityUntil = world.tick
     }
     const endedByFields = agent.activityKind === undefined || (agent.activityUntil !== undefined && world.tick >= agent.activityUntil)
     if (live !== null && endedByFields && live.status === 'active') {

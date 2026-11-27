@@ -474,3 +474,15 @@
   工具侧修正（`tools/verify-with.mjs`）：新增**证据地平线**判定——claim 的 tick 早于任一方现存活动的最小 tick 时记 `stale`（带 side: agent/peer/both），不再把"对手那条被挤掉"误记成 `no-overlap`（H18 那个假否定）。`ok` 判定不变。
   残留（下一轮）：抽样 99 条里仍有 **10 条 unproven**（`place-mismatch` 2 / `not-social` 8）。查证是**写侧与核对侧口径不一致**（同一时刻跨多个活动时，核对取到的是干活那条），不是记忆写错；要不要让核对接受"任一同期活动是社交"、还是让写侧记录依据 activityId，属 H21/H22 的决定项，本轮不擅自放宽判据。
   测试：`test/activity-ring.test.js` 5 条；`npm test` → **1094 tests / 1093 pass / 1 skip / 0 fail**。
+
+- 2026-11-28 06:18 · **H21 未通过（保持未勾选）**。
+  基线：近三天 kept 3 / missed 4 = **43%**；目标 ≥70%。
+  做了三件事（都保留，都有测试）：
+  ① `socialStationId` 的 preferPeer 分支：不再要求对方正坐在会话椅上，只要同地点就挑**对方 district** 的空位（R523）；
+  ② 赴约窗口 180 → **240** 分钟（理由：干活/学习 90 tick + 跨办公室单程 ~50，「提前动身」不是「整天守着」）；对方在睡觉不追（用 purpose 判，不是 state——休息/吃饭在状态机里都叫 sleeping）；
+  ③ 座位稀缺时退到**同 district 任意空位**（证据判的是「同地点、时间重叠」，不是「同一张会议椅」），以及**赴约临近时提前结束干活/学习**（任务型活动不动）。
+  结果：43% → 57% → **50%**（三次实测，每次 8 条已裁决）。**没到 70%，所以不勾选。**
+  事实层诊断（`tools/verify-kept-rate.mjs` 的 facts）：4 条 missed 全是 `no-overlap`，且 `coPresent.span` 明确显示**两人确实同处一室**（例：`117159–117188`，29 tick），但那一刻**双方都不在社交活动里**，所以 `meetOverlap` 为 null。不是「没去」，是「到了却没聊上」。
+  下一步（下一轮第一件事）：查这 29 tick 里两人各自的 `activityPurpose`——是赴约意图被别的档位顶掉（饿/累/上班优先级更高），还是到了之后又各自去干活。前者要调整优先级，后者要在「同处一室且双方都有约」时把社交钉住。
+  工具：`tools/verify-kept-rate.mjs`（按 id 去重、keptRate、missedReasons 四分类 + facts，证据过期记 stale 不记否定）。
+  测试：`life-appointment` 9 条；`npm test` → **1100 tests / 1099 pass / 1 skip / 0 fail**（golden 未变）。

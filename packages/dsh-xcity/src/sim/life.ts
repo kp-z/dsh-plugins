@@ -13,6 +13,7 @@
 import { distance } from '../domain/geometry.js'
 import type { Agent, Episode, Station, World } from '../domain/types.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
+import { activityPurposeOf } from './activity-view.js'
 import { needsOf } from './needs.js'
 import { affinityOf } from './relationships.js'
 import { occupancyOf } from './scheduler.js'
@@ -97,8 +98,16 @@ function available(agent: Agent): boolean {
   )
 }
 
-/** 赴约窗口：到期前多久开始往对方那边走（游戏分钟）。 */
-export const APPOINTMENT_WINDOW = 180
+/**
+ * R523：赴约窗口——到期前多久开始往对方那边走（游戏分钟）。180 → 240。
+ *
+ * 180 只够"一个活动 + 一段路"的零头：干活/学习是 90 tick，跨办公室单程实测约 50，
+ * 撞上一个长活动就只剩 40——人还在工位坐着，承诺先到期了（实测三天 kept 3 / missed 4）。
+ * 240 留得下一整个标准活动、走过去、再站着等一会儿。
+ * 不放到 480（一个睡觉块）的原因：那等于"答应完立刻往会议室跑"，整个下午坐在空房间里等，
+ * 把该干的活挤没了——窗口是"提前动身"，不是"整天守着"。
+ */
+export const APPOINTMENT_WINDOW = 240
 
 /**
  * R513：最该去赴的那个约。
@@ -154,13 +163,77 @@ function freeStation(
 }
 
 /**
+ * R523：对方现在在哪个 district。
+ *
+ * district 是站点的属性，角色身上没有；所以只能从他"坐着 / 正要去"的那一站反推。
+ * 两样都没有（站着发呆、在路上、在别的地点）→ null，调用方退到"同地点任意空位"。
+ */
+function districtOfPeer(world: World, peer: Agent): string | null {
+  const stationId = peer.station ?? peer.targetStation
+  if (stationId === null) return null
+  return world.stations.find((station) => station.id === stationId)?.district ?? null
+}
+
+/**
+ * R523：对方是不是真的在睡觉。
+ *
+ * 状态机分不清"累得躺一会儿"和"睡一觉"：吃饭/歇会儿/睡觉都走 rest → state === sleeping，
+ * 只有 activityPurpose 分得清（见 types.ts 的 ActivityPurpose 注释）。
+ * 用"用途 + 还没到点"两条一起判：活动到时但待命流程还没收尾的那一 tick 不算睡着。
+ */
+function isSleepingNow(world: World, peer: Agent): boolean {
+  if (activityPurposeOf(world, peer) !== 'sleep') return false
+  return peer.activityUntil !== undefined && peer.activityUntil > world.tick
+}
+
+/**
+ * R523：赴约先坐哪儿——去对方那个房间等着。
+ *
+ * 旧版只有"对方已经在 converse 站点上聊着"才算有路可走，于是对方在工位上干活时赴约的人
+ * 干脆不出门：实测三天 kept 3 / missed 4（43%）。只要**同一地点**，先到房间是赴约方
+ * 唯一能自己控制的事（对方也在赴同一个约，会来）。
+ * 对方所在 district 没有空位就退到同地点任意 converse 空位——白站在走廊上比坐在别人屋里更糟。
+ */
+function appointmentSeatId(world: World, agent: Agent, peer: Agent): string | null {
+  // 跨地点没有自派路径：freeStation 只在当前 place 里找站点，所以这里直接放弃。
+  if (peer.placeId !== agent.placeId) return null
+  const district = districtOfPeer(world, peer)
+  const seat = district === null
+    ? null
+    : freeStation(world, agent, ['converse'], (candidate) => candidate.district === district)
+  return (seat ?? freeStation(world, agent, ['converse']))?.id ?? null
+}
+
+/**
  * R482：社交去哪。
  *
+ * 0. R523：赴约优先——约定的人在同一地点，就先去他的房间等着（不等他"正好在聊"）；
  * 1. 已经在聊的人所在房间还有空位 → 加入；
  * 2. 否则找最熟的空闲角色，挑离 TA 最近的 converse 座位（两个人都这么做，才会坐到一起）。
  * 没有第二个人 → null（留给 H4 主动发短信）。
  */
 function socialStationId(world: World, agent: Agent, preferPeer: string | null = null): string | null {
+  if (preferPeer !== null) {
+    const peer = world.agents.find((other) => other.id === preferPeer)
+    const seat = peer === undefined ? null : appointmentSeatId(world, agent, peer)
+    if (seat !== null) return seat
+    // R523-2：没有空的**会话椅**不代表去不了。
+    //
+    // 证据判的是"同一地点、时间重叠"，不是"同一张会议椅"（sim/commitments.ts 的 metInWindow
+    // 与 Episode.with 都是地点级）。而会话椅只有 10 张、24 个人抢——实测 3 条爽约全是
+    // "同地点却没有社交重叠"。所以退一步：坐同地点的**任意**空位（先同 district），
+    // 到了那个房间，对方一空下来就能接上。座位稀缺时这比"根本不去"更接近真实。
+    if (peer !== undefined) {
+      const districtOf = (row: typeof peer): string | null => {
+        const id = row.station ?? row.targetStation
+        return id === null ? null : world.stations.find((item) => item.id === id)?.district ?? null
+      }
+      const district = districtOf(peer)
+      const near = district === null ? null : freeStation(world, agent, ['converse', 'code', 'review', 'research', 'compute', 'rest'], (candidate) => candidate.district === district)
+      if (near !== null) return near.id
+    }
+  }
+
   let join: { stationId: string; affinity: number } | null = null
   for (const other of world.agents) {
     if (other.id === agent.id) continue
@@ -171,8 +244,6 @@ function socialStationId(world: World, agent: Agent, preferPeer: string | null =
     // 找同房间的另一个空位（会议椅是一人一座）。
     const seat = freeStation(world, agent, ['converse'], (candidate) => candidate.district === station.district)
     if (seat === null) continue
-    // R513：赴约优先——约定要见的人正在某个房间，就先去这个房间，而不是"最熟的人"。
-    if (preferPeer !== null && other.id === preferPeer) return seat.id
     const affinity = affinityOf(agent, other.id)
     if (join === null || affinity > join.affinity) join = { stationId: seat.id, affinity }
   }
@@ -180,12 +251,7 @@ function socialStationId(world: World, agent: Agent, preferPeer: string | null =
 
   const others = world.agents
     .filter((other) => other.id !== agent.id && other.state === 'idle' && other.targetStation === null && other.station === null)
-    .sort((a, b) => {
-      // R513：赴约优先——约定的人闲着，就先找他。
-      if (a.id === preferPeer) return -1
-      if (b.id === preferPeer) return 1
-      return affinityOf(agent, b.id) - affinityOf(agent, a.id)
-    })
+    .sort((a, b) => affinityOf(agent, b.id) - affinityOf(agent, a.id))
   const target = others[0]
   // R498：没人闲着也可以先坐下——第二个想聊天的人会从"加入"那条路过来。
   // 没有这一条，三人永远在忙，社交在结构上就不可能发生（实测三天 0 次）。
@@ -257,7 +323,11 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
   const appointment = dueAppointmentOf(world, agent)
   if (appointment !== null) {
     const peer = world.agents.find((row) => row.id === appointment.with)
-    const stationId = peer === undefined ? null : socialStationId(world, agent, peer.id)
+    // R523：对方在睡觉就不追。夜里闯进休息区坐着等，既等不到人，还白占一张椅子；
+    // 这事必须在这里判——socialStationId 只回答"坐哪儿"，回答不了"该不该去"。
+    const stationId = peer === undefined || isSleepingNow(world, peer)
+      ? null
+      : socialStationId(world, agent, peer.id)
     if (stationId !== null) {
       options.push({
         score: 0.9,
