@@ -16,12 +16,23 @@
  * 只看前者会让三个人同时被派到一张单人工位上，然后到达时才发现挤不下。
  * 座位号也在 claim 时定好，写进路径；到达时不用再算（到达时再算会拿到不确定的序号）。
  *
+ * ## 派单公平（R514）
+ *
+ * 原来的候选顺序就是 `world.agents` 的原序，于是**同一个人总是先拿到单**：
+ * 他交完工回到 idle，又排在队首，下一张单还是他的（H6 现场：agent-1 做了
+ * task-1 与 task-3，agent-3 一张没拿到）。现在按「今天经手最少的人优先」排队，
+ * 平手按 `agent.id`，保证同一世界同一 tick 挑到同一个人。
+ *
+ * 口径的代价：没有"领取时刻"字段，跨天领、隔天交的单会算在**交工那天**
+ *（见 `loadToday`）。这比精确账本粗，但"今天空着的人先上"这个判断不受影响。
+ *
  * ## 不在这里发事件
  *
  * 返回"谁领了什么"，事件由 `step.ts` 统一产出。
  */
 import { stationSlot } from '../domain/geometry.js'
 import { findPath } from './pathfind.js'
+import { DAY_TICKS } from './memory.js'
 import type { Agent, Station, Task, World } from '../domain/types.js'
 
 /** 一次派工。 */
@@ -88,6 +99,49 @@ function idleAgents(world: World): Agent[] {
   return world.agents.filter((a) => a.state === 'idle' && a.carrying === null)
 }
 
+/** R514：今天从哪个 tick 起。边界用 `sim/memory.ts` 的 `DAY_TICKS`，不另写一份。 */
+function dayStartOf(tick: number): number {
+  return Math.floor(Math.max(0, tick) / DAY_TICKS) * DAY_TICKS
+}
+
+/**
+ * R514：每个角色「今天」经手了几张单。**只用既有字段，不新增状态。**
+ *
+ * 依据 `world.tasks`：`owner` 是唯一的人单归属记录，完工与失败都**不清**它
+ *（`step.ts` 的 taskComplete 只改状态，`recovery.ts` 只在回收时才清）。
+ * 时间戳也只有两个既有字段可用：
+ * - 已完工的单有 `finishedAtTick`：看它是否落在今天；
+ * - 在办/失败的单没有结束 tick：看 `createdAtTick` 是否落在今天。
+ *
+ * 只给花名册里的角色记账（键来自 `world.agents`）：离职/历史 owner 的单不计入。
+ */
+function loadToday(world: World, dayStart: number): Map<string, number> {
+  const load = new Map<string, number>()
+  for (const agent of world.agents) load.set(agent.id, 0)
+  for (const task of world.tasks) {
+    if (task.owner === null) continue
+    const handledAt = task.finishedAtTick ?? task.createdAtTick
+    if (handledAt < dayStart) continue
+    const count = load.get(task.owner)
+    if (count === undefined) continue
+    load.set(task.owner, count + 1)
+  }
+  return load
+}
+
+/**
+ * R514：空闲角色按「今天经手最少」排好，平手按 `agent.id`。
+ *
+ * 同一个人这一轮拿到的第二张由 `taken` 挡掉，所以这里只需要回答
+ * 「今天谁还空着」——不需要每派一张就重算一遍。
+ */
+function idleAgentsByFairness(world: World): Agent[] {
+  const load = loadToday(world, dayStartOf(world.tick))
+  return idleAgents(world).sort(
+    (a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  )
+}
+
 /**
  * 推进一 tick 的派工。
  *
@@ -109,7 +163,17 @@ export function claimTasks(world: World, sessionWorkers?: ReadonlySet<string>): 
 
   // 本次调度里已经被占用的角色，避免一张单派给同一个人两次。
   const taken = new Set<string>()
-  const available = idleAgents(world)
+  // R514：候选顺序 = 今天经手最少的人优先（理由见文件头与 `loadToday`）。
+  // **同职业优先仍然是硬偏好**，只在同职业内部按这个顺序挑；没有同职业才落到总体最空的人。
+  const available = idleAgentsByFairness(world)
+
+  // R514：同一批内不重复派同一个人。
+  //
+  // 现场：task-8 给了 agent-1 之后另外两个人都在睡觉，task-9 于是又落回 agent-1。
+  // 只看"谁现在闲"不够——同批的单本来就该分给不同的人。
+  const batchTicks = new Set(ready.map((task) => task.createdAtTick))
+  const batchLoad = (agentId: string): number =>
+    world.tasks.filter((task) => task.owner === agentId && batchTicks.has(task.createdAtTick)).length
 
   for (const task of ready) {
     const free = available.filter((a) => !taken.has(a.id) &&
@@ -162,10 +226,36 @@ export function claimTasks(world: World, sessionWorkers?: ReadonlySet<string>): 
       continue
     }
 
-    // 优先同职业；没有就把这张单给任何空闲的人——**不要因为职业不匹配就不派**，
-    // 否则一个小队里只要缺某个职业，整条流水线就停在那里。
-    const matching = free.find((a) => task.suggestedRole !== null && a.role === task.suggestedRole)
-    const agent = assigned ?? matching ?? free[0]
+    // R514：**公平优先，职业只在同一负载档内做次级偏好**。
+    //
+    // 早先的写法是"同职业优先"覆盖一切，实测结果：lead 只有一个人，于是三张单
+    // 里的两张都给了他、另一个人一张没有（H6 现场）。职业匹配不值得破坏轮转——
+    // 工单的能力要求本来就按**站点能力**校验（pickStation），不是按角色职业。
+    const load = loadToday(world, dayStartOf(world.tick))
+    // R514：先把"本批已经拿过单的人"排除。
+    //
+    // 排除之后如果**还有人没拿过本批的单**（哪怕此刻在忙/在睡），就宁可不派——
+    // 让这张单等着，也不要重复派给同一个人。现场：另外两人都在睡觉时，
+    // 第三张单会直接落回刚干完的那个人，于是"一人一张"永远做不到。
+    const fresh = free.filter((a) => batchLoad(a.id) === 0)
+    if (fresh.length === 0 && world.agents.some((a) => batchLoad(a.id) === 0)) {
+      stalled.push({
+        taskId: task.id,
+        reason: 'no-worker',
+        detail: '本批其他人还没拿过单，但他们此刻在忙/在睡：等他空出来，而不是把第二张塞给同一个人。',
+      })
+      continue
+    }
+    const pool = fresh.length > 0 ? fresh : free
+    const least = pool[0]
+    if (least === undefined) continue
+    const matching = pool.find((a) =>
+      task.suggestedRole !== null &&
+      a.role === task.suggestedRole &&
+      (load.get(a.id) ?? 0) === (load.get(least.id) ?? 0),
+    )
+    const agent = assigned ?? matching ?? least
+
     if (agent === undefined) continue
 
     const slot = stationSlot(chosen.station, chosen.slotIndex)
