@@ -412,6 +412,15 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     activateSession(sessionId: string): World {
       if (sessionId.trim() === '') throw new Error('activateSession: sessionId 不能为空')
       if (activeSessionId === sessionId && state.world !== null) return state.world
+      // R509：世界**归第一个激活者**。别的会话（角色会话、随手打开的窗口）来激活时
+      // 不抢：抢了会把小镇整座换成另一份存档——tick 倒退、工单消失都由此而来。
+      // 想换主人必须先 deactivate()（关掉视图），这是真实动作，不会被工具调用误触发。
+      if (state.world !== null) {
+        // 启动时 ensureWorld() 已经把世界建好了；第一次激活只是**认领**它，
+        // 不能再 build/load 一份新的——否则第一次工具调用就会把小镇整座换掉。
+        if (activeSessionId === null) activeSessionId = sessionId
+        return state.world
+      }
       saveActive()
       activeSessionId = sessionId
       state.world = migrateWorld(loadSession(sessionId) ?? build(config.worldName, sessionInitialAgents), options.places)

@@ -50,6 +50,7 @@ import { createDailyPlanner } from './bridge/daily-plan.js'
 import { createPlanStats } from './runtime/plan-stats.js'
 import { buildPlanPrompt, parsePlan } from './bridge/plan-prompt.js'
 import { renderMemoryContext } from './bridge/memory-context.js'
+import { acquireOwnerLock } from './runtime/owner-lock.js'
 import { scoreEpisode, selectEpisodes } from './sim/memory.js'
 import { promiseBetween, settleCommitments } from './sim/commitments.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
@@ -321,6 +322,15 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     )
   }
 
+  // R509：一个 stateDir 只许一个推进者。角色会话也是会话，插件会在它们身上再加载一次；
+  // 不设闩就会各跑一套循环、各自存盘，互相覆盖（H6 现场：tick 倒退、派单消失）。
+  const ownerLock = acquireOwnerLock(resolve(resolved.stateDir))
+  if (!ownerLock.owned) {
+    logger.warn(
+      `世界已由进程 ${String(ownerLock.ownerPid ?? '未知')} 推进；本会话只读，不推进、不占端口（R509）。`,
+    )
+  }
+
   // 世界先建出来（这样 xcity_status 立刻有东西可看）。
   // **注意 `ensureWorld()` 会先试着接回上次的存档**——所以下面这句日志之前世界可能已经不是新的了。
   // `autoStart` 只决定**要不要开始推进**——配置的语义是"是否推进"，不是"是否存在"。
@@ -336,7 +346,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
 
   const bindingsPath = resolve(resolved.slowvale.bindingsFile)
   const characterWorkspace = dirname(bindingsPath)
-  const taskExecution = resolved.slowvale.enabled ? createTaskExecution({
+  const taskExecution = resolved.slowvale.enabled && ownerLock.owned ? createTaskExecution({
     world: () => state.currentWorld(),
     cwd: characterWorkspace,
     sessions: () => sessionsByAgent(loadXcityBindings(bindingsPath), loadAgentMap(join(characterWorkspace, 'agents.json'))),
@@ -582,9 +592,11 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
     runtime.stop()
     planAsker.stop()
     state.deactivate()
+    // R509：锁跟着已有的生命周期一起放，不额外占一个 disposer（测试锁死了数量）。
+    ownerLock.release()
   }, 'agent-world: runtime')
 
-  if (resolved.autoStart) runtime.start()
+  if (resolved.autoStart && ownerLock.owned) runtime.start()
 
   // **默认激活一个会话**：没有激活会话时，世界不会推进（tick 不动、工单永远没人接）。
   // 现象很迷惑：派了活、花名册也在，但所有人一直"待命"，看着像派单坏了。
@@ -1256,7 +1268,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
   //
   // 独立端口、独立生命周期；**失败不拖垮世界**（世界能不能跑与有没有人看是两件事，
   // 这条原则沿用旧面板的软依赖设计）。配置里的一位 switch 就能整个关掉。
-  if (resolved.slowvale.enabled) {
+  // R509：只有推进者才开桥——否则每个角色会话都去抢同一个端口。
+  if (resolved.slowvale.enabled && ownerLock.owned) {
     const slowvaleRoot = resolve(process.cwd(), resolved.slowvale.assetsDir)
     if (!existsSync(join(slowvaleRoot, 'index.html'))) {
       logger.debug('[slowvale] 静态产物不存在：' + slowvaleRoot + '（改 slowvaleAssetsDir，或把静态站放到这里）')
@@ -1389,7 +1402,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           // 表现就是游戏里所有人杵着不动。这里做一个守卫：只要游戏页还连着，runtime 停了就拉起来。
           watchGameViewers = setInterval(() => {
             if (disposed) return
-            if (shouldRestartWorld({ autoStart: resolved.autoStart, running: runtime.running })) {
+            if (shouldRestartWorld({ autoStart: resolved.autoStart, running: runtime.running }) && ownerLock.owned) {
               runtime.start()
             }
           }, 2000)
@@ -1442,7 +1455,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           viewSessionId = sessionId
           runtime.stop()
           const world = state.activateSession(sessionId)
-          if (resolved.autoStart) runtime.start()
+          if (resolved.autoStart && ownerLock.owned) runtime.start()
           void syncRoster()
           return world
         },
