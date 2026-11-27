@@ -259,12 +259,15 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     if (typeof scene !== 'string' || scene === '') return false
     const cursor = nextCursor(world)
     const tickMarker = 'tick-' + String(world.tick)
+    const placeId = world.agents.find((agent) => agent.id === actorId)?.placeId ?? opts.place
     const packet = independentDialogue({
       epoch: cursor.epoch,
       seq: envelopeSeq,
       tickMarker,
       actorId,
       beat: { text },
+      // 先给角色名单：place 需要前端知道当前 viewer 所在地点，名单更稳。
+      audience: { kind: 'role_ids', role_ids: [actorId, opts.viewerRoleId] },
     })
     const body = gzipSync(Buffer.from(JSON.stringify(packet))).toString('base64')
     const envelope = {

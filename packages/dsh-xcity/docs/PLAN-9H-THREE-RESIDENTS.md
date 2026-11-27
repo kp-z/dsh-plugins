@@ -226,3 +226,10 @@
   证据：`npm test` → 947 / 946 pass / 1 skip / 0 fail；golden 更新为 `9c0254fc…`（原因：决策点搬家 + 单人也能先坐下，均在提交信息与本文件说明）。
   实测：同种子改 traits → 阿金 26% 的 tick 不同；社交从 3 天 0 次变为 18 次；关系各 2 人；卡死 0。
   注意：测试宿主（3190/7791）跑的还是旧代码，要看画面需重启。
+
+- 2026-11-28 01:06 · **H5 进行中（传输层已修，前端仍报错）**。
+  已改：`independentDialogue` 改用 `playback.tracks` + `dialogue{speaker_id,text,audience}`（此前扁平包被前端静默丢弃、且缺 audience 会抛错）；`/api/xcity/say` 传角色名单可见范围。
+  证据：`npm test` → 948 / 947 pass / 1 skip / 0 fail；`test/slowvale-comms.test.js` 8 条锁住包形状。
+  **未通过**：在测试宿主（3190/7791）注入台词 `POST /api/xcity/say` 后，前端记录 `console.error("[visual_playback] Cannot read properties of undefined (reading 'map')")`，气泡未绘制（Text/BitmapText 钩子均未捕获台词文本；只捕获到角色名）。
+  复现：`curl -X POST http://127.0.0.1:7791/api/xcity/say -H content-type:application/json -d '{"roleId":"agent-1","text":"x"}'`，页面 console 即报上述错误。
+  下一步（H5 续）：① 用 walk+dialogue 同一 timeline 注入，判断是 dialogue 拍还是 packet 形状触发；② 顺带修 `[display-gap] badge.activity_type 未登记: EatActivity`（吃饭徽章缺登记，属可见错误）。

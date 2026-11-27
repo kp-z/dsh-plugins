@@ -37,23 +37,30 @@ export interface VisualBeat {
 }
 
 /** 构造一个"某角色说了一句话"的 visual 包。 */
+/**
+ * R499：头顶气泡。
+ *
+ * 前端只认 `playback:{kind,tracks}`（GameView 5106-5134）；扁平 `{actorId,beats}` 会被
+ * **静默丢弃**，信封校验却照样通过——所以"不报错但没气泡"。`_spawnSpeechBubble` 还要求
+ * `dialogue.speaker_id`（:93879）；时长由前端按文本长度算，`duration_ms` 不读。
+ */
 export function independentDialogue(input: {
   epoch: string
   seq: number
   tickMarker: string
   actorId: string
   beat: DialogueBeat
+  /** 谁能看见这句话。前端缺它会直接抛「[dialogue] 缺少 audience」。 */
+  audience: { kind: 'place'; place_id: string } | { kind: 'role_ids'; role_ids: string[] }
 }): Record<string, unknown> {
-  const dialogue: Record<string, unknown> = { text: input.beat.text }
-  if (input.beat.durationMs !== undefined) dialogue['duration_ms'] = input.beat.durationMs
-  return {
+  const dialogue: Record<string, unknown> = { speaker_id: input.actorId, text: input.beat.text, audience: input.audience }
+  return independentTimeline({
     epoch: input.epoch,
     seq: input.seq,
-    tick_marker: input.tickMarker,
-    kind: 'independent',
+    tickMarker: input.tickMarker,
     actorId: input.actorId,
     beats: [{ dialogue }],
-  }
+  })
 }
 
 /**

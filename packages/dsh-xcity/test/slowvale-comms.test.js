@@ -62,18 +62,20 @@ test('visual：tick_marker 与 cursor 必须一致，且带 actorId', () => {
     tickMarker: 'tick-42',
     actorId: 'agent-1',
     beat: { text: '今天风不小。' },
+    audience: { kind: 'role_ids', role_ids: ['agent-1'] },
   })
   assert.equal(packet['tick_marker'], 'tick-42')
-  assert.equal(packet['seq'], 7)
-  assert.equal(packet['kind'], 'independent')
-  assert.equal(packet['actorId'], 'agent-1')
-  const beats = packet['beats']
-  assert.equal(beats[0]?.dialogue?.text, '今天风不小。')
+  // R499：前端只认 playback.tracks；扁平 {actorId,beats} 会被静默丢弃。
+  const tracks = packet['playback']?.tracks
+  assert.deepEqual(tracks['agent-1'][0].dialogue, {
+    speaker_id: 'agent-1', text: '今天风不小。', audience: { kind: 'role_ids', role_ids: ['agent-1'] },
+  })
+  assert.equal(packet['actorId'], undefined, '顶层不许再放 actorId，避免两套形状并存')
 })
 
 test('walk / work beat：body.action 只能是动作表里的值，路径按点给', () => {
   const walk = walkBeat([{ x: 1, y: 2 }, { x: 3, y: 4 }], 2000)
-  assert.deepEqual(walk.body, { action: 'walk', path: [{ x: 1, y: 2 }, { x: 3, y: 4 }] })
+  assert.deepEqual(walk.body, { action: 'walk', to_anchor: { kind: 'point', x: 3, y: 4 } })
   assert.equal(walk.duration_ms, 2000)
 
   const work = workBeat()
@@ -85,9 +87,8 @@ test('walk / work beat：body.action 只能是动作表里的值，路径按点�
     beats: [walk, work],
   })
   assert.equal(packet.tick_marker, 'tick-9')
-  assert.equal(packet.kind, 'independent')
-  assert.equal(packet.actorId, 'agent-1')
-  assert.equal(packet.beats.length, 2)
+  assert.deepEqual(packet.playback, { kind: 'independent', tracks: { 'agent-1': [walk, work] } })
+  assert.deepEqual(walkBeat([], undefined, 'desk_2').body.to_anchor, { kind: 'pose', id: 'desk_2' })
 })
 
 test('walkPathOf：世界路径 (x,z) 直接映射成 beat 的 (x,y)，不做缩放', () => {
