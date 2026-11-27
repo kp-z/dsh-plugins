@@ -122,7 +122,7 @@
 - 端口：Web **3190**、桥 **7791**（不与正式 7788、旧演示 7799/7800 冲突）。
 - 已确认三名居民：`agent-1 工头阿金`（lead）、`agent-2 小蓝`、`agent-3 小铁`（engineer）。
 - 启动：`cd packages/dsh-xcity && DSH_HOME="$PWD/.testhome" dsh --profile xcity-3 --port 3190 --no-open`
-- 仍需证明：测试 home 里的模型可用性（H6 必验项）。
+- **模型连通性已验证（R2）**：把桌面 profile 的 `llm-pi-ai` 提供方配置与 `.credentials.yaml` 复制进 `.testhome` 后，用凭据直连网关返回 **HTTP 200 / deepseek-v4.1-flash 真实回复**（`.testhome/probe-gateway.mjs`，不打印密钥）。早前 AUTH 失败的根因是**测试 profile 没有提供方配置**，不是密钥失效；剩下的是 DSH 层门控与会话绑定（H6）。
 
 ## 8. 三居民初始设定（H1 落地，供后续差异验证）
 
@@ -138,6 +138,7 @@
 
 - 2026-11-28 00:20 · **R0 计划完成**。产出本文件；team 任务 task-1/2/3（记忆/行为/工作链调研）已派出并 claim；定时任务 `schedule-9a956fec-5367-4b55-b76c-c996bda54605`（01:00 起每小时，共 9 轮）。
   证据：三居民测试宿主已启动（3190/7791），确认 agent-1/2/3 在 company 场景；气泡缺口与模型门控硬编码已定位（见 §6）。
+- 2026-11-28 00:38 · **R2 基线 + 模型连通性**。72h 实测写入 §11；发现社交死锁（3 天社交值 0，三天 91 个窗口只有 2 次社交）；`tools/measure-baseline.mjs` 固化。模型侧：复制 `llm-pi-ai` + 凭据到 `.testhome`，网关 200。
 
 
 ## 10. 已拍板的设计决定（本轮，供每小时执行直接采用）
