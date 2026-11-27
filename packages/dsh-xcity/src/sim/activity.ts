@@ -74,8 +74,8 @@ export function endActivity(world: World, agent: Agent, status: 'completed' | 'i
   activity.status = status
   activity.endedAt = world.tick
   activity.endedLogSeq = nextLogSeq(world)
-  // R497：完成的活动写一条情节记忆（打断的不算"发生过的事"）。
-  if (status === 'completed') recordActivityEpisode(world, activity, world.tick)
+  // R497：完成写一条；打断且够长也写（"干了两小时最后失败"不该无痕）。
+  recordActivityEpisode(world, activity, world.tick, status)
   return activity
 }
 

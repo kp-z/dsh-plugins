@@ -191,7 +191,6 @@ export const DEFAULT_NEEDS: AgentNeeds = { energy: 80, hunger: 80, social: 80 }
  */
 export type ActivityPurpose = 'meal' | 'rest' | 'sleep' | 'social' | 'work' | 'study'
 
-/** 角色：一个真实 subagent 在小镇里的投影。 */
 /** R497：性格两维（0-1）。只进打分权重，不写角色特例分支。 */
 export interface AgentTraits {
   /** 干劲：越想做点事（工作/学习）越容易压过闲散。 */
@@ -228,6 +227,7 @@ export interface Episode {
   salience: number
 }
 
+/** 角色：一个真实 subagent 在小镇里的投影。 */
 export interface Agent {
   id: string
   name: string

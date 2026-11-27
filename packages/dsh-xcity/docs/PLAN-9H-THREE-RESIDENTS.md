@@ -205,3 +205,8 @@
   证据：`npm test` → 940 tests / 939 pass / 1 skip / 0 fail；一日仿真后三人各 11–12 条真实情节（末条「学习」）。
   未完成：traits 落到花名册（目前只有类型）、承诺裁决（kept/missed/released）、每日 digest 写入 `agent.memories`、72h 对照 §11 复跑。
   下一步：teammate `episode-review` 复核写入出口与体积风险（task-4），下一轮按复核结论收口 H1。
+
+- 2026-11-28 00:52 · **复核结论已处理（task-4 / EPISODE-REVIEW.md）**。
+  修：新雇角色继承模板记忆的浅拷贝 bug（runtime 显式清空 episodes/commitments）；`EPISODE_MAX` 1200→150（原值永不生效）；打分权重 2.0→1.0 + 中文二字组切分（原实现「补测试的工单」匹配 0）；桥的 idle 活动不再写成「完成」；失败且 ≥15 tick 记「没做完：」；文案改正（原「和人一起和人聊了聊」「开始执行工单」）。
+  证据：`npm test` → 942 tests / 941 pass / 1 skip / 0 fail；`test/memory.test.js` 9 条。
+  留到后续轮次：模拟模式工单不建 Activity（⇒ 工单零记忆，H6）；`Episode.with` 目前恒空（H4/H7 关系链填）；world.json 体积随人数上升（H8 定预算）。

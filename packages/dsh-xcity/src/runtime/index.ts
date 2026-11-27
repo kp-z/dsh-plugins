@@ -265,6 +265,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
                 carrying: null,
                 path: [],
                 boundAgentId: null,
+                // R497：模板是浅拷贝，episodes/commitments 是引用——不清空就会一出生带着别人的一周记忆。
+                episodes: [],
+                commitments: [],
               }
           if (agent !== null) {
             world.agents.push(agent)
