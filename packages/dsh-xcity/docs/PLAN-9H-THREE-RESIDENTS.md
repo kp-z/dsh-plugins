@@ -246,3 +246,8 @@
   证据：`npm test` → 997 / 996 pass / 1 skip / 0 fail（含新 8 条）。宿主 3190/7791 重启后 `POST /api/xcity/spawn` 建了 3 个会话；手写 `characters/bindings.json` + `agents.json` 后，`GET /api/xcity/bindings` 已返回三条映射（agent-1/2/3 → xcity-agentN-*）。
   **仍未通过**：跨过 06:30（tick 29414）后 `/agent-world/api/world` 里三名居民 `commitments` 仍为 0，宿主日志也没有“每日计划失败”。说明提问根本没发起，最可能是 `hasXcityRoleModel` 对这些会话仍为 false（spawn 出来的会话没有选模型），或该 profile 没有 `sessionController` 服务。
   下一步：① 用真实 UI 路径建/选模型（而不是只 spawn），或给角色会话加“默认模型”选择（需先确认宿主 API）；② 加一条一次性诊断，把 `ask` 的三种失败（无绑定 / 无模型 / 无会话服务）分别计数，别再让失败静默。
+
+- 2026-11-28 01:34 · **会话注册：绑定已通，提问仍未发生（H3/H6 未过）**。
+  已验：`/api/xcity/spawn` 建 3 会话；手写 `characters/bindings.json`+`agents.json` 后 `GET /api/xcity/bindings` 返回三条映射；桥与插件接口是**同一个世界**（day 24 / 06:xx ↔ tick 33681 一致）。
+  未过：跨过两次 06:30，`commitments` 仍 0。给三种跳过原因加了 `logger.warn('[xcity-plan] …')`（无绑定/没选模型/无会话服务），但 DSH 的日志不落 stdout（host.log 只有启动两行），无法据此判定。
+  因此下一轮第一件事：给 `/agent-world/api/world` 的 `runtime.diagnostics` 增加计划计数（asked/skipped 三分支），让失败可观测——这是运维遥测，不是测试专用分支；然后再判定是“会话没选模型”还是“没有 sessionController”。

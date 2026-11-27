@@ -381,7 +381,18 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
       const world = state.currentWorld()
       if (world === null) return null
       const sessionId = sessionsByAgent(loadXcityBindings(bindingsPath), loadAgentMap(join(characterWorkspace, 'agents.json'))).get(agentId)
-      if (sessionId === undefined || !hasXcityRoleModel(ctx, sessionId)) return null
+      if (sessionId === undefined) {
+        logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：没有绑定会话')
+        return null
+      }
+      if (!hasXcityRoleModel(ctx, sessionId)) {
+        logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：会话没选模型 session=' + sessionId)
+        return null
+      }
+      if (typeof sessionControllerService?.prompt !== 'function') {
+        logger.warn('[xcity-plan] 跳过 agent=' + agentId + '：宿主没有会话服务')
+        return null
+      }
       return await planAsker.ask(sessionId, prompt)
     },
     promptFor: (agentId, day) => {
