@@ -46,7 +46,13 @@ function getService(ctx: unknown, key: string): unknown {
   }
 }
 
-/** Do not start autonomous work on a cold or differently configured Agent. */
+/**
+ * 不许在“冷会话”上自主开工：这个会话必须**明确选过**模型。
+ *
+ * R501：原来还硬编码 provider==='mmt-vision' 且型号≈deepseekv41，结果换任何别的
+ * 可用模型都被判“没有模型”，测试 profile 直接卡死在三居民不领活上。真正的要求
+ * 是“选过”，不是“选了某个牌子”——冷会话 current() 是 undefined，照样挡住。
+ */
 export function hasXcityRoleModel(ctx: unknown, sessionId: string): boolean {
   const agents = getService(ctx, 'agents')
   const get = pluck(agents, 'get') as ((id: string) => { model?: unknown } | undefined) | undefined
@@ -54,8 +60,8 @@ export function hasXcityRoleModel(ctx: unknown, sessionId: string): boolean {
   const current = pluck(model, 'current')?.call(model)
   if (typeof current !== 'object' || current === null) return false
   const selection = current as Record<string, unknown>
-  return selection.provider === 'mmt-vision' && typeof selection.model === 'string' &&
-    /^deepseekv?41$/.test(selection.model.toLowerCase().replace(/[^a-z0-9]/g, ''))
+  return typeof selection.provider === 'string' && selection.provider !== '' &&
+    typeof selection.model === 'string' && selection.model.trim() !== ''
 }
 
 /** Reads passive DSH state; unknown/unavailable state is not idle. */

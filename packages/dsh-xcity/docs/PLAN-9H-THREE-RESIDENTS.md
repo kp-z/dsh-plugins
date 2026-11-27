@@ -240,3 +240,9 @@
   修的口径：due 已过改为**顺延次日**（1 游戏小时=6 秒，问完答完世界已过几十分钟，否则「今天上午」全被判过期）。
   决策：`with===""` 的自承诺暂不落（没有对方可写，宁可少一条也不编）；id 统一由 `promiseBetween` 派生，丢弃解析器占位 id。
   未过：真模型端到端。测试宿主 `POST /api/xcity/spawn` 返回「会话已建，但没挂进工作区」，`/api/xcity/bindings` 仍为空 ⇒ 计划提问拿不到会话。这是 H6 的前置（会话注册），不是 H3 逻辑问题。
+
+- 2026-11-28 01:24 · **会话注册推进（H6 前置，部分通过）**。
+  改：`hasXcityRoleModel` 从「provider 必须是 mmt-vision + 型号≈deepseekv41」改成「会话**明确选过**模型（provider/model 非空）」；冷会话 `current()===undefined` 照样挡住。理由：型号白名单让任何别的可用模型都被判“没有模型”，三居民永远领不到活。`test/slowvale-task-run.test.js` 已按新语义更新（别的牌子也算数、空 provider 仍拒）。
+  证据：`npm test` → 997 / 996 pass / 1 skip / 0 fail（含新 8 条）。宿主 3190/7791 重启后 `POST /api/xcity/spawn` 建了 3 个会话；手写 `characters/bindings.json` + `agents.json` 后，`GET /api/xcity/bindings` 已返回三条映射（agent-1/2/3 → xcity-agentN-*）。
+  **仍未通过**：跨过 06:30（tick 29414）后 `/agent-world/api/world` 里三名居民 `commitments` 仍为 0，宿主日志也没有“每日计划失败”。说明提问根本没发起，最可能是 `hasXcityRoleModel` 对这些会话仍为 false（spawn 出来的会话没有选模型），或该 profile 没有 `sessionController` 服务。
+  下一步：① 用真实 UI 路径建/选模型（而不是只 spawn），或给角色会话加“默认模型”选择（需先确认宿主 API）；② 加一条一次性诊断，把 `ask` 的三种失败（无绑定 / 无模型 / 无会话服务）分别计数，别再让失败静默。

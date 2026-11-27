@@ -218,11 +218,14 @@ for (const interrupted of [false, true]) test(interrupted ? '工单轮次被插�
   runner.stop()
 })
 
-test('自主工单不借宿主默认模型或其他已选模型代跑', () => {
+test('自主工单只认“明确选过模型”的会话，不认冷会话', () => {
   const current = (model) => hasXcityRoleModel({ get: () => ({ get: () => ({ model: { current: () => model } }) }) }, 'lin')
   assert.equal(current({ provider: 'mmt-vision', model: 'DeepSeek-V4.1' }), true)
-  assert.equal(current({ provider: 'mmt-vision', model: 'DeepSeek-V4.1-lite' }), false)
-  assert.equal(current({ provider: 'other', model: 'DeepSeek-V4.1' }), false)
+  // R501：别的牌子也算数——挡住冷会话靠 current()=undefined，不是型号白名单。
+  assert.equal(current({ provider: 'mmt-product', model: 'deepseek-v4.1-flash' }), true)
+  assert.equal(current({ provider: 'other', model: 'any-model' }), true)
+  assert.equal(current({ provider: '', model: 'x' }), false)
+  assert.equal(current({ provider: 'x', model: '  ' }), false)
   assert.equal(current(undefined), false)
   assert.equal(hasXcityRoleModel({}, 'lin'), false)
 })
