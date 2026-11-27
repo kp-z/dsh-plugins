@@ -6,8 +6,8 @@
 
 ## 执行指针
 
-- **当前小时：H1**
-- 上一轮：H1–H7 已完成（见文末归档）
+- **当前小时：H2**
+- 上一轮：第一轮 H1–H7 已完成；第二轮 H1（真宿主+prompt 投递）已完成，AI 回信卡在凭据。
 - 定时任务：`schedule-6225b704-f1d2-49ca-9f9f-f99b3bb36a4f`（每小时，投递到本会话）
 - 推进规则：DoD 全过才改成下一小时；没做完下一轮继续，不跳。
 - **不要重启正式桌面进程**；真机验收用独立 profile/独立桥。
@@ -78,6 +78,28 @@ H1 真宿主验收（没有它，后面都只是单测）
 ### 风险
 - 最小 profile 仍拉起不兼容 bundle；模型凭据缺失；端口被占。
 - 回滚：只删 `/tmp/dsh-h7` 与最小 profile，不动 `~/.dsh/profiles` 的正式/测试 profile。
+
+### 3.1 实测（2026-11-27 08:10）
+
+**宿主起来了**（这是 H7 没做到的）：
+```
+DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini --from-default-profile web --dump-config
+DSH_HOME=/tmp/dsh-h7 dsh plugin --profile h7mini add /Users/demo/dsh-plugins/packages/dsh-xcity
+DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini --port 3189 --no-open
+```
+- 3189 / 7799 都在数秒内监听；没有 agent-teams 不兼容。
+- 新建会话（session-48ba…），把 bindings.json/agents.json 写到 `/tmp/xcity-h7`，绑到 agent-1。
+- 发短信「今天过得怎么样？」后，**会话里真的收到了 prompt**，含：
+  - 「你在 xcity 小镇里，玩家刚给你发来一条短信」+ 玩家原话；
+  - 「你今天到目前为止：00:00–07:11 在东侧休息区睡觉 / 07:26–08:16 在东侧休息区吃饭 / 现在在办公室座位 4学习」；
+  - 回复格式要求 + 唯一投递编号。
+- 约 10:11，**主动短信 prompt 也真的进了会话**（念头：今天有点想找人聊聊；同样带当天摘要与 `xcity-init:…:2051` 编号）。
+
+**卡点**：模型请求失败「API 密钥无效 AUTH」——最小 `DSH_HOME` 里没有可用的账号令牌（复制 `.credentials.yaml` 也不够，refs 指向的环境变量不在 CLI 进程里）。因此：
+- 短信 prompt 已到会话，但**没有 assistant 回复**，也就没有写回「通讯」；API 线程里只有玩家那条。
+- 主动短信同样卡在模型，没有真正投递到手机。
+
+**结论**：H1 的“宿主/绑定/prompt 投递”已验证；**“AI 回信文本”未验，卡在凭据，不是代码**。临时宿主已停，复制的凭据已删除；下次有可用模型凭据时，按上面三条命令重跑即可。
 
 ## 4. H2 · 活动读模型统一（R485）
 
@@ -200,4 +222,5 @@ H1 真宿主验收（没有它，后面都只是单测）
 
 ## 13. 进度日志
 
-- （待 H1）
+- 2026-11-27 08:10 · **H1 完成（宿主/prompt 投递；AI 回信未验）**。用 CLI 建最小 profile `h7mini`（base+web+dsh-xcity，无 agent-teams），3189/7799 数秒内起来；新建会话并绑到 agent-1 后，短信 prompt 与主动短信 prompt 都**真的进了会话**，且带 H3 当天摘要（睡觉/吃饭/学习）与唯一编号。
+  卡点：最小 `DSH_HOME` 里模型请求「API 密钥无效 AUTH」，没有 assistant 回复，因此没有写回「通讯」；复制凭据不够（refs 指向 CLI 进程没有的环境变量）。临时宿主已停、凭据副本已删。

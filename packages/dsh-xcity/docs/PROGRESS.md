@@ -11259,3 +11259,12 @@ player_thread_message_row_id 与 player_thread_unread_count，变了才重拉线
 - 文档：`AGENT-MODEL.md` 补“活人模型（R477–R482）”一节（needs/选择/用途/学习/关系/主动意愿/当天记忆与边界）。
 - 计划：`PLAN-PERSON-8H.md` **原地重写为第二轮**（H1–H8）：H1 最小 DSH profile 真宿主验收（绕开 agent-teams 不兼容）、H2 活动读模型统一、H3 绑定统一、H4 家/睡觉落点、H5 社交等人、H6 跨天记忆、H7 周末与闲暇、H8 清理/下一份计划；指针重置到 H1。
 - 依据：上一轮全量 922 条 / 921 通过 / 1 跳过；H7 的独立桥已验到“夜里睡觉、早上学习/吃饭/干活、位置变化、徽章、手机线程/未读/气泡”，AI 回信与主动投递列为 H1 的验收目标。
+
+## 2026-11-27 08:10：第二轮 H1 真宿主验收
+
+- 用 CLI 建最小 profile `h7mini`（base + web + dsh-xcity，不含 agent-teams）：`dsh --profile h7mini --from-default-profile web` → `dsh plugin --profile h7mini add packages/dsh-xcity` → `dsh --profile h7mini --port 3189 --no-open`；3189/7799 数秒内监听，H7 的启动卡点解除。
+- 新建会话 `session-48ba…`，写 `/tmp/xcity-h7/{agents,bindings}.json` 绑到 agent-1；发短信「今天过得怎么样？」。
+- **会话里真的收到 prompt**：玩家原话 +「你今天到目前为止：00:00–07:11 在东侧休息区睡觉 / 07:26–08:16 在东侧休息区吃饭 / 现在在办公室座位 4学习」+ 回复格式 + 唯一编号。
+- 约 10:11 **主动短信 prompt 也进了会话**（念头：今天有点想找人聊聊；带当天摘要与 `xcity-init:…:2051` 编号）。
+- 卡点：最小 `DSH_HOME` 的模型请求报「API 密钥无效 AUTH」，没有 assistant 回复 → 没有写回「通讯」；线程 API 里只有玩家那条。复制 `.credentials.yaml` 不够（refs 指向 CLI 进程没有的环境变量）。
+- 结论：宿主/绑定/prompt 投递已验证；AI 回信文本卡在凭据，不是代码。临时宿主已停，凭据副本已删；计划指针推进到 H2（活动读模型统一）。
