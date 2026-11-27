@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SmsStore } from '../lib/adapters/slowvale/sms.js'
 import { loadXcityBindings, characterOfSession } from '../lib/adapters/slowvale/xcity.js'
-import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts, groupTimeline } from '../lib/adapters/slowvale/visual.js'
+import { independentDialogue, walkBeat, workBeat, independentTimeline, walkPathOf, pickWalkStarts, groupTimeline, sayBeat } from '../lib/adapters/slowvale/visual.js'
 
 test('短信：没有 responder 时也要收下（回执语义）', async () => {
   const store = new SmsStore()
@@ -126,4 +126,10 @@ test('group 时间轴：participants 必须由 steps 的 tracks 推导，不能�
   assert.deepEqual(packet.participants, ['agent-1', 'agent-2'], '去重且按首次出现排序')
   assert.equal(packet.steps.length, 2)
   assert.equal(packet.steps[1].tracks['agent-1'].body.action, 'phone')
+})
+
+test('R507：说话走 bubble.float_up（dialogue 通道在该镜像里会抛错）', () => {
+  const beat = sayBeat('下午先把这张单收尾。')
+  assert.deepEqual(beat.bubble, { text: '下午先把这张单收尾。', float_up: true })
+  assert.equal(beat.dialogue, undefined, '不要同时带 dialogue，否则会走那条会抛错的路径')
 })

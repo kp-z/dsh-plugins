@@ -1008,6 +1008,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
           const peer = world.agents.find((agent) => agent.id === sms.reply.peerRoleId)
           if (peer !== undefined) {
             slowvaleBridgeHandle?.appendIncoming(peer.id, peer.name, sms.reply.text)
+            // R507：回复同时在他头顶说一遍，玩家在场景里也看得见。
+            slowvaleBridgeHandle?.say(peer.id, sms.reply.text)
             try {
               sms.reply.acceptAction?.()
             } catch (error: unknown) {

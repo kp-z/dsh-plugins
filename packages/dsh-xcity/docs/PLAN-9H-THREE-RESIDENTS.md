@@ -180,7 +180,7 @@
 - [x] H2 动机引擎：决策点改到「活动结束」+ argmax + golden/分化回归
 - [x] H3 低频计划：每日一次结构化承诺（真模型已验证）
 - [x] H4 记忆接入：短信提示词带记忆 + Top-K（真机验证）
-- [ ] H5 气泡：playback.tracks + speaker_id（后端）
+- [x] H5 头顶说话：bubble.float_up（dialogue 通道在该镜像前端报错，未改前端）
 - [ ] H6 工作链：三道门 + 三任务闭环 + 进度投影
 - [ ] H7 三日链：72h 连贯与承诺兑现
 - [ ] H8 压测：8 人/桌位/重连/成本
@@ -281,3 +281,10 @@
   实测三种组合：① 扁平包 → 静默丢弃；② playback + broadcast 路由 → **不报错但也没有气泡**（被路由过滤掉）；③ playback + role_ids 路由 → 报 `[visual_playback]`（此前抓到过消息 `Cannot read properties of undefined (reading 'map')`），气泡不出现。
   诊断受阻：错误经前端自己的上报函数打日志，我 patch `console.error` 拿到过消息但拿不到 Error 栈；`fetch`/`sendBeacon` 里也没有上报体。下一轮改用**逐字段二分**：只发 `dialogue.text`（不带 speaker_id/audience）、再逐个加回，定位是哪一字段触发。
   纪律：前端零改动（`git status` 可证），全部在适配层。
+
+- 2026-11-28 02:31 · **H5 通过（勾选，带一条明确偏差）**。
+  二分结论（逐字段实测）：只发 `dialogue.text` → 前端明确报「[dialogue] 缺少 speaker_id」；补上 speaker_id + audience → 变成 `Cannot read properties of undefined (reading 'map')`，位置在气泡绘制函数 JL（GameView 92750 起）内部，**不是我们的载荷形状问题**；改发 `bubble.float_up` → 无报错，页面创建了含台词的 Text 对象。
+  结论：这个镜像前端的 dialogue 气泡通道本身不可用；`bubble.float_up` 是同一文件明确支持、且渲染在**头顶**的通道，后端可完全驱动。按「不改前端」的约束，采用它。
+  端到端证据：真实会话推进来的一句「在工位忙了一整天，想找人聊两句，你在干嘛？」被页面创建为头顶 Text（钩子捕获原文）。
+  代码：`visual.ts` 新增 `sayBeat`；`server.ts` 对话**入队**（同 tick 的包会被前端字符串比较丢弃）并在时钟包之前发；`Bridge.say` 暴露给 app；短信回复到达时同时推头顶浮字。
+  偏差/风险：这不是原生对话泡（没有气泡框），是头顶浮字；要气泡框必须改前端，本轮按用户约束不做。

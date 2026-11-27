@@ -29,7 +29,7 @@ import { debugScript } from './debug.js'
 import { clockOf, deskVisualState, epochOf, feedHeadOf, officeDeskOf, projectPhone, projectScene, projectSnapshot, publicStatusOf, type ProjectOptions } from './project.js'
 import { SmsStore } from './sms.js'
 import { loadAgentMap, loadXcityBindings } from './xcity.js'
-import { independentDialogue, independentTimeline, pickWalkStarts, walkBeat, type VisualBeat } from './visual.js'
+import { independentDialogue, independentTimeline, pickWalkStarts, sayBeat, walkBeat, type VisualBeat } from './visual.js'
 import { loadOfficeDesks } from './stage.js'
 import { SLOWVALE_PROTOCOL_VERSION } from './types.js'
 import type { WorldLike } from './types.js'
@@ -81,6 +81,8 @@ export interface Bridge {
   close: () => Promise<void>
   /** 会话侧说的话写回游戏短信线程（回复方向）。 */
   appendIncoming: (peerRoleId: string, peerName: string, content: string) => boolean
+  /** R507：让某个角色在场景里"说出来"（头顶浮字），供回复/对话调用。 */
+  say: (roleId: string, text: string) => boolean
   /** 当前 SSE 连接数（有几个观众）。 */
   clientCount: () => number
 }
@@ -276,11 +278,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     pendingSay.delete(actorId)
     const placeId = world.agents.find((agent) => agent.id === actorId)?.placeId ?? opts.place
     const hearers = world.agents.filter((agent) => agent.id !== actorId).map((agent) => agent.id)
-    const beats: VisualBeat[] = lines.map((text) => ({
-      // R506：用角色名单而不是地点——前端记录对话时按 role_ids 取参与者，
-      // place 会让它在取名单时落空（实测 visual_playback 报 reading 'map'）。
-      dialogue: { speaker_id: actorId, text, audience: { kind: 'role_ids', role_ids: [actorId, ...hearers] } },
-    }))
+    const beats: VisualBeat[] = lines.map((text) => sayBeat(text))
     pushTimeline(actorId, beats)
   }
 
@@ -630,6 +628,7 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
       resolvePromise({
         port,
         clientCount: () => clients.size,
+        say: (roleId: string, text: string) => pushSay(roleId, text),
         appendIncoming: (peerRoleId: string, peerName: string, content: string) => {
           const text = content.trim()
           if (text === '' || peerRoleId === '') return false

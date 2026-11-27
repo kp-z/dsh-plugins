@@ -79,6 +79,17 @@ export function walkBeat(path: { x: number; y: number }[], durationMs?: number, 
   return actionBeat('walk', { to_anchor }, durationMs)
 }
 
+/**
+ * R507：头顶浮字（说话的一拍）。
+ *
+ * 为什么不用 dialogue：这个镜像前端里 dialogue 会在气泡绘制函数里抛
+ * 「Cannot read properties of undefined (reading 'map')」（实测 GameView 92750 起），
+ * 而 `bubble.float_up` 是同一文件明确支持、且渲染在头顶的通道。
+ */
+export function sayBeat(text: string): VisualBeat {
+  return { bubble: { text, float_up: true } }
+}
+
 /** 在工位干活。 */
 export function workBeat(durationMs?: number): VisualBeat {
   return actionBeat('work', {}, durationMs)
