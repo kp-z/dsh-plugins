@@ -19,7 +19,7 @@
  *   4. ok = suspicious 为空；unreachable / no-commitments 给明确 reason。
  *
  * 留存决定哪条结论敢下（这是本脚本唯一需要动脑的地方）：
- *   两条证据通道的留存期不一样——episodes 留 7 天，activities 是环形（sim/activity.ts 的 ACTIVITY_KEEP = 64 条，
+ *   两条证据通道的留存期不一样——episodes 留 7 天，activities 是环形（sim/activity.ts 的 activityKeepFor(world) = max(64, 24×人数)，
  *   9 个角色只够十几个小时）。于是：
  *   · 找到证据 = 真的发生过，不管落在哪条通道，直接算数（所以抽样不预先按留存筛掉任何一条）；
  *   · 没找到 = 只在该通道还看得见这个窗口时才敢下结论。

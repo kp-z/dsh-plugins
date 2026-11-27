@@ -14,8 +14,27 @@ import type { Activity, ActivityPurpose, Agent, World } from '../domain/types.js
 import { nextLogSeq } from './journal.js'
 import { recordActivityEpisode } from './memory.js'
 
-/** 活动环形缓冲：只留最近这些条，世界不该因为活动记录无限膨胀。 */
-export const ACTIVITY_KEEP = 64
+/**
+ * R522：活动环按**人数**扩容，每人留 24 条**已完成**活动。
+ *
+ * 为什么是 24：约一个游戏日（DAY_TICKS = 1440，1 tick = 1 游戏分钟），
+ * 按"每人每小时一条"估。前缀活动环是全局 64 条，24 人时每人只剩 2–5 条、
+ * 整环只覆盖 7.4–14.6 游戏小时；而情节记忆留 7 天，承诺裁决的第二条证据
+ * 通道因此"过期"（H18：397 条证据被误判）。24 条/人 ≈ 1 天，至少让
+ * "今天跟谁做过什么"还在环里。
+ *
+ * 代价是存档：24 人约 576 条，实测每条约 350 B ≈ 200 KB，仍在 2 MiB
+ * 存档预算内（见 sim/memory.ts 的 SNAPSHOT_BUDGET_BYTES）。
+ */
+export const ACTIVITY_KEEP_PER_AGENT = 24
+
+/** 活动环下限：人少时不缩水（老世界的 64 条仍然保留）。 */
+export const ACTIVITY_KEEP_FLOOR = 64
+
+/** 活动环实际保留条数：max(下限, 每人条数 × 人数)。 */
+export function activityKeepFor(world: Pick<World, 'agents'>): number {
+  return Math.max(ACTIVITY_KEEP_FLOOR, ACTIVITY_KEEP_PER_AGENT * world.agents.length)
+}
 
 export interface StartActivityInput {
   kind: Activity['kind']
@@ -146,7 +165,7 @@ export function syncActivities(world: World): Activity[] {
       agent.activityTrigger = undefined
     }
   }
-  const excess = world.activities.filter((activity) => activity.status !== 'active').length - ACTIVITY_KEEP
+  const excess = world.activities.filter((activity) => activity.status !== 'active').length - activityKeepFor(world)
   if (excess > 0) {
     let remaining = excess
     world.activities = world.activities.filter((activity) => activity.status === 'active' || remaining-- <= 0)

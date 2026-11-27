@@ -159,7 +159,7 @@ done(
       '含建世界时就有的固定字段（因此天数少时偏高、天数越多越接近边际增量）。' +
       'projection.projectedBytes = (当前非 agent 数据 + bytesPerAgentPerDay × 人数 × 天数) × formatRatio(落盘/数据比)，' +
       '即只让 agent 记忆按「人 × 天」线性长大，骨架/内容包/站点/导航/tasks/messages 按当前实测值固定' +
-      '（activities 另有 ACTIVITY_KEEP=64 的上限，故不放大）。' +
+      '（activities 另有 activityKeepFor(world)=max(64, 24×人数) 的上限，故不放大）。' +
       'episodes 有 7 天 / 150 条的裁剪上限，会先封顶，所以这是上界估算：verdict=over 表示「按线性增长会超预算」，不是已超。',
   },
   0,

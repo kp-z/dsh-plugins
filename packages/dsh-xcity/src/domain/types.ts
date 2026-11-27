@@ -508,7 +508,7 @@ export interface World {
   /** 导航网格（R64 物理）。**派生量**：由内容的地图在建世界/读档时算出。null = 没有地图（退回直线走）。 */
   nav: NavGrid | null
   agents: Agent[]
-  /** 活动记录（环形，最近 ACTIVITY_KEEP 条）。 */
+  /** 活动记录（环形，最近 activityKeepFor(world) 条；下限 ACTIVITY_KEEP_FLOOR，另按 ACTIVITY_KEEP_PER_AGENT × 人数 扩容）。 */
   activities: Activity[]
   /** 活动 id 序列号。 */
   activitySeq: number
