@@ -11,10 +11,14 @@
  * 决策纯函数：同样的 world 输入得到同样的选择，方便仿真与回放。
  */
 import { distance } from '../domain/geometry.js'
+import { createRng, seedFromString } from '../domain/rng.js'
 import type { Agent, Episode, Station, World } from '../domain/types.js'
+import type { IdleBehaviorPlan } from '../protocol/idle.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { activityPurposeOf } from './activity-view.js'
+import { idleSlotAt } from './idle-behavior.js'
 import { needsOf } from './needs.js'
+import { cellOf, isWalkable } from './pathfind.js'
 import { affinityOf } from './relationships.js'
 import { MISS_GRACE_TICKS } from './commitments.js'
 import { occupancyOf } from './scheduler.js'
@@ -39,6 +43,9 @@ const SKILL_OF_ROLE: Record<Agent['role'], 'code' | 'review' | 'research' | 'com
   docs: 'code',
 }
 
+/** 干活可以去的能力集合：本职工位满了就往这些地方退（按距离挑，不看职位标签）。 */
+const WORK_CAPABILITIES: readonly Station['capabilities'][number][] = ['code', 'review', 'research', 'compute']
+
 /** 触发阈值（100 = 满足；越低越急）。 */
 const HUNGER_LOW = 35
 const ENERGY_LOW = 30
@@ -51,6 +58,20 @@ const SLEEP_TICKS = 480
 const SOCIAL_TICKS = 40
 const WORK_TICKS = 90
 const STUDY_TICKS = 90
+
+/**
+ * R527：抢不到座位时"等一会儿"的时长（游戏分钟）。
+ *
+ * 走待命行为那套槽机（`idleSlotAt`）算窗口：每 tick 重抽时长会让同一个人
+ * "等 30 → 等 41 → 等 57" 地抖，等待点也就跟着抖。槽的 `span` 在**一个窗口内恒定**、
+ * 换窗才变，所以每个窗口只开头算一次。
+ *
+ * `WAIT_WINDOWS` **不是内容**：内容里的待命行为是"他在歇脚点做什么"，
+ * 这里只借它的相位得到一段稳定的时长——只有一条、且不参与选行为。
+ */
+const WAIT_WINDOWS: readonly IdleBehaviorPlan[] = [
+  { id: 'life.wait', kind: 'rest', weight: 1, ticksMin: 30, ticksMax: 60, radius: 0 },
+]
 
 /**
  * R515：记忆窗口（游戏分钟 = 一天）。只看最近一天里发生过的事——上周的成就感不该一直
@@ -142,6 +163,34 @@ export function dueAppointmentOf(
 }
 
 /**
+ * 最近的站点：同一场所、能力匹配、通过 `accept` 的那一个。
+ *
+ * `accept` 是**唯一**的筛选条件：`freeStation` 传"还有空位"，
+ * `waitOption` 传"不挑"（他本来想去哪儿——满员的也算，见 R527）。
+ */
+function pickStation(
+  world: World,
+  agent: Agent,
+  capabilities: readonly Station['capabilities'][number][],
+  accept: (station: Station) => boolean = () => true,
+  origin: { x: number; z: number } = agent.position,
+): Station | null {
+  let best: Station | null = null
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const station of world.stations) {
+    if (station.placeId !== agent.placeId) continue
+    if (!station.capabilities.some((capability) => capabilities.includes(capability))) continue
+    if (!accept(station)) continue
+    const d = distance(origin, station.anchor)
+    if (d < bestDistance) {
+      best = station
+      bestDistance = d
+    }
+  }
+  return best
+}
+
+/**
  * 最近的一个"有空位 + 有其中任一能力"的站点；没有就 null。
  *
  * 用"能力集合"而不是单个能力：学习既能去 research 也能去 code，
@@ -154,20 +203,14 @@ function freeStation(
   prefer?: (station: Station) => boolean,
   origin: { x: number; z: number } = agent.position,
 ): Station | null {
-  let best: Station | null = null
-  let bestDistance = Number.POSITIVE_INFINITY
-  for (const station of world.stations) {
-    if (station.placeId !== agent.placeId) continue
-    if (!station.capabilities.some((capability) => capabilities.includes(capability))) continue
-    if (prefer !== undefined && !prefer(station)) continue
-    if (occupancyOf(world, station.id) >= station.capacity) continue
-    const d = distance(origin, station.anchor)
-    if (d < bestDistance) {
-      best = station
-      bestDistance = d
-    }
-  }
-  return best
+  return pickStation(
+    world,
+    agent,
+    capabilities,
+    (station) =>
+      (prefer === undefined || prefer(station)) && occupancyOf(world, station.id) < station.capacity,
+    origin,
+  )
 }
 
 /**
@@ -277,6 +320,31 @@ function socialStationId(world: World, agent: Agent, preferPeer: string | null =
 }
 
 /**
+ * R527：等待点——目的地（当前场所）的出生点 + 由 `agent.id` 定死的一个小偏移。
+ *
+ * 为什么不是"站点上的空位"：座位满的时候压根没有空位，而"在目的地附近排队"只需要
+ * 一个站得住人的位置。偏移由 id 定死（不是每 tick 抽），所以同一段等待里位置不抖；
+ * 方向按 6 等分试，第一个走得通的为准，都走不通返回 null（调用方退回原歇脚点）。
+ */
+function waitSpot(world: World, agent: Agent): { x: number; z: number } | null {
+  const place = (world.places ?? []).find((row) => row.id === agent.placeId)
+  if (place === undefined) return null
+  const rng = createRng(seedFromString(`${agent.id}@wait`))
+  const start = rng.next() * Math.PI * 2
+  // 2~6：够把同时等待的人散开，又稳稳落在"目的地附近"（< 8）。
+  const radius = 2 + rng.next() * 4
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const angle = start + (attempt * Math.PI) / 3
+    const point = {
+      x: place.spawn.x + Math.cos(angle) * radius,
+      z: place.spawn.z + Math.sin(angle) * radius,
+    }
+    if (world.nav === null || isWalkable(world.nav, cellOf(world.nav, point))) return point
+  }
+  return null
+}
+
+/**
  * R498：候选意图 + 分数。
  *
  * B1（本次）只把结构抽出来：`chooseLife` 仍取**第一个**候选，行为与旧阶梯完全一致；
@@ -289,6 +357,34 @@ export interface IntentOption {
   intent: LifeIntent | null
   /** 0-1：B2 用；B1 忽略。 */
   score: number
+}
+
+/**
+ * R527：想去的地方一个空位都没有 → 给一条"等着"的意图。
+ *
+ * 为什么复用 `rest` 而不新增 purpose：等待不是一种生活，它只是抢不到座位时的空档，
+ * 而 `rest` 的语义本来就是"原地待着"。`stationId: null` 是这条分支的记号——
+ * 吃饭/睡觉/休息一定带着站点，`selfLifeCommands` 据此把 hangout 临时指向等待点。
+ *
+ * @param capabilities - 他本来想去的那类地方；一个都没有 = 没目标，不发等待意图。
+ */
+function waitOption(
+  world: World,
+  agent: Agent,
+  capabilities: readonly Station['capabilities'][number][],
+): IntentOption {
+  const target = pickStation(world, agent, capabilities)
+  if (target === null) return { score: 0.55, intent: null }
+  const slot = idleSlotAt(WAIT_WINDOWS, world.seed, agent.id, world.tick)
+  return {
+    score: 0.55,
+    intent: {
+      purpose: 'rest',
+      stationId: null,
+      ticks: slot?.span ?? 30,
+      reason: '想去' + target.name + '，一个空位都没有，先在这儿等着',
+    },
+  }
 }
 
 export function intentOptions(world: World, agent: Agent): IntentOption[] {
@@ -309,9 +405,10 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
   // 2) 夜里：睡觉。还没有“家”，先睡休息区（下一份计划再做 home）。
   if (isNightMinute(world.tick)) {
     const station = freeStation(world, agent, ['rest'])
-    return [{ score: 0.95, intent: station === null
-      ? null
-      : { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' } }]
+    // R527-2：夜里**没有床位**是最常见的一档（24 人 / 10 张休息位，实测一天 5764 次）。
+    // 和干活一样，没床位就去休息区附近排着队——不是站在别处发呆。
+    if (station === null) return [waitOption(world, agent, ['rest'])]
+    return [{ score: 0.95, intent: { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' } }]
   }
 
   // 3) 累了：歇一会儿。
@@ -357,19 +454,19 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     }
   }
 
-  // 5) 上班时段：干活。站点按角色能力找；找不到就交给待命行为。
+  // 5) 上班时段：干活。站点按角色能力找；一个空位都没有就去目的地附近等着（R527）。
   if (isWorkMinute(world.tick)) {
     const preferred = SKILL_OF_ROLE[agent.role] ?? 'code'
     // 先找本职工位；满员/太远就退到任意工位，别为了“职位标签”横穿全城。
-    const station = freeStation(world, agent, [preferred]) ?? freeStation(world, agent, ['code', 'review', 'research', 'compute'])
-    if (station === null) return [...options, { score: 0.65, intent: null }]
+    const station = freeStation(world, agent, [preferred]) ?? freeStation(world, agent, WORK_CAPABILITIES)
+    if (station === null) return [...options, waitOption(world, agent, WORK_CAPABILITIES)]
     const skill = station.capabilities.includes(preferred) ? preferred : (station.capabilities.find((capability) => capability === 'code' || capability === 'review' || capability === 'research' || capability === 'compute') ?? 'code')
     return [...options, { score: 0.65, intent: { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, reason: '到了上班的点，自己去干活' } }]
   }
 
   // 6) 其余时间：学点东西（research/code 里挑最近的，不为了“研究”两个字横穿全城）。
   const studyStation = freeStation(world, agent, ['research', 'code'])
-  if (studyStation === null) return [...options, { score: 0.5, intent: null }]
+  if (studyStation === null) return [...options, waitOption(world, agent, ['research', 'code'])]
   const studySkill: 'research' | 'code' = studyStation.capabilities.includes('research') ? 'research' : 'code'
   return [...options, { score: 0.5, intent: { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, reason: '闲着，学点东西' } }]
 }
@@ -485,6 +582,16 @@ export function selfLifeCommands(world: World): SelfLifeCommand[] {
   for (const agent of world.agents) {
     const intent = chooseLife(world, agent)
     if (intent === null) continue
+    // R527：抢不到座位的人去"目的地附近"排队，而不是站在原歇脚点发呆。
+    //
+    // 判据是"rest 但没有站点"：吃饭/睡觉/休息都一定带站点，只有 waitOption 会这样产生。
+    // 改的是 hangout（待命流程的锚点，见 sim/idle.ts），不是 position——位置由 idle 推进
+    // 一 tick 走一步挪过去，不瞬移。hangout 本身是派生量（world/reconcile.ts 会按站点重算），
+    // 所以这里不用为"临时"另存一份原值：座位一旦空出来，他接了别的活动就会离开。
+    if (intent.purpose === 'rest' && intent.stationId === null) {
+      const spot = waitSpot(world, agent)
+      if (spot !== null) agent.hangout = spot
+    }
     commands.push({
       kind: 'agentActivity',
       agentId: agent.id,

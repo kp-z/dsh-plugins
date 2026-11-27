@@ -520,3 +520,13 @@
   同时按审查补齐三条：① 三处 `rmSync` 前统一走 `assertSmokeHome()`（必须是 `<pkg>/.smokehome`、含 `.smokehome`、不在 `/`、repo 根、`.testhome`）；② `SIGINT/SIGTERM/exit` 兜底清理 + 起宿主时写 `host.pid`（实测 `kill -INT` 后端口无残留）；③ `O_EXCL` 文件锁做并发互斥（已存在即 exit 2）。
   **顺手修掉一个真 bug（插件侧，不是测试脚本的问题）**：全新 `DSH_HOME` 里 `<profile>/state` 不存在时，`acquireOwnerLock` 的 `openSync(...,"wx")` 拿到 ENOENT → `owned=false` → **桥根本不启动**（世界照建、端口不监听），日志里只有一行 `dsh web`，表面看像"spawn 失败"。修法（R526）：`acquireOnce` 先 `mkdirSync(stateDir,{recursive:true})`，并补 `test/owner-lock-missing-dir.test.js`。
   测试：`npm test` → **1108 tests / 1107 pass / 1 skip / 0 fail**。
+
+- 2026-11-28 07:56 · **H25 未通过（保持未勾选）**——但把「座位荒」这个前提否掉了。
+  做了什么（都有测试，保留）：life.ts 新增 waitOption()——干活/学习/社交**抢不到座**时不再返回 null，而是「去目的地附近的等待点排着」（purpose: rest + stationId: null + 30–60 tick，窗口由 idleSlotAt 决定所以不抖；等待点 = place.spawn + 由 agent.id 定死的偏移）。夜里**没床位**也走同一条（一天 5764 次「想睡没床位」，是最大的一档）。selfLifeCommands 只在 purpose 为 rest 且 stationId 为空时改 hangout（位置仍由 idle 逐 tick 走过去，不瞬移）。
+  **前提被实测否掉两次**：
+  ① 24 人 / 26 站点 / 容量 34，verify-unseated 采样 4 次：unseatedShare 0.30–0.54，但**没有一例是「目标站被占满」**（308 人次有目标的无座里，目标站 308 次都是空的）——无座者要么**正在走去已占好的座位**，要么**根本没有目标**；单人占用最长 0.81 分钟、24 人都坐过、因长期占用而无座 0 例。
+  ② 把 maxAgents 抬到 40（真超容量 34）再测：峰值 **30 人无座**，但**无站点的等待活动数 = 0**；宿主里 states 是 walking 13 / idle 9 / sleeping 9 / working 6 / talking 3，同时 tasks 全是 done（早退条件不成立）。这批人**根本没产生意图**，不是「想坐坐不上」。
+  结论：机制本身对（8 条测试钉住：三种无座 → 等待意图 + 位置靠近目标、有空位不进等待、无目标不排队、120 tick 不抖、人真的会走过去），但**真机没触发**，所以按纪律不勾选。
+  下一轮第一件事：给 intentOptions 的返回值加可观测计数（每个分支 why-null），先回答「40 人时那 30 个人为什么没有意图」——这比继续调座位策略更接近核心。
+  工具：tools/verify-unseated.mjs（座位/等待/占用轮转/公平性四组 + notes，量不到就给 null）。
+  测试：test/life-no-seat.test.js 8 条；npm test → **1116 tests / 1115 pass / 1 skip / 0 fail**（golden 未变）。
