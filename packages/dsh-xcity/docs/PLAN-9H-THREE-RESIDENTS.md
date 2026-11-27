@@ -384,5 +384,5 @@
   ② 降级后还是连拿——因为派第三张时另外两人**都在睡觉**，`free` 里只剩刚干完的那位。
   ③ 最终规则：同一批内先排除"已持有本批工单的人"；若排除后**还有没拿过本批单的人**（哪怕此刻忙/在睡），宁可让这张单等着并报 `no-worker`，也不重复派。
   实测（重启后一批 3 张）：`task-13 → agent-2`、`task-14 → agent-1`、`task-15 → agent-3`，`tools/verify-fairness.mjs` 判 **ok:true**（`byOwner` 三人各 1）。
-  测试：`test/scheduler-fair.test.js` 6 条；`npm test` → **1054 tests / 1053 pass / 1 skip / 0 fail**。
+  测试：`test/scheduler-fair.test.js` 6 条；`npm test` → **1054 tests / 1053 pass / 1 skip / 0 fail**。修 bug 记录：第一版提交时 R43（团队改派）红了——`batchLoad` 把正在改派的这张单也算成"本批已拿"，把团队指派挡在外面；改成按 taskId 排除当前单后恢复。
   保守取舍：宁可让单等（报 no-worker），也不破坏轮转——这条会让人在忙时工单积压，若将来要"优先不积压"，得引入优先级而不是把单塞给同一个人。

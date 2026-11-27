@@ -172,8 +172,11 @@ export function claimTasks(world: World, sessionWorkers?: ReadonlySet<string>): 
   // 现场：task-8 给了 agent-1 之后另外两个人都在睡觉，task-9 于是又落回 agent-1。
   // 只看"谁现在闲"不够——同批的单本来就该分给不同的人。
   const batchTicks = new Set(ready.map((task) => task.createdAtTick))
-  const batchLoad = (agentId: string): number =>
-    world.tasks.filter((task) => task.owner === agentId && batchTicks.has(task.createdAtTick)).length
+  /** 本批里此人已持有的单数；**不算正在处理的这张**（团队改派时要能回到原主）。 */
+  const batchLoad = (agentId: string, exceptTaskId: string): number =>
+    world.tasks.filter(
+      (task) => task.id !== exceptTaskId && task.owner === agentId && batchTicks.has(task.createdAtTick),
+    ).length
 
   for (const task of ready) {
     const free = available.filter((a) => !taken.has(a.id) &&
@@ -237,8 +240,8 @@ export function claimTasks(world: World, sessionWorkers?: ReadonlySet<string>): 
     // 排除之后如果**还有人没拿过本批的单**（哪怕此刻在忙/在睡），就宁可不派——
     // 让这张单等着，也不要重复派给同一个人。现场：另外两人都在睡觉时，
     // 第三张单会直接落回刚干完的那个人，于是"一人一张"永远做不到。
-    const fresh = free.filter((a) => batchLoad(a.id) === 0)
-    if (fresh.length === 0 && world.agents.some((a) => batchLoad(a.id) === 0)) {
+    const fresh = free.filter((a) => batchLoad(a.id, task.id) === 0)
+    if (fresh.length === 0 && world.agents.some((a) => batchLoad(a.id, task.id) === 0)) {
       stalled.push({
         taskId: task.id,
         reason: 'no-worker',
