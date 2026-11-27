@@ -35,8 +35,43 @@ export function summarizeActivity(activity: Activity, status: 'completed' | 'int
   return activity.kind === 'meet' && taskName === undefined ? '和人聊了聊' : done
 }
 
+/** R510：一条记忆最多记几个"和谁"——再多就不是"和谁"，是一张名单。 */
+export const EPISODE_WITH_MAX = 4
+
+/** R510-1：活动占用的时间段；还在进行的按 endedAt 截断。 */
+function spanOf(activity: Activity, endedAt: number): [number, number] {
+  const end = activity.endedAt ?? (activity.status === 'active' ? endedAt : activity.endsAt ?? endedAt)
+  return [activity.startedAt, Math.max(activity.startedAt, end)]
+}
+
+/**
+ * R510-2：这次活动期间"和谁待在一起"——同地点且时间重叠的其他角色。
+ *
+ * 纯函数：只读 activities，不引入新状态；没有重叠就是空数组（老行为不变）。
+ * 接受 endedAt 而不是读 tick：仍在进行的那一方用调用点的"现在"截断。
+ */
+export function collaboratorsOf(activities: readonly Activity[], activity: Activity, endedAt: number): string[] {
+  const [from, to] = spanOf(activity, endedAt)
+  const ids = new Set<string>()
+  for (const other of activities) {
+    if (other.id === activity.id || other.agentId === activity.agentId) continue
+    if (other.placeId !== activity.placeId) continue
+    const [otherFrom, otherTo] = spanOf(other, endedAt)
+    // R510-3：闭区间重叠（同一 tick 结束和开始算碰过面），和 commitments 的共享 meet 语义一致。
+    if (Math.max(from, otherFrom) > Math.min(to, otherTo)) continue
+    ids.add(other.agentId)
+  }
+  // R510-4：去重后按 id 排序再截断——同一批人永远算出同一份 with。
+  return [...ids].sort().slice(0, EPISODE_WITH_MAX)
+}
+
 /** 活动结束时写一条记忆。salience：完成工单最高，日常最低；失败的中等偏低。 */
-export function episodeOfActivity(activity: Activity, endedAt: number, status: 'completed' | 'interrupted' = 'completed'): Episode {
+export function episodeOfActivity(
+  activity: Activity,
+  endedAt: number,
+  status: 'completed' | 'interrupted' = 'completed',
+  withIds: readonly string[] = [],
+): Episode {
   const byTask = activity.trigger?.kind === 'task' || activity.taskAttemptId !== undefined
   const salience = status === 'interrupted'
     ? (byTask ? 0.5 : 0.2)
@@ -46,7 +81,7 @@ export function episodeOfActivity(activity: Activity, endedAt: number, status: '
     day: dayOf(endedAt),
     kind: activity.purpose ?? activity.kind,
     summary: summarizeActivity(activity, status),
-    with: [],
+    with: [...withIds],
     placeId: activity.placeId,
     salience,
   }
@@ -76,7 +111,7 @@ export const INTERRUPTED_MIN_TICKS = 15
  * activity:'idle'（session-events），那种没有 purpose 的不能写成"完成"。
  */
 export function recordActivityEpisode(
-  world: { agents: readonly Agent[] },
+  world: { agents: readonly Agent[]; activities?: readonly Activity[] | undefined },
   activity: Activity,
   endedAt: number,
   status: 'completed' | 'interrupted' = 'completed',
@@ -86,7 +121,9 @@ export function recordActivityEpisode(
   if (status === 'interrupted' && endedAt - activity.startedAt < INTERRUPTED_MIN_TICKS) return
   const agent = world.agents.find((row) => row.id === activity.agentId)
   if (agent === undefined) return
-  appendEpisode(agent, episodeOfActivity(activity, endedAt, status), endedAt)
+  // R510-5：写记忆的那一刻把"和谁"一次算清，读侧（承诺证据）只认事实。
+  const withIds = collaboratorsOf(world.activities ?? [], activity, endedAt)
+  appendEpisode(agent, episodeOfActivity(activity, endedAt, status, withIds), endedAt)
 }
 
 const KIND_TEXT: Record<string, string> = { ...PURPOSE_TEXT, work: '干活', day: '小结' }
