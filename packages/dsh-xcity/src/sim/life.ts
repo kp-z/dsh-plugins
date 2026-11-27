@@ -16,6 +16,7 @@ import type { WorldCommand } from '../protocol/wire/commands.js'
 import { activityPurposeOf } from './activity-view.js'
 import { needsOf } from './needs.js'
 import { affinityOf } from './relationships.js'
+import { MISS_GRACE_TICKS } from './commitments.js'
 import { occupancyOf } from './scheduler.js'
 
 /** 一天多少游戏分钟（= 多少 tick）。 */
@@ -124,7 +125,14 @@ export function dueAppointmentOf(
   for (const commitment of agent.commitments ?? []) {
     if (commitment.status !== 'open') continue
     if (commitment.with === '') continue
-    if (commitment.dueTick < now) continue
+    // R523-4：**过了点也要去**。
+    //
+    // 现场：agent-1 对该去的约确实动了，社交发生在 117771，而宽限 117540 就结束了——
+    // 它是迟到，不是没去。原来这里写「dueTick < now 就 continue」，于是过了点这条约定
+    // 立刻退出优先队列，人又埋头干活，越拖越久，最后判成 missed。
+    // 现在窗口是 [dueTick - APPOINTMENT_WINDOW, dueTick + MISS_GRACE_TICKS]：
+    // 迟到的人仍在赴约，直到裁决落地为止（裁决那侧一行没改，判据不变）。
+    if (commitment.dueTick + MISS_GRACE_TICKS < now) continue
     if (commitment.dueTick - now > APPOINTMENT_WINDOW) continue
     if (best === null || commitment.dueTick < best.dueTick) {
       best = { with: commitment.with, what: commitment.what, dueTick: commitment.dueTick }

@@ -188,3 +188,24 @@ test('R523：同一个世界重复决策，赴约座位不变', () => {
   const twinMe = twin.agents.find((agent) => agent.id === me.id)
   assert.equal(chooseLife(twin, twinMe)?.stationId, first, '结构相同的世界也必须同座')
 })
+
+test('R523-4：过了点但还在宽限内，照样去赴约（迟到不是没去）', () => {
+  const world = freshWorld()
+  world.tick = 600
+  const [me, peer] = world.agents
+  // due 已经过去 100 tick，但宽限（MISS_GRACE_TICKS=180）还没用完：
+  // 现场就是这种情形——人动了，只是到点之后才聊上，旧逻辑此时已经放弃。
+  me.commitments = [commitment('c1', peer.id, 500)]
+  const picked = dueAppointmentOf(world, me)
+  assert.ok(picked, '宽限内的迟到约定必须仍然驱动行为')
+  assert.equal(picked?.with, peer.id)
+})
+
+test('R523-4：宽限用完就不再追（裁决已落地，追也没意义）', () => {
+  const world = freshWorld()
+  world.tick = 600
+  const [me, peer] = world.agents
+  me.commitments = [commitment('c1', peer.id, 600 - 200)]
+  assert.equal(dueAppointmentOf(world, me), null)
+})
+
