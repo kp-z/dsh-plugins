@@ -78,8 +78,30 @@ export function advanceMovement(world: World): MovementOutcome {
       continue
     }
 
+    /**
+     * R510：到站落位到**自己的槽位**，不要所有人叠在锚点上。
+     *
+     * 现场：8 人压测时 5 个睡觉的人位置完全重合（都是 station.anchor），
+     * 前端就是 5 个精灵叠成一坨。工位本来就有 slots，这里挑一个没被同站
+     * 其他人占的槽位；全占满就退回锚点（容量判定在别处，这里不负责拒绝）。
+     */
+    const seatAt = (): { x: number; z: number } => {
+      const taken = new Set(
+        world.agents
+          .filter((row) => row.id !== agent.id && row.station === station.id)
+          .map((row) => String(row.position.x) + ',' + String(row.position.z)),
+      )
+      const slots = station.slots.length > 0 ? station.slots : [{ x: 0, z: 0 }]
+      for (const slot of slots) {
+        const spot = { x: station.anchor.x + slot.x, z: station.anchor.z + slot.z }
+        if (!taken.has(String(spot.x) + ',' + String(spot.z))) return spot
+      }
+      return { x: station.anchor.x, z: station.anchor.z }
+    }
+
     /** 到站：落位、占站、转 working。 */
     const arrive = (): void => {
+      agent.position = seatAt()
       agent.station = station.id
       agent.targetStation = null
       agent.path = []
