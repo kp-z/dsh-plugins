@@ -39,7 +39,7 @@
 - **缺口是读回路径，不是向量检索**：`world.activities` 上限 64 条且是世界共享数组，3 人分摊只够 1.5–2.7 天；`WorldEventType` 没有 activity.*，events.jsonl 只写不读。
 - 设计：Episode JSONL（在 `endActivity` 唯一出口写；7 天滚动；不塞 world.json、不加协议枚举）+ `agent.memories[{day,lines}]`（复用已定形状）+ `persona.notes` 用最小字段（kind/text/source/createdAtTick，**先不上** confidence/supersedes/tombstone）。
 - 实现：`sim/memory.ts`（纯函数：append/prune/score/select）+ store 往返；决策只读结构化字段，不做文本检索。
-- 验收：单测覆盖裁剪与打分；老档不崩；三居民 traits 可区分；72h 仿真统计真实「每人每天活动条数」并写回文档（替换 8–14 的估算）。
+- 验收：单测覆盖裁剪与打分；老档不崩；三居民 traits 可区分；用 `tools/measure-baseline.mjs` 复跑并与 §11 基线对比（活动量、社交窗口），数字写进日志。
 
 ### H2 · 动机引擎：B1 抽语法 → B2 换 argmax（**必须分两步提交**）
 - **已定（research/BEHAVIOR.md）**：现有阶梯优先级 = 给前几项极高常数效用的效用函数特例；HUNGER/ENERGY/SOCIAL_LOW 就是阶跃曲线。所以不是推倒重来。
