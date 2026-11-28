@@ -23,41 +23,41 @@ function check(name, actual, expected) {
 }
 
 const LIST = [
-  { id: 'ws-a', title: '[DSH] 插件开发', path: '~/dsh-plugins' },
-  { id: 'ws-b', title: 'DEMO', path: '~/DEV/demo-demo-service' },
-  { id: 'ws-c', title: '同名工作区', path: '~/DEV/same-1' },
-  { id: 'ws-d', title: '同名工作区', path: '~/DEV/same-2' },
+  { id: 'ws-a', title: '[DSH] 插件开发', path: '/Users/demo/dsh-plugins' },
+  { id: 'ws-b', title: 'DEMO', path: '/Users/demo/DEV/demo-demo-service' },
+  { id: 'ws-c', title: '同名工作区', path: '/Users/demo/DEV/same-1' },
+  { id: 'ws-d', title: '同名工作区', path: '/Users/demo/DEV/same-2' },
 ]
 
 /* ── 归一化 ── */
 check('归一化：去括号空格标点', normalizeWorkspaceName('[DSH] 插件-开发'), 'dsh插件开发')
 check('归一化：大小写', normalizeWorkspaceName('DEMO'), 'demo')
-check('绝对路径识别', looksLikeAbsolutePath('~/DEV/x'), true)
+check('绝对路径识别', looksLikeAbsolutePath('/Users/demo/DEV/x'), true)
 check('绝对路径识别：名字不算', looksLikeAbsolutePath('dsh-plugins'), false)
 
 /* ── 1. 已绑定：id 是主键（改名不断链） ── */
 check(
   '绑定的 id 命中：即使飞书文本是旧名字也认',
-  matchWorkspace({ list: LIST, binding: { id: 'ws-a', path: '~/dsh-plugins', title: '[DSH] 插件开发' }, text: '旧名字' }).via,
+  matchWorkspace({ list: LIST, binding: { id: 'ws-a', path: '/Users/demo/dsh-plugins', title: '[DSH] 插件开发' }, text: '旧名字' }).via,
   'id',
 )
 check(
   'id 命中时 path 必须一致，否则失效（不静默跟着走）',
-  matchWorkspace({ list: LIST, binding: { id: 'ws-a', path: '~/DEV/old', title: '旧' }, text: '' }).hint,
+  matchWorkspace({ list: LIST, binding: { id: 'ws-a', path: '/Users/demo/DEV/old', title: '旧' }, text: '' }).hint,
   'stale',
 )
 
 /* ── 2. id 没了（删了重建）：path 接上 ── */
 check(
   'id 不在、path 命中 → 重绑',
-  matchWorkspace({ list: LIST, binding: { id: 'ws-gone', path: '~/DEV/demo-demo-service' }, text: '' }),
+  matchWorkspace({ list: LIST, binding: { id: 'ws-gone', path: '/Users/demo/DEV/demo-demo-service' }, text: '' }),
   { hit: LIST[1], via: 'path' },
 )
 
 /* ── 3. 首次绑定：精确名字 ── */
 check('精确标题命中', matchWorkspace({ list: LIST, text: 'DEMO' }), { hit: LIST[1], via: 'title' })
 check('精确同名多个 → 拒绝选', matchWorkspace({ list: LIST, text: '同名工作区' }).hint, 'ambiguous')
-check('精确路径命中', matchWorkspace({ list: LIST, text: '~/dsh-plugins' }), { hit: LIST[0], via: 'path-text' })
+check('精确路径命中', matchWorkspace({ list: LIST, text: '/Users/demo/dsh-plugins' }), { hit: LIST[0], via: 'path-text' })
 check('归一化命中', matchWorkspace({ list: LIST, text: 'DSH插件开发' }), { hit: LIST[0], via: 'normalized' })
 
 /* ── 4. 不再猜：包含匹配被删掉了 ── */
@@ -65,7 +65,7 @@ check('包含匹配不再命中（以前会开到别的工作区）', matchWorks
 check('路径后缀匹配不再命中', matchWorkspace({ list: LIST, text: 'dsh-plugins' }).hint, 'not-found')
 
 /* ── 5. 未登记路径：给一个可登记的提示 ── */
-check('未登记绝对路径', matchWorkspace({ list: LIST, text: '~/DEV/new-project' }).hint, 'unregistered-path')
+check('未登记绝对路径', matchWorkspace({ list: LIST, text: '/Users/demo/DEV/new-project' }).hint, 'unregistered-path')
 
 /* ── 6. 没有绑定也没有文本 ── */
 check('空文本 + 无绑定', matchWorkspace({ list: LIST, text: '' }).hint, 'not-found')
@@ -74,7 +74,7 @@ check('空文本 + 无绑定', matchWorkspace({ list: LIST, text: '' }).hint, 'n
 check(
   '改名：绑定的 title 与 registry 不一致 → 给出新名字',
   titleChangeOf({ id: 'ws-a', title: '旧名字' }, LIST),
-  { id: 'ws-a', from: '旧名字', to: '[DSH] 插件开发', path: '~/dsh-plugins' },
+  { id: 'ws-a', from: '旧名字', to: '[DSH] 插件开发', path: '/Users/demo/dsh-plugins' },
 )
 check('没改名就不返回', titleChangeOf({ id: 'ws-a', title: '[DSH] 插件开发' }, LIST), null)
 check('工作区没了就不返回', titleChangeOf({ id: 'ws-gone', title: 'x' }, LIST), null)
