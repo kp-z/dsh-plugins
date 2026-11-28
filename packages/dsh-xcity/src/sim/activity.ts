@@ -124,7 +124,15 @@ export function syncActivities(world: World): Activity[] {
     const live = liveActivityOf(world, agent)
     if (live?.taskAttemptId !== undefined) {
       const task = world.tasks.find((row) => row.id === agent.carrying)
-      if (task?.attemptId !== live.taskAttemptId || task.status !== 'in_progress') endActivity(world, agent, 'interrupted')
+      // R530：结账口径要按**这张单的结局**判，不能一律算 interrupted。
+      //
+      // 现场：纯模拟完工的单，结账时 task.status 已是 done，老代码却传 interrupted，
+      // 于是记忆里写成了「没做完：工单「X」」——**做完的单被记成没做成**，还被算成负向心情。
+      if (task?.attemptId !== live.taskAttemptId) {
+        endActivity(world, agent, 'interrupted')
+      } else if (task !== undefined && (task.status === 'done' || task.status === 'failed')) {
+        endActivity(world, agent, task.status === 'done' ? 'completed' : 'interrupted')
+      }
       continue
     }
     // R523-3：赴约临近时，可以**提前结束日常活动**（干活/学习）去赴约。

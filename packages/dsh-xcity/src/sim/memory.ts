@@ -131,10 +131,30 @@ export function episodeOfActivity(
 }
 
 /** 按天裁剪（保留最近 keepDays 天内，且不超过硬上限）。 */
+/**
+ * R530：值得留的记忆（工单、守约、没做成）在裁剪时**排在后面丢**。
+ *
+ * 现场：agent-1 每天写 21–50 条，EPISODE_MAX=150 只够 3–7 天，于是比 7 天窗口**更早失效**：
+ * 4 条 kept 承诺它自己那一半被挤掉，而对端还在（审阅时看起来像漏写，其实是被裁掉）。
+ * 一个人先忘掉「我答应过谁」再忘掉「我吃了顿饭」，才是记忆该有的顺序。
+ */
+function isNoteworthy(episode: Episode): boolean {
+  return episode.kind === 'task' ||
+    episode.summary.startsWith('守约：') ||
+    episode.summary.startsWith('没做完：')
+}
+
 export function pruneEpisodes(episodes: readonly Episode[], nowTick: number, keepDays = EPISODE_KEEP_DAYS): Episode[] {
   const oldest = dayOf(nowTick) - keepDays + 1
   const kept = episodes.filter((episode) => episode.day >= oldest)
-  return kept.length > EPISODE_MAX ? kept.slice(kept.length - EPISODE_MAX) : kept
+  if (kept.length <= EPISODE_MAX) return kept
+  // 超上限时先按「琐事先丢、正经事靠后丢」排序，再取最后 EPISODE_MAX 条。
+  // 排序稳定（带原索引），同样的输入永远得到同样的结果。
+  const ranked = kept.map((episode, index) => ({ episode, index, weight: isNoteworthy(episode) ? 1 : 0 }))
+  ranked.sort((left, right) => left.weight - right.weight || left.index - right.index)
+  const survivors = ranked.slice(ranked.length - EPISODE_MAX)
+  survivors.sort((left, right) => left.index - right.index)
+  return survivors.map((row) => row.episode)
 }
 
 /** 追加一条记忆并就地裁剪。纯数据修改，返回该角色新的数组。 */

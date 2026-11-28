@@ -104,7 +104,11 @@ for (const promise of promises) checked[promise.status] += 1
 
 // [4] 逐条核对双方：某一方自己的 episodes 里没有"前缀对 + 含事项关键词"的那条，就是这一方漏了。
 //     双方都找不到时，还要看窗口：窗口内必须命中，窗口外是证据过期。
-const windowStart = tick - SETTLED_KEEP_DAYS * DAY_TICKS
+// R530：窗口起点要对齐**天边界**，不能直接用 tick - 7*1440。
+//
+// 现场：工具算 181563，而 pruneEpisodes 按 dayOf 裁（第 134 天 ⇒ 底线 182880），
+// 两者差 1317 tick —— 于是 6 条边被误判成"漏写"。记忆是按天丢的，核对也必须按天算。
+const windowStart = (Math.floor(tick / DAY_TICKS) - SETTLED_KEEP_DAYS) * DAY_TICKS
 const keywordOf = (what) => String(what ?? '').trim().slice(0, KEYWORD_CHARS)
 const missing = []
 let stale = 0

@@ -224,6 +224,18 @@ function ingest(
  * @param commands - 本 tick 收到的外部裁决。
  * @returns 要记账的事件载荷。
  */
+/**
+ * R530：这一 tick 是不是已经有该工单的情节记忆了。
+ *
+ * 活动侧（endActivity → recordActivityEpisode）和裁决侧（recordTaskEpisode）都会写，
+ * 两边都写就是重复：同一件事占两条记忆、把心情顶到常数。这里只查「本 tick 且提到这张单」。
+ */
+function wroteTaskEpisodeThisTick(world: World, agentId: string, title: string): boolean {
+  const agent = world.agents.find((row) => row.id === agentId)
+  if (agent === undefined) return false
+  return (agent.episodes ?? []).some((episode) => episode.tick === world.tick && episode.summary.includes(title))
+}
+
 function applyExternalTasks(
   world: World,
   commands: readonly ExternalTaskCommand[],
@@ -312,16 +324,20 @@ function applyExternalTasks(
           carryingAgent.path = []
         }
       }
-      // R519：做完一件大事要留下痕迹——否则记忆链里只有"吃了顿饭"，没有"我干成了什么"。
-      if (task.owner !== null) {
+      // R519/R530：做完一件大事要留下痕迹——否则记忆链里只有「吃了顿饭」，没有「我干成了什么」。
+      //
+      // 但**活动侧已经写过就不要再写**：endActivity 会把带工单代次的活动结算成
+      // 「工单「X」做完了」，这里再补一条就是同一件事写两遍——实测心情被两条 0.9/0.6
+      // 的 salience 直接顶到 ±1，把「记忆影响决策」变成当天的常数偏置。
+      if (task.owner !== null && !wroteTaskEpisodeThisTick(world, task.owner, task.title)) {
         recordTaskEpisode(world, task.owner, task.title, true, world.tick)
       }
       events.push({ type: 'task.completed', payload: { taskId: task.id, agentId: task.owner, stationId: null } })
     } else {
       task.status = 'failed'
       task.failureReason = command.reason
-      // R519：失败也要记，但用"没做完："前缀（memoryMood 会把它算成负向）。
-      if (task.owner !== null) {
+      // R519/R530：失败也要记，但用「没做完：」前缀（memoryMood 会算成负向）；同样避免双写。
+      if (task.owner !== null && !wroteTaskEpisodeThisTick(world, task.owner, task.title)) {
         recordTaskEpisode(world, task.owner, task.title, false, world.tick, command.reason)
       }
       events.push({ type: 'task.failed', payload: { taskId: task.id, reason: command.reason } })
