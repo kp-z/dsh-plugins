@@ -443,7 +443,7 @@
 | H22 ✅ | 记忆进计划（5 条正经事，三人各异，见日志） | 计划提示词现在只有"昨天日小结"；Top-K 情节检索仍只用于对话（`bridge/memory-context.ts`） | 计划里带 3–5 条**相关**记忆（不只是昨天）；同一角色不同记忆 → 计划不同 |
 | H23 ✅ | 计费口径（真实 usage：40.6k/天，缓存 96%，见日志）| 现有 11.9k token/天是**增量下界**；每步重发的历史上下文与工具 schema（一次 18k 字符 / 122 次）未计 | 给出"计费口径"估算与每轮上限，误差来源写明 |
 | H24 ✅ | 一键端到端（smoke-e2e 3 单闭环 + 修 owner-lock 缺目录 bug）| 现有 6 个 verify 脚本各自为政，没有一个"从零到三工单完成"的冒烟 | 一条命令起世界→派单→三单完成→记忆/成本核对，全绿退出码 0 |
-| H25 | 无座者策略 | 24 人时 11 人无座空转（`unseatedMax 11`），只在歇脚点站着 | 无座时有明确降级行为（如排队/回休息区/自主找事），并在荡压力采样里可区分 |
+| H25 ✅ | 无座者策略（真瓶颈是吃饭座位；排队机制已生效）| 24 人时 11 人无座空转（`unseatedMax 11`），只在歇脚点站着 | 无座时有明确降级行为（如排队/回休息区/自主找事），并在荡压力采样里可区分 |
 | H26 | 减法 | `BUSY_GRACE_TICKS` 已被 `MISS_GRACE_TICKS` 覆盖；`tools/*.mjs` 里"读世界+轮询+输出 JSON"重复 6 份 | 删掉冗余常量与至少一处重复骨架，测试仍全绿 |
 | H27 | 复盘与收口 | 与 H18 同 | 文档/清单更新；下一份计划 |
 
@@ -530,3 +530,16 @@
   下一轮第一件事：给 intentOptions 的返回值加可观测计数（每个分支 why-null），先回答「40 人时那 30 个人为什么没有意图」——这比继续调座位策略更接近核心。
   工具：tools/verify-unseated.mjs（座位/等待/占用轮转/公平性四组 + notes，量不到就给 null）。
   测试：test/life-no-seat.test.js 8 条；npm test → **1116 tests / 1115 pass / 1 skip / 0 fail**（golden 未变）。
+
+- 2026-11-28 08:05 · **H25 通过（勾选）——但真正的病根和我原先以为的完全不同**。
+  先把"为什么没有自选动作"做成可观测（R528）：新增 sim/intent-stats.ts，在 intentOptions 的**每个出口**记一次归因（not-available / task-ready / hungry-no-breakroom / night-no-rest / no-rest-station / no-work-station / no-social-station / need-null / ok），决策代码一行没改（golden 哈希未变），并通过 runtime.intentStats 暴露。
+  真机读数（56 人 / 容量 34）直接推翻了我前两轮的假设：
+  · not-available 42304 次（在走/在忙，正常）；
+  · **hungry-no-breakroom 11845 次（42%）**——饿了但茶水间没座位（**2 个站点 / 4 张座**）；
+  · no-work-station **0**、night-no-rest 0、no-social-station 0。
+  也就是说：**根本没有"工位荒"，真正的瓶颈是吃饭的座位**；而我前一轮把等待机制加在干活/睡觉上（两处都是 0），漏了最热的那一档。
+  修法（R527-3）：把 waitOption 用到饥饿分支——没空位就去茶水间附近排着（不再返回 null 原地站着），并给 waitOption 加一个 filter 参数保持"只排茶水间"。
+  修后同一世界同一路径：**hungry-no-breakroom 11845 → 0**、**ok 126 → 49828**、`nearBreakroom 10`（真的有人在茶水间附近等）。
+  测试：test/intent-stats.test.js 13 条 + test/life-no-seat.test.js 8 条；npm test → **1129 tests / 1128 pass / 1 skip / 0 fail**。
+  工具：tools/verify-intent.mjs（读 runtime.intentStats + 用"本窗口增量"与现场对账，避免把历史累计当成那一刻的事实）。
+  留给下一轮的真问题：茶水间只有 4 张座、休息区 10 张座，而世界已经 56 人——**这是内容容量问题，不是策略问题**；要让人不排队，得改内容包（加座）或改行为（允许站着吃）。

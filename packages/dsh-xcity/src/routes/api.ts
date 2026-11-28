@@ -43,6 +43,8 @@ export interface ApiDeps {
   plan?: () => Record<string, unknown>
   /** R517：每轮输入体积的计数（user/message + 工具结果的字符数）。 */
   turnCost?: () => Record<string, unknown>
+  /** R528：意图为空时按出口归因的计数（total / byReason）。 */
+  intentStats?: () => Record<string, unknown>
   /** 小镇桥（Slow Vale 适配层）的地址，如 http://127.0.0.1:7790；客户端 iframe 用它。 */
   bridgeBase?: string
   /**
@@ -360,6 +362,8 @@ export function buildSnapshot(deps: ApiDeps): SnapshotMessage {
       ...(deps.plan === undefined ? {} : { plan: deps.plan() }),
       // R517：每轮输入体积的计数；没有接就是空对象，前端不必判空。
       ...(deps.turnCost === undefined ? {} : { turnCost: deps.turnCost() }),
+      // R528：意图为空的归因；与 plan/turnCost 同构，没有接就不下发。
+      ...(deps.intentStats === undefined ? {} : { intentStats: deps.intentStats() }),
     },
     content: {
       packs: view.packs.map((p) => ({ id: p.id, name: p.name, version: p.version })),

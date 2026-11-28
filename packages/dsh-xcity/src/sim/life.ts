@@ -17,6 +17,7 @@ import type { IdleBehaviorPlan } from '../protocol/idle.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { activityPurposeOf } from './activity-view.js'
 import { idleSlotAt } from './idle-behavior.js'
+import { intentStats, type IntentReason } from './intent-stats.js'
 import { needsOf } from './needs.js'
 import { cellOf, isWalkable } from './pathfind.js'
 import { affinityOf } from './relationships.js'
@@ -372,8 +373,9 @@ function waitOption(
   world: World,
   agent: Agent,
   capabilities: readonly Station['capabilities'][number][],
+  filter: (station: Station) => boolean = () => true,
 ): IntentOption {
-  const target = pickStation(world, agent, capabilities)
+  const target = pickStation(world, agent, capabilities, filter)
   if (target === null) return { score: 0.55, intent: null }
   const slot = idleSlotAt(WAIT_WINDOWS, world.seed, agent.id, world.tick)
   return {
@@ -387,19 +389,36 @@ function waitOption(
   }
 }
 
+/**
+ * R528：记一次出口归因，再把候选**原样**交回去——决策一行不动，返回的还是同一个数组。
+ *
+ * 归因由结果决定，不由调用方自觉：候选里只要有一条带意图，就记 `ok`；否则记这一档
+ * 缺的那一样（`gap`）。所以"ok 与 null 互斥"是结构保证的。
+ *
+ * @param gap - 这一档缺的东西；拿到意图时会被 `ok` 覆盖。
+ */
+function attributed(gap: IntentReason, options: IntentOption[]): IntentOption[] {
+  intentStats.observe(options.some((option) => option.intent !== null) ? 'ok' : gap)
+  return options
+}
+
 export function intentOptions(world: World, agent: Agent): IntentOption[] {
-  if (!available(agent)) return []
-  if (world.tasks.some((task) => task.status === 'ready')) return []
+  if (!available(agent)) return attributed('not-available', [])
+  if (world.tasks.some((task) => task.status === 'ready')) return attributed('task-ready', [])
 
   const needs = needsOf(agent)
 
   // 1) 饿了：去茶水间（breakroom）吃点东西。夜里也一样，饿是更硬的需求。
   if (needs.hunger < HUNGER_LOW) {
     const station = freeStation(world, agent, ['rest'], (candidate) => candidate.kind === 'breakroom')
-    // 饿了却没有吃饭的地方：宁可站着等（交给待命行为），也不要转头去干活。
-    return [{ score: 1, intent: station === null
-      ? null
-      : { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, reason: '饿了，去吃点东西' } }]
+    // 饿了却没有吃饭的地方：去茶水间附近等着，不要转头去干活。
+    //
+    // R528：这一档是**真机上最热的**——56 人 / 4 张茶水间座位，一天里 11845 次决策卡在这里
+    // （占全部非 ok 的 42%，比「没工位」高两个数量级）。以前它返回 null，人就原地站着。
+    if (station === null) {
+      return attributed('hungry-no-breakroom', [waitOption(world, agent, ['rest'], (candidate) => candidate.kind === 'breakroom')])
+    }
+    return attributed('hungry-no-breakroom', [{ score: 1, intent: { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, reason: '饿了，去吃点东西' } }])
   }
 
   // 2) 夜里：睡觉。还没有“家”，先睡休息区（下一份计划再做 home）。
@@ -407,16 +426,16 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     const station = freeStation(world, agent, ['rest'])
     // R527-2：夜里**没有床位**是最常见的一档（24 人 / 10 张休息位，实测一天 5764 次）。
     // 和干活一样，没床位就去休息区附近排着队——不是站在别处发呆。
-    if (station === null) return [waitOption(world, agent, ['rest'])]
-    return [{ score: 0.95, intent: { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' } }]
+    if (station === null) return attributed('night-no-rest', [waitOption(world, agent, ['rest'])])
+    return attributed('night-no-rest', [{ score: 0.95, intent: { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' } }])
   }
 
   // 3) 累了：歇一会儿。
   if (needs.energy < ENERGY_LOW) {
     const station = freeStation(world, agent, ['rest'])
-    return [{ score: 0.8, intent: station === null
+    return attributed('no-rest-station', [{ score: 0.8, intent: station === null
       ? null
-      : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, reason: '有点累，歇一会儿' } }]
+      : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, reason: '有点累，歇一会儿' } }])
   }
 
   const options: IntentOption[] = []
@@ -459,16 +478,16 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     const preferred = SKILL_OF_ROLE[agent.role] ?? 'code'
     // 先找本职工位；满员/太远就退到任意工位，别为了“职位标签”横穿全城。
     const station = freeStation(world, agent, [preferred]) ?? freeStation(world, agent, WORK_CAPABILITIES)
-    if (station === null) return [...options, waitOption(world, agent, WORK_CAPABILITIES)]
+    if (station === null) return attributed('no-work-station', [...options, waitOption(world, agent, WORK_CAPABILITIES)])
     const skill = station.capabilities.includes(preferred) ? preferred : (station.capabilities.find((capability) => capability === 'code' || capability === 'review' || capability === 'research' || capability === 'compute') ?? 'code')
-    return [...options, { score: 0.65, intent: { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, reason: '到了上班的点，自己去干活' } }]
+    return attributed('no-work-station', [...options, { score: 0.65, intent: { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, reason: '到了上班的点，自己去干活' } }])
   }
 
   // 6) 其余时间：学点东西（research/code 里挑最近的，不为了“研究”两个字横穿全城）。
   const studyStation = freeStation(world, agent, ['research', 'code'])
-  if (studyStation === null) return [...options, waitOption(world, agent, ['research', 'code'])]
+  if (studyStation === null) return attributed('need-null', [...options, waitOption(world, agent, ['research', 'code'])])
   const studySkill: 'research' | 'code' = studyStation.capabilities.includes('research') ? 'research' : 'code'
-  return [...options, { score: 0.5, intent: { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, reason: '闲着，学点东西' } }]
+  return attributed('need-null', [...options, { score: 0.5, intent: { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, reason: '闲着，学点东西' } }])
 }
 
 /** 性格缺省：老档没有 traits 时按中庸处理，不改变老档行为太多。 */

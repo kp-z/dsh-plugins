@@ -38,6 +38,7 @@ import { createEventHub, createRuntime } from './runtime/index.js'
 import { planTeamSync, startActivity } from './sim/index.js'
 import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
+import { intentStats } from './sim/intent-stats.js'
 import { summarizeDay } from './sim/day-summary.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
@@ -1492,6 +1493,8 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         plan: () => ({ ...planStats }),
         // R517：每轮输入体积（字符）。和 plan 并列，人不必翻日志就知道上下文在不在膨胀。
         turnCost: () => ({ ...turnCost.snapshot() }),
+        // R528：意图为空时按出口归因。同样是"和 plan 并列"的只读计数，进程内累计。
+        intentStats: () => ({ ...intentStats.snapshot() }),
         // 客户端 iframe 该连哪个端口：由这里告诉它，不写死在客户端里。
         bridgeBase: 'http://' + resolved.slowvale.host + ':' + String(resolved.slowvale.port),
         maxLiveSessions: resolved.maxLiveSessions,
