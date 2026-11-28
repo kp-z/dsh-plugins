@@ -14,7 +14,7 @@ import { chooseLife, selfLifeCommands } from '../lib/sim/life.js'
  */
 // R498 第二次更新：决策点改到「活动结束」+ 想聊天可以先坐下（第二条证据见 life-diverge）。
 // 旧值 9c2335e0… 对应"只在空闲时决策"，那条结构下三人几乎从不空闲，社交 3 天 0 次。
-const GOLDEN = '9c0254fcbaaae9de039301b5963120941eaeb620'
+const GOLDEN = '47228872fab3f9a6182eaca1c12309bf650aa613'
 
 test('R498：一天 4320 次决策与 golden 完全一致', () => {
   const content = new ContentRegistry()

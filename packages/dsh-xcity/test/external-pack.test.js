@@ -291,7 +291,7 @@ test('端到端：外部包没声明 overrides 就想顶掉 → 报错，且世�
 
     // 关键：内置内容**没有被换掉**。
     const world = createWorld({ content, scene: 'scene.default-town', createdAt: '2026-01-01T00:00:00.000Z' })
-    assert.equal(world.agents.length, 8, '原条目必须保持不变')
+    assert.equal(world.agents.length, 3, '原条目必须保持不变（R533 起内置花名册 3 席）')
     assert.equal(world.agents[0].name, '工头阿金')
   })
 })
@@ -396,6 +396,6 @@ test('端到端：contentDir 指向不存在的目录 → 只警告，插件照�
 
     const status = registered.find((t) => t.name === 'xcity_status')
     const text = await status.execute({})
-    assert.match(text, /角色：共 8 人/, '退回内置内容，世界照常建得出来')
+    assert.match(text, /角色：共 3 人/, '退回内置内容，世界照常建得出来')
   })
 })

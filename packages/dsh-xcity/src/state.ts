@@ -111,6 +111,33 @@ export interface PluginState extends WorldServicePort {
 }
 
 /**
+ * R533：把世界里超出 `maxAgents` 的角色收掉（保留前 N 个）。
+ *
+ * 为什么需要：`maxAgents` 只在**新建世界**时生效，而存档里可能已经有更多角色。
+ * 用户把同屏人数从 8 改成 3 之后，重启并不会自动减员——世界照旧 8 个。
+ * 这里在加载/启动后统一收一遍，让"配置说 3 个人"和"画面上 3 个人"一致。
+ *
+ * 收掉的人：把它的工单放回队列（owner 清空、退回 ready），再把它从世界里移除。
+ * 记忆跟着角色一起没了——所以**只该在用户主动减员时发生**，并在日志里说清楚。
+ */
+function capAgents(world: World, maxAgents: number, log?: (message: string) => void): void {
+  // 防御：单元测试里的假世界可能没有 agents/tasks 数组，这里不能让整条启动流程炸掉。
+  if (!Array.isArray(world.agents)) return
+  if (maxAgents <= 0 || world.agents.length <= maxAgents) return
+  const keep = world.agents.slice(0, maxAgents)
+  const drop = world.agents.slice(maxAgents)
+  const droppedIds = new Set(drop.map((agent) => agent.id))
+  for (const task of Array.isArray(world.tasks) ? world.tasks : []) {
+    if (task.owner !== null && droppedIds.has(task.owner)) {
+      task.owner = null
+      task.station = null
+      task.status = task.status === 'in_progress' ? 'ready' : task.status
+    }
+  }
+  world.agents = keep
+  log?.('[xcity] 按 maxAgents=' + String(maxAgents) + ' 收掉 ' + String(drop.length) + ' 个角色（' + drop.map((agent) => agent.name).join('/') + '）')
+}
+/**
  * 建插件状态。
  *
  * @param config - 已 resolve 过的配置（default 已填好）。
@@ -438,6 +465,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
       saveActive()
       activeSessionId = sessionId
       state.world = migrateWorld(loadSession(sessionId) ?? build(config.worldName, sessionInitialAgents), options.places)
+      capAgents(state.world, config.maxAgents, options.log)
       const captain = state.world.agents[0]
       if (captain !== undefined) {
         // R171：队长的显示名固定为 `captain`，不继承内容花名册的人名（工头阿金等），
@@ -548,6 +576,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
     ensureWorld(): World {
       if (state.world) return state.world
       state.world = migrateWorld(tryRestore() ?? build(config.worldName), options.places)
+      capAgents(state.world, config.maxAgents, options.log)
       return state.world
     },
 

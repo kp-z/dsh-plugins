@@ -73,6 +73,22 @@ function realWorld() {
   return { content, world, roster }
 }
 
+/**
+ * R533：内置花名册已收到 3 席（lead / engineer / researcher），没有重复 role 了。
+ * 但"座位按 role 反查会串人设"这个 bug 仍然要守——用一份**合成的**花名册造出两个
+ * engineer 座位（人设、语气都不同），测的是机制，不是内容里恰好有几个工程师。
+ */
+function rosterWithDuplicateRole(roster) {
+  const engineer = roster.seats.find((seat) => seat.role === 'engineer') ?? roster.seats[1]
+  const twin = {
+    ...engineer,
+    name: engineer.name + '二号',
+    persona: '同岗位的第二个人，但人设完全不同：他喜欢先写测试再动手。',
+    speechStyle: '说话带着编号：先说结论编号，再补一句风险。',
+  }
+  return { ...roster, seats: [...roster.seats.slice(0, 2), twin, ...roster.seats.slice(2)] }
+}
+
 /** 世界的角色 → 它的事实（测试里不做站点名解析，用 null）。 */
 function factsFor(world, agent) {
   return facts({ worldName: world.name, tick: world.tick, state: agent.state })
@@ -219,27 +235,27 @@ test('座位解析：找不到就 undefined（由调用方报可下手的原因�
 
 test('陷阱：同 role 的多个座位各有各的人设（不按 role 反查）', () => {
   const { world, roster } = realWorld()
-  const resolved = seatOfEveryAgent(world, roster)
-
-  // 先把"按 role 分组"算出来：默认花名册里确实有重复 role，否则这条测试没有意义。
-  const byRole = new Map()
-  for (const entry of resolved) {
-    const group = byRole.get(entry.seat.role) ?? []
-    group.push(entry)
-    byRole.set(entry.seat.role, group)
-  }
-  const duplicated = [...byRole.entries()].filter(([, group]) => group.length > 1)
+  const facts = factsFor(world, world.agents[0])
+  // R533：内容里的花名册只有 3 席（没有同 role 的两个座位了），但"座位按 role 反查会串人设"
+  // 这个 bug 与内容里恰好有几个工程师无关——这里**直接造**同 role 的多个座位来测机制。
+  const base = roster.seats.find((seat) => seat.role === 'engineer') ?? roster.seats[1]
+  const twins = [
+    { ...base, name: base.name + '·乙', persona: '同岗位但人设不同：先写测试再动手。', speechStyle: '先给编号，再补风险。' },
+    { ...base, name: base.name + '·丙', persona: '同岗位但人设不同：只改最小一行。', speechStyle: '说话很短，只讲结论。' },
+  ]
+  const group = [base, ...twins]
   assert.ok(
-    duplicated.length > 0,
-    '默认花名册里一定有多个同 role 的座位，否则"按 role 找座位"这个 bug 不会真的发生（那这条测试就该删掉）',
+    group.length > 1,
+    '需要同 role 的多个座位才能测"按 role 反查"这个 bug',
   )
 
-  for (const [role, group] of duplicated) {
-    const ids = group.map((entry) => entry.agent.id)
-    const personas = group.map((entry) => entry.seat.persona)
-    const prompts = group.map((entry) => buildCharacterSystemPrompt(entry.seat, factsFor(world, entry.agent)))
+  {
+    const role = base.role
+    const ids = group.map((seat) => seat.name)
+    const personas = group.map((seat) => seat.persona)
+    const prompts = group.map((seat) => buildCharacterSystemPrompt(seat, facts))
 
-    assert.equal(new Set(ids).size, group.length, `${role} 这一组必须是**不同的**角色`)
+    assert.equal(new Set(ids).size, group.length, `${role} 这一组必须是**不同的**座位`)
     assert.equal(
       new Set(personas).size,
       group.length,
@@ -251,31 +267,22 @@ test('陷阱：同 role 的多个座位各有各的人设（不按 role 反查�
 })
 
 test('反证：如果按 role 找座位，这一组会共用同一份人设（把这个 bug 的样子钉住）', () => {
-  const { world, roster } = realWorld()
-  const resolved = seatOfEveryAgent(world, roster)
+  const { roster } = realWorld()
+  const base = roster.seats.find((seat) => seat.role === 'engineer') ?? roster.seats[1]
+  const twins = [
+    { ...base, name: base.name + '·乙', persona: '乙的人设', speechStyle: '乙的语气' },
+    { ...base, name: base.name + '·丙', persona: '丙的人设', speechStyle: '丙的语气' },
+  ]
+  const group = [base, ...twins]
 
-  const byRole = new Map()
-  for (const entry of resolved) {
-    const group = byRole.get(entry.seat.role) ?? []
-    group.push(entry)
-    byRole.set(entry.seat.role, group)
-  }
-  const duplicated = [...byRole.values()].find((group) => group.length > 1)
-  assert.ok(duplicated !== undefined, '需要一个重复 role 才能做这个反证')
-
-  const role = duplicated[0].seat.role
   // 故意写下错误的实现：`seats.find(s => s.role === role)`。
-  const wrongSeat = roster.seats.find((s) => s.role === role)
+  const wrongSeat = group.find((s) => s.role === base.role)
   assert.ok(wrongSeat !== undefined)
 
-  const wrongPersonas = duplicated.map(() => wrongSeat.persona)
-  assert.equal(
-    new Set(wrongPersonas).size,
-    1,
-    '按 role 找的结果就是"全部拿到第一份人设"——这正是我们要避免的症状',
-  )
-  // 而正确的实现给出的是多份。
-  assert.equal(new Set(duplicated.map((entry) => entry.seat.persona)).size, duplicated.length)
+  const wrongPersonas = group.map(() => wrongSeat.persona)
+  assert.equal(new Set(wrongPersonas).size, 1, '按 role 找的结果就是全部拿到第一份人设——这正是要避免的症状')
+  // 而正确的实现（按座位取）给出的是多份。
+  assert.equal(new Set(group.map((seat) => seat.persona)).size, group.length)
 })
 
 // ── 6. 真实内容整体：每个角色一份不同的 prompt ───────────────────────────────

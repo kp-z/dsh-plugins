@@ -316,6 +316,7 @@ test('运行时：flush 立刻落盘；stop 也会刷（退出前那一段不能
     persist: { store, checkpointEveryTicks: 100_000 },
   })
 
+  runtime.enqueue({ kind: 'hire', role: 'engineer', name: '落盘测试员' })
   runtime.advance(10)
   assert.equal(await store.load(), null, '没到 checkpoint 就不该写')
 
@@ -353,6 +354,9 @@ test('运行时：写盘失败 → 计数 + 事件**留着重试**，不静默�
     onError: (e) => errors.push(e),
   })
 
+  // R533：先注入一条会记事件的命令（雇人），否则 3 个角色的世界 10 tick 里可能一条事件都没有，
+  // "重试之后事件写下去了"这条断言就会因为**没东西可写**而假红。
+  runtime.enqueue({ kind: 'hire', role: 'engineer', name: '落盘测试员' })
   runtime.advance(10)
   // **不要用固定的 `setTimeout` 当同步手段**（R27 修）。
   //
@@ -392,6 +396,9 @@ test('运行时：stop 走**同步**刷盘——关停后立刻检查，文件�
     persist: { store, checkpointEveryTicks: 100_000 },
   })
 
+  // R533：世界只剩 3 个角色时，8 tick 里未必自然产生事件；这里注入一条**会记事件但不会停世界**的命令
+  // （雇一个人），让"事件必须落盘"这条不变量与角色人数解耦。
+  runtime.enqueue({ kind: 'hire', role: 'engineer', name: '落盘测试员' })
   runtime.advance(8)
   runtime.stop()
 

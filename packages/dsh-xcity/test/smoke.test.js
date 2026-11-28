@@ -184,14 +184,14 @@ test('createWorld：不同 seed 会分叉（否则"确定性"是假的）', () =
   )
 })
 
-test('createWorld：默认小镇结构完整（4 地块 / 10 站点 / 8 角色）', () => {
+test('createWorld：默认小镇结构完整（4 地块 / 10 站点 / 3 角色）', () => {
   const content = new ContentRegistry()
   content.loadAll(builtinPacks())
   const w = createWorld({ content, scene: 'scene.default-town', createdAt: '2026-01-01T00:00:00.000Z' })
 
   assert.equal(w.districts.length, 4)
   assert.equal(w.stations.length, 10)
-  assert.equal(w.agents.length, 8)
+  assert.equal(w.agents.length, 3)
   assert.equal(w.agents[0].role, 'lead', '第一个角色必须是 lead')
   assert.equal(w.tick, 0)
   assert.equal(w.paused, false)

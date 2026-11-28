@@ -52,7 +52,7 @@ test('ScenePlan：地块、站点、角色三类都在，且**颜色已经解析
 
   assert.equal(plan.ground.length, 4)
   assert.equal(plan.props.length, 10)
-  assert.equal(plan.actors.length, 8)
+  assert.equal(plan.actors.length, 3)
   assert.equal(plan.extent.half, 8)
 
   // 关键：渲染层拿到的得是色值。任何一个 `skin.` 泄漏出去都说明漏解析了一处。

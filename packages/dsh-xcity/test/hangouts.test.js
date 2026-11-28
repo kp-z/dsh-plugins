@@ -109,7 +109,7 @@ const minGapOf = (points) => {
 
 test('placeHangouts：落点都在矩形内、个数正好、互不重合', () => {
   const points = placeHangouts({ bounds: BOX, count: 8 })
-  assert.equal(points.length, 8)
+  assert.equal(points.length, 8, '要 8 个落点就得给 8 个')
   for (const p of points) {
     assert.ok(p.x > 0 && p.x < 12 && p.z > 0 && p.z < 12, `落点跑到地块外了：${JSON.stringify(p)}`)
   }

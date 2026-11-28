@@ -143,14 +143,14 @@ test('世界与计划都指向 Kenney 角色，且计划里带上了它的 url',
   for (const actor of plan.actors) assert.ok(ids.has(actor.modelId), `角色 ${actor.id} 的模型不在表里`)
 })
 
-test('换成 GLB 之后模拟内核**零改动**：世界结构照旧（4 地块 / 10 站点 / 8 角色）', () => {
+test('换成 GLB 之后模拟内核**零改动**：世界结构照旧（4 地块 / 10 站点 / 3 角色）', () => {
   // M5-6 的验收口径：内容换了资产，模拟内核不该有任何感知。
   // 这条只断言结构，不比对实现——"内核零改动"由这一轮的 diff 作证（没有 src/sim/ 变更）。
   const { content } = loaded()
   const world = worldOf(content)
   assert.equal(world.districts.length, 4)
   assert.equal(world.stations.length, 10)
-  assert.equal(world.agents.length, 8)
+  assert.equal(world.agents.length, 3)
 })
 
 // ── R51：像素包（pack.pixel）──────────────────────────────────────────────────

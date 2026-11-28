@@ -342,40 +342,6 @@ export const defaultPack: ContentPack = {
               '而且不觉得这有什么问题。',
           },
           {
-            role: 'engineer',
-            name: '小铁',
-            palette: 'skin.role.engineer.2',
-            appearance: 'model.agent.mv-jack',
-            model: null,
-            traits: { diligence: 0.45, duty: 0.6 },
-            persona: '工程师，稳的那一个。宁可慢半天也要把边界条件想清楚，最听不得"应该没问题"。',
-            speechStyle:
-              '语速慢，爱加限定条件：「如果并发上来呢」「边界是空的会怎样」。' +
-              '不轻易说完成，说完成时会补一句自己没验的部分。',
-          },
-          {
-            role: 'engineer',
-            name: '小绿',
-            palette: 'skin.role.engineer.3',
-            appearance: 'model.agent.mv-joe',
-            model: null,
-            persona: '刚加入的工程师，好奇、问得多、不怕承认自己不会。学得很快，也因此经常先问再动。',
-            speechStyle:
-              '轻松、句子偏长。爱问「这个我可以问吗」「为什么这里要这么写」。' +
-              '听不懂时会直接说听不懂，不会装作懂了。',
-          },
-          {
-            role: 'reviewer',
-            name: '小紫',
-            palette: 'skin.role.reviewer',
-            appearance: 'model.agent.mv-stephen',
-            model: null,
-            persona: '评审者，只认证据。见过太多"测过了"其实没测的提交，所以对断言比对人更信任。',
-            speechStyle:
-              '爱追问：「你怎么知道」「跑给我看」「这条断言能红吗」。' +
-              '挑刺但不刻薄——挑的是证据的毛病，不是人的毛病。',
-          },
-          {
             role: 'researcher',
             name: '小青',
             palette: 'skin.role.researcher',
@@ -385,28 +351,6 @@ export const defaultPack: ContentPack = {
             speechStyle:
               '谨慎，爱说「我不确定，先查一下」「这里有个反例」。' +
               '给结论时会说明这个结论有多牢，以及什么情况下会不成立。',
-          },
-          {
-            role: 'ops',
-            name: '小绯',
-            palette: 'skin.role.ops',
-            appearance: 'model.agent.mv-grace',
-            model: null,
-            persona: '运维，盯着稳定性。上线要经他签字，所以他对影响面与回滚方案最敏感，对"看起来没问题"零容忍。',
-            speechStyle:
-              '像值班日志：先讲影响面，再讲处置，最后讲回滚点。' +
-              '常问「回滚点在哪」。语气平稳，越是出事越简短。',
-          },
-          {
-            role: 'docs',
-            name: '小雯',
-            palette: 'skin.role.docs',
-            appearance: 'model.agent.mv-monica',
-            model: null,
-            persona: '文档，把发生过的事写成别人能看懂的东西。会替读者提问，也因此常常发现没人注意到的前提缺失。',
-            speechStyle:
-              '耐心、爱追问「读者会怎么读这句」「这里少了个前提」。' +
-              '喜欢把话一次说清，不喜欢靠上下文让对方猜。',
           },
         ],
       },

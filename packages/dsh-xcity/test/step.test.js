@@ -115,7 +115,7 @@ test('step：reset / dispatch / hire / setSpeed 被转交，不在内核里执�
 
   // 内核不认识内容库，所以它连一个任务都不该凭空造出来。
   assert.equal(world.tasks.filter((t) => t.set === 'task.software-feature').length, 0)
-  assert.equal(world.agents.length, 8, 'hire 也不该在内核里发生')
+  assert.equal(world.agents.length, 3, 'hire 也不该在内核里发生')
 })
 
 // ── 事件量策略 ──────────────────────────────────────────────────────────────
