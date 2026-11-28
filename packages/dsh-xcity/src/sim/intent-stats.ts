@@ -60,16 +60,45 @@ export const INTENT_REASONS: readonly IntentReason[] = [
   'ok',
 ]
 
-/** 一次读取的结果：总数 + 每个出口的次数。 */
+/**
+ * H38：动机归因——"他为什么现在做这件事"。
+ *
+ * 与 `IntentReason` 是两张表，回答两个不同的问题：那边问"能不能自派"，这边问
+ * "拿到意图是为了什么"。所以只有三种动机，不设"none"——没拿到意图就不记（分母是
+ * 真的拿到意图的次数，不是 tick 数）。
+ *
+ * - `need`：身体与情绪的需求（吃饭 / 睡觉 / 歇一会儿 / 想找人说话）；
+ * - `duty`：义务与承诺（赴约）；
+ * - `routine`：作息（上班时段干活、非上班时段学习）。
+ */
+export type MotiveDriver = 'need' | 'duty' | 'routine'
+
+/** 全部动机，顺序即表的列顺序；快照里 0 也要看得见（同 `INTENT_REASONS` 的理由）。 */
+export const MOTIVE_DRIVERS: readonly MotiveDriver[] = ['need', 'duty', 'routine']
+
+/** 一次读取的结果：总数 + 每个出口的次数 + 每个动机的次数。 */
 export interface IntentStatsSnapshot {
   total: number
   byReason: Record<IntentReason, number>
+  /**
+   * H38：拿到意图时的动机分布。
+   *
+   * **分母不是 `total`**：一次 `intentOptions` 调用可能给出多条候选（如赴约 + 上班），
+   * 每条候选各记一次；没拿到意图时一格都不加。所以 ΣbyDriver 只与"拿到的意图条数"对得上，
+   * 不能拿它和 `byReason.ok` 相减当结论。
+   */
+  byDriver: Record<MotiveDriver, number>
 }
 
 /** 计数器。 */
 export interface IntentStats {
   /** 记一次出口。只累加，不做任何判断。 */
   observe(reason: IntentReason): void
+  /**
+   * H38：记一次动机。只累加；**不改 total**（total 仍是"每 tick 一次"的那个口径，
+   * 两张表互不影响）。没拿到意图时，调用方就不该调它。
+   */
+  observeDriver(driver: MotiveDriver): void
   /** 读一份**拷贝**：读到的人改不动计数。 */
   snapshot(): IntentStatsSnapshot
   /** 归零（测试与环境切换用）。 */
@@ -83,9 +112,17 @@ function emptyCounts(): Record<IntentReason, number> {
   return counts
 }
 
+/** H38：全零的一份动机表。 */
+function emptyDrivers(): Record<MotiveDriver, number> {
+  const counts = {} as Record<MotiveDriver, number>
+  for (const driver of MOTIVE_DRIVERS) counts[driver] = 0
+  return counts
+}
+
 export function createIntentStats(): IntentStats {
   let total = 0
   let counts = emptyCounts()
+  let drivers = emptyDrivers()
   return {
     observe(reason: IntentReason): void {
       // 类型挡住了绝大多数误用；这里再挡一次"从 JSON/JS 传进来的野字符串"，
@@ -94,12 +131,18 @@ export function createIntentStats(): IntentStats {
       counts[reason] += 1
       total += 1
     },
+    observeDriver(driver: MotiveDriver): void {
+      // 与 observe 同样的理由挡一次野值；这里**不**动 total。
+      if (!(driver in drivers)) return
+      drivers[driver] += 1
+    },
     snapshot(): IntentStatsSnapshot {
-      return { total, byReason: { ...counts } }
+      return { total, byReason: { ...counts }, byDriver: { ...drivers } }
     },
     reset(): void {
       total = 0
       counts = emptyCounts()
+      drivers = emptyDrivers()
     },
   }
 }

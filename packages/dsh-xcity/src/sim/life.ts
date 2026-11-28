@@ -17,7 +17,7 @@ import type { IdleBehaviorPlan } from '../protocol/idle.js'
 import type { WorldCommand } from '../protocol/wire/commands.js'
 import { activityPurposeOf } from './activity-view.js'
 import { idleSlotAt } from './idle-behavior.js'
-import { intentStats, type IntentReason } from './intent-stats.js'
+import { intentStats, type IntentReason, type MotiveDriver } from './intent-stats.js'
 import { needsOf } from './needs.js'
 import { cellOf, isWalkable } from './pathfind.js'
 import { affinityOf } from './relationships.js'
@@ -110,6 +110,18 @@ export interface LifeIntent {
   stationId: string | null
   skill?: 'code' | 'review' | 'research' | 'compute'
   ticks: number
+  /**
+   * H38：这条意图的动机（派生标签，不落档）。
+   *
+   * 可选是因为 `LifeIntent` 是导出类型；但本文件**每条出口都填**，`intentOptions`
+   * 拿到的意图一定带着它，所以 `attributed` 的 byDriver 不会有静默漏记。
+   */
+  driver?: MotiveDriver
+  /**
+   * 给人/日志看的那句话。**出口处保持原样**；`chooseLife` 交出去时把 driver 拼成
+   * `"need: 有点累，歇一会儿"` —— 两个写 `trigger.text` 的调用方（`selfLifeCommands`
+   * 与 `sim/step.ts` 的活动结束自选）都从 `chooseLife` 取文案，所以前缀只拼一次。
+   */
   reason: string
 }
 
@@ -392,6 +404,7 @@ function waitOption(
   world: World,
   agent: Agent,
   capabilities: readonly Station['capabilities'][number][],
+  driver: MotiveDriver,
   filter: (station: Station) => boolean = () => true,
 ): IntentOption {
   const target = pickStation(world, agent, capabilities, filter)
@@ -403,6 +416,7 @@ function waitOption(
       purpose: 'rest',
       stationId: null,
       ticks: slot?.span ?? 30,
+      driver,
       reason: '想去' + target.name + '，一个空位都没有，先在这儿等着',
     },
   }
@@ -418,6 +432,14 @@ function waitOption(
  */
 function attributed(gap: IntentReason, options: IntentOption[]): IntentOption[] {
   intentStats.observe(options.some((option) => option.intent !== null) ? 'ok' : gap)
+  // H38：动机只记**真的拿到意图**的那几条——没拿到就一格都不加（分母不是 tick 数）。
+  // 一次调用可能给出多条候选（如赴约 + 上班），每条各记一次；这正是"为什么现在能做这事"
+  // 的候选面，不是"最终选了哪条"（那是 chooseLife 的事，这里看不到加权后的胜者）。
+  for (const option of options) {
+    const intent = option.intent
+    if (intent === null || intent.driver === undefined) continue
+    intentStats.observeDriver(intent.driver)
+  }
   return options
 }
 
@@ -435,9 +457,9 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     // R528：这一档是**真机上最热的**——56 人 / 4 张茶水间座位，一天里 11845 次决策卡在这里
     // （占全部非 ok 的 42%，比「没工位」高两个数量级）。以前它返回 null，人就原地站着。
     if (station === null) {
-      return attributed('hungry-no-breakroom', [waitOption(world, agent, ['rest'], (candidate) => candidate.kind === 'breakroom')])
+      return attributed('hungry-no-breakroom', [waitOption(world, agent, ['rest'], 'need', (candidate) => candidate.kind === 'breakroom')])
     }
-    return attributed('hungry-no-breakroom', [{ score: 1, intent: { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, reason: '饿了，去吃点东西' } }])
+    return attributed('hungry-no-breakroom', [{ score: 1, intent: { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, driver: 'need', reason: '饿了，去吃点东西' } }])
   }
 
   // 2) 夜里：**困了才睡**。还没有“家”，先睡休息区（下一份计划再做 home）。
@@ -449,8 +471,8 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     const station = freeStation(world, agent, ['rest'])
     // R527-2：夜里**没有床位**是最常见的一档（24 人 / 10 张休息位，实测一天 5764 次）。
     // 和干活一样，没床位就去休息区附近排着队——不是站在别处发呆。
-    if (station === null) return attributed('night-no-rest', [waitOption(world, agent, ['rest'])])
-    return attributed('night-no-rest', [{ score: 0.95, intent: { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, reason: '夜深了，去睡一觉' } }])
+    if (station === null) return attributed('night-no-rest', [waitOption(world, agent, ['rest'], 'need')])
+    return attributed('night-no-rest', [{ score: 0.95, intent: { purpose: 'sleep', stationId: station.id, ticks: SLEEP_TICKS, driver: 'need', reason: '夜深了，去睡一觉' } }])
   }
 
   // 3) 累了：歇一会儿。
@@ -458,7 +480,7 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     const station = freeStation(world, agent, ['rest'])
     return attributed('no-rest-station', [{ score: 0.8, intent: station === null
       ? null
-      : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, reason: '有点累，歇一会儿' } }])
+      : { purpose: 'rest', stationId: station.id, ticks: NAP_TICKS, driver: 'need', reason: '有点累，歇一会儿' } }])
   }
 
   const options: IntentOption[] = []
@@ -482,6 +504,7 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
           purpose: 'social',
           stationId,
           ticks: SOCIAL_TICKS,
+          driver: 'duty',
           reason: '快到点了，去找' + (peer?.name ?? appointment.with) + '把答应的「' + appointment.what + '」办了',
         },
       })
@@ -492,7 +515,7 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
   if (needs.social < SOCIAL_LOW && world.agents.length > 1) {
     const stationId = socialStationId(world, agent)
     if (stationId !== null) {
-      options.push({ score: 0.7, intent: { purpose: 'social', stationId, ticks: SOCIAL_TICKS, reason: '想找人聊两句' } })
+      options.push({ score: 0.7, intent: { purpose: 'social', stationId, ticks: SOCIAL_TICKS, driver: 'need', reason: '想找人聊两句' } })
     }
   }
 
@@ -501,16 +524,16 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     const preferred = SKILL_OF_ROLE[agent.role] ?? 'code'
     // 先找本职工位；满员/太远就退到任意工位，别为了“职位标签”横穿全城。
     const station = freeStation(world, agent, [preferred]) ?? freeStation(world, agent, WORK_CAPABILITIES)
-    if (station === null) return attributed('no-work-station', [...options, waitOption(world, agent, WORK_CAPABILITIES)])
+    if (station === null) return attributed('no-work-station', [...options, waitOption(world, agent, WORK_CAPABILITIES, 'routine')])
     const skill = station.capabilities.includes(preferred) ? preferred : (station.capabilities.find((capability) => capability === 'code' || capability === 'review' || capability === 'research' || capability === 'compute') ?? 'code')
-    return attributed('no-work-station', [...options, { score: 0.65, intent: { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, reason: '到了上班的点，自己去干活' } }])
+    return attributed('no-work-station', [...options, { score: 0.65, intent: { purpose: 'work', stationId: station.id, skill, ticks: WORK_TICKS, driver: 'routine', reason: '到了上班的点，自己去干活' } }])
   }
 
   // 6) 其余时间：学点东西（research/code 里挑最近的，不为了“研究”两个字横穿全城）。
   const studyStation = freeStation(world, agent, ['research', 'code'])
-  if (studyStation === null) return attributed('need-null', [...options, waitOption(world, agent, ['research', 'code'])])
+  if (studyStation === null) return attributed('need-null', [...options, waitOption(world, agent, ['research', 'code'], 'routine')])
   const studySkill: 'research' | 'code' = studyStation.capabilities.includes('research') ? 'research' : 'code'
-  return attributed('need-null', [...options, { score: 0.5, intent: { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, reason: '闲着，学点东西' } }])
+  return attributed('need-null', [...options, { score: 0.5, intent: { purpose: 'study', stationId: studyStation.id, skill: studySkill, ticks: STUDY_TICKS, driver: 'routine', reason: '闲着，学点东西' } }])
 }
 
 /** 性格缺省：老档没有 traits 时按中庸处理，不改变老档行为太多。 */
@@ -615,7 +638,13 @@ export function chooseLife(world: World, agent: Agent): LifeIntent | null {
       bestScore = score
     }
   }
-  return best.intent
+  const chosen = best.intent
+  if (chosen === null) return null
+  // H38：动机拼进"为什么"那句话的**唯一出口**（见 `LifeIntent.reason` 的注释）：
+  // `selfLifeCommands` 与 `sim/step.ts` 的活动结束自选都只认这里交出去的文案，所以
+  // 不用给 Activity 加字段，也不会出现"一条带前缀、一条不带"。决策本身一个字没动。
+  if (chosen.driver === undefined) return chosen
+  return { ...chosen, reason: chosen.driver + ': ' + chosen.reason }
 }
 
 export type SelfLifeCommand = Extract<WorldCommand, { kind: 'agentActivity' }>
