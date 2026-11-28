@@ -20,7 +20,7 @@
 npm login
 
 # 3. 发布（自动触发 prepublishOnly 构建）
-cd /Users/demo/dsh-plugins/packages/dsh-dev-git-graph
+cd ~/dsh-plugins/packages/dsh-dev-git-graph
 npm publish --access public
 
 # 4. 验证
@@ -37,7 +37,7 @@ npm view dsh-dev-git-graph
 
 # 2. 本插件在 monorepo（dsh-plugins workspace）里，两种方式任选：
 #    A. 整个 workspace 公开（含 templates/docs/scripts/其他插件）：
-cd /Users/demo/dsh-plugins
+cd ~/dsh-plugins
 git remote add origin git@github.com:aaron1zhang/dsh-plugins.git
 git push -u origin main
 #    B. 只发插件包本身：把 packages/dsh-dev-git-graph 单独建仓（用 git subtree split 导出）：

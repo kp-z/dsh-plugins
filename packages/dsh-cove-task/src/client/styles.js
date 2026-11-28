@@ -1262,12 +1262,20 @@ export const CSS = `
   flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
 }
-/* 这一组依据的用户要求（建议栏底部对话框提交的那句话）：单行省略，hover 看全文。 */
-.fo-org-group-hint {
-  margin: 2px 2px 8px; padding: 0 8px;
-  font-size: 11px; line-height: 1.6; color: ${T.brand};
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* 用户说的那句话 = 一轮对话里的「我」：右对齐气泡，下面的建议组就是回答。
+   不再单行省略 —— 长句换行，让人一眼确认自己发的是哪句。 */
+.fo-org-user { display: flex; justify-content: flex-end; margin: 0 2px 8px; }
+.fo-org-user-text {
+  max-width: 88%; margin: 0; padding: 6px 10px;
+  border: 1px solid ${g(T.brand, 30)}; border-radius: 12px 12px 4px 12px;
+  background: ${g(T.brand, 14)}; color: ${T.label1};
+  font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
 }
+/* 生成中的那一拍：我说的那句 + 正在生成（列表为空时也用它，不再另搞居中 spinner）。 */
+.fo-org-turn { display: flex; flex-direction: column; }
+.fo-org-typing { display: flex; align-items: center; gap: 6px; padding: 0 2px; font-size: 12px; color: ${T.label2}; }
+.fo-org-typing .fo-spinner { width: 12px; height: 12px; border-width: 2px; }
 
 /* ============ 底部对话框（照 cove 的 agent Composer 形制） ============
    结构：一行 [工具 34×34] [模式 34×34] [文本域 flex-1 34px] [发送 34px]，下面是快捷键提示行。
@@ -1389,7 +1397,6 @@ export const CSS = `
   border-top: 1px solid var(--fo-glass-line);
 }
 .fo-org-load-more { display: flex; justify-content: center; }
-.fo-org-loading { display: flex; justify-content: center; padding: 8px 0; }
 @keyframes fo-spin { to { transform: rotate(360deg); } }
 .fo-spinner {
   width: 14px; height: 14px; flex: 0 0 auto; border-radius: 50%;

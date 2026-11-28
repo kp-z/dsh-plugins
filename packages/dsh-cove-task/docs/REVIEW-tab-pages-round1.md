@@ -3,7 +3,7 @@
 - 任务：`task-20`（只读复核）
 - 复核者：`overview-rewrite-reviewer`
 - 时间：2026-11-11 02:00 CST
-- 工作区：`/Users/demo/dsh-plugins`，被测版本 `e2f9924`（自报，未跑 git）
+- 工作区：`~/dsh-plugins`，被测版本 `e2f9924`（自报，未跑 git）
 - 只读声明：**未修改任何 `.js` / `.mjs` / `package.json`**；唯一写入是本报告文件。未跑 `git`。全部取数都是 GET。`npm run test:offline` 的第一段是 `build:client`（会重写 `lib/client.iife.js`），我改为直接跑 `node test/offline.mjs`；产物哈希前后一致可证未改动：
   `lib/client.iife.js` sha256 = `2d9cc7573777ee348831ad89a645edd138b76e08da6b9efd83af325f3c39ee92`（跑前 = 跑后）。
 - 产物新鲜度：`lib/client.iife.js` mtime 01:51:56 晚于所有 `src/**` 最后修改（features.js 01:48:09、OverviewPanel.js 01:47:57），且产物里已含 `fr-breathe` / `洞察` / `运行概览`，即当前产物与源码同代。

@@ -75,7 +75,7 @@ pnpm --filter @kpeace/dsh-dev-git-graph typecheck
 pnpm --filter @kpeace/dsh-dev-git-graph test
 
 # 安装到 web profile（本地 file: 依赖）
-dsh plugin --profile web add file:/Users/demo/dsh-plugins/packages/dsh-dev-git-graph
+dsh plugin --profile web add file:~/dsh-plugins/packages/dsh-dev-git-graph
 # 重启 dsh web 生效；会话页出现「Git 树」tab
 ```
 

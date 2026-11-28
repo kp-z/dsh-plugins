@@ -62,7 +62,7 @@ H1 真宿主验收（没有它，后面都只是单测）
 - xcity-test 启动 15 分钟无端口，组合时报 `@nanmicoder/dsh-agent-teams` 不兼容——**不要再用它**。
 
 ### 设计/步骤
-1. 用 CLI 生成一份最小 profile：`dsh --from-default-profile h7mini web`（在 `DSH_HOME=/tmp/dsh-h7` 下），只保留 base + web + dsh-xcity；用 `dsh plugin --profile h7mini add /Users/demo/dsh-plugins/packages/dsh-xcity` 链进来。
+1. 用 CLI 生成一份最小 profile：`dsh --from-default-profile h7mini web`（在 `DSH_HOME=/tmp/dsh-h7` 下），只保留 base + web + dsh-xcity；用 `dsh plugin --profile h7mini add ~/dsh-plugins/packages/dsh-xcity` 链进来。
 2. 给 profile 写 xcity 配置：独立 `stateDir`、bridge 端口 7799、web 端口 3189、`viewerRoleId: player`。
 3. 启动：`DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini web --port 3189`；确认 3189/7799 都监听。
 4. 建一个角色会话并绑到 `agent-1`（用 xcity 的绑定 CLI/接口，别手改正式表）；发一条短信。
@@ -84,7 +84,7 @@ H1 真宿主验收（没有它，后面都只是单测）
 **宿主起来了**（这是 H7 没做到的）：
 ```
 DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini --from-default-profile web --dump-config
-DSH_HOME=/tmp/dsh-h7 dsh plugin --profile h7mini add /Users/demo/dsh-plugins/packages/dsh-xcity
+DSH_HOME=/tmp/dsh-h7 dsh plugin --profile h7mini add ~/dsh-plugins/packages/dsh-xcity
 DSH_HOME=/tmp/dsh-h7 dsh --profile h7mini --port 3189 --no-open
 ```
 - 3189 / 7799 都在数秒内监听；没有 agent-teams 不兼容。

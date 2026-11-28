@@ -22,7 +22,7 @@
 - 任务字段（瘦快照里现成的）：`id,no,title,done,workspaceKey,workspaceTitle,workspacePath,blocked,ready,started,suspended,sessionId,predecessors,successors,sourceTasks,derivedTasks,blockedBy`。
   **没有 `running`**——运行 tab 需要它，见 §2.4。
 - 宿主能力位：`deps.host = { canOpenSession(), openSession(sessionId, expectedTitle) }`（走 `uiWorkspace.openSession`，切后读回核对）。
-- 参考项目：`/Users/demo/DEV/Claudeadventure`（Claude Manager），本地跑在 http://localhost:5599/；风格提取见 `docs/STYLE-borrowed-claude-manager.md`。
+- 参考项目：`~/DEV/Claudeadventure`（Claude Manager），本地跑在 http://localhost:5599/；风格提取见 `docs/STYLE-borrowed-claude-manager.md`。
   气泡实测（`src/app/pages/Dashboard.tsx:69/81/91`）：`w-16 h-16 rounded-full bg-<色>-500/20 border-2 border-<色>-500 shadow-[0_0_20px_…]`，圈里放数字/图标；
   状态点 `w-3 h-3 rounded-full`（绿=完成 / **蓝 + animate-pulse = 运行中** / 红=失败），列表行是 `p-4 rounded-xl bg-white/5 hover:bg-white/10`。
 
@@ -246,7 +246,7 @@
       再取一次快照数值不变（幂等）；运行页「运行时长 Top 5」实测同时出现三种来源：
       「开工时间 18 天 3 小时」/「观察到运行 9 秒」/「未记录开始时间」。
 - [x] **给用户的真实数据截图**（本机真 React + 真组件 + 通过代理取真快照，1600×919）：
-      `/Users/demo/Downloads/tab-1-relation-v2.jpg`（单列 + rail 两级 + 52 个节点）、
+      `~/Downloads/tab-1-relation-v2.jpg`（单列 + rail 两级 + 52 个节点）、
       `tab-2-insight-v2.jpg`（洞察六面板）、`tab-3-runs-v2.jpg`（运行：52 气泡、1 个绿色呼吸、5 张卡）。
 - [x] 验证：offline 80 JS + 7 Python、`npm test` exit 0。
 
@@ -265,7 +265,7 @@
 - [x] **真机复核（真数据 52 条任务）**：`data-history=1`，10 个面板
       关键指标 / 状态分布 / 项目分布 / 关系概览 / 阻塞榜 / 最近动态 / 吞吐趋势 / 履约 / 延期原因 / 质量·周期；
       趋势 28 柱 + 1 折线；延期原因「其他/未写 7 次 平均 2.2 天」；履约「已完成 13 / 逾期 1 / 延期记录 6」。
-      截图 `/Users/demo/Downloads/tab-2-insight-v3-history.jpg`（真数据）。
+      截图 `~/Downloads/tab-2-insight-v3-history.jpg`（真数据）。
 - [x] 证据：overviewPanel 200 → 203、insightView 47、runsView 30、offline 80 JS + 7 Python、`npm test` exit 0。
 
 **第 6 轮（09:55 起，用户醒来说「继续」）：一键整理支持撤销**

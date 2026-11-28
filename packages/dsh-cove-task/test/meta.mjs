@@ -64,8 +64,8 @@ check(
 /* ── 解析：英文键 / 等号 / 列表前缀 ── */
 check(
   '英文键与等号',
-  parseTaskMeta({ summary: 'x', description: '- workspace = /Users/demo/dsh-plugins\n* auto: on' }),
-  { workspace: '/Users/demo/dsh-plugins', project: '', auto: true, source: 'description' },
+  parseTaskMeta({ summary: 'x', description: '- workspace = ~/dsh-plugins\n* auto: on' }),
+  { workspace: '~/dsh-plugins', project: '', auto: true, source: 'description' },
 )
 
 /* ── 解析：标题标记 ── */
@@ -101,7 +101,7 @@ check('清单名：字符串数组', tasklistNameOf({ tasklists: ['仿真'] }), 
 check('清单名：空', tasklistNameOf({ tasklists: [] }), '')
 
 /* ── 描述里的坏链（飞书会 400） ── */
-check('本地路径链接降级为文字', sanitizeTaskDescription('见 [file](/Users/demo/a.js) 改完'), '见 file 改完')
+check('本地路径链接降级为文字', sanitizeTaskDescription('见 [file](~/a.js) 改完'), '见 file 改完')
 check('锚点链接降级为文字', sanitizeTaskDescription('[行号](#L24)'), '行号')
 check('合法链接保留地址', sanitizeTaskDescription('[文档](https://example.com/x)'), '文档 https://example.com/x')
 

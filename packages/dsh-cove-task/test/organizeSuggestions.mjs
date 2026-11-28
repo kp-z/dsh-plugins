@@ -414,6 +414,45 @@ check('校验：O/KR 建议数量有上限，超出被丢弃', () => {
   assert.ok(checked.items.some((item) => item.status === 'dropped' && /上限/.test(item.reason)))
 })
 
+check('校验：改写轮允许覆盖已有 O/KR，并带上原值（合并 O 的必要条件）', () => {
+  const tasks = [{ id: 'a', title: 'A', objective: 'O 旧的', keyResult: 'KR 旧的', done: true }]
+  const items = [{ kind: 'okr', from: 'a', objective: 'O 合并后', keyResult: 'KR 合并后', evidence: '用户要求合并' }]
+  /* 补空轮：不碰已有的（默认口径不变） */
+  const additive = validateOrganizeItems({ items, tasks, relations: [], now: 1 })
+  assert.equal(additive.items[0].status, 'dropped')
+  assert.match(additive.items[0].reason, /已经有 O\/KR/)
+  /* 改写轮：保留，并记下改之前是什么（已完成任务同样可以改） */
+  const rewrite = validateOrganizeItems({ items, tasks, relations: [], now: 1, okrRewrite: true })
+  assert.equal(rewrite.items[0].status, 'pending')
+  assert.equal(rewrite.items[0].objective, 'O 合并后')
+  assert.deepEqual(rewrite.items[0].beforeOkr, { objective: 'O 旧的', keyResult: 'KR 旧的' })
+  /* 视图层要把它带给面板，并且标注这是覆盖 */
+  const batch = makeOrganizeBatch({ at: 1, scope: { kind: 'all', id: '' }, items: rewrite.items })
+  assert.deepEqual(batch.items[0].beforeOkr, { objective: 'O 旧的', keyResult: 'KR 旧的' })
+  const projected = projectOrganize(batch, tasks)
+  assert.deepEqual(projected.items[0].beforeOkr, { objective: 'O 旧的', keyResult: 'KR 旧的' })
+  assert.match(projected.items[0].impact.note, /覆盖/)
+  /* 补空轮写进去的条目不标「原 O」 */
+  const fresh = validateOrganizeItems({
+    items: [{ kind: 'okr', from: 'b', objective: 'O1', keyResult: 'KR1', evidence: 'e' }],
+    tasks: [{ id: 'b', title: 'B' }],
+    relations: [],
+    now: 1,
+    okrRewrite: true,
+  })
+  assert.equal(fresh.items[0].beforeOkr, undefined)
+  assert.match(projectOrganize(makeOrganizeBatch({ at: 1, scope: {}, items: fresh.items }), []).items[0].impact.note, /写入/)
+})
+
+check('校验：改写轮的 O/KR 上限够盖住一个项目（不是补空轮的 12 条）', () => {
+  const tasks = Array.from({ length: 40 }, (_, i) => ({ id: 't' + i, objective: 'O' + i, keyResult: 'KR' + i }))
+  const items = tasks.map((task) => ({ kind: 'okr', from: task.id, objective: 'O 合并', keyResult: 'KR 合并', evidence: '合并' }))
+  const rewrite = validateOrganizeItems({ items, tasks, relations: [], now: 1, okrRewrite: true })
+  assert.equal(rewrite.items.filter((item) => item.status === 'pending').length, 40)
+  const additive = validateOrganizeItems({ items, tasks, relations: [], now: 1 })
+  assert.equal(additive.items.filter((item) => item.status === 'pending').length, 0)
+})
+
 check('批次与面板视图：objective / keyResult 一路带下去', () => {
   const tasks = [{ id: 'a', title: 'A' }]
   const checked = validateOrganizeItems({
@@ -486,6 +525,12 @@ check('宿主：整理会话的提示词与批次都带 okr，接受/撤销按 k
   assert.ok(/okrItems\.map\(/.test(acceptRegion), 'O/KR 应该批量一次应用（okrItems.map 传进 applyOkrLabels）')
   assert.ok(!/for \(const item of okrItems\)[\s\S]{0,200}await applyOkrLabels/.test(acceptRegion), '不要在 okr 循环里逐条 await applyOkrLabels')
   assert.match(host, /beforeOkr/, '接受时没有记录写之前的 O/KR，撤销就无法还原')
+  /* 改写轮：用户说了要求（或选了「只调 O/KR」）→ 校验器要放行「覆盖已有 O/KR」，
+     否则合并 O 的建议会被整批丢掉（用户实测 19 条全丢在这条上）。 */
+  assert.match(host, /const okrRewrite = Boolean\(hint\)/, '没有按「用户这一轮说了要求」判定改写轮')
+  assert.match(host, /okrRewrite,\s*\}/, '校验器没有拿到 okrRewrite，覆盖型 O/KR 建议会被丢')
+  assert.match(host, /suggestOkrLabels\(okrPool\.map\(\(row\) => row\.id\), \{ directive, allowRewrite: okrRewrite \}\)/, 'O/KR 兜底没有收到这一轮的要求（合并成 N 个它看不到）')
+  assert.match(host, /budget: okrRewrite \? REWRITE_BUDGET : DEFAULT_BUDGET/, '改写轮没有放宽取材预算，整片合并会只看到一部分任务')
 })
 
 check('项目名称是唯一身份：跨工作区同名串联，不同名同工作区不串联', () => {

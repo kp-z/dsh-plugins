@@ -31,7 +31,7 @@
 所有 `pnpm` 命令都必须带 `--config.verify-deps-before-run=false`，否则 pnpm 的依赖检查会先撞上本地 SQLITE store 错误：
 
 ```sh
-cd /Users/demo/dsh-plugins
+cd ~/dsh-plugins
 
 # 构建：tsc 产出 lib/index.js + lib/index.d.ts，并复制 src/client.js → lib/client.js
 pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
@@ -80,7 +80,7 @@ node scripts/verify-ios-skin-runtime.mjs --out-dir docs/assets/ios-skin \
 
 ```sh
 # 服务（Lead 已搭好；重启时）：
-DSH_HOME=/Users/demo/dsh-plugins/.tmp-ios-teams/home ELECTRON_RUN_AS_NODE=1 \
+DSH_HOME=~/dsh-plugins/.tmp-ios-teams/home ELECTRON_RUN_AS_NODE=1 \
   "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness" \
   "/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js" \
   --profile awteamfull --port 3098 --no-open
@@ -103,7 +103,7 @@ node scripts/verify-ios-skin-runtime.mjs --scenario newui
 若要在本机手工复核，可从工作区隔离 profile 启动（路径按本机安装位置替换）：
 
 ```sh
-DSH_HOME=/Users/demo/dsh-plugins/.tmp-ios-teams/home \
+DSH_HOME=~/dsh-plugins/.tmp-ios-teams/home \
 ELECTRON_RUN_AS_NODE=1 \
 "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness" \
 "/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js" \
@@ -160,10 +160,10 @@ grep -c "dsh-ios-skin v0.3.0" docs/ios-glass-demo.html                          
 ### 5.1 正常安装
 
 ```sh
-cd /Users/demo/dsh-plugins
+cd ~/dsh-plugins
 pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
 
-dsh plugin --profile web add file:/Users/demo/dsh-plugins/packages/dsh-ios-skin
+dsh plugin --profile web add file:~/dsh-plugins/packages/dsh-ios-skin
 # 重启 dsh web
 ```
 
@@ -222,7 +222,7 @@ cp -R packages/dsh-ios-skin/lib packages/dsh-ios-skin/package.json \
 ### 6.3 发布步骤
 
 ```sh
-cd /Users/demo/dsh-plugins/packages/dsh-ios-skin
+cd ~/dsh-plugins/packages/dsh-ios-skin
 pnpm --config.verify-deps-before-run=false run build
 
 # 先看包内容，别直接发

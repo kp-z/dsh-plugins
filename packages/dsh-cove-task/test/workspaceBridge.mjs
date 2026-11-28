@@ -37,8 +37,8 @@ await mkdir(NEW_DIR, { recursive: true })
 
 /* ── 假的工作区登记表 ── */
 const workspaces = [
-  { id: 'ws-a', title: '[DSH] 插件开发', path: '/Users/demo/dsh-plugins' },
-  { id: 'ws-b', title: 'DEMO', path: '/Users/demo/DEV/demo-service' },
+  { id: 'ws-a', title: '[DSH] 插件开发', path: '~/dsh-plugins' },
+  { id: 'ws-b', title: 'DEMO', path: '~/DEV/demo-demo-service' },
 ]
 const calls = { create: [] }
 const fakeRegistry = {
@@ -87,7 +87,7 @@ await writeFile(
       { id: 'task-d', title: 'D', done: false, meta: { workspace: NEW_DIR, source: 'field' }, customFields: [], members: [] },
     ],
     workspaceLinks: {
-      'task-b': { id: 'ws-a', path: '/Users/demo/dsh-plugins', title: '旧名字', boundAt: 1, titleSyncedAt: 0, stale: false },
+      'task-b': { id: 'ws-a', path: '~/dsh-plugins', title: '旧名字', boundAt: 1, titleSyncedAt: 0, stale: false },
     },
     schedules: {},
   }),

@@ -2094,7 +2094,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(textOf(mentionMenu()).includes('项目A'), false, '不是目录下的工作区列表')
   })
 
-  composerInput().props.onChange({ currentTarget: { value: '@qv' } })
+  composerInput().props.onChange({ currentTarget: { value: '@de' } })
   ft = await fx.mini.act()
   check('@ 后面的字按分类名过滤', () => {
     assert.equal(menuOptions().length, 1, '只剩匹配的 Demo')
@@ -2105,7 +2105,7 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   ft = await fx.mini.act()
   check('选分类：胶囊换成 Demo、触发词清掉、按分类范围读建议', () => {
     assert.ok(textOf(scopeChip()).includes('Demo'))
-    assert.equal(composerInput().props.value, '', '「@qv」不能混进这一轮要求')
+    assert.equal(composerInput().props.value, '', '「@de」不能混进这一轮要求')
     assert.equal(mentionMenu(), undefined, '选完菜单收起')
     assert.deepEqual(backend.log.view[backend.log.view.length - 1], { kind: 'group', id: 'g1' })
   })
@@ -2139,11 +2139,11 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(scopeChip(), undefined, '高亮的是「全部任务」= 不限定分类')
   })
 
-  composerInput().props.onChange({ currentTarget: { value: '@qv' } })
+  composerInput().props.onChange({ currentTarget: { value: '@de' } })
   ft = await fx.mini.act()
   composerInput().props.onKeyDown({ key: 'Escape', preventDefault() {} })
   ft = await fx.mini.act()
-  check('Esc 收起 @ 菜单并清掉输入里的「@qv」', () => {
+  check('Esc 收起 @ 菜单并清掉输入里的「@de」', () => {
     assert.equal(mentionMenu(), undefined)
     assert.equal(composerInput().props.value, '', '放弃选择后不留触发词')
   })

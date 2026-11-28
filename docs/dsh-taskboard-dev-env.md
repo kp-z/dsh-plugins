@@ -1,19 +1,19 @@
 # dsh-taskboard 开发环境（2026-09-07 配置）
 
 > 目标：clone 上游 `cloader/dsh-taskboard` 到本机，配置可开发、可提 PR 的环境。
-> 仓库位置：`/Users/demo/dsh-plugins/dsh-taskboard`（独立 .git，与 dsh-plugins 工作区互不干扰）。
+> 仓库位置：`~/dsh-plugins/dsh-taskboard`（独立 .git，与 dsh-plugins 工作区互不干扰）。
 
 ## 关键路径与版本
 
 | 项 | 值 |
 |---|---|
 | 上游仓库 | https://github.com/cloader/dsh-taskboard.git |
-| 本地路径 | `/Users/demo/dsh-plugins/dsh-taskboard` |
+| 本地路径 | `~/dsh-plugins/dsh-taskboard` |
 | 当前 HEAD | `e72fa7c`（0.6.4，与 upstream main 一致） |
 | Node（上游 CI 固定） | **22.x**（workflow 矩阵 `[22.x]`，engines `>=22`） |
 | 本机默认 node | 25.5.0（**与上游不兼容**，见下） |
 | 本机 node@22 | `/opt/homebrew/opt/node@22/bin`（brew keg-only，v22.23.2） |
-| npm 缓存 | `/Users/demo/.npm-dsh-taskboard`（绕过 `~/.npm` 的 root-owned 文件问题；原在工作区内，2026-09-09 移出——dsh 文件监听器递归 watch 数千个缓存分片目录导致 EMFILE 崩溃。使用时加 `npm --cache /Users/demo/.npm-dsh-taskboard` 或 `export npm_config_cache=/Users/demo/.npm-dsh-taskboard`） |
+| npm 缓存 | `~/.npm-dsh-taskboard`（绕过 `~/.npm` 的 root-owned 文件问题；原在工作区内，2026-09-09 移出——dsh 文件监听器递归 watch 数千个缓存分片目录导致 EMFILE 崩溃。使用时加 `npm --cache ~/.npm-dsh-taskboard` 或 `export npm_config_cache=~/.npm-dsh-taskboard`） |
 
 ## 为什么必须用 Node 22（本机踩坑记录）
 
@@ -28,7 +28,7 @@
 ```bash
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 
-cd /Users/demo/dsh-plugins/dsh-taskboard
+cd ~/dsh-plugins/dsh-taskboard
 npm install            # 首次（npm ci 更严格，需 lockfile 一致）
 npm run build          # host ESM + client CJS 双构建
 npm run typecheck      # tsc --noEmit

@@ -29,7 +29,7 @@ const SILENT = { info() {}, warn() {}, error() {} }
 // ---------- 值判定 ----------
 
 test('looksLikeAbsoluteDir：只认绝对目录，挡掉相对路径/URL/垃圾', () => {
-	assert.equal(looksLikeAbsoluteDir('/Users/demo/DEV/app'), true)
+	assert.equal(looksLikeAbsoluteDir('~/app'), true)
 	assert.equal(looksLikeAbsoluteDir('C:\\work\\app'), true)
 	for (const bad of ['DEV/app', 'main', 'session-abc', '', '   ', 'https://x.com/a', null, 42, {}, '/a'.repeat(400)]) {
 		assert.equal(looksLikeAbsoluteDir(bad), false, `${JSON.stringify(bad)} 不该被当成目录`)
@@ -82,7 +82,7 @@ test('extractProjectDir：**类实例上的 getter 也要能探到**（Object.en
 test('extractProjectDir：**不把消息正文里的路径当项目**（最常见的误报来源）', () => {
 	const likeRealSession = {
 		id: 'session-1',
-		messages: [{ role: 'user', content: '帮我看下 /Users/demo/DEV/somewhere 这个目录' }],
+		messages: [{ role: 'user', content: '帮我看下 ~/somewhere 这个目录' }],
 		content: { text: '路径 /var/log/foo' },
 	}
 	assert.equal(extractProjectDir(likeRealSession), null, '正文/消息里的路径不该被当成项目目录')

@@ -30,7 +30,7 @@ import {
 	isUncommittedHash,
 } from '../lib/src/git-graph/diff-ref.js'
 
-const REPO = '/Users/demo/dev/my repo'   // 故意带空格：验证 id 只对 repo 段做 encode
+const REPO = '~/dev/my repo'   // 故意带空格：验证 id 只对 repo 段做 encode
 
 /** 断言一定拿到了载荷（替换 `!` 非空断言，Node 类型擦除不支持那语法）。 */
 function mustBuild(req) {

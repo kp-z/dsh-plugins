@@ -967,7 +967,7 @@ B站的视频索引不受影响——用户要的"视频索引"目前由 B站稳
 （`origin/feat/dsh-daily`）都仍然在，随时可一条命令装回：
 
 ```bash
-cd /Users/demo/dsh-plugins/packages/dsh-daily && node scripts/install-to-profile.mjs desktop
+cd ~/dsh-plugins/packages/dsh-daily && node scripts/install-to-profile.mjs desktop
 # 然后重启 DSH（客户端半体在启动时才被扫进模块图）
 ```
 脚本已具备：目录名 = 包名（作用域包落 `node_modules/@scope/name`）、YAML 标量按需加引号、
@@ -1499,7 +1499,7 @@ candidates: 0 · changed: false
 - 新增测试：`parseWorkspacePaths`（真实形状 + 6 种坏数据）；集成测试模拟**真实故障的形状**
   —— 内存 sessions **空** + workspaceRegistry 不可用 + 只有存盘注册表 → 识别被救回来，
   且诊断里 `storages/workspace.json ok=true`
-- 修掉一个**测试非密闭**问题：`DSH_HOME` 在 DSH 子进程里是设好的（实测 `/Users/demo/.dsh`），
+- 修掉一个**测试非密闭**问题：`DSH_HOME` 在 DSH 子进程里是设好的（实测 `~/.dsh`），
   于是单测读到了开发机真实的 8 个工作区、断言"没有候选"失败 —— 在测试助手里把 `DSH_HOME`
   指向空目录（只影响该测试进程）
 - 已发布 `@kpeace/dsh-daily@0.3.6`
@@ -1752,10 +1752,10 @@ candidates: 0 · changed: false
 **事故：一次"沙箱"试跑把插件装进了用户真实 profile**
 - 我在 `/tmp` 下造了个假 profile，用 `HOME=/tmp/... node scripts/install-to-profile.mjs desktop`
   想验证幂等 —— **以为这样就是隔离的**
-- 实际结果：`@kpeace/dsh-daily@0.5.1` 被装进了 `/Users/demo/.dsh/profiles/desktop/node_modules/`
+- 实际结果：`@kpeace/dsh-daily@0.5.1` 被装进了 `~/.dsh/profiles/desktop/node_modules/`
   （mtime `04:06:31` = 我的运行时间）。**用户明确说过不要本地安装。**
 - **根因**：装机脚本解析 DSH 主目录的顺序是 `process.env.DSH_HOME ?? homedir()/.dsh`，
-  而 **DSH 会给它的子进程设好 `DSH_HOME`**（实测 `DSH_HOME=/Users/demo/.dsh`）。
+  而 **DSH 会给它的子进程设好 `DSH_HOME`**（实测 `DSH_HOME=~/.dsh`）。
   所以 `DSH_HOME` 优先级更高，**只改 `HOME` 完全挡不住**。
 - **发现过程**：我原本在查"patch 里那条引用是不是我这次加的"，
   于是按脚本的真实安装路径（`<profile>/node_modules/`，**不是**共享的 `profiles/node_modules/`）重查 ——
@@ -1766,8 +1766,8 @@ candidates: 0 · changed: false
 
 **已撤销（撤销前后均核验）**
 - 删除前核实 resolved 真实路径、确认在预期父目录内、确认 `@kpeace` 下只有 `dsh-daily`（创建时间 04:06）
-- 删除 `/Users/demo/.dsh/profiles/desktop/node_modules/@kpeace` → 复查已不存在
-- **用户数据目录全程未被触碰**：`/Users/demo/.dsh/daily/prefs.json` 仍是 `Oct 12 05:09:49`、
+- 删除 `~/.dsh/profiles/desktop/node_modules/@kpeace` → 复查已不存在
+- **用户数据目录全程未被触碰**：`~/.dsh/daily/prefs.json` 仍是 `Oct 12 05:09:49`、
   `days/2026-10-12.json` 仍是 `Oct 12 08:00:56`（事故前后一致）
 - `web` profile 本来就干净，未受影响
 - patch 里那条 `@kpeace/dsh-daily` 引用**在我这次运行之前就存在**（10-12 00:59 那轮留下），我没动它；
@@ -1795,19 +1795,19 @@ candidates: 0 · changed: false
 
 **真实宿主 `192.0.2.10:19387`（Linux，headless `dsh web`）**
 ```
-项目: demo-service | dir=/mnt/data/msp/kp/dev/demo-service | source=auto
+项目: demo-demo-service | dir=/mnt/data/msp/kp/dev/demo-demo-service | source=auto
 project.detect:
   hosts=2 · candidates=1 · changed=True
   sources=[{sessions, ok=true, count=0},
            {workspaceRegistry, ok=false, count=0},
            {storages/workspace.json, ok=true, count=3}]
-  sample=["/mnt/data/msp/kp/dev/demo-service ← storages/workspace.json.0.path"]
+  sample=["/mnt/data/msp/kp/dev/demo-demo-service ← storages/workspace.json.0.path"]
   reason=自动识别到项目目录（来源：storages/workspace.json.0.path）
 ```
 
 **这条证据同时确认了三件事**
 1. **识别真的生效了**：`changed=True`，项目从默认切成了真实工作区
-   `/mnt/data/msp/kp/dev/demo-service`，且 `source=auto`
+   `/mnt/data/msp/kp/dev/demo-demo-service`，且 `source=auto`
 2. **我 R34/R35 的诊断推断全对**：那台上 `sessions` 是内存存储且**空**（`count=0`）、
    `workspaceRegistry` **不可用** —— 与我从诊断读出的判断完全一致
 3. **救回识别的是 R35 加的那个磁盘来源**（`storages/workspace.json count=3`）——

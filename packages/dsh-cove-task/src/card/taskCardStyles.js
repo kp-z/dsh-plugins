@@ -292,7 +292,7 @@ export const TASK_CARD_STYLES = `
     object-fit: cover;
     display: block;
   }
-.tc-scope .people-role-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 2px; color: var(--tc-text-3); line-height: 1; cursor: help; }
+.tc-scope .people-role-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 2px; color: var(--tc-text-2); line-height: 1; cursor: help; }
 .tc-scope .people-group .avatar:focus-visible, .tc-scope .people-role-icon:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; }
 .tc-scope .people-group + .people-group { margin-left: 5px; }
 .tc-scope .people-group[aria-label="负责人"] .avatar { border-color: color-mix(in srgb, var(--tc-accent) 45%, var(--tc-line)); }

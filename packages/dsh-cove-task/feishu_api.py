@@ -22,11 +22,15 @@ stdout:
 """
 import json
 import html
+import os
 import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+
+# 文档网页域名跟租户走：默认公共域名，部署时用 FEISHU_WEB_HOST 指向自己的租户
+WEB_HOST = (os.environ.get('FEISHU_WEB_HOST') or 'feishu.cn').strip()
 
 BASE = 'https://open.feishu.cn/open-apis'
 
@@ -752,13 +756,13 @@ def run_actions(token, actions):
                     continue
                 info = write_markdown(token, doc, action.get('text') or '')
                 results.append({'op': op, 'ok': True, 'document': doc, **info,
-                                'url': f'https://feishu.cn/docx/{doc}'})
+                                'url': f'https://{WEB_HOST}/docx/{doc}'})
             elif op == 'update_docx':
                 doc = action['document']
                 clear_doc(token, doc)
                 info = write_markdown(token, doc, action.get('text') or '')
                 results.append({'op': op, 'ok': True, 'document': doc, **info,
-                                'url': f'https://feishu.cn/docx/{doc}'})
+                                'url': f'https://{WEB_HOST}/docx/{doc}'})
             elif op == 'rename_docx':
                 # 改文档标题（任务改名 / 卡片上改文档名时用）。
                 #

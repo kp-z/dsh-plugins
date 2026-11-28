@@ -1516,7 +1516,7 @@ R140 的正确性以**回放测试**为准：turn 63 真实序列原样回放 + 
 ## R138（task-22 / developer）—— G2 复测：**「只想不说」降到 0%（目标 <5% 达成）**；新会话里思考写进正文也是 0
 
 > 配置与宿主均由 Lead 操作（profile 备份 `cordis.patch.yml.bak-r137-053857`）；我只发问句、读会话记录，未重启宿主。
-> G2 状态在 **`/Users/demo/dsh-plugins/.agent-teams/agent-world-g2/`**（宿主 cwd = 仓库根），会话在 `~/.dsh/sessions/--Users-demo-DEV-dsh-plugins--/`。
+> G2 状态在 **`~/dsh-plugins/.agent-teams/agent-world-g2/`**（宿主 cwd = 仓库根），会话在 `~/.dsh/sessions/--Users-demo-DEV-dsh-plugins--/`。
 > 新「工头阿金」= 成员会话 `5a43a94e…`（第一次被问时由 `spawnMember` 新开）；新队长 = `agent-world:captain-g2`。
 
 ### 口径
@@ -1570,7 +1570,7 @@ developer 建议的判据是启动日志里的「对话后端：…captain-g2…
 `team.json` = `Agent World G2 | agent-world:captain-g2`；成员为全新子会话。✅
 
 ### 一处险情
-G2 的团队状态落在**仓库根** `/Users/demo/dsh-plugins/.agent-teams/agent-world-g2/`（这次宿主 cwd 是仓库根；
+G2 的团队状态落在**仓库根** `~/dsh-plugins/.agent-teams/agent-world-g2/`（这次宿主 cwd 是仓库根；
 旧团队在 `~/.agent-teams/`，那时 cwd 是 `~`）。它**没被 gitignore** —— 会话数据差点能被 `git add` 带进仓库。
 已在根 `.gitignore` 加 `.agent-teams/` 与 `.agent-world/`。
 ⇒ **团队状态位置随宿主 cwd 变**：统计/排查时先确认宿主从哪个目录启动。
@@ -1614,7 +1614,7 @@ developer 用 R133 的 22 句复测，看新会话里"只想不说"是否降下�
 | 对象 | 怎么建 / 怎么找 | 证据 |
 |---|---|---|
 | 队长 | 固定 id `agent-world:captain`，`createCaptain` 惰性建/接 | `src/index.ts:325`（**硬编码**） |
-| 团队 | `teamId = sanitizeKey(teamName)` → `agent-world`；状态在 `<队长 cwd>/.agent-teams/agent-world/team.json` | `tools.js` create；实测 `/Users/demo/.agent-teams/agent-world/` |
+| 团队 | `teamId = sanitizeKey(teamName)` → `agent-world`；状态在 `<队长 cwd>/.agent-teams/agent-world/team.json` | `tools.js` create；实测 `~/.agent-teams/agent-world/` |
 | 成员会话 | **成员的 `id` 就是它的子会话 id**（工头阿金 `id = c41d29d1…`）；`spawnMember` **每次都新开子会话**并把新 id 写回 `member.id` | `members.js:786-816`；team.json 6 个成员 id 与会话目录一一对应 |
 | 找成员会话（我们这边） | `listChildren(队长)` 里 label 以 `:<成员名>` 结尾的那个 | `teams.ts:378` |
 
@@ -5118,7 +5118,7 @@ panel 也独立复现了这个结论（自己写 PNG 解码器，`(1,4)` 缝差 
 ## R53 —— 339 件家具逐件标注 + 给用户确认的候选预览（verifier，task-16）
 
 **交付**：`docs/tile-index.md` 新增第六节（339 行逐件表 + 建议清单 + 地面砖 + 缺口），
-预览图 `/Users/demo/Downloads/aw-r52-furniture-preview.png`（9 组：工位/评审桌/机柜/实验台/作战室/告示板/收发室/休息区/地面）。
+预览图 `~/Downloads/aw-r52-furniture-preview.png`（9 组：工位/评审桌/机柜/实验台/作战室/告示板/收发室/休息区/地面）。
 
 **认了多少（如实）**：**44 件核对**（8× 单件视觉 + 像素实测交叉）、17 件同族推断、**274 件只有实测没有名称**。
 不是放弃，是**预算**：verifier 实测出**批量拼贴这条路是死的**——一张图放 24 件时视觉模型全回"未知"
@@ -5239,7 +5239,7 @@ Kenney 家具**原点在角上**，每件小件都要手调偏移（R48/R49 两�
 - **资源库（verifier，task-14）**：`src/vendor/pixel/` —— **11 个包、1720 个文件、1.41 MiB、全部 CC0**。
   主尺寸 **16×16**（11 个包逐包读 `Tilesheet.txt` 全部 16px；一屏 75×44 格装得下小镇）。
   每包 `LICENSE.txt` = 上游原文逐字 + 资源页 URL + 下载直链 + **zip sha256** + 收录日期。
-  总表 `docs/PIXEL-ASSETS.md`（含**缺口**一节），预览图 `/Users/demo/Downloads/aw-r50-pixel-preview.png`。
+  总表 `docs/PIXEL-ASSETS.md`（含**缺口**一节），预览图 `~/Downloads/aw-r50-pixel-preview.png`。
 - **白名单支持目录前缀（lead）**：1720 个文件不可能逐个列举，而**整包授权一致**（逐包核过），
   所以 `pixel/` 按目录开放。安全靠**收紧路径解析**（`isSafeRelativePath`）：只允许
   `[A-Za-z0-9._-]` 段、至少两段、无空段、无 `..`——不靠"拼接前替换掉 `..`"那种补丁。
@@ -5681,7 +5681,7 @@ agent-teams 的成员人设把说话的人框成队长、并要求向队长汇�
 **验证**
 - `typecheck` 绿；`pnpm test` **483 / 483 / 0 fail / 0 todo**（我自己跑的，与 panel 报的一致；+17 我的、+11 panel 的）。
 - **真机（web profile，不带 --patch）**：浏览器里点小铁说话，对话面板出现回复 + "2 次调用 · 看世界 · agent_teams_send_message"
-  动作行；`__agentWorldBubbles.occluded()` = `[]`，`hidden()` = 0；`/api/world` 200。截图 `/Users/demo/Downloads/aw-r39-real.png`。
+  动作行；`__agentWorldBubbles.occluded()` = `[]`，`hidden()` = 0；`/api/world` 200。截图 `~/Downloads/aw-r39-real.png`。
 
 **没做到的（如实）**
 - **合流只有地基，还没接上线**：`planTeamSync` 与 `applyExternalTasks` 都有测试，但**没有任何代码在真机上调用它们**——
@@ -5788,7 +5788,7 @@ acting 帧也真的推到了 SSE（M6-13 那套面板动作行的数据源）。
 **一、R35 欠下的那一环补上了**
 在真宿主的浏览器里对小铁说"再帮我派一条快速修复的流水线"。对话面板底部出现
 **「4 次调用 · 🔧 看世界 · 🔧 查内容库 tasks · 🔧 查内容库 tasks · 🔧 派单 task.quick-fix」**，
-工单 10 → 13。截图 `/Users/demo/Downloads/aw-r36-real-acting.png`。
+工单 10 → 13。截图 `~/Downloads/aw-r36-real-acting.png`。
 到此 M6-13 全链路有真机证据：模型调工具 → 桥解码 → `acting` 帧 → 面板动作行。
 
 **二、M6-14 死会话自愈**
@@ -6220,7 +6220,7 @@ PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm test            # tests 431 / pass
 
 ### 没解决的（下一轮第一件事）
 
-全新角色（`agent-5`）现在**越过了上面全部六关**：会话头 `cwd:"/Users/demo"`、seed 五事件完整落盘、用户消息进了 inbox、turn 2 已开始。
+全新角色（`agent-5`）现在**越过了上面全部六关**：会话头 `cwd:"~"`、seed 五事件完整落盘、用户消息进了 inbox、turn 2 已开始。
 然后在模型那一轮报：
 
     format v4 message requires a producer-owned source kind
@@ -8741,7 +8741,7 @@ PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm test            # tests 182 / pass
 
 ### 但本轮没白过：找到了一个本机可用的 three.js，并做掉了 M4 的前置
 
-1. **本机已有 `three@0.167.1`（MIT）**：`/Users/demo/DEV/demo-app/node_modules/three`，
+1. **本机已有 `three@0.167.1`（MIT）**：`~/demo-app-workspace-2/node_modules/three`，
    含 `three.module.min.js`（684KB）与 `examples/jsm/controls/`（OrbitControls 等）。
    **一个真实的版本坑**：`ASSETS.md` 记的 `postprocessing` peer 范围是 `three >=0.168 <0.187`，
    而这份是 **0.167.1，差一个 minor 进不去**。所以要离线走 M4，得在
@@ -10392,7 +10392,7 @@ assistant/message 上取 text 块写回短信线程；会话->角色的查找补
 
 **判据**：tsc 通过；全量 810 条 pass 809 / fail 0。正式桥需重启才载入新代码。
 
-**附带事实**：三条会话都在 workspace.json 的 sessionIds 里，cwd 为 /Users/demo/.dsh/xcity；
+**附带事实**：三条会话都在 workspace.json 的 sessionIds 里，cwd 为 ~/.dsh/xcity；
 侧边栏没显示的话先刷新 DSH 窗口（工作区列表在页面加载时取）。
 
 ## 2026-11-23 10:58 · 把短信转发器拆出来并加测试（防止同样的 500 再来一次）

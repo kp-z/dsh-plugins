@@ -171,12 +171,12 @@ check('工作区菜单：空列表给人话；有列表时当前项 aria-current
   assert.ok(empty.text.includes('还没有登记过工作区'))
   const picked = []
   const menu = buildWorkspaceMenu([
-    { id: 'w1', title: 'dsh-plugin', path: '/Users/demo/dsh-plugin' },
+    { id: 'w1', title: 'dsh-plugin', path: '~/dsh-plugin' },
     { id: 'w2', title: 'blog_dev' },
   ], 'w1', (ws) => picked.push(ws.id), { document: doc, el, close: () => {} })
   assert.equal(menu.children.length, 2)
   assert.equal(menu.children[0].attrs['aria-current'], 'true')
-  assert.ok(menu.children[0].text.includes('/Users/demo/dsh-plugin'))
+  assert.ok(menu.children[0].text.includes('~/dsh-plugin'))
   menu.children[1].click()
   assert.deepEqual(picked, ['w2'])
 })

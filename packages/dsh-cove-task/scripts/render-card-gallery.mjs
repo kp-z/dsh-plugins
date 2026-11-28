@@ -58,7 +58,7 @@ const full = {
   customFields: [{ name: '模块', value: '插件' }, { name: '环境', value: 'dev' }],
   members: [{ id: 'u1', name: '张三', role: 'assignee' }, { id: 'u2', name: '李四', role: 'follower' }],
   docs: [{ url: 'https://feishu.cn/docx/abc123', title: '卡片统一设计稿' }],
-  workspaceTitle: 'dsh-plugin', workspacePath: '/Users/demo/项目/Proj/dsh-plugin',
+  workspaceTitle: 'dsh-plugin', workspacePath: '~/项目/Proj/dsh-plugin',
   sessionId: 'sess-1', sessionAlive: true, sessionPhase: 'running',
 }
 const minimal = { id: 't-min', no: 25, title: '排查访客地图无数据', priority: 'P3', workspaceTitle: 'blog_dev' }

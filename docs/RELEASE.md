@@ -19,7 +19,7 @@
 npm login
 
 # 3. 发布（自动触发 prepublishOnly 构建）
-cd /Users/demo/dsh-plugins/packages/dsh-mermaid-comm
+cd ~/dsh-plugins/packages/dsh-mermaid-comm
 npm publish --access public
 
 # 4. 验证
@@ -37,7 +37,7 @@ npm view @kpeace/dsh-mermaid-comm
 #    （可以勾选 README，也可以不勾，用本地推送）
 
 # 2. 本地推送（当前目录就是 git 仓库，但注意 lib/ 被 gitignore，源码 + 配置入库即可）
-cd /Users/demo/dsh-plugins
+cd ~/dsh-plugins
 git remote add origin git@github.com:aaron1zhang/@kpeace/dsh-mermaid-comm.git
 git push -u origin main
 

@@ -71,7 +71,7 @@ check('最简：工作区 chip 带路径提示', () => {
   const m = build(minimalTask)
   const ws = chip(m, 'workspace')
   assert.equal(ws.label, 'blog_dev')
-  assert.ok(ws.title.includes('/Users/demo/blog_dev'))
+  assert.ok(ws.title.includes('~/blog_dev'))
 })
 check('最简：没绑会话 → 动作里有开工/绑定，没完成态', () => {
   const m = build(minimalTask)

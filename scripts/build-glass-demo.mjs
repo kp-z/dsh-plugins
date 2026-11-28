@@ -310,7 +310,7 @@ const dom = `
     <button class="row"><span class="grow">mermaid 语法校验</span><span class="meta">11:07</span></button>
     <div class="grp">昨天</div>
     <button class="row"><span class="grow">taskboard 计划模式</span></button>
-    <footer>Agent 模式 · 工作区 /Users/demo/dsh-plugins</footer>
+    <footer>Agent 模式 · 工作区 ~/dsh-plugins</footer>
   </div>
 
   <div class="main" data-dockkit-pane-active="">

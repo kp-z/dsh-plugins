@@ -9,7 +9,7 @@
  * 插件里 `import { defineTool } from '@deepseek-ai/dsh-tools'` 就靠这条链解析。
  *
  * 而 Node 的 ESM/CJS 解析默认取**符号链接的真实路径**：插件被 `link:` 进 profile 后，
- * 它的真实路径在工作区（`/Users/demo/dsh-plugins/packages/dsh-daily`），
+ * 它的真实路径在工作区（`~/dsh-plugins/packages/dsh-daily`），
  * 向上查找永远走不到 `$DSH_HOME/profiles/node_modules`，于是导入直接失败：
  *   `Cannot find package '@deepseek-ai/dsh-tools'`
  * 更隐蔽的是：工作区自己那份 dsh-tools（0.1.x）与宿主（0.2.x）不是一套，

@@ -135,7 +135,7 @@ const DAY = 24 * HOUR
 const task = (id, no, ws, title, extra) => {
   const wsKey = ws.split(' ')[0].replace(/[[\]]/g, '')
   return Object.assign({
-    id, no, workspaceKey: wsKey, workspaceTitle: ws, workspacePath: `/Users/demo/DEV/${wsKey}`,
+    id, no, workspaceKey: wsKey, workspaceTitle: ws, workspacePath: `~/DEV/${wsKey}`,
     title, done: false, blocked: false, ready: true, started: false, suspended: false,
     sessionId: `s-${id}`, running: false, sessionTurn: 0, createdAt: 0, startedAt: 0,
     completedAt: 0, suspendedAt: 0, predecessors: [], successors: [], sourceTasks: [], derivedTasks: [], blockedBy: [],
@@ -146,8 +146,8 @@ const snapshot = {
   now: NOW,
   groups: [{ id: 'g1', name: 'Demo', members: ['Demo'], labels: { Demo: 'Demo' }, colorOf: { Demo: 0 } }],
   workspaces: [
-    { key: 'Demo', id: 'Demo', title: '[Demo] 后端工作区', path: '/Users/demo/DEV/Demo', logo: 'lucide:database' },
-    { key: 'DSH', id: 'DSH', title: '[DSH] 插件开发', path: '/Users/demo/DEV/DSH', logo: 'lucide:puzzle' },
+    { key: 'Demo', id: 'Demo', title: '[Demo] 后端工作区', path: '~/DEV/Demo', logo: 'lucide:database' },
+    { key: 'DSH', id: 'DSH', title: '[DSH] 插件开发', path: '~/DEV/DSH', logo: 'lucide:puzzle' },
   ],
   tasks: [
     task('a1', 100001, 'Demo 后端工作区', 'demo_api 接口新增 MCAP 支持', { running: true, started: true, startedAt: NOW - 42 * 60 * 1000, sessionTurn: 12, done: true, completedAt: NOW - 1000 }),

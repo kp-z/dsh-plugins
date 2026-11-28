@@ -60,20 +60,20 @@ function test(name, fn) {
 const TASKS = [
   {
     id: 'a1', no: 101, title: 'Alpha 依赖项', done: false,
-    workspaceKey: 'wA', workspaceTitle: '项目A', workspacePath: '/Users/demo/DEV/alpha',
+    workspaceKey: 'wA', workspaceTitle: '项目A', workspacePath: '~/DEV/alpha',
     blocked: true, ready: false, started: false, suspended: false, sessionId: 's-a1',
     predecessors: [{ id: 'b1', title: 'Beta 前置' }], successors: [], sourceTasks: [], derivedTasks: [],
     blockedBy: [{ id: 'b1', title: 'Beta 前置' }],
   },
   {
     id: 'a2', no: 102, title: 'Alpha 已完成', done: true,
-    workspaceKey: 'wA', workspaceTitle: '项目A', workspacePath: '/Users/demo/DEV/alpha',
+    workspaceKey: 'wA', workspaceTitle: '项目A', workspacePath: '~/DEV/alpha',
     blocked: false, ready: false, started: false, suspended: false, sessionId: '',
     predecessors: [], successors: [], sourceTasks: [], derivedTasks: [], blockedBy: [],
   },
   {
     id: 'b1', no: 103, title: 'Beta 前置', done: false,
-    workspaceKey: 'wB', workspaceTitle: '项目B', workspacePath: '/Users/demo/DEV/beta',
+    workspaceKey: 'wB', workspaceTitle: '项目B', workspacePath: '~/DEV/beta',
     blocked: false, ready: true, started: true, suspended: false, sessionId: 's-b1',
     predecessors: [], successors: [{ id: 'a1', title: 'Alpha 依赖项' }], sourceTasks: [], derivedTasks: [], blockedBy: [],
   },
@@ -85,7 +85,7 @@ const TASKS = [
   },
   {
     id: 'halt1', no: 105, title: '挂起中的任务', done: false,
-    workspaceKey: 'wB', workspaceTitle: '项目B', workspacePath: '/Users/demo/DEV/beta',
+    workspaceKey: 'wB', workspaceTitle: '项目B', workspacePath: '~/DEV/beta',
     blocked: false, ready: false, started: false, suspended: true, sessionId: '',
     predecessors: [], successors: [], sourceTasks: [], derivedTasks: [], blockedBy: [],
   },
@@ -106,9 +106,9 @@ const GROUPS = [
 ]
 
 const WORKSPACES = [
-  { key: 'wA', id: 'wA', path: '/Users/demo/DEV/alpha', title: '项目A' },
-  { key: 'wB', id: 'wB', path: '/Users/demo/DEV/beta', title: '项目B' },
-  { key: 'wF', id: 'wF', path: '/Users/demo/DEV/empty', title: '空项目' },
+  { key: 'wA', id: 'wA', path: '~/DEV/alpha', title: '项目A' },
+  { key: 'wB', id: 'wB', path: '~/DEV/beta', title: '项目B' },
+  { key: 'wF', id: 'wF', path: '~/DEV/empty', title: '空项目' },
 ]
 
 test('projectNameOf：项目读取只有一处，缺字段不猜工作区', () => {
@@ -392,7 +392,7 @@ test('buildTree：三层结构（全部任务 / 目录 / 项目）', () => {
   assert.equal(project.groupId, 'g1')
   assert.equal(project.groupLabel, 'Demo')
   assert.equal(project.count, 2)
-  assert.equal(project.path, '/Users/demo/DEV/alpha')
+  assert.equal(project.path, '~/DEV/alpha')
 
   const bucket = tree.byKey[`${GROUP_PREFIX}${UNGROUPED_KEY}`]
   assert.equal(bucket.ungrouped, true)

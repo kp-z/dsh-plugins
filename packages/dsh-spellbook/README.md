@@ -27,7 +27,7 @@ dsh plugin --profile web add @kpeace/dsh-spellbook
 装完重启 DSH，右侧栏「+」里出现「Spellbook」。
 
 > **改这个包的时候**用 `link:` 而不是 `file:`：
-> `dsh plugin --profile web add link:/Users/demo/dsh-plugins/packages/dsh-spellbook`
+> `dsh plugin --profile web add link:~/dsh-plugins/packages/dsh-spellbook`
 >
 > `file:` 会把包**拷贝**进 profile，而 `dist/` 是构建产物、天天重建 ——
 > 拷进去之后每次重建都要重装一遍。`link:` 是软链，重建完刷新就有。

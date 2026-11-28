@@ -1,6 +1,6 @@
 # 借鉴的 UI 风格：Claude Manager（仓库 `kp-z/Claudeadventure`）
 
-> 用户口径：**只借鉴 UI 风格，不借鉴功能**。参考项目克隆在本机 `/Users/demo/DEV/Claudeadventure`
+> 用户口径：**只借鉴 UI 风格，不借鉴功能**。参考项目克隆在本机 `~/DEV/Claudeadventure`
 > （项目内部自称 Claude Manager v4.2.0，Figma Make 导出）。本文件是「从它身上提取的风格语言 +
 > 落到 DSH 插件时的换算规则」，不是功能对照表。
 

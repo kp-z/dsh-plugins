@@ -14,9 +14,14 @@ import * as commentsModule from './taskCardComments.js'
 const str = (value) => (value == null ? '' : String(value))
 
 /** 默认的建节点工具（测试里可注入自己的 el）。 */
+const SVG_NS = 'http://www.w3.org/2000/svg'
+/* 这几个标签必须走 createElementNS：用 createElement 建出来的是 HTML 未知元素，浏览器不会绘制，量出来是 0×0。 */
+const SVG_TAGS = new Set(['svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon', 'text'])
+
 function defaultEl(doc) {
   return function el(tag, attrs, children) {
-    const node = doc.createElement(tag)
+    const svg = SVG_TAGS.has(String(tag).toLowerCase()) && typeof doc.createElementNS === 'function'
+    const node = svg ? doc.createElementNS(SVG_NS, tag) : doc.createElement(tag)
     const map = attrs && typeof attrs === 'object' ? attrs : {}
     for (const key of Object.keys(map)) {
       const value = map[key]
@@ -157,6 +162,17 @@ export function renderTaskCard(model, deps) {
   for (const group of m.people || []) {
     const box = h('span', { className: 'people-group', role: 'group', 'aria-label': group.label })
     const icon = h('span', { className: 'people-role-icon', tabindex: '0', 'data-tip': group.tip, 'aria-label': group.label + '，' + (group.items.length + group.more) + ' 人' })
+    /* 负责人单人、关注人双人：图标本身不占宽，16px 内描边跟随主题色。 */
+    icon.appendChild(h('svg', { viewBox: '0 0 16 16', width: '13', height: '13', 'aria-hidden': 'true', focusable: 'false' },
+      h('g', { fill: 'none', stroke: 'currentColor', 'stroke-linecap': 'round', 'stroke-width': group.role === 'assignee' ? '1.3' : '1.2' },
+        group.role === 'assignee'
+          ? [h('circle', { cx: '8', cy: '5.4', r: '2.4' }),
+            h('path', { d: 'M3.7 12.7c0-2.3 1.9-3.9 4.3-3.9s4.3 1.6 4.3 3.9' })]
+          : [h('circle', { cx: '6', cy: '5.6', r: '2' }),
+            h('path', { d: 'M2.4 12.4c0-1.9 1.6-3.2 3.6-3.2s3.6 1.3 3.6 3.2' }),
+            h('path', { d: 'M10.4 4.2a2 2 0 0 1 0 3.8' }),
+            h('path', { d: 'M11.2 9.4c1.5.2 2.4 1.4 2.4 3' })])
+    ))
     box.appendChild(icon)
     for (const person of group.items) {
       const av = h('span', {

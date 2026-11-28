@@ -829,7 +829,7 @@ function auditLib() {
 async function loadPlaywright() {
   const candidates = [
     process.env.PLAYWRIGHT_PATH,
-    '/Users/demo/.dsh/profiles/web/node_modules/playwright/index.mjs',
+    '~/.dsh/profiles/web/node_modules/playwright/index.mjs',
     'playwright',
   ].filter(Boolean)
   const errors = []

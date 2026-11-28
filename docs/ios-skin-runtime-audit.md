@@ -37,7 +37,7 @@ CDP media emulation、`getComputedStyle` alpha 计算与 console 事件。截图
 
 ```sh
 # 1) 构建并同步到隔离 profile（theme-dev 改完代码后必须做）
-cd /Users/demo/dsh-plugins
+cd ~/dsh-plugins
 pnpm --config.verify-deps-before-run=false --filter dsh-ios-skin build
 for p in iosdev awteamfull; do
   cp -R packages/dsh-ios-skin/lib packages/dsh-ios-skin/package.json packages/dsh-ios-skin/cordis.patch.yml \

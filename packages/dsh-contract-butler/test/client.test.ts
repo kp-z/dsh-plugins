@@ -159,7 +159,7 @@ test('客户端：把当前会话的工作目录带进面板 URL', () => {
       return () => undefined
     },
   }
-  const snapshot = { byId: { 'session-7': { cwd: '/Users/demo/DEV/当前 项目' } } }
+  const snapshot = { byId: { 'session-7': { cwd: '~/DEV/当前 项目' } } }
   module.apply({
     get: (name: string) => {
       if (name === 'slots') return slots
@@ -190,7 +190,7 @@ test('客户端：把当前会话的工作目录带进面板 URL', () => {
   const src = findFrameSrc(Panel({ sessionId: 'session-7' }))
   assert.ok(src, '应当渲染出 iframe')
   assert.ok(src.startsWith('/dsh-contract-butler/panel?'), `URL 应当带查询参数：${src}`)
-  assert.ok(src.includes('cwd=' + encodeURIComponent('/Users/demo/DEV/当前 项目')), `应当带当前目录：${src}`)
+  assert.ok(src.includes('cwd=' + encodeURIComponent('~/DEV/当前 项目')), `应当带当前目录：${src}`)
 
   // 没有 sessionId 时退回不带参数的 URL，而不是崩掉。
   const bare = findFrameSrc(Panel({}))

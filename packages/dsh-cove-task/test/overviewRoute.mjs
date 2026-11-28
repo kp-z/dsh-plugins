@@ -285,14 +285,14 @@ const post = (body) => json('/api/workspace-groups', {
   body: JSON.stringify(body),
 })
 
-const created = await post({ action: 'create', name: 'QV', members: ['/p/demo-service', '/p/demo-scenepack'], labels: { '/p/demo-service': 'demo-service' } })
+const created = await post({ action: 'create', name: 'QV', members: ['/p/demo-service', '/p/demo-scenepack'], labels: { '/p/demo-service': 'demo-demo-service' } })
 check('POST create 返回 200 且带目录', created.status === 200 && created.data?.ok === true && created.data.group?.name === 'QV', JSON.stringify(created.data).slice(0, 160))
 /* 「变了才刷」的前提：写操作必须让 revision 变，否则页面永远不重拉。 */
 const revisionAfterWrite = (await json('/api/overview')).data.revision
 check('目录写操作后 revision 变化', revisionAfterWrite !== view.revision, `${view.revision} → ${revisionAfterWrite}`)
 const groupId = created.data?.group?.id || ''
 const groupsOf = async () => (await json('/api/overview')).data.groups || []
-check('成员被登记，且 labels 跟着走', JSON.stringify(await groupsOf()).includes('demo-service'))
+check('成员被登记，且 labels 跟着走', JSON.stringify(await groupsOf()).includes('demo-demo-service'))
 
 const renamed = await post({ action: 'rename', id: groupId, name: 'QV 后端' })
 check('rename 生效', renamed.status === 200 && renamed.data.group?.name === 'QV 后端')

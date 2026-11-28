@@ -616,7 +616,7 @@
 /* ============================================================
    协议管家 · 静态预览
    侧边栏是一棵树：项目 -> 这是什么边界 -> 契约
-   项目切换就在树的根上。数据全部取自 /Users/demo/DEV 下真实存在的目录。
+   项目切换就在树的根上。数据全部取自 ~/DEV 下真实存在的目录。
    ============================================================ */
 
 /* 「这是什么边界」——用一句完整的话命名，念出来就知道里面装的是什么 */
@@ -632,10 +632,10 @@ var KIND_ORDER = ['tool', 'file', 'api', 'event', 'proto'];
 var P_DSH = 'p-dsh', P_PROTO = 'p-demo', P_PLAT = 'p-platform';
 
 var PROJECTS = [
-  { id: P_DSH,   name: 'dsh-plugins',       path: '/Users/demo/dsh-plugins',
+  { id: P_DSH,   name: 'dsh-plugins',       path: '~/dsh-plugins',
     note: '这个仓库自己的东西',
     sum: '同一个「任务」，在落盘、接口、事件三层各有一份表示。三层单独看都没错——合起来对不上。' },
-  { id: P_PROTO, name: 'demo_shared_proto', path: '/Users/demo/DEV/demo-shared-proto',
+  { id: P_PROTO, name: 'demo_shared_proto', path: '~/demo-shared-proto',
     note: '后端 Go 和前端共同依赖的实体定义',
     sum: 'proto 是唯一真源，实体之间靠字段类型互相咬合。但「谁还没跟上这一版」没有任何地方记录。' },
   { id: P_PLAT,  name: 'DSH 平台',          path: '不属于任何项目',

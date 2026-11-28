@@ -106,6 +106,9 @@ export function createOrganizeDrawer(deps) {
     /* 底部对话框：这一轮要模型怎么改（「KR 写得更可验收」「只看 Demo」…）。
        只随提交那一次发给服务端，不落 store —— 它属于「这一组建议」而不是视图偏好。 */
     const [hintText, setHintText] = useState('')
+    /* 刚发出去、还没等到回包的那句话：先当「我说的话」画成气泡 —— 否则按下发送后
+       输入框清空、回包要几十秒，屏幕上什么都没有，用户以为消息丢了。 */
+    const [sentHint, setSentHint] = useState('')
     /* 输入框形态照 cove 的 agent composer：左下「工具」与「模式」两个 34×34 方按钮、
        中间单行文本域（可展开到多行）、右下发送；顶部各带一个向上弹出的菜单。 */
     const [modeMenuOpen, setModeMenuOpen] = useState(false)
@@ -128,13 +131,21 @@ export function createOrganizeDrawer(deps) {
     const listRef = useRef ? useRef(null) : null
     useEffect(() => { if (latestId) setActiveId(latestId) }, [latestId])
 
-    /* 只在打开 / 出新组时滚到最底（最新一组在底部）。接受、拒绝、撤销也会让 status
+    /* 只在打开 / 出新组 / 刚发出一句话时滚到最底（最新一组在底部）。接受、拒绝、撤销也会让 status
        从 running 变回 ready，但那时不应该把正在看旧组的用户拽回底部。 */
     useEffect(() => {
       const node = listRef && listRef.current
       if (!node) return
       node.scrollTop = node.scrollHeight
-    }, [p.open, latestId])
+    }, [p.open, latestId, sentHint])
+
+    /* 回包到了：临时气泡交给批次自己的 hint 接手，别留一份重复的。
+       失败时把那句话退回输入框 —— 不能让人刚打的字跟着报错一起消失。 */
+    useEffect(() => {
+      if (generating || !sentHint) return
+      if (status === 'error') setHintText(sentHint)
+      setSentHint('')
+    }, [generating, status])
 
     const toggleGroup = (batchId) => {
       const opening = !isOpen({ batchId })
@@ -150,6 +161,14 @@ export function createOrganizeDrawer(deps) {
       const processed = items.filter((item) => item.status === 'accepted' || item.status === 'rejected').length
       if (pending === 0 && processed > 0) return false
       return batch === latest
+    }
+
+    /* 用户说的那句话 = 一轮对话里的「我」：右对齐气泡。没说话就不画，不留空泡泡。 */
+    const askNode = (key, text) => {
+      const said = model.str(text)
+      return said
+        ? h('div', { key, className: 'fo-org-user' }, h('p', { className: 'fo-org-user-text' }, said))
+        : null
     }
 
     const itemNode = (item, batch) => {
@@ -263,6 +282,9 @@ export function createOrganizeDrawer(deps) {
         'data-current': current ? '1' : '0',
         'data-active': isActive ? '1' : '0',
       },
+        /* 这一组照哪句话生成：那句话就是一轮对话里「我」说的，气泡在组头之上 ——
+           下面的建议组是回答。回看旧组时也能一眼看出「当时我要的是什么」。 */
+        askNode('ask', batch.hint),
         h('div', { className: 'fo-org-group-head' },
           h('button', {
             type: 'button', className: 'fo-org-group-toggle', 'data-action': 'toggle-group',
@@ -272,10 +294,6 @@ export function createOrganizeDrawer(deps) {
             h('span', { className: 'fo-org-group-time' }, etaText(batch.at)),
             h('span', { className: 'fo-org-group-counts' }, counts.join(' · ')),
           ),
-          /* 这一组是照哪句要求重生成的：回看时不用猜「为什么这批和上一批不一样」。 */
-          model.str(batch.hint)
-            ? h('p', { className: 'fo-org-group-hint', title: model.str(batch.hint) }, model.str(batch.hint))
-            : null,
           /* 归档后收起时，撤销仍留在组头，避免必须先展开才能回退。 */
           !open && accepted.length && typeof p.onUndoGroup === 'function'
             ? h('div', { className: 'fo-org-group-actions' },
@@ -445,8 +463,9 @@ export function createOrganizeDrawer(deps) {
       const raw = mentionOpen ? model.str(hintText).replace(/@[^\s@]*$/u, '') : model.str(hintText)
       const text = raw.trim()
       if (typeof p.onHintSubmit === 'function') {
+        /* 先把自己说的那句放进对话，再去生成：回包慢的时候屏幕上也不能是空的。 */
+        if (text) { setSentHint(text); setHintText('') }
         p.onHintSubmit(text, activeMode.id)
-        if (text) setHintText('')
         return
       }
       if (typeof p.onRerun === 'function') p.onRerun()
@@ -549,9 +568,14 @@ export function createOrganizeDrawer(deps) {
         shown.length
           ? shown.map(groupNode)
           : (generating ? null : h('p', { className: 'fo-org-empty' }, '暂无建议')),
-        /* 生成中且还没有任何组：兜底一个居中的 spinner；有组时 spinner 已贴在「正在生成…」旁边。 */
-        generating && !shown.length
-          ? h('div', { className: 'fo-org-loading', role: 'status', 'aria-label': '正在生成建议' }, h('span', { className: 'fo-spinner' }))
+        /* 生成中 = 对话的下一拍：先画我刚发的那句，再画「正在生成」。
+           这也是唯一的在跑指示（原先列表为空时另有一个居中 spinner）。 */
+        generating
+          ? h('div', { key: 'pending', className: 'fo-org-turn' },
+            askNode('pending-ask', sentHint),
+            h('div', { className: 'fo-org-typing', role: 'status', 'aria-label': '正在生成建议' },
+              h('span', { className: 'fo-spinner', 'aria-hidden': 'true' }),
+              h('span', null, '正在生成建议…')))
           : null,
       ),
       /* 底部对话框：形态照 cove 的 agent Composer —— 左下「工具」+「模式」两个方按钮，

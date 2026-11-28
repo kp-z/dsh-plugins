@@ -184,7 +184,7 @@ HTTP 前缀：`/dsh-cove-task`（宿主 `webServer.register({kind:'prefix'})`）
 
 ```jsonc
 // state.workspaceLinks[taskId]
-{ "id": "workspace-uuid", "path": "/Users/demo/DEV/x", "title": "工作区名字",
+{ "id": "workspace-uuid", "path": "~/DEV/x", "title": "工作区名字",
   "boundAt": 0, "titleSyncedAt": 0, "stale": false }
 ```
 

@@ -152,7 +152,7 @@ inputActions = {
 
 | 环节 | 状态 |
 |---|---|
-| `~/.dsh/profiles/desktop/package.json` | `dependencies` 加 `"dsh-spellbook": "link:/Users/demo/dsh-plugins/packages/dsh-spellbook"`，`dsh.profile.bundles` 加 `"dsh-spellbook"` |
+| `~/.dsh/profiles/desktop/package.json` | `dependencies` 加 `"dsh-spellbook": "link:~/dsh-plugins/packages/dsh-spellbook"`，`dsh.profile.bundles` 加 `"dsh-spellbook"` |
 | `~/.dsh/profiles/desktop/node_modules/dsh-spellbook` | 手工软链 → 本地包（**等价于 `link:` 语义**） |
 | 备份 | `package.json.bak-spellbooklink-20261012-004124`（要回退就换回它 + 删软链） |
 | 解析验证 | 已验：`require.resolve('dsh-spellbook')` 从 profile 里解析到 `lib/index.js` ✓ |
@@ -175,7 +175,7 @@ inputActions = {
 
 每个窗口只做**一件能独立验收完的事**：
 
-1. `git -C /Users/demo/dsh-plugins status --short -- packages/dsh-spellbook` —— 确认上一轮收干净了。
+1. `git -C ~/dsh-plugins status --short -- packages/dsh-spellbook` —— 确认上一轮收干净了。
 2. 读本文件，取**最靠前的未完成项**（M1 → M2 → M3 → M4）。
 3. 做。改前先读要改的文件。
 4. `npm test` + `npm run typecheck`（在 `packages/dsh-spellbook/` 下）。

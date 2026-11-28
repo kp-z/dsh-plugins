@@ -305,7 +305,7 @@ npm run regression:install  # 上面这些 + 装机 + 安装校验（会改 prof
 
 ```
 项目：dsh-daily
-工作目录：/Users/demo/dsh-plugins/packages/dsh-daily
+工作目录：~/dsh-plugins/packages/dsh-daily
 技术栈：TypeScript（tsconfig.json）、Node.js（package.json）
 主要依赖：@deepseek-ai/cordis, @deepseek-ai/dsh-tools, @deepseek-ai/schemastery, dsh-better-sidebar, typescript
 关键词：dsh、node、项目、scripts、目录、youtube、日报、失败、插件、默认、deepseek-ai、数据、摘要、索引、频道…

@@ -1,6 +1,6 @@
 # WORKCHAIN · 工单从「领到」到「留下成长证据」
 
-> 只读调研，未改任何代码。所有路径相对 `/Users/demo/dsh-plugins`，行号取自当前工作树。
+> 只读调研，未改任何代码。所有路径相对 `~/dsh-plugins`，行号取自当前工作树。
 > 标记约定：**【证据】** = 代码/文档实测；**【推测】** = 由证据外推、未经运行验证；**【需确认】** = 涉及新概念，须先问用户。
 >
 > 阅读口径：行号取自**当前工作树**（`packages/dsh-xcity` 与 `slowvale-mirror` 都带一批未提交改动）。与本文相关的一处未提交改动恰好是 §3 的关键旁证：`independentTimeline` 已从旧的 `{kind:'independent',actorId,beats}` 迁到 `playback:{kind,tracks}`（工作树 `visual.ts:81-98`），而 `independentDialogue` **仍是旧形状**（`visual.ts:40-57`，与 HEAD 一致）。同一文件里一个函数用对了形状、另一个没跟上——所以问题不是"缺少字段"，是"整包不被认识"。

@@ -16,7 +16,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
-const REPO = '/Users/demo/dev/repo'
+const REPO = '~/dev/repo'
 
 /* ---------------- 假 React：只实现本插件用到的 useRef/useEffect/createElement ---------------- */
 function createReactStub() {

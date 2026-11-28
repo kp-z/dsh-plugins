@@ -45,7 +45,7 @@ registry 的 `list()` 返回带 `id` 的实体）。插件从来没存过这个 
 {
   "workspace": {
     "id": "0b0f2c1e-…",        // 主键：registry 的 WorkspaceId
-    "path": "/Users/demo/DEV/x",  // 校验：id 还在但路径变了 → 视为失效；id 没了但路径还在 → 重新绑
+    "path": "~/DEV/x",  // 校验：id 还在但路径变了 → 视为失效；id 没了但路径还在 → 重新绑
     "title": "工作区名字",       // 显示 + 改名检测基线
     "boundAt": 0,
     "titleSyncedAt": 0,         // 上次把 title 写回飞书的时刻（防抖）

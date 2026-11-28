@@ -33,7 +33,7 @@
         slowvale:
           enabled: true
           port: 7788
-          assetsDir: /Users/demo/dsh-plugins/slowvale-mirror/site   # 绝对路径
+          assetsDir: ~/dsh-plugins/slowvale-mirror/site   # 绝对路径
 ```
 
 **相对路径会静默失败**：App 进程的 cwd 不是仓库根，existsSync 不通过时桥就不启动，
@@ -44,7 +44,7 @@
 ```json
 // ~/.dsh/profiles/<profile>/package.json
 {
-  "dependencies": { "dsh-xcity": "link:/Users/demo/dsh-plugins/packages/dsh-xcity" },
+  "dependencies": { "dsh-xcity": "link:~/dsh-plugins/packages/dsh-xcity" },
   "dsh": { "profile": { "bundles": ["…", "dsh-xcity"] } }
 }
 ```

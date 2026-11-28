@@ -4,7 +4,7 @@
 > 收集日期 **2026-10-16**；工作目录 `packages/dsh-xcity/src/vendor/pixel/`。
 >
 > **一句话结论**：11 个包 · 1720 个文件 · **1.41 MiB** · **全部 CC0**（无署名义务）· 主风格 **16×16**。
-> 预览图：`/Users/demo/Downloads/aw-r50-pixel-preview.png`
+> 预览图：`~/Downloads/aw-r50-pixel-preview.png`
 
 ---
 
@@ -199,7 +199,7 @@ curl -sS 'https://opengameart.org/content/16x16-base-sprites' \
 
 ## 十、预览图
 
-`/Users/demo/Downloads/aw-r50-pixel-preview.png`（1520×1374，R50 生成）：
+`~/Downloads/aw-r50-pixel-preview.png`（1520×1374，R50 生成）：
 ① 四个包**作者自带**的示例场景（一眼看出风格） ② 人物：Kenney 静态人物（放大 4×）+ OGA 的
 4 方向行走帧 ③ 地面/墙体/家具/道具/UI 的图集切片（每格 16px，放大 4×）。
 图上明确标了"切片是示例格、逐格含义待接入时标注"——**不假装我知道哪一格是桌子**。

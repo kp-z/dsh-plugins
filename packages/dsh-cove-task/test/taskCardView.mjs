@@ -170,6 +170,18 @@ check('全字段：优先级色条/徽标在，未同步跟在预期 chip 里', 
   assert.ok(eta.text.includes('📅 预期 · 11-18 18:00'))
   assert.equal(eta.children.some((child) => child.className === 'chip-eta-sync'), true)
 })
+check('人员图标：负责人单人、关注人双人，形状都在', () => {
+  const node = render(fullTask)
+  const groups = node.findAll((n) => n.className === 'people-group')
+  const tagOf = (node) => String((node && (node.tag || node.tagName)) || '').toLowerCase()
+  const shapesOf = (group) => {
+    const svg = group.findAll((node) => tagOf(node) === 'svg')[0]
+    const layer = svg.findAll((node) => tagOf(node) === 'g')[0]
+    return layer.children.filter((node) => node.nodeType !== 3).map(tagOf)
+  }
+  assert.deepEqual(shapesOf(groups[0]), ['circle', 'path'], '负责人：单人')
+  assert.deepEqual(shapesOf(groups[1]), ['circle', 'path', 'path', 'path'], '关注人：双人')
+})
 check('全字段：人、文档、关系都上屏', () => {
   const node = render(fullTask)
   assert.equal(node.findAll((n) => n.className === 'people-group').length, 2)

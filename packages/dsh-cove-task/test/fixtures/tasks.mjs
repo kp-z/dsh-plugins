@@ -13,7 +13,7 @@ export const minimalTask = {
   priority: 'P2',
   done: false,
   workspaceTitle: 'blog_dev',
-  workspacePath: '/Users/demo/blog_dev',
+  workspacePath: '~/blog_dev',
 }
 
 export const fullTask = {
@@ -64,7 +64,7 @@ export const fullTask = {
     derivedTasks: [{ id: 'd1', title: '派生任务' }],
   },
   workspaceTitle: 'dsh-plugin',
-  workspacePath: '/Users/demo/项目/Proj/dsh-plugin',
+  workspacePath: '~/项目/Proj/dsh-plugin',
   sessionId: 'sess-1',
   sessionAlive: true,
   sessionPhase: 'running',

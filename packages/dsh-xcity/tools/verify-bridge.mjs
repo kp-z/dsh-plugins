@@ -28,7 +28,7 @@ const port = Number(arg('port', 7799))
 const viewer = String(arg('viewer', 'player'))
 const agents = Number(arg('agents', 8))
 const smsAfter = Number(arg('sms-after', 0))
-const assetsDir = String(arg('assets', '/Users/demo/dsh-plugins/slowvale-mirror/site'))
+const assetsDir = String(arg('assets', '~/dsh-plugins/slowvale-mirror/site'))
 
 const config = resolveConfig({ autoStart: false, persistEveryTicks: 0, maxAgents: agents })
 const service = createPluginState(config, { initialAgents: 'all' })

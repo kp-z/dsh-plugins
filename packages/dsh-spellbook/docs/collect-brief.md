@@ -214,7 +214,7 @@ params:
 ## 六、自检（必须做，做到全绿）
 
 ```bash
-cd /Users/demo/dsh-plugins/packages/dsh-spellbook
+cd ~/dsh-plugins/packages/dsh-spellbook
 node scripts/check-file.mjs content/effects/你写的每一条.md
 ```
 

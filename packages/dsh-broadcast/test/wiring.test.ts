@@ -74,7 +74,7 @@ test('一轮正常结束：把这一轮的话洗干净念出来', async () => {
   clock = 10_000
   const { listener, spoken, decisions } = harness()
   listener(session('s1'), assistantEvent(1, '我把 \`retry\` 改成三次退避了，测试都过了，可以直接上线，你看要不要现在合并。'))
-  listener(session('s1'), assistantEvent(1, '另外把日志里那个路径 /Users/demo/a.ts 删了。', ['edit', 'bash']))
+  listener(session('s1'), assistantEvent(1, '另外把日志里那个路径 ~/a.ts 删了。', ['edit', 'bash']))
   listener(session('s1'), turnEndEvent(1, 'completed'))
   await settle()
 
@@ -101,7 +101,7 @@ test('报错轮：念一句短提示，不去念报错原文', () => {
   clock = 10_000
   const { listener, spoken } = harness()
   listener(session('s3'), assistantEvent(1, '正在跑测试。'))
-  listener(session('s3'), turnEndEvent(1, 'error', 'ECONNRESET at /Users/demo/x.ts'))
+  listener(session('s3'), turnEndEvent(1, 'error', 'ECONNRESET at ~/x.ts'))
   assert.deepEqual(spoken, ['这一轮出错了，需要你看一眼。'])
 })
 

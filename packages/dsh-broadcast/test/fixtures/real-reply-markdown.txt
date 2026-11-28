@@ -2,7 +2,7 @@
 
 ## 对比页
 
-对比页是 [charts.html](/Users/demo/dsh-plugins/artifacts/cove-redesign/charts.html)，也可以访问 `http://127.0.0.1:8765/charts.html`。上排是真实组件渲染的「现在」，下排是「优化后」。鼠标移到圆点、柱子或行上会出 hover 提示，右上角可切深浅色。
+对比页是 [charts.html](~/dsh-plugins/artifacts/cove-redesign/charts.html)，也可以访问 `http://127.0.0.1:8765/charts.html`。上排是真实组件渲染的「现在」，下排是「优化后」。鼠标移到圆点、柱子或行上会出 hover 提示，右上角可切深浅色。
 
 - **数据**：「优化后」的数据来自真实的 `buildRuns`，没有改数据逻辑。
 - **尺寸**：卡片按真实的 344px 行高、1/4 宽和 2/4 宽渲染。

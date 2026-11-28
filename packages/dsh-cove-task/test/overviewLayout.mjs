@@ -49,7 +49,7 @@ function task(id, no, workspaceKey, extra) {
     done: false,
     workspaceKey,
     workspaceTitle: workspaceKey,
-    workspacePath: `/Users/demo/DEV/${workspaceKey}`,
+    workspacePath: `~/DEV/${workspaceKey}`,
     blocked: false,
     ready: true,
     started: false,
@@ -80,7 +80,7 @@ const RELATIONS = [
 ]
 
 const GROUPS = [{ id: 'g1', name: 'Demo', members: ['wA', 'wB'] }]
-const WORKSPACES = ['wA', 'wB', 'wC', 'wD', 'wE', 'wF'].map((key) => ({ key, id: key, path: `/Users/demo/DEV/${key}`, title: key }))
+const WORKSPACES = ['wA', 'wB', 'wC', 'wD', 'wE', 'wF'].map((key) => ({ key, id: key, path: `~/DEV/${key}`, title: key }))
 
 const ALL = layoutScope({ tasks: TASKS, relations: RELATIONS, groups: GROUPS, workspaces: WORKSPACES, scope: { kind: 'all' } })
 const GROUP = layoutScope({ tasks: TASKS, relations: RELATIONS, groups: GROUPS, workspaces: WORKSPACES, scope: { kind: 'group', id: 'g1' } })
