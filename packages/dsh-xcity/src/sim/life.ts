@@ -50,10 +50,31 @@ const HUNGER_LOW = 35
 const ENERGY_LOW = 30
 const SOCIAL_LOW = 35
 
+/**
+ * R532：夜里**低于这个能量才去睡**（不是"夜里人人睡"）。
+ *
+ * 取 60 的依据是"一觉能不能基本补满"：300 tick 的睡眠净回补 ≈ +91（0.35 − 0.045 每分钟），
+ * 从 60 起睡会夹到 100，既不浪费回补，也不至于让睡饱的人白占五小时床位。
+ * 门槛再高（如 80）会让大多数人整夜不睡；门槛再低，床又回到"一晚一轮"。
+ * 与 ENERGY_LOW(30) 分开：30 是白天"累了，歇一会儿"，60 是夜里"值得躺一轮"。
+ */
+const SLEEP_ENERGY_LOW = 60
+
 /** 一次活动持续多少 tick（游戏分钟）。 */
 const MEAL_TICKS = 50
 const NAP_TICKS = 60
-const SLEEP_TICKS = 480
+/**
+ * R532：睡一觉 **300** tick（5 小时），不再等于整个夜间窗口 480。
+ *
+ * 旧值 480 = 夜窗 [23:00, 07:00) 的 480 分钟长度，于是**一张床一晚只能服务一个人**：
+ * 22 座 × 1 轮 ⇒ 床位需求 = 人数（56），而不是"同时想睡的人数"。实测 04:00–07:00
+ * 十张床 100% 占满、占用者全是 sleep，而每人每天只睡到 86 分钟（能量 −17.7/人/天）。
+ * 300 让每座每晚约翻 480/300 ≈ 1.6 轮 ⇒ 22 座可服务 ≈35 人；配上面那条 energy 门槛才生效。
+ * 数值依据见 docs/REST-DEMAND.md 第 5 节（300 × (0.35 − 0.045) ≈ +91，仍能补满一轮）。
+ *
+ * export 只为测试钉住数值（同 memoryMood 的约定），生产只在本文件用。
+ */
+export const SLEEP_TICKS = 300
 const SOCIAL_TICKS = 40
 const WORK_TICKS = 90
 const STUDY_TICKS = 90
@@ -419,8 +440,12 @@ export function intentOptions(world: World, agent: Agent): IntentOption[] {
     return attributed('hungry-no-breakroom', [{ score: 1, intent: { purpose: 'meal', stationId: station.id, ticks: MEAL_TICKS, reason: '饿了，去吃点东西' } }])
   }
 
-  // 2) 夜里：睡觉。还没有“家”，先睡休息区（下一份计划再做 home）。
-  if (isNightMinute(world.tick)) {
+  // 2) 夜里：**困了才睡**。还没有“家”，先睡休息区（下一份计划再做 home）。
+  //
+  // R532：这一档以前是"夜里无条件先睡"，于是 56 人整夜抢 22 张床、每床每晚只翻一次台。
+  // 加 SLEEP_ENERGY_LOW 门槛后，睡饱的人的夜里**不早退**——它要继续走下面几档（赴约/聊天/
+  // 加班/学习），否则夜间门槛只是把人从睡眠档挡进"什么都没做"。所以这里是条件而不是 return。
+  if (isNightMinute(world.tick) && needs.energy < SLEEP_ENERGY_LOW) {
     const station = freeStation(world, agent, ['rest'])
     // R527-2：夜里**没有床位**是最常见的一档（24 人 / 10 张休息位，实测一天 5764 次）。
     // 和干活一样，没床位就去休息区附近排着队——不是站在别处发呆。

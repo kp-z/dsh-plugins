@@ -23,8 +23,12 @@ function run(equalTraits, ticks = 1440) {
 }
 
 test('R498：只改性格，同种子的行为就不同（性格有因果作用）', () => {
-  const withTraits = run(false)
-  const equal = run(true)
+  // R532：窗口从 1 天延长到 3 天。性格只通过 chooseLife 的加权分数起作用，而它只在
+  // **多候选**的决策点上改变选择；加了夜间 energy 门槛后，1 天 3 人世界里这样的决策点只剩 3 次
+  // （全部是"社交 vs 学习"，两种干劲都选社交），于是 1 天窗口量到的差异是 0——不是性格失效，
+  // 是样本太少。3 天窗口有 437 次差异，判据（>100）本身没有放宽。
+  const withTraits = run(false, 3 * 1440)
+  const equal = run(true, 3 * 1440)
   const differ = withTraits.seqs[0].filter((v, i) => v !== equal.seqs[0][i]).length
   assert.ok(differ > 100, '干劲 0.8 与 0.5 应导致大量不同的选择，实际 ' + String(differ))
 })

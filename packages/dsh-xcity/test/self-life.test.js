@@ -52,16 +52,31 @@ test('上班时段：空闲角色自己发起去工位干活，来源标记为 s
   assert.ok(walking.length > 0, '至少有人已经在去工位路上')
 })
 
-test('夜里自己睡觉；有 ready 工单时把人留给调度器', () => {
+test('R532：夜里只安排困的人睡，睡饱的人不占床', () => {
+  // 旧断言是"夜里所有人 purpose=sleep"。R532 起夜间分支带 needs.energy < 60 门槛，
+  // 而 DEFAULT_NEEDS.energy=80，所以"所有人睡"不再成立——不是行为变差，正是要修的那件事：
+  // 不缺觉的人也睡，22 张床整夜满，一张床一晚只能服务一个人。这里把两种人各断言一次。
   const night = makeWorld()
   night.tick = 2 * 60
-  const sleep = selfLifeCommands(night)
-  assert.ok(sleep.length > 0, '夜里应当有人去睡')
-  for (const command of sleep) {
-    assert.equal(command.activity, 'rest')
-    assert.equal(command.purpose, 'sleep')
-  }
+  const sleepy = night.agents[0]
+  sleepy.needs = { hunger: 90, energy: 40, social: 90 }
+  const rested = night.agents.slice(1)
+  assert.ok(rested.length > 0, '办公室里应当不止一个角色，否则这条测试没有对照')
+  for (const agent of rested) agent.needs = { hunger: 90, energy: 90, social: 90 }
 
+  const commands = selfLifeCommands(night)
+  const sleepCommand = commands.find((command) => command.agentId === sleepy.id)
+  assert.equal(sleepCommand?.activity, 'rest', '睡觉仍走 rest，不新增状态')
+  assert.equal(sleepCommand?.purpose, 'sleep', 'energy<60 的人在夜里该去睡')
+  assert.equal(sleepCommand?.ticks, 300, '一次睡 300 tick：480 会让一张床一晚只服务一个人')
+  for (const agent of rested) {
+    const command = commands.find((row) => row.agentId === agent.id)
+    assert.notEqual(command?.purpose, 'sleep', 'energy≥60 的人夜里不该去睡，实际：' + JSON.stringify(command?.purpose ?? null))
+    assert.ok(command !== undefined, '不睡不等于不安排：他应当落到后面的档（夜里 → 学习）')
+  }
+})
+
+test('有 ready 工单时把人留给调度器', () => {
   const busy = makeWorld()
   busy.tick = 10 * 60
   busy.tasks.push({

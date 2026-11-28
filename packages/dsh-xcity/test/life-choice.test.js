@@ -49,12 +49,17 @@ test('饿优先：hunger 低 → 去 breakroom 吃饭', () => {
   assert.equal(station?.kind, 'breakroom')
 })
 
-test('夜里优先睡觉：02:00 需求都满也去睡', () => {
+test('R532：夜里困了才睡 —— 02:00 energy=90 的人不该占床', () => {
+  // 旧断言是"02:00 需求都满也去睡"（R478 的"夜里人人睡"）。R532 起夜间分支带
+  // needs.energy < 60 门槛，这条断言不再成立——它正是床位瓶颈本身：22 张床整夜被 56 人抢，
+  // 每人每晚只睡一轮（86 分钟/天，能量 −17.7/人/天，见 docs/REST-DEMAND.md 第 4 节）。
+  // 睡饱的人应当留在夜里的其他档：02:00 不在上班时段 → 学习。
   const world = atMinute(makeWorld(), 2 * 60)
   const agent = world.agents[0]
   agent.needs = { hunger: 90, energy: 90, social: 90 }
   const intent = chooseLife(world, agent)
-  assert.equal(intent?.purpose, 'sleep')
+  assert.notEqual(intent?.purpose, 'sleep', 'energy 90 的人夜里不该去睡')
+  assert.equal(intent?.purpose, 'study', '不睡就继续走后面几档，不是空转')
 })
 
 test('累优先：energy 低 → 休息；站点不是 breakroom 时也接受', () => {

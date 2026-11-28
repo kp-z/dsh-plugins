@@ -194,6 +194,9 @@ test('R527-2：夜里没床位也去休息区排队（不是站着发呆）', ()
   // 23:30 才是夜里（NIGHT_FROM=23:00）；22:30 系统还认为该学习。
   world.tick = 23 * 60 + 30
   const me = subjectOf(world)
+  // R532：夜间分支要求 energy<60（睡饱的人夜里不睡），所以这里要先让人真的困，
+  // 否则走的是"夜里学习"那一档，压根到不了"抢床位"。
+  me.needs = { hunger: 90, energy: 40, social: 90 }
   fillSeats(world, ['rest'])
   const options = intentOptions(world, me)
   const waiting = options.find((option) => option.intent?.reason?.includes('等着'))

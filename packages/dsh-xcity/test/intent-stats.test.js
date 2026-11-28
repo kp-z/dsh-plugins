@@ -162,7 +162,9 @@ test('R528：夜里连休息位都没有 → night-no-rest', () => {
   const world = makeWorld()
   world.tick = NIGHT
   const agent = subjectOf(world)
-  agent.needs = { hunger: 90, energy: 90, social: 90 }
+  // R532：夜间分支要求 energy<60 才睡——这条测的是"困了却连床位都没有"，
+  // 所以人设必须真的困；energy 90 的人夜里走学习档，进不到 night-no-rest 这一档。
+  agent.needs = { hunger: 90, energy: 40, social: 90 }
   dropStations(world, (station) => station.capabilities.includes('rest'))
 
   const [intents, snapshot] = observe(world, agent)

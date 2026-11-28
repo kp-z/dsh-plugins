@@ -171,6 +171,9 @@ test('R515：心情翻不动硬需求 —— 饿着照样去吃饭，夜里照�
   const night = makeScene()
   night.tick = 2 * 60
   const sleeper = night.agents[0]
+  // R532：夜里只有 energy<60 才睡，所以这里必须先让他真的困（makeScene 给的是 energy=100）。
+  // 改的是**前提**，不是结论：心情再好也翻不动"困了要睡"这条硬需求。
+  sleeper.needs = { ...sleeper.needs, energy: 40 }
   sleeper.episodes = [episode(60, '工单「补测试」', 1, 'work')]
   assert.equal(chooseLife(night, sleeper)?.purpose, 'sleep')
 })
