@@ -39,7 +39,7 @@ import { planTeamSync, startActivity } from './sim/index.js'
 import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { intentStats } from './sim/intent-stats.js'
-import { skillLineForPrompt } from './sim/skills.js'
+import { skillBoardOf, skillLineForPrompt } from './sim/skills.js'
 import { summarizeDay } from './sim/day-summary.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
@@ -1504,6 +1504,9 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         turnCost: () => ({ ...turnCost.snapshot() }),
         // R528：意图为空时按出口归因。同样是"和 plan 并列"的只读计数，进程内累计。
         intentStats: () => ({ ...intentStats.snapshot() }),
+        // R542（H37）：快照要带每人的「近期手感」。派生只有 sim/skills.ts 一份，
+        // 而 routes 不许 import sim（边界禁令），所以从组合根注入——传输层只把它塞进 world.agents[].skills。
+        skillsOf: (world, agentId) => skillBoardOf(world, agentId),
         // 客户端 iframe 该连哪个端口：由这里告诉它，不写死在客户端里。
         bridgeBase: 'http://' + resolved.slowvale.host + ':' + String(resolved.slowvale.port),
         maxLiveSessions: resolved.maxLiveSessions,

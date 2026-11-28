@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { LEVEL_THRESHOLDS, MAX_LEVEL, levelForPoints, skillLabel, skillLineForPrompt, skillsOf } from '../lib/sim/skills.js'
+import { resolveConfig } from '../lib/config.js'
+import { createRuntime } from '../lib/runtime/index.js'
+import { buildSnapshot } from '../lib/routes/api.js'
+import {
+  LEVEL_THRESHOLDS,
+  MAX_LEVEL,
+  POINTS_PRACTICE,
+  levelForPoints,
+  skillBoardOf,
+  skillLabel,
+  skillLineForPrompt,
+  skillsOf,
+} from '../lib/sim/skills.js'
+import { createPluginState } from '../lib/state.js'
 
 /** 一次"练习"活动的最小形状（只写派生真正读的字段）。 */
 function activity(over) {
@@ -65,11 +78,12 @@ test('R541：空世界 / 没干过活 → 空数组 + 空提示词行', () => {
 })
 
 test('R541：主来源是活动——work + completed + skill → 每次 +8', () => {
-  const world = { activities: practices(3) }
+  // R542 重标阈值后 L1=32：3 次练习（24）还不够，4 次（32）才刚好进 1 级。
+  const world = { activities: practices(4) }
   assert.deepEqual(skillsOf(world, 'agent-1'), [
-    { skill: 'code', level: 1, points: 24, sample: 3, failed: 0, lastUsedTick: 150 },
+    { skill: 'code', level: 1, points: 32, sample: 4, failed: 0, lastUsedTick: 160 },
   ])
-  assert.equal(skillLineForPrompt(world, 'agent-1'), '你干这行的手感：工程 1 级（练了 3 次）')
+  assert.equal(skillLineForPrompt(world, 'agent-1'), '近期手感：工程 1 级（练了 4 次）')
 })
 
 test('R541：只数"真在站点上把这条能力用掉"的活动（别的全不算）', () => {
@@ -101,13 +115,13 @@ test('R541：时长不影响分值（被打断也会落成 completed，按时长
   assert.equal(rows[0].sample, 3)
 })
 
-test('R541：补充来源是工单——完工单按 25/张 涨级（1/3/5/8/12 张到 L5）', () => {
-  // 依据 docs/research/GROWTH.md:231：need(n)=20·n(n+1)/2 → 20/60/120/200/300
-  assert.deepEqual([...LEVEL_THRESHOLDS], [20, 60, 120, 200, 300])
+test('R541/R542：补充来源是工单——完工单按 25/张 涨级（2/3/7/12/18 张到 L5）', () => {
+  // R542：阈值按主来源的单位（一次练习 +8）重标，活动 4/9/20/35/55 次 = 工单 2/3/7/12/18 张。
+  assert.deepEqual([...LEVEL_THRESHOLDS], [32, 72, 160, 280, 440])
   assert.equal(MAX_LEVEL, 5)
 
   const tasks = []
-  const expectedLevel = [1, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5]
+  const expectedLevel = [0, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4]
   for (let i = 1; i <= 12; i++) {
     tasks.push(task({ id: 'task-' + String(i), key: 'k' + String(i), ordinal: i }))
     const rows = skillsOf({ tasks }, 'agent-1')
@@ -124,10 +138,10 @@ test('R541：打回不扣分，只记账（失败原因常与能力无关）', (
   const world = { tasks: [...done, ...failed] }
   const rows = skillsOf(world, 'agent-1')
   assert.equal(rows[0].points, 75, '打回不给负分')
-  assert.equal(rows[0].level, 2, '打回不让等级倒退')
+  assert.equal(rows[0].level, 2, '打回不让等级倒退（75 分 ≥ L2 的 72）')
   assert.equal(rows[0].sample, 3)
   assert.equal(rows[0].failed, 2)
-  assert.equal(skillLineForPrompt(world, 'agent-1'), '你干这行的手感：工程 2 级（练了 3 次，打回 2 张）')
+  assert.equal(skillLineForPrompt(world, 'agent-1'), '近期手感：工程 2 级（练了 3 次，打回 2 张）')
 })
 
 test('R541：带 taskAttemptId 的活动不重复计分（同一件事只付一次）', () => {
@@ -135,8 +149,9 @@ test('R541：带 taskAttemptId 的活动不重复计分（同一件事只付一�
     activities: [activity({ taskAttemptId: 'att-1', endedAt: 500 })],
     tasks: [task({ finishedAtTick: 500 })],
   }
+  // 25 分够不上 L1(32)：R542 之后，**一张单不再直接进 1 级**（这正是重标要的效果）。
   assert.deepEqual(skillsOf(world, 'agent-1'), [
-    { skill: 'code', level: 1, points: 25, sample: 1, failed: 0, lastUsedTick: 500 },
+    { skill: 'code', level: 0, points: 25, sample: 1, failed: 0, lastUsedTick: 500 },
   ])
 })
 
@@ -194,7 +209,7 @@ test('R541：一张单要两种能力 → 两条能力各记一笔', () => {
 })
 
 test('R541：认不出的能力名原样带出，绝不产出 undefined', () => {
-  const world = { activities: practices(3, { skill: 'quantum' }) }
+  const world = { activities: practices(4, { skill: 'quantum' }) }
   const rows = skillsOf(world, 'agent-1')
   assert.equal(rows.length, 1)
   assert.equal(rows[0].skill, 'quantum')
@@ -202,21 +217,66 @@ test('R541：认不出的能力名原样带出，绝不产出 undefined', () => 
   assert.notEqual(rows[0].skill, '')
   assert.equal(skillLabel('quantum'), 'quantum')
   assert.equal(skillLabel('code'), '工程')
-  assert.equal(skillLineForPrompt(world, 'agent-1'), '你干这行的手感：quantum 1 级（练了 3 次）')
+  assert.equal(skillLineForPrompt(world, 'agent-1'), '近期手感：quantum 1 级（练了 4 次）')
 })
 
 test('R541：提示词行只取最拿手的三条，同级按能力名固定次序', () => {
   const skills = ['code', 'review', 'research', 'compute']
   const activities = []
   for (const [i, skill] of skills.entries()) {
-    for (let n = 0; n < 3; n++) activities.push(activity({ id: 'act-' + String(i) + '-' + String(n), skill }))
+    for (let n = 0; n < 4; n++) activities.push(activity({ id: 'act-' + String(i) + '-' + String(n), skill }))
   }
   const world = { activities }
-  // 四条都是 24 分 / L1 → 同分同级，按能力名升序：code / compute / research / review
+  // 四条都是 32 分 / L1 → 同分同级，按能力名升序：code / compute / research / review
   assert.deepEqual(skillsOf(world, 'agent-1').map((row) => row.skill), ['code', 'compute', 'research', 'review'])
   assert.equal(
     skillLineForPrompt(world, 'agent-1'),
-    '你干这行的手感：工程 1 级（练了 3 次）、实测 1 级（练了 3 次）、调研 1 级（练了 3 次）',
+    '近期手感：工程 1 级（练了 4 次）、实测 1 级（练了 4 次）、调研 1 级（练了 4 次）',
   )
   assert.equal(skillLineForPrompt(world, 'agent-1'), skillLineForPrompt(world, 'agent-1'))
+})
+
+test('R542：阈值按"一次练习 +8"重标——3 次进不了 L1，封顶要 55 次', () => {
+  // 三档实际数字（也是 docs 与看板口径）：练 3 次 = 24 分（0 级）、4 次 = 32 分（L1）、55 次 = 440 分（L5）。
+  assert.equal(levelForPoints(3 * POINTS_PRACTICE), 0, '练 3 次不该长出等级')
+  assert.equal(levelForPoints(4 * POINTS_PRACTICE), 1, '练 4 次才刚好 L1')
+  assert.equal(levelForPoints(35 * POINTS_PRACTICE), 4, 'L4 = 280 分 = 35 次')
+  assert.equal(levelForPoints(54 * POINTS_PRACTICE), 4, '差一次不给满级')
+  assert.equal(levelForPoints(55 * POINTS_PRACTICE), 5, '封顶 = 440 分 = 55 次')
+  // 每级需要的练习次数就是注释里那张表：4/9/20/35/55。用 lib 自己验一遍，防止只改了一半。
+  assert.deepEqual(
+    LEVEL_THRESHOLDS.map((points) => Math.ceil(points / POINTS_PRACTICE)),
+    [4, 9, 20, 35, 55],
+  )
+})
+
+test('R542：世界快照把每人的「近期手感」发给面板（派生只在内核，面板不重算）', () => {
+  const service = createPluginState(resolveConfig({ autoStart: false, scene: 'scene.default-town' }))
+  service.ensureWorld()
+  const world = service.currentWorld()
+  assert.ok(world.agents.length >= 2, '默认小镇至少有两个人，这个用例才有意义')
+  const [first, second] = world.agents
+  if (world.activities === undefined) world.activities = []
+  for (let i = 0; i < 5; i += 1) {
+    world.activities.push(activity({ id: 'act-snap-' + String(i), agentId: first.id, endedAt: 140 + i }))
+  }
+
+  // 与组合根（src/index.ts）同一条注入：routes 不许 import sim，派生从这里进去。
+  const snap = buildSnapshot({
+    service,
+    runtime: createRuntime({ service, tickMs: 100 }),
+    tickMs: 100,
+    skillsOf: (world, agentId) => skillBoardOf(world, agentId),
+  })
+  const mine = snap.world.agents.find((agent) => agent.id === first.id)
+  const other = snap.world.agents.find((agent) => agent.id === second.id)
+  // 5 次练习 = 40 分 → L1(32)；label 由 skillLabel 解析好一起发（面板读不到内核，也不许自己抄表）。
+  assert.deepEqual(mine.skills, [
+    { skill: 'code', label: '工程', level: 1, points: 40, sample: 5, failed: 0, lastUsedTick: 144 },
+  ])
+  assert.deepEqual(other.skills, [], '没练过的人是空数组，不是 undefined（面板不用判类型）')
+  // 没注入派生时也只是空数组——面板显示「—」，而不是崩（headless / 老调用方）。
+  const bare = buildSnapshot({ service, runtime: createRuntime({ service, tickMs: 100 }), tickMs: 100 })
+  assert.deepEqual(bare.world.agents.find((agent) => agent.id === first.id).skills, [])
+  assert.notEqual(mine, world.agents[0], '快照里是拷贝：派生不许改到内核对象')
 })

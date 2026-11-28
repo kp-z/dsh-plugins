@@ -274,7 +274,6 @@
         var paused = world !== null && world.paused === true
         var agents = world !== null && Array.isArray(world.agents) ? world.agents : []
         var tasks = world !== null && Array.isArray(world.tasks) ? world.tasks : []
-        var activities = world !== null && Array.isArray(world.activities) ? world.activities : []
         var tick = world !== null ? world.tick : null
         var day = tick === null || tick === undefined ? null : Math.floor(tick / 1440) + 1
         var minute = tick === null || tick === undefined ? null : tick % 1440
@@ -306,32 +305,14 @@
           }, label)
         }
 
-        // R541：成长看板——只看**已完工工单的分布**，不在这里重算等级。
-        // 等级阈值只应该有一份（sim/skills.ts）；看板显示「做过几张」就不会和它打架。
-        // 主来源是**已完工的工作活动**（工单常常一张都没有，真机 tick=41600 时仍是 0 张），
-        // 补充来源是已完工工单的 requires。看板只显示「做过几次」，等级阈值只留在 sim 里。
-        var doneWork = activities.filter(function (a) {
-          return a.kind === 'work' && a.status === 'completed' && typeof a.skill === 'string'
-        })
-        var doneTasks = tasks.filter(function (t) { return t.status === 'done' && typeof t.owner === 'string' })
+        // R542：看板**只渲染快照发下来的派生结果**（`agents[].skills`，来源是 sim/skills.ts）。
+        // 这里不 filter、不计数、不判等级：R541 第一版在这自己抄了一遍，口径当天就和内核分叉
+        // （内核跳过带 taskAttemptId 的活动，这里没跳）；而且阈值、标签表也会变成第二份。
+        // 口径叫「近期手感」：按活动窗口派生，窗口滚动会回落——那只是窗口语义，不是惩罚。
+        // 老存档/老快照没有 skills 字段时按空数组处理（additive 字段，缺了不炸）。
         var skillRows = agents.map(function (a) {
-          var counts = {}
-          for (var i = 0; i < doneWork.length; i += 1) {
-            var act = doneWork[i]
-            if (act.agentId !== a.id) continue
-            counts[act.skill] = (counts[act.skill] || 0) + 1
-          }
-          for (var j = 0; j < doneTasks.length; j += 1) {
-            var t = doneTasks[j]
-            if (t.owner !== a.id) continue
-            var req = Array.isArray(t.requires) ? t.requires : []
-            for (var k = 0; k < req.length; k += 1) counts[req[k]] = (counts[req[k]] || 0) + 1
-          }
-          var pairs = Object.keys(counts).map(function (key) { return [key, counts[key]] })
-          pairs.sort(function (x, y) { return y[1] - x[1] })
-          var total = 0
-          for (var m = 0; m < pairs.length; m += 1) total += pairs[m][1]
-          return { name: a.name, pairs: pairs.slice(0, 3), total: total }
+          var rows = Array.isArray(a.skills) ? a.skills : []
+          return { name: a.name, rows: rows.slice(0, 3) }
         })
 
         var cards = [
@@ -370,17 +351,20 @@
                       })),
                     h('b', { style: { color: PALETTE.ink, fontFamily: 'ui-monospace, monospace' } }, String(last.counts[k])))
                 }))),
-          card(2, '成长（完工分布）', null,
+          card(2, '近期手感（滚动窗口）', null,
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
-              skillRows.length === 0 ? h('span', { style: { color: PALETTE.faint, fontSize: '12px' } }, '还没有完工记录')
+              skillRows.length === 0 ? h('span', { style: { color: PALETTE.faint, fontSize: '12px' } }, '还没有角色')
                 : skillRows.map(function (row) {
                   return h('div', { key: row.name, style: { display: 'flex', gap: '8px', fontSize: '12px' } },
                     h('span', { style: { color: PALETTE.label, width: '52px' } }, row.name),
                     h('span', { style: { color: PALETTE.ink, fontFamily: 'ui-monospace, monospace' } },
-                      row.total === 0 ? '—'
-                        : row.pairs.map(function (p) { return p[0] + ' ' + String(p[1]) }).join(' · ')),
-                    h('span', { style: { marginLeft: 'auto', color: PALETTE.faint } }, String(row.total) + ' 张'))
-                }))),
+                      row.rows.length === 0 ? '—'
+                        : row.rows.map(function (r) {
+                          return r.label + ' ' + String(r.level) + ' 级 · ' + String(r.sample) + ' 次'
+                        }).join(' · ')))
+                }),
+              h('span', { style: { color: PALETTE.faint, fontSize: '10px', marginTop: '2px' } },
+                '按最近的活动窗口派生，窗口滚动会回落——不是惩罚。'))),
           card(2, '控制', null,
             h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
               button(paused ? '▶ 启动' : '⏸ 暂停', paused ? 'resume' : 'pause', paused ? PALETTE.teal : PALETTE.amber),

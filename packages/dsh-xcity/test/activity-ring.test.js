@@ -94,6 +94,35 @@ test('按 tick 保新弃旧，原顺序不变', () => {
   assert.deepEqual(kept, [...kept].sort((a, b) => Number(a.slice(4)) - Number(b.slice(4))))
 })
 
+test('H37/R542：忙闲悬殊时每人保底 24 条——忙碌者不能物理删掉别人的练习记录', () => {
+  // 3 人世界 = 上限 72。agent-1 最近连轴转（70 条，tick 100–169），另两人早些时候各干过 10 条（tick 1–10）。
+  // 旧实现按全局 FIFO 保新弃旧：90 - 72 = 18 条最老的会被砍掉，正好是**两个闲人的全部记录**
+  // （实测现场 3 人 41 / 5 / 4 就是这么来的）。派生近期手感读这个环，闲人于是看起来没干过活。
+  const world = withAgents(freshWorld(), 3)
+  world.activities = []
+  for (const agentId of ['a1', 'a2']) {
+    for (let i = 0; i < 10; i += 1) world.activities.push({ ...completed(agentId + '-early-' + String(i), i + 1), agentId })
+  }
+  for (let i = 0; i < 70; i += 1) {
+    world.activities.push({ ...completed('a0-busy-' + String(i), 100 + i), agentId: 'a0' })
+  }
+
+  syncActivities(world)
+
+  const byAgent = { a0: [], a1: [], a2: [] }
+  for (const activity of completedOf(world)) byAgent[activity.agentId].push(activity.id)
+  // 闲人一条不丢（他们的记录全在"保底"里）。
+  assert.equal(byAgent.a1.length, 10, '闲人 a1 的 10 条记录一条都不该被忙碌者挤掉')
+  assert.equal(byAgent.a2.length, 10, '闲人 a2 同理')
+  assert.deepEqual(byAgent.a1, Array.from({ length: 10 }, (_, i) => 'a1-early-' + String(i)))
+  // 忙碌者仍留得住自己**最近**的 24 条（保底），超出的按全局 FIFO 退。
+  assert.ok(byAgent.a0.length >= ACTIVITY_KEEP_PER_AGENT, '忙碌者自己也有 24 条保底')
+  assert.deepEqual(byAgent.a0.slice(-24), Array.from({ length: 24 }, (_, i) => 'a0-busy-' + String(46 + i)), '保底的是最近 24 条')
+  assert.equal(byAgent.a0[0], 'a0-busy-18', '超出的部分按时间序丢：最老的先走')
+  // 总上限没被"保底"顶破。
+  assert.equal(completedOf(world).length, 72)
+})
+
 test('确定性：同样的世界裁出同样的环', () => {
   const build = () => {
     const world = withAgents(freshWorld(), 24)

@@ -1,5 +1,5 @@
 /**
- * R541：熟练度——把"干过什么"派生成"多熟练"。**纯派生，零存档字段**。
+ * R541/R542：近期手感——把"干过什么"派生成"最近多熟练"。**纯派生，零存档字段**。
  *
  * ## 为什么是派生，不是 Agent 上的 xp/level 字段
  *
@@ -27,23 +27,34 @@
  * **同一件事不付两次**：带 `taskAttemptId` 的活动是工单在站点上干活的那一段，
  * 它的成果已经由 ② 的 `+25` 结过账，这里跳过（否则一张单变成 25+8）。
  *
+ * ## 唯一来源：派生只在这里（R542）
+ *
+ * 世界快照（`routes/api.ts` 的 `/api/world` → `agents[].skills`）、DSH 侧栏看板
+ * （`client/client.js` 只渲染快照发下来的行）、验收脚本（`tools/verify-growth.mjs`）
+ * 全部走本文件的 {@link skillsOf}。**别处不许再写一遍 filter/计数**——R541 第一版里
+ * 这三处各算一遍，口径当天就分叉（这里跳过 `taskAttemptId`，那两处不跳，同一份存档
+ * 能算出两组数字）。面板是浏览器侧 JS，不能 import 内核，所以由快照搬运，而不是让它自己算。
+ * 能力的中文标签同理：快照行里带 `label`（{@link skillLabel}），面板不许自己抄表。
+ *
  * 口径为什么用 `requires`/`skill`（能力），而不是 `suggestedRole`（岗位）或 `Episode`：
  * 岗位是"建议派给谁"，不是"练到了什么"；一张单可能同时要 `code + review`（`default.ts:371-374`），
  * 只有能力说得准。`Episode`（`domain/types.ts:218`）根本没有技能字段，
  * 从摘要文字里猜能力是脆的（改一句文案就全错）。
  *
- * ## 边界：这是一个**滚动窗口**，所以等级是"近期手感"而不是一辈子的资历
+ * ## 边界：这是一个**滚动窗口**，所以等级叫"近期手感"，不是一辈子的资历
  *
- * 活动环只留 `activityKeepFor(world) = max(64, 24 × 人数)` 条（`sim/activity.ts:31-39`）：
- * 3 人世界 = **72 条**（实测存档 75 条 = 72 completed + 3 active），按该文件的注释约等于
- * **每人一个游戏日**。于是：
+ * 活动环上限 `activityKeepFor(world) = max(64, 24 × 人数)` 条已完成记录
+ * （`sim/activity.ts`），且**每人保底 24 条**（R542）：3 人世界 = **72 条**，按该文件的
+ * 注释约等于每人一个游戏日。于是：
  * - 老活动被裁掉后分数自然回落、等级跟着降——这是环形缓冲**免费给的粗粒度衰减**，
  *   本轮因此不需要再写一条衰减曲线（GROWTH.md §4.3 的 graceDays/perDay/floor 还要标定）；
- * - 满级 300 分 ≈ 38 次练习，一个窗口内几乎达不到。现场存档采样（tick≈42000–43200，
- *   窗口边转边算，数字会漂）：最勤的人 38–40 次 = 304–320 分（L5），另一人 5–10 次 = 40–80 分（L1），
- *   最闲的一位 2–3 次 = 16–24 分（够不上 L1 → **不写进提示词**）。
- *   阈值 `20/60/120/200/300` 是按"一张单 = 25"标的，活动权重是 8，分布要不要重标是 H37b 的事
- *   ——这一轮只做"算得出来 + 说得出来"。
+ *   **掉级是窗口语义，不是惩罚**：走了三天再回来，数字低是因为"最近没练"，
+ *   而不是世界在扣分。所以名字、提示词、看板一律叫「近期手感」，不叫「熟练度」「资历」。
+ * - 满级 440 分 = **55 次练习**：要占满一个 72 条窗口的 76%，一个人几乎得吃满整窗
+ *   ——满级本来就该是"这一阵子全在练它"，不是日常状态。
+ * - 现场存档采样（tick≈42000–43200，窗口边转边算，数字会漂）：最勤的人 38–40 次
+ *   = 304–320 分（L4），另一人 5–10 次 = 40–80 分（L1–L2），最闲的一位 2–3 次
+ *   = 16–24 分（够不上 L1=32 → **不写进提示词**）。
  *
  * ## 衰减：这一轮不做，但 `lastUsedTick` 已经返回
  *
@@ -54,13 +65,25 @@
 import type { Activity, Task } from '../domain/types.js'
 
 /**
- * 每级门槛（**累计**分）：`need(n) = 20·n(n+1)/2` → 20 / 60 / 120 / 200 / 300。
+ * 每级门槛（**累计**分），按主来源的单位重新标定（R542）。
  *
- * 依据是 `docs/research/GROWTH.md:231` 的曲线（不是随手拍的）：按一张单 25 分算，
- * L1=1 张、L2=3 张、L3=5 张、L4=8 张、L5=12 张。工单与活动**共用**这张表——
- * 百分点只有一个公式源，两条来源只在"给多少分"上不同。
+ * | 级 | 分 | 练习次数（+8） | 完工单张数（25/张） |
+ * |---|---|---|---|
+ * | L1 | 32 | 4 | 2 |
+ * | L2 | 72 | 9 | 3 |
+ * | L3 | 160 | 20 | 7 |
+ * | L4 | 280 | 35 | 12 |
+ * | L5 | 440 | 55 | 18 |
+ *
+ * 为什么重标：上一版 `20/60/120/200/300` 是按"一张单 25 分"的三角曲线标的
+ * （`need(n) = 20·n(n+1)/2`，`docs/research/GROWTH.md:231`），可主来源是活动（+8）——
+ * 3 次练习（24 分）就进 L1，41 次直接封顶，**阈值与单位不匹配**。重标守住三条：
+ * - **练 3 次进不了 L1**（24 < 32）：练两下不该长本事；
+ * - **封顶要 ~55 次**（440 / 8 = 55）：满级得占满一个活动窗口的大部分；
+ * - 工单那本账仍说得通（2/3/7/12/18 张），两条来源**共用**这张表——
+ *   百分点只有一个公式源，两条来源只在"给多少分"上不同。
  */
-export const LEVEL_THRESHOLDS: readonly number[] = [20, 60, 120, 200, 300]
+export const LEVEL_THRESHOLDS: readonly number[] = [32, 72, 160, 280, 440]
 
 /** 满级（= 门槛数）。 */
 export const MAX_LEVEL = LEVEL_THRESHOLDS.length
@@ -78,7 +101,7 @@ export const POINTS_REPEAT = 10
 export const POINTS_AGAIN = 5
 
 /**
- * 一行熟练度。`skill` 是能力原名（`code`/`review`/…），中文标签见 {@link skillLabel}。
+ * 一行「近期手感」。`skill` 是能力原名（`code`/`review`/…），中文标签见 {@link skillLabel}。
  *
  * `sample` 与 `failed` 分开数：提示词要说"练了几次、打回几张"，一个数字说不清同一件事。
  */
@@ -87,7 +110,7 @@ export interface SkillRow {
   skill: string
   /** 0..5。 */
   level: number
-  /** 累计熟练度分。 */
+  /** 当前窗口内的熟练度分（会随活动被裁掉而回落）。 */
   points: number
   /** 计入的练习单位数：一次完工活动算一次，一张完工单也算一次。 */
   sample: number
@@ -210,9 +233,9 @@ function tallyOf(world: SkillSources, agentId: string): Map<string, Tally> {
 }
 
 /**
- * 这个人的熟练度，按"最拿手"排序（等级 → 分 → 次数 → 能力名，全序，保证确定性）。
+ * 这个人的近期手感，按"最拿手"排序（等级 → 分 → 次数 → 能力名，全序，保证确定性）。
  *
- * 只要有过记录就有一行（**可能是 0 级**：一次练习 8 分，够不上 L1 的 20）。
+ * 只要有过记录就有一行（**可能是 0 级**：一次练习 8 分，够不上 L1 的 32）。
  * 0 级要不要显示是展示层的选择；{@link skillLineForPrompt} 不显示它。
  */
 export function skillsOf(world: SkillSources, agentId: string): SkillRow[] {
@@ -239,7 +262,24 @@ export function skillsOf(world: SkillSources, agentId: string): SkillRow[] {
 }
 
 /**
- * 一行直接进人设提示词的熟练度描述；**没有够得上 1 级的记录时返回空串**
+ * 给人看的行（快照 → 侧栏看板）：{@link skillBoardOf} 在 {@link SkillRow} 上补一个能力中文标签。
+ *
+ * 为什么标签也在内核解析：面板是浏览器侧 JS，不能 import 内核，也不该再抄一份
+ * {@link CAPABILITY_LABEL}——抄了就是第二个真相（R542 那次分叉的同一个病）。
+ * 形状是 additive 的：面板忽略它不认识的字段，老前端也不受影响。
+ */
+export interface SkillBoardRow extends SkillRow {
+  /** 能力中文标签（{@link skillLabel} 的结果；未知能力原样）。 */
+  label: string
+}
+
+/** 快照/看板要的行：派生 + 标签，一步到位（组合根把它注入 transport，routes 不认识 sim）。 */
+export function skillBoardOf(world: SkillSources, agentId: string): SkillBoardRow[] {
+  return skillsOf(world, agentId).map((row) => ({ ...row, label: skillLabel(row.skill) }))
+}
+
+/**
+ * 一行直接进人设提示词的「近期手感」描述；**没有够得上 1 级的记录时返回空串**
  * （`bridge/persona-prompt.ts:146` 只在非空时渲染，所以空串 = 这一行根本不出现）。
  *
  * 只说两件可复算的事：几级、练了几次（打回过的补一句打回几张）。
@@ -254,5 +294,6 @@ export function skillLineForPrompt(world: SkillSources, agentId: string): string
     const bounced = row.failed === 0 ? '' : '，打回 ' + String(row.failed) + ' 张'
     return skillLabel(row.skill) + ' ' + String(row.level) + ' 级（' + done + bounced + '）'
   })
-  return '你干这行的手感：' + parts.join('、')
+  // R542：口径写「近期」——这行按活动窗口算，会随窗口滚动回落，别让人以为自己一辈子就这水平。
+  return '近期手感：' + parts.join('、')
 }

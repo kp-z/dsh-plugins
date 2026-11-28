@@ -27,13 +27,23 @@ import { dueAppointmentOf } from './life.js'
  *
  * 代价是存档：24 人约 576 条，实测每条约 350 B ≈ 200 KB，仍在 2 MiB
  * 存档预算内（见 sim/memory.ts 的 SNAPSHOT_BUDGET_BYTES）。
+ *
+ * ## R542：24 从"上限的一部分"变成"**每人保底**"
+ *
+ * 裁剪原来是全局 FIFO：总上限 24×人数，谁最勤谁吃满窗口、把别人的记录挤出去
+ * （实测 3 人世界 72 条：agent-1 占 41，另两人 5 / 4）。派生"近期手感"读的就是这个环，
+ * 于是忙碌者会**物理删掉**闲人的练习记录——闲人不是没练，是记录被删了。
+ *
+ * 现在：每人最近 24 条已完成记录**受保护**（谁都不许删），剩下的按全局 FIFO 丢。
+ * 总上限仍是 `max(64, 24 × 人数)`：protected ≤ 上限恒成立（24×人数 ≤ max(64, 24×人数)），
+ * 所以"保底"不会把上限顶破，只会让过量者多退一点（环可能因此空闲，这是对的）。
  */
 export const ACTIVITY_KEEP_PER_AGENT = 24
 
 /** 活动环下限：人少时不缩水（老世界的 64 条仍然保留）。 */
 export const ACTIVITY_KEEP_FLOOR = 64
 
-/** 活动环实际保留条数：max(下限, 每人条数 × 人数)。 */
+/** 活动环总上限：max(下限, 每人条数 × 人数)。注意这是**总数**；"每人 24 条"由裁剪时的保底保证（R542）。 */
 export function activityKeepFor(world: Pick<World, 'agents'>): number {
   return Math.max(ACTIVITY_KEEP_FLOOR, ACTIVITY_KEEP_PER_AGENT * world.agents.length)
 }
@@ -190,10 +200,30 @@ export function syncActivities(world: World): Activity[] {
       agent.activityTrigger = undefined
     }
   }
-  const excess = world.activities.filter((activity) => activity.status !== 'active').length - activityKeepFor(world)
+  // R542：裁剪 = 每人保底 + 全局 FIFO。
+  //
+  // 只按全局 FIFO 丢会让最勤的人吃满窗口（3 人 72 条时实测 41 / 5 / 4），
+  // 等于"忙的人物理删掉闲的人的练习记录"——派生近期手感时，闲人看起来像没干过活。
+  // 所以先给每人留住自己最近的 ACTIVITY_KEEP_PER_AGENT 条已完成记录，剩下来的名额
+  // 才按全局 FIFO 分配给其他人。进行中的活动一条都不删（它们还没结算）。
+  const finished = world.activities.filter((activity) => activity.status !== 'active')
+  const excess = finished.length - activityKeepFor(world)
   if (excess > 0) {
-    let remaining = excess
-    world.activities = world.activities.filter((activity) => activity.status === 'active' || remaining-- <= 0)
+    const perAgent = new Map<string, string[]>()
+    for (const activity of finished) {
+      const ids = perAgent.get(activity.agentId)
+      if (ids === undefined) perAgent.set(activity.agentId, [activity.id])
+      else ids.push(activity.id)
+    }
+    const protectedIds = new Set<string>()
+    for (const ids of perAgent.values()) {
+      for (const id of ids.slice(-ACTIVITY_KEEP_PER_AGENT)) protectedIds.add(id)
+    }
+    // 保底吃掉的额度之外，才是按时间序丢的名额（protected ≤ 上限，故 budget ≥ 0）。
+    const budget = activityKeepFor(world) - protectedIds.size
+    const droppable = finished.filter((activity) => !protectedIds.has(activity.id))
+    const dropped = new Set(droppable.slice(0, Math.max(0, droppable.length - budget)).map((activity) => activity.id))
+    world.activities = world.activities.filter((activity) => activity.status === 'active' || !dropped.has(activity.id))
   }
   return completed
 }

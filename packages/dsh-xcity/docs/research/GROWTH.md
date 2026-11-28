@@ -231,6 +231,22 @@ proficiency?: Record<string, { xp: number; lastUsedTick: number }>
 **等级阈值**：`need(n) = 20·n(n+1)/2` → `L1=20, L2=60, L3=120, L4=200, L5=300`。
 （现有 `persona` 用 `100·n(n−1)/2`：两条都是二次增长，但起点与斜率不同——本表从 `L1=20` 起，`persona` 从 `L2=100` 起。World 侧只存 `xp`，**换算只在一处**（`persona/level.ts`）做，否则会出现第二个公式源。）
 
+> **落地口径（H37 收口，R542）——上面这条公式与那一行 `Agent.proficiency` 都没实现，以这段为准。**
+>
+> - **不存字段，纯派生**：`(world, agentId) → 数值`，唯一来源 `src/sim/skills.ts`（`skillsOf`）。
+>   权威数据已经在世界里（`world.activities` / `world.tasks`），存字段就有两个真相。
+> - **单位**：一次练习（`kind=work` + `completed` + `skill` 非空，且不带 `taskAttemptId`）= **+8**；
+>   一张完工单 = 首张 **+25**、同 `(set,key)` 第 2 次 +10、第 3 次起 +5（失败只记账不扣分）。
+> - **阈值（按 8 分单位重标）**：`L1..L5 = 32 / 72 / 160 / 280 / 440`，
+>   即 **练 4 / 9 / 20 / 35 / 55 次**（换成工单是 2 / 3 / 7 / 12 / 18 张）。
+>   守三条：练 **3 次进不了 L1**（24 < 32）；**封顶要 ~55 次**（440）；两条来源共用一张表。
+>   （上一版 `20/60/120/200/300` 是按"一张单 25 分"标的，主来源却是活动：3 次就进 L1、41 次直接封顶。）
+> - **口径叫「近期手感」，不是一辈子的熟练度**：活动环只留 `max(64, 24×人数)` 条已完成记录、
+>   **每人保底 24 条**（`sim/activity.ts`），窗口一滚动分数就回落、等级跟着降——
+>   **这是窗口语义，不是惩罚**。所以提示词那一行、看板标题、代码注释一律写「近期手感」。
+> - **消费方**：`GET /api/world` 的 `world.agents[].skills`（`{skill,label,level,points,sample,failed,lastUsedTick}`，
+>   additive）、DSH 侧栏看板（只渲染快照，不重算）、`tools/verify-growth.mjs`（直接 import `skillsOf`）。
+
 **结算入口**
 
 | 事件 | 位置 | 给谁加 | 加多少 |

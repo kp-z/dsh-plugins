@@ -48,6 +48,18 @@ export interface ApiDeps {
   /** 小镇桥（Slow Vale 适配层）的地址，如 http://127.0.0.1:7790；客户端 iframe 用它。 */
   bridgeBase?: string
   /**
+   * R542（H37）：每人的「近期手感」派生行（`skill` / `label` / `level` / `points` / `sample`…）。
+   *
+   * 为什么是注入而不是 import：`sim` 是模拟内核，`routes` 是传输层，边界表禁止 routes
+   * 值 import sim。派生规则（跳过带 `taskAttemptId` 的活动、递减、阈值）只该有一份，
+   * 因此由组合根（`src/index.ts`）把 `sim/skills.ts` 的函数传进来，这里只负责放进快照。
+   * 不传时快照里每人 `skills` 为空数组（面板显示「—」），不是错误。
+   *
+   * 返回类型的形状故意是 `unknown[]`：行的字段属于内核的派生概念（`sim/skills.ts` 的
+   * `SkillBoardRow`），传输层不复制一份字段表——复制出来的表迟早会和内核漂移。
+   */
+  skillsOf?: (world: World, agentId: string) => readonly unknown[]
+  /**
    * 这个世界对应的 DSH 会话（队长会话）的**可读名字**（R162）。
    *
    * 为什么不放进快照：标题要异步读 session 日志（`sessionQuery.readTitle`），
@@ -319,7 +331,15 @@ export function buildSnapshot(deps: ApiDeps): SnapshotMessage {
     v: PROTOCOL_VERSION,
     type: 'snapshot',
     seq: world.seq,
-    world: slim,
+    // R542（H37）：成长派生只有 `sim/skills.ts` 一个来源。面板是浏览器侧 JS、不能 import 内核，
+    // 所以由快照把每人的「近期手感」搬运过去（`agents[].skills`，additive；老前端忽略未知字段）。
+    // routes 不许 import sim（边界禁令），派生由组合根通过 `skillsOf` 注入——这里**只搬运不重算**。
+    world: {
+      ...slim,
+      agents: slim.agents.map((agent) =>
+        Object.assign({}, agent, { skills: deps.skillsOf?.(world, agent.id) ?? [] }),
+      ),
+    },
     // 面板只许 import 协议层、读不到内容库，所以调色板必须在这儿解析好发出去。
     palette: { ...content.colors() },
     // 渲染就绪的"要摆什么"。**这是渲染层的唯一输入**：2D canvas 画它，

@@ -397,7 +397,8 @@ export interface WorldContextFacts {
   /** 正在前往的站点名；不在路上时为 null。 */
   readonly walkingTo: string | null
   /**
-   * R541：干这行的手感（由 sim/skills.ts 从记忆里派生出的一行中文）。
+   * R541/R542：「近期手感」（由 sim/skills.ts 从活动窗口里派生出的一行中文；
+   * 窗口滚动会回落——这是窗口语义，不是惩罚）。
    *
    * 为什么是字符串而不是结构：边界规则不许 bridge import sim，所以派生在 sim 侧做完、
    * 组合根（index.ts）算出这一行传进来。结构化数字留给看板（走世界快照），两边不互相污染。
