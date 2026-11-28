@@ -754,3 +754,16 @@
   ⑤ 事故记录：12:29:44 有一次 `git reset --hard HEAD` 抹掉了未完工作（reflog 可见；同期有别的 session 在本仓库提交），
      已改成"写入即检查点提交"（`ae9c6e0` 只 add 两个源文件，没碰别人未提交的 docs）。教训写进本轮。
   测试：`npm test` → **1192 tests / 1191 pass / 1 skip / 0 fail**（新增 `test/intent-driver.test.js` 10 条）。
+- 2026-11-28 12:42 · **H38 只读核对结论 + 三处修正（R544）**。
+  审计确认：映射**穷尽**（14 个出口全覆盖）、旧 `byReason` **未污染**（`total=ΣbyReason` 实测成立）、边界干净
+  （新类型只在 `sim/intent-stats.ts`，存档 schema 不变）。但抓出三个真问题，已修/已记：
+  ① **候选 ≠ 选择**：`byDriver` 分母是"给出的意图条数"，一天重放 `ΣbyDriver 8295 > ok 8164`（+1.6%），
+     且 `routine` 951 个候选只落地 331 条。→ 看板标题改成「动机（候选次数）」并注明"不是落地次数"。
+  ② **日志中英混排**：`logs.ts` 把 `trigger.text` 原样写进 `decision.reason`，于是中文看板出现 `need: 饿了…`。
+     → 加 `stripDriverPrefix()` 只在**展示**时剥前缀（原句一字不改，驱动仍从 `byDriver` 读），加 3 条测试。
+  ③ **`duty` 是结构性死桶**：真实存档里 0 次候选（承诺全都 kept/missed，没有 open 到期的约）。
+     这说明"承诺驱动行为"在数据上还没发生——H19 的裁决把窗口都结算完了。留作 H39 的输入：
+     要么让承诺有"到期前仍 open"的窗口，要么承认 duty 只在合成场景可见。
+  ④ **过程事故（我的）**：`ae9c6e04` 那个检查点提交把别的 session 暂存好的 `artifacts/**` 删除（84 个文件、约 4.8 万行）
+     一起带进了 HEAD。已用 `ef60ddb6` 恢复。教训：检查点提交必须 `git commit -- <paths>`，别让别人的暂存搭车。
+  测试：`npm test` → **1195 tests / 1194 pass / 1 skip / 0 fail**。

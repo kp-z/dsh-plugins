@@ -17,6 +17,16 @@
  * kind='event' 必须带 decision 或 phase；kind='standalone' 必须带 item。
  */
 
+
+/**
+ * R543：剥掉 `need: / duty: / routine: ` 前缀，只用于**展示**。
+ *
+ * 驱动前缀是 `sim/life.ts` 给归因表用的机器词；日志的 decision.reason 是给中文看板的原话，
+ * 句首出现英文会显得中英混排。这里只剥前缀、原句一字不改；驱动本身仍可读 `runtime.intentStats.byDriver`。
+ */
+export function stripDriverPrefix(text: string): string {
+  return text.trim().replace(/^(?:need|duty|routine):\s*/, '')
+}
 export interface LogTrigger {
   kind: 'player' | 'schedule' | 'self' | 'task'
   text?: string | undefined
@@ -161,8 +171,12 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
     const name = input.nameOf(activity.agentId)
     cardFor(cardId, aggregateId, place?.name ?? '小镇', name, at)
 
-    // 有触发来源才有 decision：reason 用原话，不加工。
-    if (activity.trigger?.text !== undefined && activity.trigger.text.trim() !== '') {
+    // 有触发来源才有 decision：reason 用原话。
+    // R543：`sim/life.ts` 会在原话前面加驱动前缀（`need: / duty: / routine: `），
+    // 那是给归因表用的机器词，不该出现在中文看板的句首——这里只剥前缀，原句一字不改。
+    // 驱动本身仍然可从 `runtime.intentStats.byDriver` 读到，不需要复制到这个字段。
+    const triggerText = stripDriverPrefix(activity.trigger?.text ?? '')
+    if (triggerText !== '') {
       drafts.push({
         at: activity.startedAt,
         id: activityStartId(activity) - 1,
@@ -172,9 +186,9 @@ export function logsOf(input: LogInput): { recent: Record<string, unknown>; catc
           kind: 'event',
           decision: {
             record_id: activity.id,
-            reason: activity.trigger.text.trim(),
+            reason: triggerText,
             mood: null,
-            source: activity.trigger.kind,
+            source: activity.trigger?.kind ?? 'self',
           },
         },
       })

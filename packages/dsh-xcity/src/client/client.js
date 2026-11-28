@@ -377,7 +377,7 @@
                 }),
               h('span', { style: { color: PALETTE.faint, fontSize: '10px', marginTop: '2px' } },
                 '按最近的活动窗口派生，窗口滚动会回落——不是惩罚。'))),
-          card(2, '动机（决策次数）', null,
+          card(2, '动机（候选次数）', null,
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
               h('div', { style: { display: 'flex', gap: '10px', fontSize: '12px', fontFamily: 'ui-monospace, monospace' } },
                 ['need', 'duty', 'routine'].map(function (key) {
@@ -389,7 +389,7 @@
               h('div', { style: { fontSize: '11px', color: PALETTE.faint } },
                 runtime === null || runtime.intentStats === undefined
                   ? '还没有归因数据（重启后开始累计）'
-                  : '分母 = 拿到的意图条数；一次决策可给 2~3 条候选'))),
+                  : '分母 = 给出的意图条数（候选，不是落地次数）；一次决策可给 2~3 条'))),
           card(2, '控制', null,
             h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
               button(paused ? '▶ 启动' : '⏸ 暂停', paused ? 'resume' : 'pause', paused ? PALETTE.teal : PALETTE.amber),
