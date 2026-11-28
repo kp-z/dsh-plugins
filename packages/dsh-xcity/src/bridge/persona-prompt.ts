@@ -142,6 +142,8 @@ export function buildCharacterSystemPrompt(
     `- ${where}`,
     `- 你现在：${describeDoing(facts)}`,
     `- ${task}`,
+    // R541：成长。有记录才出现这一行——没干过的活不该被说成「0 级」。
+    ...(typeof facts.skillLine === 'string' && facts.skillLine !== '' ? ['- ' + facts.skillLine] : []),
     // 规矩来自内容库（场景的 residentRules，R42）；没写就没有这一节。
     ...(rules.length === 0 ? [] : ['', '## 规矩', ...rules.map((rule) => `- ${rule}`)]),
   ].join('\n')
