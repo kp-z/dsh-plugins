@@ -740,3 +740,17 @@
   · **明确留到 H37b**（都要用户点头）：`Agent.proficiency` 一辈子累计（新概念）、衰减参数标定、
     成长影响行为（`interaction.ts` 速度 / `scheduler.ts` 派单次序）——后者会改 golden，必须单独一轮并解释差异。
   测试：`npm test` → **1178 tests / 1177 pass / 1 skip / 0 fail**。
+- 2026-11-28 12:33 · **H38 完成（勾选）——动机归因 driver + byDriver**。
+  ① 新增 `MotiveDriver = need | duty | routine`（只三键），`byDriver` 与 `observeDriver()` 落在 `sim/intent-stats.ts`；
+     **旧 `byReason` 一字未改**（用一条"八个出口逐键回归"硬编码期望表钉住，`git diff 17c4c452 ae9c6e04` 只有返回对象多一个键）。
+  ② 映射（8 条出口全覆盖）：饿/夜里睡/累/想说话 = **need**；赴约 = **duty**；上班干活/非上班学习 = **routine**；
+     四处 `waitOption` 的等待动机跟随其来源（饿/夜里无位 = need，上班/学习无位 = routine）。
+     口径：分母是**拿到的意图条数**（一次决策可给 2~3 条候选，如"赴约+上班" → duty 1 / routine 1），没意图不计；`total` 不动。
+  ③ driver 写进既有 `Activity.trigger.text`（`"need: 饿了，去吃点东西"`）；前缀在 `chooseLife` 出口拼**一次**，
+     `selfLifeCommands` 与 `step.ts:566` 两条写入口共用，**没碰 step.ts**。
+     三个既有读者全部核对过不会坏：`logs.ts`（自由文本不解析）、`day-summary.ts`（自派活动走 purpose 分支）、
+     `memory.ts`（只抽「」里的工单名，前缀不含「」）；并加了三条防回归测试。
+  ④ 看板新增「动机（决策次数）」卡片（读 `runtime.intentStats.byDriver`，没数据时显示"重启后开始累计"）。
+  ⑤ 事故记录：12:29:44 有一次 `git reset --hard HEAD` 抹掉了未完工作（reflog 可见；同期有别的 session 在本仓库提交），
+     已改成"写入即检查点提交"（`ae9c6e0` 只 add 两个源文件，没碰别人未提交的 docs）。教训写进本轮。
+  测试：`npm test` → **1192 tests / 1191 pass / 1 skip / 0 fail**（新增 `test/intent-driver.test.js` 10 条）。

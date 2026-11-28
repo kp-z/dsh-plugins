@@ -192,6 +192,9 @@
         var hist = React.useState([])
         var history = hist[0]
         var setHistory = hist[1]
+        var stats = React.useState(null)
+        var runtime = stats[0]
+        var setRuntime = stats[1]
         var err = React.useState(null)
         var error = err[0]
         var setError = err[1]
@@ -237,7 +240,12 @@
           var load = function () {
             fetch('/agent-world/api/world')
               .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)) })
-              .then(function (d) { if (alive) { apply(d && d.world ? d.world : null); setError(null) } })
+              .then(function (d) {
+              if (!alive) return
+              apply(d && d.world ? d.world : null)
+              setRuntime(d && d.runtime ? d.runtime : null)
+              setError(null)
+            })
               .catch(function (e) { if (alive) setError(String(e && e.message ? e.message : e)) })
           }
           load()
@@ -266,7 +274,11 @@
             .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)) })
             .then(function () { return fetch('/agent-world/api/world') })
             .then(function (r) { return r.json() })
-            .then(function (d) { apply(d && d.world ? d.world : null); setError(null) })
+            .then(function (d) {
+              apply(d && d.world ? d.world : null)
+              setRuntime(d && d.runtime ? d.runtime : null)
+              setError(null)
+            })
             .catch(function (e) { setError(String(e && e.message ? e.message : e)) })
             .then(function () { setPending(false) })
         }
@@ -365,6 +377,19 @@
                 }),
               h('span', { style: { color: PALETTE.faint, fontSize: '10px', marginTop: '2px' } },
                 '按最近的活动窗口派生，窗口滚动会回落——不是惩罚。'))),
+          card(2, '动机（决策次数）', null,
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+              h('div', { style: { display: 'flex', gap: '10px', fontSize: '12px', fontFamily: 'ui-monospace, monospace' } },
+                ['need', 'duty', 'routine'].map(function (key) {
+                  var drv = runtime !== null && runtime.intentStats && runtime.intentStats.byDriver ? runtime.intentStats.byDriver : null
+                  var value = drv === null ? 0 : Number(drv[key] || 0)
+                  return h('span', { key: key, style: { color: PALETTE.ink } },
+                    h('span', { style: { color: PALETTE.label } }, key + ' '), String(value))
+                })),
+              h('div', { style: { fontSize: '11px', color: PALETTE.faint } },
+                runtime === null || runtime.intentStats === undefined
+                  ? '还没有归因数据（重启后开始累计）'
+                  : '分母 = 拿到的意图条数；一次决策可给 2~3 条候选'))),
           card(2, '控制', null,
             h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
               button(paused ? '▶ 启动' : '⏸ 暂停', paused ? 'resume' : 'pause', paused ? PALETTE.teal : PALETTE.amber),
