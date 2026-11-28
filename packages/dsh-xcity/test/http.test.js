@@ -493,3 +493,27 @@ test('R227：快照带统一空间（nav + 障碍 + 实体），且吸附点没�
   assert.ok(space.obstacles.length >= space.audit.fineRects + space.audit.artCells, '障碍 = 精细几何 + 美术占位')
   assert.ok(space.entities.length >= 20, '站点应当被收进实体表')
 })
+
+test('R542：快照里每人带 skills（派生由组合根注入，路由只说搬不重算）', () => {
+  const service = createPluginState(resolveConfig({ autoStart: false, scene: 'scene.default-town' }))
+  service.open('手艺小镇')
+  const runtime = createRuntime({ service, tickMs: 100 })
+
+  // 不注入时：字段存在但是空数组（面板据此显示「还没有记录」，不会崩）
+  const bare = buildSnapshot({ service, runtime, tickMs: 100 })
+  for (const agent of bare.world.agents) {
+    assert.ok(Array.isArray(agent.skills), '每个角色都该有 skills 数组')
+    assert.equal(agent.skills.length, 0, '没注入口时不该编出数据')
+  }
+
+  // 注入时：原样搬运，路由不加工
+  const rows = [{ skill: 'code', label: '工程', level: 2, points: 80, sample: 10, failed: 0, lastUsedTick: 42 }]
+  const injected = buildSnapshot({
+    service,
+    runtime,
+    tickMs: 100,
+    skillsOf: (_world, agentId) => (agentId === bare.world.agents[0].id ? rows : []),
+  })
+  assert.deepEqual(injected.world.agents[0].skills, rows, '注入什么就下发什么')
+  assert.equal(injected.world.agents[1].skills.length, 0, '别人不该跟着有数据')
+})
