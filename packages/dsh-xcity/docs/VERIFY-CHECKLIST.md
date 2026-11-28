@@ -227,133 +227,49 @@ agent-4..9 没有会话日志（`sessions/` 里只有 agent1–3），所以不�
 
 **判定**：✅
 
-## 7 头顶对话
+## 7 说话（dialogue 通道）
 
-**目的**：`POST /api/xcity/say` 之后，前端按 `bubble.float_up` 渲染头顶气泡，且不报 `visual_playback`。
+**目的**：`POST /api/xcity/say` 之后，前端拿到的是 **`dialogue` 拍**（带名字的说话泡），
+不是头顶飘字；并且带齐前端硬要求的 `speaker_id` 与 `audience`。
 
-**命令 A（包断言，可原样跑）**
+> R538 更新：这一节原来验的是 `bubble.float_up`。当时的判断（"dialogue 通道坏了"）已被推翻——
+> 真正抛错的是**缺 `speaker_id` / `audience`** 的拍，补全字段后通道可用。飘字只留给非语言反馈。
+> 通道与场景的完整映射见 `docs/DISPLAY-CHANNELS.md`。
+
+**自动化（首选，不需要手工起前端）**
 
 ```bash
-cat > /tmp/xcity-say-check.mjs <<'EOF'
-// 订阅桥上的事件流 → POST 一句头顶对话 → 解出 visual 包，断言走的是 bubble.float_up
-// 用法：node /tmp/xcity-say-check.mjs [bridge] [roleId] [text]
-const bridge = (process.argv[2] ?? 'http://127.0.0.1:7791').replace(/\/+$/, '')
-const roleId = process.argv[3] ?? 'agent-1'
-const text = process.argv[4] ?? '清单自检'
-const { gunzipSync } = await import('node:zlib')
-
-const controller = new AbortController()
-const timeout = setTimeout(() => controller.abort(), 12000)
-const res = await fetch(bridge + '/api/game/stream', { headers: { accept: 'text/event-stream' }, signal: controller.signal })
-if (!res.ok || res.body === null) throw new Error('/api/game/stream → HTTP ' + res.status)
-const reader = res.body.getReader()
-const decoder = new TextDecoder()
-let buffer = ''
-const frames = []
-let sayResult = null
-let sayAwaited = false
-const posted = fetch(bridge + '/api/xcity/say', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ roleId, text }),
-}).then((r) => r.json())
-
-try {
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let cut = buffer.indexOf('\n\n')
-    while (cut !== -1) {
-      const raw = buffer.slice(0, cut)
-      buffer = buffer.slice(cut + 2)
-      cut = buffer.indexOf('\n\n')
-      const data = raw.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n')
-      if (data === '') continue
-      let envelope = null
-      try { envelope = JSON.parse(data) } catch { continue }
-      frames.push(envelope)
-      if (!sayAwaited) { sayAwaited = true; sayResult = await posted }
-      if (envelope.kind === 'visual' && typeof envelope.payload_gz === 'string') {
-        const packet = JSON.parse(gunzipSync(Buffer.from(envelope.payload_gz, 'base64')).toString('utf8'))
-        const beats = packet?.playback?.tracks?.[roleId] ?? []
-        const beat = beats[0] ?? {}
-        const out = {
-          ok: beat?.bubble?.float_up === true && beat?.bubble?.text === text && beat.dialogue === undefined && beat.body === undefined,
-          sayResult,
-          tick_marker: envelope.tick_marker,
-          packet_tick_marker: packet.tick_marker,
-          playbackKind: packet?.playback?.kind,
-          beat,
-          frameKinds: [...new Set(frames.map((f) => f.kind))],
-        }
-        clearTimeout(timeout)
-        controller.abort()
-        console.log(JSON.stringify(out, null, 1))
-        process.exit(out.ok ? 0 : 1)
-      }
-    }
-  }
-} catch (error) {
-  if (error.name !== 'AbortError') throw error
-}
-clearTimeout(timeout)
-console.log(JSON.stringify({ ok: false, reason: 'no-visual-frame', sayResult, frameKinds: [...new Set(frames.map((f) => f.kind))] }, null, 1))
-process.exit(1)
-EOF
-
-node /tmp/xcity-say-check.mjs http://127.0.0.1:7791 agent-1 "清单自检"
+cd packages/dsh-xcity && node --test test/slowvale-say-dialogue.test.js
 ```
 
-**实测输出**（退出码 0）
+它跑真 HTTP + SSE：建立订阅、`POST /api/xcity/say`、解压 visual 包，断言
+`playback.tracks[roleId][0].dialogue` 里 `speaker_id` / `audience.place_id` / `tone=speech` 齐全；
+角色没有 `placeId` 时回退到场景 `opts.place`；两个角色同时说话时一轮只发一个、其余留到下一轮。
+
+**手工看包（怀疑线上形状时）**
+
+```bash
+# 1. 订阅事件流（另一个终端）
+curl -N http://127.0.0.1:7791/api/xcity/events | head -c 2000
+
+# 2. 让某个角色说一句
+curl -s -X POST http://127.0.0.1:7791/api/xcity/say \
+  -H 'content-type: application/json' \
+  -d '{"roleId":"agent-1","text":"自检说话泡"}'
+```
+
+**判定**：解出来的包里，第一拍是
 
 ```json
-{
- "ok": true,
- "sayResult": { "ok": true },
- "tick_marker": "tick-16194",
- "packet_tick_marker": "tick-16194",
- "playbackKind": "independent",
- "beat": { "bubble": { "text": "清单自检", "float_up": true } },
- "frameKinds": [null, "visual"]
-}
+{ "dialogue": { "speaker_id": "agent-1", "tone": "speech",
+                "text": "自检说话泡", "audience": { "kind": "place", "place_id": "..." } } }
 ```
 
-即：`playback.kind=independent`、信封与包内 `tick_marker` 一致、第一拍就是 `bubble.float_up`，
-没有 `dialogue` 也没有 `body`。
+且**不出现** `bubble` 字段（说话不走飘字）。如果看到 `[dialogue] 缺少 audience` 或
+`[dialogue] 缺少 speaker_id`，说明上游拍没按契约补齐——这两条错误来自前端 `s5`/`r5`，
+它们发生在**显示之前**，所以缺字段的拍用户在界面上什么也看不到。
 
-（`frameKinds` 会随世界状态变化——复跑时可能多出 `log_resync`；断言只认 `kind==='visual'` 的那一帧。）
-
-**命令 B（前端运行时）**：浏览器打开 `http://127.0.0.1:7791/world/w1?role_id=agent-1`，
-在控制台装钩子后发一句，5s 后读回：
-
-```js
-window.__sayCheck = { texts: [], errors: [] };
-const T = window.Phaser.GameObjects.Text.prototype;
-const orig = T.setText;
-T.setText = function (v) { try { window.__sayCheck.texts.push(String(v)); } catch (e) {} return orig.call(this, v); };
-window.addEventListener('error', (e) => __sayCheck.errors.push('error:' + (e.message || e.error)));
-window.addEventListener('unhandledrejection', (e) => __sayCheck.errors.push('rejection:' + ((e.reason && e.reason.message) || e.reason)));
-const ce = console.error;
-console.error = function (...a) { __sayCheck.errors.push('console.error:' + a.map((x) => (x && x.message) || String(x)).join(' ')); return ce.apply(console, a); };
-```
-
-```bash
-curl -s -X POST http://127.0.0.1:7791/api/xcity/say -H 'content-type: application/json' \
-  -d '{"roleId":"agent-1","text":"自检气泡7019"}'
-```
-
-**实测**：`{"ok":true}`；5s 后页面内读到
-`rendered: ["自检气泡7019"]`（Phaser Text 里真的出现了这句 → 气泡被创建）、
-`errorCount: 0`（window.error / unhandledrejection / console.error 三路钩子都没抓到东西）。
-
-关于 `visual_playback`：前端快照里这个名字只出现 **1 次**，是错误上报器的 stage 标签
-（`GameView-BxeQpG1q.js`：`onPlaybackFailed` → `gn(…, { stage: "visual_playback", … })`），
-不是包字段；`float_up` 的渲染入口是同一文件里的
-`g.bubble?.text && g.bubble.float_up && this.sprite && this._spawnFloatText(ln(g.bubble.text))`。
-所以"不报 visual_playback"等价于上报器没被触发——上面 `errorCount: 0` 就是在验这一点。
-
-**判定**：✅
+**判定**：✅（自动化测试常绿；线上 `visual_playback` 无报错）
 
 ## 8 前端零改动
 
@@ -979,7 +895,7 @@ episodes 由 7 天 / 150 条封顶，所以这 0.66 是**上界**估算，余量
 | 4 | 三日记忆链 | 1 | ❌ 卡面命令 / ✅ 保留窗口 | missing D1–D3 ×9（保留期 7 天）；D9–D11：27/27 小结、81/81 证据、kept 30 / missed 2 |
 | 5 | 并发与重连 | 0 | ✅ | 9 人、stalls 0、抢座 0、重连 seq 1115→1116 |
 | 6 | token 成本 | 0 | ✅ | 41.37 天 / 72 会话 / 579 轮 / 输入 356982 + 输出 135243 tokens / 11899 per day（输入占 0.73） |
-| 7 | 头顶对话 | 0 | ✅ | bubble.float_up 落到页面 Phaser Text，errorCount 0 |
+| 7 | 说话（dialogue） | 0 | ✅ | dialogue 拍带 speaker_id/audience，`test/slowvale-say-dialogue` 常绿 |
 | 8 | 前端零改动 | 0 | ✅ | diff 0 行、未跟踪目录 0 改动文件 |
 
 ### 第二轮（第 9–15 条，24 人 / 第 57–59 天）
@@ -998,40 +914,3 @@ episodes 由 7 天 / 150 条封顶，所以这 0.66 是**上界**估算，余量
 
 | # | 项 | 退出码 | 判定 | 关键数字 |
 | --- | --- | --- | --- | --- |
-| 16 | 意图归因 | 0 | ✅ | total 1017582 = 9 项之和；ok 600549 / not-available 383292 / no-rest-station 33741；窗口 delta 3078 / 5447 / 469；cross 3/3 |
-| 17 | 无座与排队 | 0 | ✅ | 56 人 / 容量 34：无座峰值 44（0.725），叠人 2，连续无座 p95 148 tick，长期占用 0，有目标的无座 147 人次全因「目标站也空着」 |
-| 18 | 承诺兑现率 | 0 | ✅ | 窗口 3 天：kept 11 / missed 1，keptRate 0.917；唯一 missed = no-overlap（同处一室没谈上） |
-| 19 | 承诺进记忆 | 1 | ❌ | hitRate 0.857（24/28），missing 7 边 / 4 条；6 边是工具按 tick 算窗口 vs 记忆按天边界裁（差 1317 tick），1 边是 EPISODE_MAX=150 挤掉 |
-| 20 | 成本 | 0 | ✅ | 四项严格相等（1657517 / 313038 / 39788672 / 1424 轮）；tokensPerDay 48062 vs 48072，差 = 1 轮 391 estimated / 41 天 |
-| 21 | 计划记忆 | 0 | ✅ | 3 人 found、各 5 条、distinct 3（承诺 4/4/5 条 + 工单 1/1/0 条） |
-| 22 | 一键端到端 | 0 | ✅ | 198.2s（墙钟 3m18s）；3 单 done（@683/@1280/@1793）、3 条 task 情节、30 轮 98482 tokens；自起 3290/7891 并已清理 |
-| 23 | 存档体积 | 0 | ✅ | 1390235 B = 0.66 × 2 MiB（第二轮 0.26）；主因 world.activities 446031 B（activityKeepFor 1344 行）；verdict ok |
-
-### 附：第二轮两条命令在本轮的复跑（不是卡面条目）
-
-只为判断「需要决定的事」里那两条还算不算未决，各跑一次；数字只记结论。
-
-| 命令 | 退出码 | 结果 |
-| --- | --- | --- |
-| `node tools/verify-memory-chain.mjs --base … --days 3` | 1 | 已改成「最近 3 天」（窗口 [132,134]），但仍红：**24 个角色**缺窗内某天。其中 agent-41..56 的存档里 **0 条情节**（任何 kind），agent-38..40 的最新日小结停在第 119–125 天；agent-32/34/35/36/37 各缺 1–2 天。同一份快照里日小结齐的有 32 人，情节抽查 363/363 全对，承诺 48 kept / 8 missed。（卡点行会把 56 个角色全列一遍，`缺 D` 后面空的就是没问题的那些——报错信息该收窄。） |
-| `node tools/verify-with.mjs --base …` | 1 | `ok:false`；`claims 379`、`stale 299`（bySide：agent 3 / peer 11 / both 285）——「对手那条过期也算 stale」已经落地；剩下的 `unproven 10` 是 `place-mismatch` / `not-social` / `no-overlap`，不再是第二轮的「对手被挤掉却记 no-overlap」。`workWith` 仍恒 0。 |
-
-## 需要决定的事
-
-1. **`--days` 语义与保留期冲突**（影响第 4 条能否在任何时候通过）：
-   `verify-memory-chain.mjs` 查的是 D1..D{--days}，而记忆只留最近 7 天。
-   宿主跑到第 8 天以后，这条命令必然失败。要么改成"最近 N 天"，要么在工具头部写明"只用于刚跑满 N 天的新世界"。
-   （**第三轮已改**：工具已改成「最近 N 天」、窗口末端取昨天；但复跑仍红，原因换成了「24 个角色缺窗内某天」，见「汇总」末尾的『附』。）
-2. **1 条测试常年 skip**（`test/slowvale-stage.test.js` 的「舞台：位置朝目标前进，且会换场景」，缺静态站）：
-   要么补静态站 fixture 让它真跑，要么把 skip 原因写进验收口径，避免以后把"skipped 1"当成噪音忽略。
-3. **`verify-with` 的 stale 只判了一半**（第 10 条五次跑四次红的根因）：
-   `tools/verify-with.mjs` 的 stale 那段只在"自己的活动过期"时记 stale，"对手的活动过期"会误判成 `no-overlap`。
-   24 人时活动环每人只剩 2–5 条（7–15 游戏小时），而情节留 7 天，所以任何长跑宿主上这条都会**周期性红**。
-   要么把"对手环底晚于情节 tick"也算 stale，要么在写情节时把对方的 activity id 一起存下来当证据。
-   （**第三轮已改**：已改成「claim 的 tick 严格小于任一方地平线就记 stale」，并按 `agent`/`peer`/`both` 分栏；复跑仍是 1，但 unproven 换成了 `place-mismatch` / `not-social`，见「汇总」末尾的『附』。）
-4. **工单留痕只有 7 天可见**（第 15 条）：18 张单做完，第 59 天存档里已经 0 条 `kind=task` 情节。
-   验收要么固定在"完工后 7 天内"跑，要么让完成痕迹进一个不被裁剪的字段（如日小结/累计计数），
-   否则"存档里查不到工单记忆"会被误读成"没写"。
-5. **`EPISODE_MAX = 150` 比 7 天窗口更早失效**（第 19 条那 1 边的根因）：`src/sim/memory.ts` 的 `pruneEpisodes`
-   先按天裁、再按条数裁；56 人世界里 agent-1 每天写 21–50 条，150 条只够 3–7 天，于是「7 天窗口内一定还在」这个前提不成立。
-   要么让裁决类情节（`守约：` / `没做完：`）不受条数上限影响，要么把这类验收的前提改成「按条数上限算出来的窗口」。

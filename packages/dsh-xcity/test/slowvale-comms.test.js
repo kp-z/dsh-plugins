@@ -56,18 +56,23 @@ test('绑定投影：只认活着的行，归档的不算', () => {
 })
 
 test('visual：tick_marker 与 cursor 必须一致，且走 playback.tracks', () => {
-  // R511：说话统一走 sayBeat（bubble.float_up）。原来的 independentDialogue 在生产路径上
-  // 已经没人调用（dialogue 通道在该镜像前端会抛 reading 'map'），残留只会误导后来人。
+  // R538：说话走 dialogue 通道。speaker_id 与 audience 都是前端硬要求（缺了 throw），
+  // audience 用 place 表示"同场景可见"——god 视角下只有 place 会显示。
   const packet = independentTimeline({
     epoch: 'epoch-w1',
     seq: 7,
     tickMarker: 'tick-42',
     actorId: 'agent-1',
-    beats: [sayBeat('今天风不小。')],
+    beats: [sayBeat('今天风不小。', { speakerId: 'agent-1', audience: { kind: 'place', place_id: 'plaza' } })],
   })
   assert.equal(packet['tick_marker'], 'tick-42')
   const tracks = packet['playback']?.tracks
-  assert.deepEqual(tracks['agent-1'][0].bubble, { text: '今天风不小。', float_up: true })
+  assert.deepEqual(tracks['agent-1'][0].dialogue, {
+    speaker_id: 'agent-1',
+    text: '今天风不小。',
+    tone: 'speech',
+    audience: { kind: 'place', place_id: 'plaza' },
+  })
   assert.equal(packet['actorId'], undefined, '顶层不许再放 actorId，避免两套形状并存')
 })
 
@@ -126,8 +131,11 @@ test('group 时间轴：participants 必须由 steps 的 tracks 推导，不能�
   assert.equal(packet.steps[1].tracks['agent-1'].body.action, 'phone')
 })
 
-test('R507：说话走 bubble.float_up（dialogue 通道在该镜像里会抛错）', () => {
-  const beat = sayBeat('下午先把这张单收尾。')
-  assert.deepEqual(beat.bubble, { text: '下午先把这张单收尾。', float_up: true })
-  assert.equal(beat.dialogue, undefined, '不要同时带 dialogue，否则会走那条会抛错的路径')
+test('R538：说话走 dialogue 拍（speaker_id + audience 必填，缺了前端 throw）', () => {
+  const beat = sayBeat('下午先把这张单收尾。', {
+    speakerId: 'agent-1',
+    audience: { kind: 'place', place_id: 'plaza' },
+  })
+  assert.deepEqual(Object.keys(beat.dialogue), ['speaker_id', 'text', 'tone', 'audience'])
+  assert.equal(beat.bubble, undefined, '浮字是另一条通道（floatTextBeat），这里不许混用')
 })

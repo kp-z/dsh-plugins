@@ -22,6 +22,7 @@ import { activityLabelOf, activityTypeOf, logHeadOf, logNoticesOf } from './logs
 import { DEFAULT_CIRCUIT, type loadOfficeDesks } from './stage.js'
 import { sceneKeyOf } from './scene-key.js'
 import { MINUTES_PER_DAY, SLOWVALE_PROTOCOL_VERSION, TICKS_PER_GAME_MINUTE } from './types.js'
+import type { SmsReplyState } from './sms.js'
 
 /** 投影参数（世界 id / 玩家角色 / 默认地点 / 起始日历）。 */
 export interface ProjectOptions {
@@ -35,8 +36,11 @@ export interface ProjectOptions {
   /** 桥提供的实时水位；独立投影没有连接时使用世界 tick。 */
   realtimeSeq?: number | undefined
   officeDesks?: ReturnType<typeof loadOfficeDesks> | undefined
-  /** 短信信号：最后一条消息行号与未读数（前端靠它们判断要不要重拉线程）。 */
-  phone?: { rowId: number; unread: number } | undefined
+  /**
+   * 短信信号：最后一条消息行号与未读数（前端靠它们判断要不要重拉线程）。
+   * R537：外加世界侧结论 `reply`（这一句到底等到没有），前端不读。
+   */
+  phone?: { rowId: number; unread: number; reply?: SmsReplyState | null } | undefined
 }
 
 /** 同名同种子的世界可能共用 id；创建时刻在存档内，重开才切换日志 epoch。 */
@@ -292,7 +296,28 @@ function animOf(agent: { state?: string; activityKind?: string | null; activityP
 
 /** 原版 role_phone replace 与整份快照共用相同形状。 */
 export function projectPhone(signal: ProjectOptions['phone']) {
-  return { sms: { player_thread_message_row_id: signal?.rowId || null, player_thread_unread_count: signal?.unread ?? 0, latest_message_row_id: signal?.rowId || null, total_unread_count: signal?.unread ?? 0 }, wallet: { balance: 128000, currency: 'CNY' }, money: 128000, bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 } }
+  const reply = signal?.reply ?? null
+  return {
+    sms: {
+      player_thread_message_row_id: signal?.rowId || null,
+      player_thread_unread_count: signal?.unread ?? 0,
+      latest_message_row_id: signal?.rowId || null,
+      total_unread_count: signal?.unread ?? 0,
+      // R537：世界侧答案「最后一条玩家短信有没有人回」。
+      // 前端不读它（它只比上面两个水位）；诊断、快照和"发出去没回音"的裁决都看这里。
+      reply: reply === null
+        ? null
+        : {
+            state: reply.state,
+            message_row_id: reply.messageRowId,
+            since: reply.since,
+            reason: reply.reason,
+          },
+    },
+    wallet: { balance: 128000, currency: 'CNY' },
+    money: 128000,
+    bank: { balance: 128000, money: 128000, credit_limit: 50000, total_credit: 50000, available_credit: 50000, used_credit: 0, active_loans: [], loans: [], cards: [], entries: [], transactions: [], monthly_due: 0, due_day: 1 },
+  }
 }
 
 /** 世界快照（/game/state/world 与 SSE connected 用同一份）。 */

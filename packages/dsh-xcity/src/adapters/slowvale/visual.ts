@@ -16,7 +16,8 @@
  * - `kind='independent'`：一个角色自己的 `beats[]`；
  * - `kind='group'`：`participants[]` + `steps[].tracks[actorId]`（多人同框时用）。
  *
- * 说话也走 independent（一拍 bubble），见 sayBeat。
+ * 说话也走 independent（一拍 dialogue），见 sayBeat；
+ * 非语言的头顶反馈（「嗯」「！」）走 floatTextBeat，两条通道不要合并。
  */
 /** 一拍的形状。前端按字段存在与否决定渲染方式：body / dialogue / bubble / toast。 */
 export interface VisualBeat {
@@ -46,13 +47,83 @@ export function walkBeat(path: { x: number; y: number }[], durationMs?: number, 
 }
 
 /**
- * R507：头顶浮字（说话的一拍）。
+ * R538-01：对话通道的 tone 白名单。
  *
- * 为什么不用 dialogue：这个镜像前端里 dialogue 会在气泡绘制函数里抛
- * 「Cannot read properties of undefined (reading 'map')」（实测 GameView 92750 起），
- * 而 `bubble.float_up` 是同一文件明确支持、且渲染在头顶的通道。
+ * 前端 `JL(actor, text, tone)` 拿 tone 去查气泡样式表 `Mp`（GameView.js:92726-92733），
+ * 查不到就抛 `[SpeechBubble] 未知 tone`。在拍产出时拦住，早失败好过前端 crash。
  */
-export function sayBeat(text: string): VisualBeat {
+export const DIALOGUE_TONES = ['speech', 'thought', 'sms'] as const
+export type DialogueTone = (typeof DIALOGUE_TONES)[number]
+
+/**
+ * R538-04：谁看得到这句话。前端 s5/r5（GameView.js:93138-93166）只认这两种形状，
+ * 缺了 audience 不是"少显示一个泡"，而是 throw `[dialogue] 缺少 audience`。
+ *
+ * - place：同场景（同 place_id）的人都能看到——我们的默认；
+ * - role_ids：只给名单里的人看。
+ *
+ * 注意 god 视角（前端没有 currentRoleId 时走 r5）：place 返回 true、role_ids 返回 false。
+ * 所以想"让所有人都看到"就发 place，别两种都发。
+ */
+export type DialogueAudience =
+  | { kind: 'place'; place_id: string }
+  | { kind: 'role_ids'; role_ids: string[] }
+
+/** R538-05：sayBeat 的入参。选项对象比四个位置参好 review（也不会传错序）。 */
+export interface SayBeatOptions {
+  speakerId: string
+  audience: DialogueAudience
+  tone?: DialogueTone
+}
+
+/**
+ * R538-02：说话 = 一拍 dialogue（走前端真正的说话泡 `_spawnSpeechBubble`）。
+ *
+ * 为什么 speaker_id 是硬要求：前端第一行就是
+ * `if (!g.speaker_id) throw new Error("[dialogue] 缺少 speaker_id")`（GameView.js:93879）。
+ *
+ * 为什么空文本返回空拍而不是抛错：`JL` 里 `if (!g) throw new Error("泡内容为空")`（:92751），
+ * 而"这一轮没话可说"是正常情况——空拍（没有 body/dialogue/bubble）前端什么都不渲染。
+ */
+export function sayBeat(text: string, options: SayBeatOptions): VisualBeat {
+  const { speakerId, audience, tone = 'speech' } = options
+  if (speakerId === '') throw new Error('[dialogue] 缺少 speaker_id')
+  if (!DIALOGUE_TONES.includes(tone)) {
+    throw new Error(`[visual] 未知 tone: ${String(tone)}（只允许 ${DIALOGUE_TONES.join('/')}）`)
+  }
+  assertAudience(audience)
+  if (text.trim() === '') return {}
+  return { dialogue: { speaker_id: speakerId, text, tone, audience } }
+}
+
+/**
+ * R538-06：audience 形状校验。
+ *
+ * 报错文案照前端 s5/r5 抄（"缺少 audience"/"place audience 缺少 place_id"/
+ * "role_ids audience 缺少角色名单"），日志里一眼能对上是谁拦的。
+ */
+function assertAudience(audience: unknown): asserts audience is DialogueAudience {
+  const kind = (audience as { kind?: unknown } | null | undefined)?.kind
+  if (kind === undefined) throw new Error('[dialogue] 缺少 audience')
+  if (kind === 'place') {
+    if (!(audience as { place_id?: unknown }).place_id) throw new Error('[dialogue] place audience 缺少 place_id')
+    return
+  }
+  if (kind === 'role_ids') {
+    const roleIds = (audience as { role_ids?: unknown }).role_ids
+    if (!Array.isArray(roleIds) || roleIds.length === 0) throw new Error('[dialogue] role_ids audience 缺少角色名单')
+    return
+  }
+  throw new Error(`[dialogue] 未知 audience.kind: ${String(kind)}`)
+}
+
+/**
+ * R538-03：非语言反馈的头顶浮字（原 R507 的 `bubble.float_up`）。
+ *
+ * 前端：`beat.bubble.text && beat.bubble.float_up && this._spawnFloatText(...)`（:93839）。
+ * 这条通道**不带名字**，只适合「嗯」「！」这类反应；要说话请用 sayBeat。
+ */
+export function floatTextBeat(text: string): VisualBeat {
   return { bubble: { text, float_up: true } }
 }
 

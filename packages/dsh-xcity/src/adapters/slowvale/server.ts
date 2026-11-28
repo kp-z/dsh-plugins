@@ -276,11 +276,19 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
     const actorId = next.value[0]
     const lines = next.value[1]
     pendingSay.delete(actorId)
-    const beats: VisualBeat[] = lines.map((text) => sayBeat(text))
+    // R538：说话走 dialogue 拍（前端真气泡），不再用头顶飘字。
+    // audience 是前端 s5/r5 的**必填**字段：缺了它前端在显示前就 throw，这条拍白给。
+    // 用 place 形状——同场景的人都该看见；刚被收掉/移走的角色回退到场景默认地点。
+    const speaker = world.agents.find((row) => row.id === actorId)
+    const placeId = speaker?.placeId ?? opts.place
+    const beats: VisualBeat[] = lines.map((text) => sayBeat(text, {
+      speakerId: actorId,
+      audience: { kind: 'place', place_id: placeId },
+    }))
     pushTimeline(actorId, beats)
   }
 
-  /** 推一个 independent 时间轴（一个角色的若干拍）；说话也走这条（R507）。 */
+  /** 推一个 independent 时间轴（一个角色的若干拍）；说话也走这条（R507 起，R538 起承载 dialogue 拍）。 */
   const pushTimeline = (actorId: string, beats: VisualBeat[], endState?: Record<string, unknown>, commitState?: Record<string, unknown>): boolean => {
     const world = options.getWorld()
     if (world === null || clients.size === 0 || (beats.length === 0 && endState === undefined)) return false
@@ -572,6 +580,11 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
         pushSceneState()
         pushSceneContent()
         signalLogHead()
+        // R537：短信要**按周期**推，不能只在玩家发消息时推。
+        // 角色回复是异步的（会话侧说完话才写回世界），那一刻前端没有任何请求在跑，
+        // 于是新消息与未读数永远到不了界面——表现就是"发出去了，但收不到回复"。
+        // 这个函数自己会比较 rowId/unread，没变化时立刻返回，代价可以忽略。
+        pushPhoneIfChanged()
         // 世界侧驱动：谁开始移动，就给谁发一拍 walk（路径点来自内核 sim/pathfind）
         const world = options.getWorld()
         if (world !== null && clients.size > 0) {

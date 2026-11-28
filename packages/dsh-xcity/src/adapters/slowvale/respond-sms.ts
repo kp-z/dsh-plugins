@@ -18,10 +18,14 @@ export interface RespondSmsDeps {
   dayContext?: (peerRoleId: string) => string[]
   /** R505：记忆上下文（「你记得 / 你答应过」，由 bridge/memory-context.ts 渲染；老调用方可以不给）。 */
   memoryContext?: (peerRoleId: string) => string
-  /** 宿主的会话投递。 */
-  /** 已经真的把这条短信投进会话了（用来标记「下一次回复要写回游戏」）。 */
+  /** 玩家建议的可选动作：只进提示词，给模型一个选项，不落成命令（R494）。 */
   suggestedAction?: string | undefined
+  /**
+   * 已经真的把这条短信投进会话了（用来登记「下一次回复要写回游戏」）。
+   * 返回撤销函数：投递失败时必须调，否则这条登记会一直挂到 TTL。
+   */
   onForward?: (peerRoleId: string, sessionId: string, text: string) => (() => void) | void
+  /** 宿主的会话投递。形状必须与既有短信通道一致，返回即受理。 */
   prompt: (input: {
     requestId: string
     sessionId: string
@@ -40,6 +44,10 @@ export interface RespondSmsInput {
  *
  * 返回 null 是诚实的：短信是异步的，"他回一句"发生在会话侧，
  * 不该在这个 HTTP 请求里编一句假回复。
+ *
+ * R537 注意：这个函数**不区分**"已投进会话"和"没会话可投"（两者都返回 null，
+ * 因为调用方 index.ts 的 catch 会把失败也压成 null）。所以世界侧别拿返回值当结论，
+ * 用 sms.ts 线程上的 `reply` 状态——它会走到 awaiting / timed-out / failed。
  */
 export async function respondViaSession(
   input: RespondSmsInput,
