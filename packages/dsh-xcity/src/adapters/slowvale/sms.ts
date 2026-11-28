@@ -21,6 +21,8 @@
  * `reply` 结论（awaiting / timed-out / failed），有回复就销账。
  * 它是世界侧的状态，不是给前端读的渲染字段（见 project.ts 的 `phone.sms.reply`）。
  */
+
+// ── R537：一条玩家短信的投递结论 ─────────────────────────────────
 /**
  * R537：世界侧对「这条玩家短信有没有被回复」的结论。
  *
@@ -207,12 +209,13 @@ export class SmsStore {
       since: input.sentAt,
       reason: null,
     }
-    thread.reply = awaiting
-    // 世界没接会话服务：这条没有收发室，直接给"没投出去"的结论（R537 ③ 的第一种失败）。
+    // 世界没接会话服务：这条没有收发室，直接给"没投出去"的结论（失败的第一种）。
     if (this.responder === null) {
       thread.reply = { ...awaiting, state: 'failed', reason: 'no-responder' }
       return message
     }
+    // ② 先挂"在等"，再问 responder：它卡住时世界侧也要能回答"这条在等谁"。
+    thread.reply = awaiting
     let reply: string | null = null
     try {
       reply = await this.responder({

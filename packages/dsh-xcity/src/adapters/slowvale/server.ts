@@ -399,7 +399,13 @@ export function createSlowvaleBridge(options: BridgeOptions): Promise<Bridge> {
   let lastPhone = sms.signal()
   const pushPhoneIfChanged = (): void => {
     const signal = sms.signal()
-    if (signal.rowId === lastPhone.rowId && signal.unread === lastPhone.unread) return
+    // R539：不只看 rowId/unread。回复状态变化（awaiting → timed-out / failed）也要推，
+    // 否则界面上会永远停在"等他回"，直到用户手动刷新。
+    if (
+      signal.rowId === lastPhone.rowId &&
+      signal.unread === lastPhone.unread &&
+      signal.reply?.state === lastPhone.reply?.state
+    ) return
     lastPhone = signal
     const world = options.getWorld()
     const roleId = world?.agents.find((agent) => agent.id === opts.viewerRoleId)?.id ?? world?.agents[0]?.id

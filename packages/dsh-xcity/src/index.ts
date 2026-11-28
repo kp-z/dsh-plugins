@@ -1431,7 +1431,12 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
                 },
                 onForward: (peerRoleId, sessionId, text) => smsReplies.track(peerRoleId, sessionId, text, 'player-sms', command === null ? undefined : () => {
                   // R494：延迟回话不能跨世界或已更换的绑定执行。
-                  const characterId = characterOf(peerRoleId)
+                  // R539：先判"能不能投"，不能投就抛给 sms.send() 记成 failed（原因直接给玩家看）。
+              // 没有绑定会话时，respondViaSession 只会静默返回 null，用户要等 10 分钟超时才看到结论。
+              const targetCharacter = characterOf(peerRoleId)
+              if (targetCharacter === null) throw new Error('这个角色还没进小镇')
+              if (sessionOf(targetCharacter) === null) throw new Error('这个角色还没有接会话，暂时回不了话')
+              const characterId = characterOf(peerRoleId)
                   if (state.currentWorld() !== world || characterId === null || sessionOf(characterId) !== sessionId) return
                   runtime.enqueue({ ...command, trigger: { kind: 'player', text: input.content } }, world)
                 }),
@@ -1441,8 +1446,11 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
                 },
               })
             } catch (error: unknown) {
+              // R539：不再把失败压成 null。respondViaSession 的 null 同时意味着
+              // "没角色/没绑会话"和"已经投进去了，等着"，世界侧没法区分，用户只能等 10 分钟超时。
+              // 这里把明确的原因抛给 sms.send()，它会落成 failed + reason，线程里立刻看得出为什么没回。
               logger.warn('[xcity-sms] 转发失败 peer=' + input.peerRoleId + '：' + String(error))
-              return null
+              throw error
             }
           },
           getWorld: () => state.currentWorld() as unknown as { id: string; name: string; tick: number; paused?: boolean; agents: { id: string; name: string }[] } | null,

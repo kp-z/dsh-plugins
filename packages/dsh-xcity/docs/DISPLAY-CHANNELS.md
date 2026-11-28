@@ -30,7 +30,7 @@
 | 1 飘字 | `visual.ts: floatTextBeat` | ✅ 保留，给非语言反馈 |
 | 2 说话泡 | `visual.ts: sayBeat` + `server.ts: flushSay` | ✅ R538：改用 dialogue 拍，带 speaker_id |
 | 3 独白 | `sayBeat(text, speakerId, 'thought')` | ✅ 可用，按需调用 |
-| 4 短信 | `sms.ts` + `routes.ts: /game/player/message` + `server.ts: pushPhoneIfChanged` | ✅ R537：**按周期**推手机信号（原来只在玩家发消息时推，导致收不到异步回复） |
+| 4 短信 | `sms.ts` + `routes.ts: /game/player/message` + `server.ts: pushPhoneIfChanged` | ✅ R537：**按周期**推手机信号（原来只在玩家发消息时推，导致收不到异步回复）。R539：`phone.sms.reply = {state, message_row_id, since, reason}` 让「在等谁 / 为什么没回」可见（没绑会话 → `failed` 带原因，不再静默等 10 分钟） |
 | 5 状态 | `server.ts: pushActivityChanges / role_public_status` | ✅ 已有 |
 
 ## 一条经验
