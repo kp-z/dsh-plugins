@@ -24,15 +24,10 @@
  * unreachable / no-commitments 给明确 reason，退出码 1。
  */
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-commitments.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name)
-  if (index === -1) return fallback
-  const value = process.argv[index + 1]
-  return value === undefined || value.startsWith('--') ? true : value
-}
+import { arg, baseUrl, failVerify, getJson } from './lib/cli.mjs'
 
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '')
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl()
 /**
  * 只核对"修复之后才裁决"的承诺。
  *
@@ -53,16 +48,13 @@ const KEYWORD_CHARS = 8
 const PREFIX = { kept: '守约：', missed: '没做完：' }
 
 // [1] 快照：世界只有 base 这一个出口；失败也要给明确 reason
-let snapshot = null
+let world = null
 let fetchError = null
 try {
-  const res = await fetch(base + '/agent-world/api/world', { signal: AbortSignal.timeout(REQUEST_MS) })
-  if (!res.ok) throw new Error(base + '/agent-world/api/world → HTTP ' + res.status)
-  snapshot = await res.json()
+  world = (await getJson(base + '/agent-world/api/world', REQUEST_MS)).world ?? null
 } catch (error) {
   fetchError = error.message
 }
-const world = snapshot === null ? null : (snapshot.world ?? null)
 const tick = world === null ? 0 : (world.tick ?? 0)
 
 // [2] 证据源：每人自己的情节记忆。只留核对要用的形状（summary 一句话）。
@@ -189,9 +181,7 @@ if (!ok) {
       .map((item) => item.id + '(' + item.status + ' 缺 ' + item.owner + '：' + keywordOf(item.what) + '…)')
     return head.join(', ') + (missing.length > head.length ? ' … 共 ' + missing.length + ' 边，全量见 stdout 的 missing' : '')
   })()
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base)
-  if (fetchError !== null) console.error('最后错误: ' + fetchError)
-  process.exit(1)
+  failVerify(reason, { stuck, base, error: fetchError })
 }
 if (asserted === 0) {
   console.error('WARN 一条也没核对到：' + promises.length + ' 条已裁决承诺全部落在 ' + SETTLED_KEEP_DAYS + ' 天留存窗口之外（windowStart ' + windowStart + '）')

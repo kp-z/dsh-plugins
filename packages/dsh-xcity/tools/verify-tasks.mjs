@@ -12,15 +12,10 @@
  * --bridge 只回显到 stderr 头，不参与判定：世界快照只有 base 这一个出口。
  */
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-bridge.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name);
-  if (index === -1) return fallback;
-  const value = process.argv[index + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-}
+import { arg, baseUrl, failVerify, getJson, sleep } from './lib/cli.mjs';
 
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '');
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl();
 const bridge = arg('bridge', null);
 const timeoutSec = Number(arg('timeout', 600));
 if (!(Number.isFinite(timeoutSec) && timeoutSec > 0)) {
@@ -34,21 +29,13 @@ const REQUEST_MS = 3000;
 const DONE = new Set(['done', 'completed']);
 const IN_FLIGHT = new Set(['pending', 'ready', 'in_progress']);
 
-async function getJson(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_MS) });
-  if (!res.ok) throw new Error(url + ' → HTTP ' + res.status + ' ' + (await res.text()).slice(0, 120));
-  return res.json();
-}
-
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-
 // [1] 轮询 {base}/agent-world/api/world，直到没有 pending/ready/in_progress 或超时
 const deadline = Date.now() + timeoutSec * 1000;
 let snap = null;
 let lastError = null;
 while (true) {
   try {
-    snap = await getJson(base + '/agent-world/api/world');
+    snap = await getJson(base + '/agent-world/api/world', REQUEST_MS);
     lastError = null;
   } catch (error) {
     lastError = error.message;
@@ -80,7 +67,7 @@ for (const task of tasks) byStatus[task.status] = (byStatus[task.status] ?? 0) +
 // [3] 技能在 persona 存储里（world.agents 没有这个字段），按 agent id 取
 const skillsOf = {};
 try {
-  const personas = await getJson(base + '/agent-world/api/personas');
+  const personas = await getJson(base + '/agent-world/api/personas', REQUEST_MS);
   for (const persona of personas.personas ?? []) skillsOf[persona.id] = persona.skills ?? [];
 } catch {
   // persona 存储没开不算验收失败：agents[].skills 会是空数组，看得见。
@@ -121,8 +108,10 @@ const summary = {
 console.log(JSON.stringify(summary, null, 1));
 
 if (!ok) {
-  const stuck = stuckIds(reason).join(', ') || '-';
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base + (bridge === null ? '' : ' · bridge ' + bridge));
-  if (lastError !== null) console.error('最后错误: ' + lastError);
-  process.exit(1);
+  failVerify(reason, {
+    stuck: stuckIds(reason).join(', ') || '-',
+    base,
+    tail: bridge === null ? '' : ' · bridge ' + bridge,
+    error: lastError,
+  });
 }

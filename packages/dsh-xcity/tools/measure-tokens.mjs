@@ -25,17 +25,11 @@ import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { arg, emit, fail, percentile } from './lib/cli.mjs'
+
 const execFileAsync = promisify(execFile)
 const SESSION_FILE = 'session.v4.jsonl.zstd'
 const CHARS_PER_TOKEN = 4
-
-// [0] 参数：手写解析，不引依赖（与 tools/verify-tasks.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name)
-  if (index === -1) return fallback
-  const value = process.argv[index + 1]
-  return value === undefined || value.startsWith('--') ? true : value
-}
 
 const pkgRoot = fileURLToPath(new URL('..', import.meta.url))
 const testhomeArg = String(arg('testhome', '.testhome'))
@@ -46,15 +40,6 @@ const daysArg = Number(arg('days', Number.NaN))
 const windowDays = Number.isFinite(daysArg) && daysArg > 0 ? daysArg : null
 const sessionsDir = join(testhome, 'sessions')
 const eventsFile = join(testhome, 'profiles', profile, 'state', 'events.jsonl')
-
-function done(result, code) {
-  process.stdout.write(JSON.stringify(result, null, 2) + '\n')
-  process.exit(code)
-}
-
-function fail(reason, extra) {
-  done({ ok: false, reason, ...extra }, 1)
-}
 
 const round2 = (value) => Math.round(value * 100) / 100
 
@@ -339,13 +324,8 @@ for (const event of await worldEvents()) {
   if (typeof agentId === 'string') initiatives.set(agentId, (initiatives.get(agentId) ?? 0) + 1)
 }
 
-// [6d] 分位数：nearest-rank（p50 即中位数）
+// [6d] 分位数：nearest-rank（p50 即中位数），实现在 tools/lib/cli.mjs
 const toTokens = (chars) => Math.ceil(chars / CHARS_PER_TOKEN)
-function percentile(sorted, p) {
-  if (sorted.length === 0) return null
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
-  return sorted[index]
-}
 
 const perAgentDay = [...agentTotals.entries()]
   .sort(([left], [right]) => (left < right ? -1 : 1))
@@ -439,7 +419,7 @@ const perSessionOut = perSession.map((session) => ({
 }))
 
 // [7] 输出
-done(
+emit(
   {
     ok: true,
     days,

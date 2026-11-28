@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 验收：每日计划里真的带记忆（「你还记得」段），而且**每个角色记得的不一样**。**只读**：
- * 只读会话日志，不写世界、不改代码、不启进程；不 import lib/（能脱离构建直接跑）。
+ * 只读会话日志，不写世界、不改代码、不启进程；不 import 内核 lib/（能脱离构建直接跑）。
  *
  * 用法：
  *   node tools/verify-plan-memory.mjs
@@ -31,6 +31,8 @@ import { basename, dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { arg, emit } from './lib/cli.mjs'
+
 const execFileAsync = promisify(execFile)
 const SESSION_FILE = 'session.v4.jsonl.zstd'
 /** 段的标识：计划 prompt 里的那一段标题。 */
@@ -49,24 +51,12 @@ const MAX_ITEMS = 5
  */
 const KINDS = ['工单', '守约', '没做完', '其他']
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-commitments.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name)
-  if (index === -1) return fallback
-  const value = process.argv[index + 1]
-  return value === undefined || value.startsWith('--') ? true : value
-}
-
+// [0] 参数与输出契约在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
 const pkgRoot = fileURLToPath(new URL('..', import.meta.url))
 const homeArg = String(arg('home', '.testhome'))
 const home = isAbsolute(homeArg) ? homeArg : join(pkgRoot, homeArg)
 const wanted = Math.max(1, Number(arg('agents', 3)) || 3)
 const sessionsDir = join(home, 'sessions')
-
-function done(result, code) {
-  process.stdout.write(JSON.stringify(result, null, 1) + '\n')
-  process.exit(code)
-}
 
 // [1] 收集会话日志：sessions/<slug>/<sessionId>/session.v4.jsonl.zstd（深度与 measure-tokens 同口径）
 async function findSessions(dir, depth = 0) {
@@ -290,4 +280,4 @@ const summary = {
   ...(ok ? {} : { failures }),
   note,
 }
-done(summary, ok ? 0 : 1)
+emit(summary, ok ? 0 : 1, 1)

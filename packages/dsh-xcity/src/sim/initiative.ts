@@ -8,8 +8,8 @@
  */
 import type { World } from '../domain/types.js'
 import { needsOf } from './needs.js'
+import { DAY_TICKS } from './memory.js'
 
-const MINUTES_PER_DAY = 1440
 const DAY_START = 7 * 60
 const DAY_END = 23 * 60
 /** 两次主动短信至少隔 3 游戏小时。 */
@@ -26,7 +26,7 @@ export interface InitiativeIntent {
 }
 
 function minuteOf(tick: number): number {
-  return ((Math.floor(tick) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+  return ((Math.floor(tick) % DAY_TICKS) + DAY_TICKS) % DAY_TICKS
 }
 
 /** 这个人是不是刚做完一件"值得说一声"的事（读世界记录，不编）。 */
@@ -54,7 +54,7 @@ export function advanceInitiative(world: World): InitiativeIntent[] {
 
   const intents: InitiativeIntent[] = []
   for (const agent of world.agents) {
-    const day = Math.floor(now / MINUTES_PER_DAY)
+    const day = Math.floor(now / DAY_TICKS)
     // 换天重置计数（即使今天不发，也要把日期推进）。
     if (agent.initiatedSmsDay !== day) {
       agent.initiatedSmsDay = day

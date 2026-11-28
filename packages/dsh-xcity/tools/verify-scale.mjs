@@ -22,15 +22,10 @@
  * 每帧是 slowvale 信封，cursor 在 data.cursor；断开后重新 fetch 再读即可，桥不给 Last-Event-ID 补发。
  */
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-tasks.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name);
-  if (index === -1) return fallback;
-  const value = process.argv[index + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-}
+import { arg, baseUrl, failVerify, getJson, sleep } from './lib/cli.mjs';
 
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '');
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl();
 const bridge = String(arg('bridge', 'http://127.0.0.1:7791')).replace(/\/+$/, '');
 const agentsExpected = Number(arg('agents', 8));
 const seconds = Number(arg('seconds', 60));
@@ -50,12 +45,8 @@ const RECONNECT_WAIT_MS = 8000; // 重连后等新包的上限
 const WORLD_URL = base + '/agent-world/api/world';
 const STREAM_URL = bridge + '/api/game/stream';
 
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-
 async function worldSnapshot() {
-  const res = await fetch(WORLD_URL, { signal: AbortSignal.timeout(REQUEST_MS) });
-  if (!res.ok) throw new Error(WORLD_URL + ' → HTTP ' + res.status);
-  const body = await res.json();
+  const body = await getJson(WORLD_URL, REQUEST_MS);
   if (body.world === null || body.world === undefined) throw new Error('快照里没有 world');
   return body.world;
 }
@@ -413,7 +404,5 @@ if (!ok) {
     }
     return '-';
   })();
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base + ' · bridge ' + bridge);
-  if (fetchError !== null) console.error('最后错误: ' + fetchError);
-  process.exit(1);
+  failVerify(reason, { stuck, base, tail: ' · bridge ' + bridge, error: fetchError });
 }

@@ -34,15 +34,10 @@
  * 失败时 stderr 一行卡点（unreachable / no-episodes / no-recent-evidence / unproven），退出码 1。
  */
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-tasks.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name);
-  if (index === -1) return fallback;
-  const value = process.argv[index + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-}
+import { arg, baseUrl, failVerify, getJson } from './lib/cli.mjs';
 
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '');
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl();
 const sample = Number(arg('sample', 10));
 if (!(Number.isInteger(sample) && sample > 0)) {
   console.error('--sample 必须是正整数');
@@ -52,16 +47,13 @@ if (!(Number.isInteger(sample) && sample > 0)) {
 const REQUEST_MS = 8000;
 
 // [1] 快照：世界只有 base 这一个出口；失败也要给明确 reason
-let snapshot = null;
+let world = null;
 let fetchError = null;
 try {
-  const res = await fetch(base + '/agent-world/api/world', { signal: AbortSignal.timeout(REQUEST_MS) });
-  if (!res.ok) throw new Error(base + '/agent-world/api/world → HTTP ' + res.status);
-  snapshot = await res.json();
+  world = (await getJson(base + '/agent-world/api/world', REQUEST_MS)).world ?? null;
 } catch (error) {
   fetchError = error.message;
 }
-const world = snapshot === null ? null : (snapshot.world ?? null);
 const tick = world === null ? 0 : (world.tick ?? 0);
 
 // [2] 活动：只留核对要用的形状。结束 tick 与 sim/memory.ts 的 spanOf 同口径——
@@ -241,7 +233,5 @@ if (!ok) {
     const head = unproven.slice(0, 8).map((row) => row.agentId + '@' + row.tick + '(with=' + row.with + ':' + row.reason + ')');
     return head.join(', ') + (unproven.length > head.length ? ' … 共 ' + unproven.length + ' 条，全量见 stdout 的 unproven' : '');
   })();
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base);
-  if (fetchError !== null) console.error('最后错误: ' + fetchError);
-  process.exit(1);
+  failVerify(reason, { stuck, base, error: fetchError });
 }

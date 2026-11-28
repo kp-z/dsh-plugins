@@ -296,7 +296,7 @@ function dueTickOf(raw: unknown, nowTick: number): number | null {
   // R500-5：游戏时钟是 1 tick = 1 分钟、100ms 一跳（1 游戏小时 = 6 秒）——问完到答完
   // 世界已经过了几十分钟。所以 HH:mm 表示"下一个该时刻"，已过就顺延到明天，
   // 否则「今天上午」的安排会在回答落地的瞬间被判过期，静默丢掉。
-  return today > nowTick ? today : today + 1440
+  return today > nowTick ? today : today + DAY_TICKS
 }
 
 /**

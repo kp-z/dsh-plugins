@@ -9,12 +9,13 @@
  */
 import type { Activity, World } from '../domain/types.js'
 import { currentActivityOf } from './activity-view.js'
+import { DAY_TICKS } from './memory.js'
 
 /** 一条摘要最多多少字（prompt 预算，见 4.4）。 */
 const MAX_SUMMARY_CHARS = 300
 
 function hhmm(tick: number): string {
-  const minute = ((Math.floor(tick) % 1440) + 1440) % 1440
+  const minute = ((Math.floor(tick) % DAY_TICKS) + DAY_TICKS) % DAY_TICKS
   const hh = String(Math.floor(minute / 60)).padStart(2, '0')
   const mm = String(minute % 60).padStart(2, '0')
   return hh + ':' + mm
@@ -61,8 +62,8 @@ function lineOf(world: World, activity: Activity, nowTick: number, dayStart: num
  * 返回空数组 = 今天还没有任何记录；调用方不要把"没有记录"写成编造的经历。
  */
 export function summarizeDay(world: World, agentId: string, nowTick: number): string[] {
-  const day = Math.floor(nowTick / 1440)
-  const dayStart = day * 1440
+  const day = Math.floor(nowTick / DAY_TICKS)
+  const dayStart = day * DAY_TICKS
   const mine = (world.activities ?? []).filter((activity) => activity.agentId === agentId)
   // R485：当前活动从唯一读入口取；老存档没有 activityId 时退回扫 active。
   const agent = (world.agents ?? []).find((item) => item.id === agentId)

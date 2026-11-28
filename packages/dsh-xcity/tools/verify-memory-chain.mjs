@@ -22,16 +22,10 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { arg, baseUrl, failVerify, getJson } from './lib/cli.mjs';
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-tasks.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name);
-  if (index === -1) return fallback;
-  const value = process.argv[index + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-}
-
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '');
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl();
 const days = Number(arg('days', 3));
 const sample = Number(arg('sample', 10));
 const seed = Number(arg('seed', 1));
@@ -88,16 +82,13 @@ function pickSome(rows, count) {
 }
 
 // [1] 快照：世界只有 base 这一个出口
-let snapshot = null;
+let world = null;
 let fetchError = null;
 try {
-  const res = await fetch(base + '/agent-world/api/world', { signal: AbortSignal.timeout(REQUEST_MS) });
-  if (!res.ok) throw new Error(base + '/agent-world/api/world → HTTP ' + res.status);
-  snapshot = await res.json();
+  world = (await getJson(base + '/agent-world/api/world', REQUEST_MS)).world ?? null;
 } catch (error) {
   fetchError = error.message;
 }
-const world = snapshot === null ? null : (snapshot.world ?? null);
 const agents = (world === null ? [] : world.agents ?? []).map((agent) => ({
   id: agent.id,
   name: agent.name ?? agent.id,
@@ -327,7 +318,5 @@ if (!ok) {
     if (reason === 'no-missed') return 'missed=0';
     return '-';
   })();
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base + ' · state ' + stateDir);
-  if (fetchError !== null) console.error('最后错误: ' + fetchError);
-  process.exit(1);
+  failVerify(reason, { stuck, base, tail: ' · state ' + stateDir, error: fetchError });
 }

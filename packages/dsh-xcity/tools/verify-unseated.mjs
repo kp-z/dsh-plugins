@@ -27,15 +27,10 @@
  *   失败时 stderr 一行卡点（unreachable / no-samples / stall / duplicate-stack / no-unseated-share），退出码 1。
  */
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-scale.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name);
-  if (index === -1) return fallback;
-  const value = process.argv[index + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-}
+import { arg, baseUrl, failVerify, getJson, percentile, sleep } from './lib/cli.mjs';
 
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '');
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl();
 const seconds = Number(arg('seconds', 60));
 const holdMinutes = Number(arg('hold-min', 2));
 for (const [flag, value] of [['--seconds', seconds], ['--hold-min', holdMinutes]]) {
@@ -55,19 +50,8 @@ const STALL_MS = 2000;
 const DUP_LIMIT = 2;
 const WORLD_URL = base + '/agent-world/api/world';
 
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-
-/** 最近秩百分位；空数组返回 null（"量不到"和"是 0"必须能区分）。 */
-function percentile(sorted, ratio) {
-  if (sorted.length === 0) return null;
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(ratio * sorted.length) - 1));
-  return sorted[index];
-}
-
 async function worldSnapshot() {
-  const res = await fetch(WORLD_URL, { signal: AbortSignal.timeout(REQUEST_MS) });
-  if (!res.ok) throw new Error(WORLD_URL + ' → HTTP ' + res.status);
-  const body = await res.json();
+  const body = await getJson(WORLD_URL, REQUEST_MS);
   if (body.world === null || body.world === undefined) throw new Error('快照里没有 world');
   return body.world;
 }
@@ -312,7 +296,7 @@ const sortedDistances = [...distances].sort((a, b) => a - b);
 const avgDistance = sortedDistances.length === 0
   ? null
   : Number((sortedDistances.reduce((sum, value) => sum + value, 0) / sortedDistances.length).toFixed(2));
-const p90Distance = percentile(sortedDistances, 0.9);
+const p90Distance = percentile(sortedDistances, 90);
 
 const seats = {
   stations: stationTotal,
@@ -347,13 +331,13 @@ const overHoldRows = holdThresholdTicks === null
   : holdRows.filter((row) => row.holdTicks >= holdThresholdTicks);
 const overHoldAgents = [...new Set(overHoldRows.map((row) => row.agent))];
 const rotation = {
-  unseatedP50Ticks: percentile(runTicks, 0.5),
-  unseatedP95Ticks: percentile(runTicks, 0.95),
+  unseatedP50Ticks: percentile(runTicks, 50),
+  unseatedP95Ticks: percentile(runTicks, 95),
   unseatedMaxTicks: runTicks.length === 0 ? 0 : runTicks[runTicks.length - 1],
   unseatedRuns: runTicks.length,
   holdThresholdMinutes: holdMinutes,
-  holdP50Minutes: ticksToMinutes === null || holdTicksSorted.length === 0 ? null : ticksToMinutes(percentile(holdTicksSorted, 0.5)),
-  holdP95Minutes: ticksToMinutes === null || holdTicksSorted.length === 0 ? null : ticksToMinutes(percentile(holdTicksSorted, 0.95)),
+  holdP50Minutes: ticksToMinutes === null || holdTicksSorted.length === 0 ? null : ticksToMinutes(percentile(holdTicksSorted, 50)),
+  holdP95Minutes: ticksToMinutes === null || holdTicksSorted.length === 0 ? null : ticksToMinutes(percentile(holdTicksSorted, 95)),
   holdMaxMinutes: ticksToMinutes === null || holdTicksSorted.length === 0 ? null : ticksToMinutes(holdTicksSorted[holdTicksSorted.length - 1]),
   agentsOverHold: overHoldAgents.length,
   holdsOverThreshold: overHoldRows.length,
@@ -494,7 +478,5 @@ if (!ok) {
     if (reason === 'no-unseated-share') return '没有可用采样 · ' + WORLD_URL;
     return '-';
   })();
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base);
-  if (fetchError !== null) console.error('最后错误: ' + fetchError);
-  process.exit(1);
+  failVerify(reason, { stuck, base, error: fetchError });
 }

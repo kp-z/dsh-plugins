@@ -29,6 +29,8 @@ import { existsSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 
+import { emit, percentile } from './lib/cli.mjs'
+
 const SESSION_FILE = 'session.v4.jsonl.zstd'
 
 // R525-1 命令行
@@ -125,12 +127,6 @@ const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? va
 
 // R525-4 会话名 xcity-agent1-mwzepq16 -> 角色 xcity-agent1
 const agentOf = (sessionName) => sessionName.split('-').slice(0, 2).join('-')
-
-function percentile(sorted, p) {
-  if (sorted.length === 0) return null
-  const index = Math.ceil((p / 100) * sorted.length) - 1
-  return sorted[Math.max(0, Math.min(sorted.length - 1, index))]
-}
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
@@ -234,8 +230,8 @@ async function main() {
 
 try {
   const result = await main()
-  console.log(JSON.stringify(result, null, 1))
-  process.exit(result.ok ? 0 : 1)
+  // R525-7 结果 JSON 进 stdout（这个脚本的缩进是 1），按 ok 给退出码
+  emit(result, result.ok ? 0 : 1, 1)
 } catch (error) {
   console.log(JSON.stringify({ ok: false, reason: String(error && error.message ? error.message : error) }, null, 1))
   process.exit(1)

@@ -86,8 +86,10 @@ function isSocialActivity(activity: Activity): boolean {
  *
  * 纯函数：只读 activities，不引入新状态；不是社交活动就是空数组。
  * 接受 endedAt 而不是读 tick：仍在进行的那一方用调用点的"现在"截断。
+ *
+ * **不导出**：唯一的生产入口是 {@link recordActivityEpisode}，测试也从那里读回。
  */
-export function collaboratorsOf(activities: readonly Activity[], activity: Activity, endedAt: number): string[] {
+function collaboratorsOf(activities: readonly Activity[], activity: Activity, endedAt: number): string[] {
   // R512-1：自己在干活/吃饭/睡觉 → 不带人（同屋不算同行者）。
   if (!isSocialActivity(activity)) return []
   const [from, to] = spanOf(activity, endedAt)
@@ -152,8 +154,10 @@ export function appendEpisode(agent: Agent, episode: Episode, nowTick = episode.
  *    于是与真实文件只差外壳本身（内容包清单，实测约 5 KB；它是固定的，不随世界长大）。
  *
  * 用字节而不是字符串长度：中文摘要一个字 3 字节，按字符数量会低估三倍。
+ *
+ * **不导出**：对外口径是 {@link trimToSnapshotBudget} 的 `bytes`（同一把尺）。
  */
-export function snapshotBytes(world: World): number {
+function snapshotBytes(world: World): number {
   const { events: _ring, ...snapshot } = world
   return Buffer.byteLength(JSON.stringify({ world: snapshot }, null, 2))
 }

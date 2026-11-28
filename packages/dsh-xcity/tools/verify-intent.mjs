@@ -36,15 +36,10 @@
  *   失败时 stderr 一行卡点（unreachable / no-samples / no-stats / cross-contradiction），退出码 1；参数错退出码 2。
  */
 
-// [0] 参数：手写解析，不引依赖（与 tools/verify-unseated.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name);
-  if (index === -1) return fallback;
-  const value = process.argv[index + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-}
+import { arg, baseUrl, failVerify, getJson, sleep } from './lib/cli.mjs';
 
-const base = String(arg('base', 'http://127.0.0.1:3190')).replace(/\/+$/, '');
+// [0] 参数：解析与 base 归一化在 tools/lib/cli.mjs（各脚本共用一份，纯 .mjs 不经构建）
+const base = baseUrl();
 const seconds = Number(arg('seconds', 30));
 if (!(Number.isFinite(seconds) && seconds > 0)) {
   console.error('--seconds 必须是正数');
@@ -73,12 +68,8 @@ const SAMPLE_MS = 1000;
 const REQUEST_MS = 5000;
 const WORLD_URL = base + '/agent-world/api/world';
 
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-
 async function worldSnapshot() {
-  const res = await fetch(WORLD_URL, { signal: AbortSignal.timeout(REQUEST_MS) });
-  if (!res.ok) throw new Error(WORLD_URL + ' → HTTP ' + res.status);
-  const body = await res.json();
+  const body = await getJson(WORLD_URL, REQUEST_MS);
   if (body === null || typeof body !== 'object') throw new Error(WORLD_URL + ' 返回的不是对象');
   if (body.world === null || body.world === undefined) throw new Error('快照里没有 world');
   return body;
@@ -310,7 +301,5 @@ if (!ok) {
     }
     return contradictions.map((check) => check.check + ' ' + JSON.stringify(check.actual)).join(', ');
   })();
-  console.error('VERIFY FAIL ' + reason + ' · 卡在: ' + stuck + ' · base ' + base);
-  if (fetchError !== null) console.error('最后错误: ' + fetchError);
-  process.exit(1);
+  failVerify(reason, { stuck, base, error: fetchError });
 }

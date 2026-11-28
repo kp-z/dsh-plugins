@@ -6,6 +6,8 @@ node_modules/
 lib/
 dist/
 *.tsbuildinfo
+# 例外：xcity 的 tools/lib 是源码（13 个核对脚本共用的 CLI 骨架），不是编译产物；根规则的 lib/ 会把它一起吞掉
+!/packages/dsh-xcity/tools/lib/
 
 # logs
 *.log

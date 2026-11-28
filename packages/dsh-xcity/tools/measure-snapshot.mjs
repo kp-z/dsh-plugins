@@ -11,6 +11,7 @@
  */
 import { readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { arg, emit, fail } from './lib/cli.mjs'
 
 /** 一天多少 tick（1 tick = 1 游戏分钟，与 sim/memory.ts 的 DAY_TICKS 同口径）。 */
 const DAY_TICKS = 1440
@@ -20,22 +21,10 @@ const DAY_TICKS = 1440
 const BUDGET_BYTES = 2 * 1024 * 1024
 const DEFAULT_STATE = '.testhome/profiles/xcity-3/state'
 
-// [0] 参数：手写解析，不引依赖（与 tools/measure-tokens.mjs 同风格）
-function arg(name, fallback) {
-  const index = process.argv.indexOf('--' + name)
-  if (index === -1) return fallback
-  const value = process.argv[index + 1]
-  return value === undefined || value.startsWith('--') ? true : value
-}
-
-function done(payload, code) {
-  process.stdout.write(JSON.stringify(payload, null, 2) + '\n')
-  process.exit(code)
-}
-
+// [0] 参数校验：正数不合法就是失败体 {ok:false, reason} + 退出码 1（输出契约在 tools/lib/cli.mjs）。
 function positiveInt(name, raw) {
   const value = Number(raw)
-  if (!Number.isFinite(value) || value <= 0) done({ ok: false, reason: `--${name} 需要正数，收到 ${JSON.stringify(raw)}` }, 1)
+  if (!Number.isFinite(value) || value <= 0) fail(`--${name} 需要正数，收到 ${JSON.stringify(raw)}`)
   return Math.round(value)
 }
 
@@ -51,23 +40,23 @@ let file = stateArg
 try {
   if (statSync(stateArg).isDirectory()) file = join(stateArg, 'world.json')
 } catch {
-  done({ ok: false, reason: `状态目录不存在: ${stateArg}`, path: stateArg }, 1)
+  fail(`状态目录不存在: ${stateArg}`, { path: stateArg })
 }
 let raw
 try {
   raw = readFileSync(file, 'utf8')
 } catch (error) {
-  done({ ok: false, reason: `读不到存档: ${file} (${error.code})`, path: file }, 1)
+  fail(`读不到存档: ${file} (${error.code})`, { path: file })
 }
 let doc
 try {
   doc = JSON.parse(raw)
 } catch {
-  done({ ok: false, reason: 'world.json 不是合法 JSON', path: file }, 1)
+  fail('world.json 不是合法 JSON', { path: file })
 }
 const world = doc?.world
 if (!isContainer(world) || Array.isArray(world)) {
-  done({ ok: false, reason: '存档缺少 world 字段（结构应为 {world, content, savedAtTick, fileVersion}）', path: file }, 1)
+  fail('存档缺少 world 字段（结构应为 {world, content, savedAtTick, fileVersion}）', { path: file })
 }
 const agents = Array.isArray(world.agents) ? world.agents : []
 /** 落盘字节（含 pretty-print 缩进与键名）。 */
@@ -138,7 +127,7 @@ const projection = {
   verdict: projectedBytes <= BUDGET_BYTES ? 'ok' : 'over',
 }
 
-done(
+emit(
   {
     ok: true,
     actual: { path: file, bytes: fileBytes, jsonBytes: compactBytes, day, agents: agents.length, episodes, commitments, tasks },

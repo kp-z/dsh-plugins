@@ -444,7 +444,7 @@
 | H23 ✅ | 计费口径（真实 usage：40.6k/天，缓存 96%，见日志）| 现有 11.9k token/天是**增量下界**；每步重发的历史上下文与工具 schema（一次 18k 字符 / 122 次）未计 | 给出"计费口径"估算与每轮上限，误差来源写明 |
 | H24 ✅ | 一键端到端（smoke-e2e 3 单闭环 + 修 owner-lock 缺目录 bug）| 现有 6 个 verify 脚本各自为政，没有一个"从零到三工单完成"的冒烟 | 一条命令起世界→派单→三单完成→记忆/成本核对，全绿退出码 0 |
 | H25 ✅ | 无座者策略（真瓶颈是吃饭座位；排队机制已生效）| 24 人时 11 人无座空转（`unseatedMax 11`），只在歇脚点站着 | 无座时有明确降级行为（如排队/回休息区/自主找事），并在荡压力采样里可区分 |
-| H26 | 减法 | `BUSY_GRACE_TICKS` 已被 `MISS_GRACE_TICKS` 覆盖；`tools/*.mjs` 里"读世界+轮询+输出 JSON"重复 6 份 | 删掉冗余常量与至少一处重复骨架，测试仍全绿 |
+| H26 ✅ | 减法（tools 去重 −147 行 + 字面量/死导出收敛）| `BUSY_GRACE_TICKS` 已被 `MISS_GRACE_TICKS` 覆盖；`tools/*.mjs` 里"读世界+轮询+输出 JSON"重复 6 份 | 删掉冗余常量与至少一处重复骨架，测试仍全绿 |
 | H27 | 复盘与收口 | 与 H18 同 | 文档/清单更新；下一份计划 |
 
 **判定规则（同 §12）**：只做第一个未勾选的轮次；勾选必须有命令输出或浏览器证据。
@@ -543,3 +543,12 @@
   测试：test/intent-stats.test.js 13 条 + test/life-no-seat.test.js 8 条；npm test → **1129 tests / 1128 pass / 1 skip / 0 fail**。
   工具：tools/verify-intent.mjs（读 runtime.intentStats + 用"本窗口增量"与现场对账，避免把历史累计当成那一刻的事实）。
   留给下一轮的真问题：茶水间只有 4 张座、休息区 10 张座，而世界已经 56 人——**这是内容容量问题，不是策略问题**；要让人不排队，得改内容包（加座）或改行为（允许站着吃）。
+
+- 2026-11-28 08:22 · **H26 通过（勾选）——真正的减法**。
+  ① tools 骨架去重（R529）：新建 tools/lib/cli.mjs（63 行，8 个导出：arg 12 份 / baseUrl 11 / getJson 11 / failVerify 9 / sleep 4 / percentile 3 等），13 个脚本全部迁移。**13 个脚本合计 3959 → 3812 行（−147 行重复）**，加上新模块净减 84 行。
+  验证方式值得记一笔：不是"改完跑一遍"，而是**冻结 fixture 逐字节对比**——11 个确定性脚本的 stdout/stderr 与改前 `cmp` 无差异（含 measure-tokens 28 KB、verify-memory-chain 94 KB 的大 JSON）；再做 A/B 对照（`git show HEAD` 旧版 vs 工作区版，39 个用例，含连不上/参数非法/目录不存在/`--days 0`/`--bogus` 等失败分支）**38/39 逐字节相同**；唯一差异是 verify-scale 的 `reconnect.seq`/墙钟字段——同一份 HEAD 连跑两次也会差，已实测证明与本次改动无关。
+  ② 字面量与死导出收敛（审计 #4–#7、#13）：`1440` 裸字面量 7 处改用 `DAY_TICKS`（plan-prompt/index/life/initiative/day-summary），删掉两处 `MINUTES_PER_DAY` 副本；`createTurnCost()` 不再传它自己的默认值；`collaboratorsOf`/`snapshotBytes` 去掉 export（生产调用只在本文件），测试改走公开入口（walk：`memory-with` 15 处调用全保留，`snapshot-budget` 12 处全保留）。
+  ③ **三处按证据保留，没有硬收**：`dueAppointmentOf` 在 H25 之后已被 `activity.ts` 生产引用（审计快照早于那次改动）；`memoryMood`/`memoryWeightOf` 去掉 export 就得删掉 14 条数值断言（那是心情机制唯一的精确约束），代价大于收益——已在代码里标"export 只为测试"。
+  ④ 一处必须报备的行为归一：`getJson` 统一了错误文案，HTTP 非 2xx 时会多带响应体前 120 字（原来只有 verify-tasks 这样）。`reason` 字符串、JSON 键集、退出码都没变。
+  ⑤ 顺手修掉一个会让这次减法白做的坑：根 `.gitignore` 的 `lib/` 把 `tools/lib/cli.mjs` 一起吞了（`git status` 里根本看不见），已加 `!/packages/dsh-xcity/tools/lib/` 例外，并确认包内真正的编译产物 `packages/dsh-xcity/lib/` 仍被忽略。
+  测试：`npm test` → **1129 tests / 1128 pass / 1 skip / 0 fail**；`tools/verify-tasks`、`verify-intent`、`measure-snapshot` 真机重跑正常。

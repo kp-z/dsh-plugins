@@ -23,9 +23,7 @@ import { cellOf, isWalkable } from './pathfind.js'
 import { affinityOf } from './relationships.js'
 import { MISS_GRACE_TICKS } from './commitments.js'
 import { occupancyOf } from './scheduler.js'
-
-/** 一天多少游戏分钟（= 多少 tick）。 */
-const MINUTES_PER_DAY = 1440
+import { DAY_TICKS } from './memory.js'
 
 /** 上班时段：[09:00, 12:00) 与 [14:00, 18:00)。 */
 const WORK_WINDOWS: readonly (readonly [number, number])[] = [
@@ -95,7 +93,7 @@ export interface LifeIntent {
 }
 
 export function minuteOfDay(tick: number): number {
-  return ((Math.floor(tick) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+  return ((Math.floor(tick) % DAY_TICKS) + DAY_TICKS) % DAY_TICKS
 }
 
 export function isWorkMinute(tick: number): boolean {
@@ -525,6 +523,8 @@ function moodPolarityOf(episode: Episode): -1 | 0 | 1 {
  * 不做平均：按平均的话，一条 0.2 的小失误（"没做完：吃了顿饭"）就等于"一天全毁"；
  * 按求和，小事就只是小事，几件重要的坏事才压得住。
  * 纯函数：只读 episodes 与 nowTick，不看世界其他状态，无随机——同输入必须同结果。
+ *
+ * **export 只为测试**：生产只在本文件用；窗口与幅度被 14 条数值断言钉住，删 export 就得连断言一起删。
  */
 export function memoryMood(agent: Agent, nowTick: number): number {
   const from = nowTick - MEMORY_MOOD_WINDOW

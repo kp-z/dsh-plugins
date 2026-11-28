@@ -49,11 +49,11 @@ import { deliverInitiative } from './adapters/slowvale/initiative-delivery.js'
 import { createSessionAsker } from './adapters/slowvale/ask-session.js'
 import { createDailyPlanner } from './bridge/daily-plan.js'
 import { createPlanStats } from './runtime/plan-stats.js'
-import { createTurnCost, DEFAULT_WARN_INPUT_CHARS } from './runtime/turn-cost.js'
+import { createTurnCost } from './runtime/turn-cost.js'
 import { buildPlanPrompt, parsePlan, planMemories } from './bridge/plan-prompt.js'
 import { renderMemoryContext } from './bridge/memory-context.js'
 import { acquireOwnerLock } from './runtime/owner-lock.js'
-import { scoreEpisode, selectEpisodes } from './sim/memory.js'
+import { DAY_TICKS, scoreEpisode, selectEpisodes } from './sim/memory.js'
 import { promiseBetween, settleCommitments } from './sim/commitments.js'
 import { actorForSession, activityForEvent, createSmsReplyTracker, textOfBlocks } from './adapters/slowvale/session-events.js'
 import { directiveToCommand, parseDirective } from './adapters/slowvale/directive.js'
@@ -391,7 +391,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
 
   // R517：每轮输入体积计数（user/message 文本 + 工具结果字符数）。和计划计数一样只读，
   // 阈值写在这里是为了接线处能一眼看到"线"在哪；语义与"不是计费"的说明见 turn-cost.ts。
-  const turnCost = createTurnCost({ warnInputChars: DEFAULT_WARN_INPUT_CHARS })
+  const turnCost = createTurnCost()
 
   // R500：每天 06:30 各自想一下今天。投递走会话，取回走 assistant 原文（见 ask-session）。
   const planAsker = createSessionAsker({
@@ -447,7 +447,7 @@ export function apply(ctx: Context, config: Partial<AgentWorldConfig> = {}): voi
         .filter((episode) => episode.kind === 'day' && episode.day === day - 1)
         .map((episode) => episode.summary)
         .join(' ')
-      const nowTick = world?.tick ?? day * 1440
+      const nowTick = world?.tick ?? day * DAY_TICKS
       return buildPlanPrompt({
         agentName: agent?.name ?? agentId,
         // R516：persona 一直是空串，模型每次都读到空的「## 你是谁」。先用角色+性格顶上，

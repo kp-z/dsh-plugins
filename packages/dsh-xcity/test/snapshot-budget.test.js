@@ -23,7 +23,6 @@ import { createRuntime } from '../lib/runtime/index.js'
 import { createWorldStore } from '../lib/store/index.js'
 import {
   SNAPSHOT_BUDGET_BYTES,
-  snapshotBytes,
   trimToSnapshotBudget,
 } from '../lib/sim/memory.js'
 import { createPluginState } from '../lib/state.js'
@@ -73,6 +72,12 @@ function flood(world, n) {
 }
 
 /**
+ * world 段的字节数不在导出面上：把预算放到无限大问一次（没超预算时裁剪一个字节都不动），
+ * 读回来的就是同一把尺量的当前体积。
+ */
+const worldBytes = (world) => trimToSnapshotBudget(world, Number.MAX_SAFE_INTEGER).bytes
+
+/**
  * 一个"裁得动"的预算：让基础世界（不含情节）占一半，情节占另一半。
  * 固定在两者之间，才能断言"裁得回去"而不是"怎么裁都超"。
  */
@@ -87,7 +92,7 @@ test('R520：预算常量是 2 MiB（24 人平台实测约 1.2 MB 的两倍余�
 test('R520：没超预算就一个字节都不动', () => {
   const world = makeWorld(2)
   world.agents[0].episodes = [episode(100, '干活'), episode(1440, '第1天：干活×1', 'day')]
-  const before = snapshotBytes(world)
+  const before = worldBytes(world)
   assert.ok(before < SNAPSHOT_BUDGET_BYTES, '这个测试世界本身就该在预算内')
 
   const result = trimToSnapshotBudget(world, before)
@@ -98,9 +103,9 @@ test('R520：没超预算就一个字节都不动', () => {
 
 test('R520：超预算会裁到预算内，且不是把情节全裁光', () => {
   const world = makeWorld(3)
-  const base = snapshotBytes(world)
+  const base = worldBytes(world)
   const total = flood(world, 300)
-  const before = snapshotBytes(world)
+  const before = worldBytes(world)
   assert.ok(before > base * 2, '灌进去的情节得真的让体积涨起来，否则这个测试没意义')
 
   const budget = budgetBetween(base, before)
@@ -108,13 +113,13 @@ test('R520：超预算会裁到预算内，且不是把情节全裁光', () => {
 
   assert.ok(result.dropped > 0, '超预算必须裁')
   assert.ok(result.bytes <= budget, '裁完必须回到预算内，实际 ' + String(result.bytes) + ' > ' + String(budget))
-  assert.equal(result.bytes, snapshotBytes(world), '返回的字节数就是裁完世界的字节数')
+  assert.equal(result.bytes, worldBytes(world), '返回的字节数就是裁完世界的字节数')
   assert.ok(result.dropped < total, '不能一裁就全没了')
 })
 
 test('R520：日小结永远保留；承诺、任务、站点不动', () => {
   const world = makeWorld(2)
-  const base = snapshotBytes(world)
+  const base = worldBytes(world)
   const [first, second] = world.agents
   first.episodes = [episode(1440, '第1天：干活×7', 'day'), ...Array.from({ length: 200 }, (_, i) => fatEpisode(i + 1, i))]
   second.episodes = [episode(1440, '第1天：开会×2', 'day'), ...Array.from({ length: 200 }, (_, i) => fatEpisode(i + 1, i))]
@@ -124,7 +129,7 @@ test('R520：日小结永远保留；承诺、任务、站点不动', () => {
   const tasksBefore = world.tasks.length
   const stationsBefore = world.stations.length
 
-  const result = trimToSnapshotBudget(world, budgetBetween(base, snapshotBytes(world)))
+  const result = trimToSnapshotBudget(world, budgetBetween(base, worldBytes(world)))
   assert.ok(result.dropped > 0)
 
   assert.deepEqual(
@@ -143,9 +148,9 @@ test('R520：日小结永远保留；承诺、任务、站点不动', () => {
 
 test('R520：确定性——同样的世界裁两次，结果逐条一致', () => {
   const world = makeWorld(4)
-  const base = snapshotBytes(world)
+  const base = worldBytes(world)
   flood(world, 150)
-  const budget = budgetBetween(base, snapshotBytes(world))
+  const budget = budgetBetween(base, worldBytes(world))
 
   const twin = JSON.parse(JSON.stringify(world))
   const first = trimToSnapshotBudget(world, budget)
@@ -195,8 +200,8 @@ test('R520：保存路径（deactivate 落盘）先裁再写，并在日志里�
 
   // 预算管的是 world 那一段：裁完必须真的落在预算内（这条是硬断言）。
   assert.ok(
-    snapshotBytes(saved.world) <= SNAPSHOT_BUDGET_BYTES,
-    '落盘的 world 必须回到预算内，实际 ' + String(snapshotBytes(saved.world)) + ' 字节',
+    worldBytes(saved.world) <= SNAPSHOT_BUDGET_BYTES,
+    '落盘的 world 必须回到预算内，实际 ' + String(worldBytes(saved.world)) + ' 字节',
   )
   // 整个文件 = world + 外壳（内容包清单，实测约 5 KB，不随世界长大）。
   // 留 16 KB 只是给外壳与"32 条一量"的粒度留余量，不是给世界留的。
@@ -221,7 +226,7 @@ test('R520：运行时的 flush（周期 checkpoint 那条路）也先裁再写'
   })
   const world = state.activateSession('rt-session')
   world.agents[0].episodes = Array.from({ length: 3800 }, (_, i) => fatEpisode(i, i))
-  assert.ok(snapshotBytes(world) > SNAPSHOT_BUDGET_BYTES, '这个测试世界本身就该超预算')
+  assert.ok(worldBytes(world) > SNAPSHOT_BUDGET_BYTES, '这个测试世界本身就该超预算')
 
   const logs = []
   const runtime = createRuntime({
@@ -239,7 +244,7 @@ test('R520：运行时的 flush（周期 checkpoint 那条路）也先裁再写'
 
   const raw = await readFile(join(dir, 'world.json'), 'utf8')
   const saved = JSON.parse(raw)
-  assert.ok(snapshotBytes(saved.world) <= SNAPSHOT_BUDGET_BYTES, '运行时写的快照也得在预算内')
+  assert.ok(worldBytes(saved.world) <= SNAPSHOT_BUDGET_BYTES, '运行时写的快照也得在预算内')
   assert.equal(logs.length, 1)
   assert.match(logs[0], /裁掉 \d+ 条最老的情节/)
 })
