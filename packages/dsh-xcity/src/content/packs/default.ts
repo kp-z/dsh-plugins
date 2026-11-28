@@ -316,7 +316,7 @@ export const defaultPack: ContentPack = {
         seats: [
           {
             role: 'lead',
-            name: '工头阿金',
+            name: 'kp',
             palette: 'skin.role.lead',
             appearance: 'model.agent.mv-tom',
             model: null,
@@ -331,7 +331,7 @@ export const defaultPack: ContentPack = {
           },
           {
             role: 'engineer',
-            name: '小蓝',
+            name: '悟空',
             palette: 'skin.role.engineer',
             appearance: 'model.agent.mv-lea',
             model: null,
@@ -343,7 +343,7 @@ export const defaultPack: ContentPack = {
           },
           {
             role: 'researcher',
-            name: '小青',
+            name: '路飞',
             palette: 'skin.role.researcher',
             appearance: 'model.agent.mv-alice',
             model: null,

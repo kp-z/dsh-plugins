@@ -256,7 +256,7 @@ test('瞬移规则：停在旧落点上的惰性角色被挪走；有在途意�
   }).length
   assert.ok(movedCount > 0, '至少要有一个人的落点因为重算而改变，否则这条测试什么也没验到')
   assert.ok(
-    changes.some((c) => c.includes('agent-1') || c.includes('工头阿金')),
+    changes.some((c) => c.includes('agent-1') || c.includes('kp') || c.includes('工头阿金')),
     `changes 要说清谁被挪了：${JSON.stringify(changes)}`,
   )
 })

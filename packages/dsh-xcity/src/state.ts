@@ -120,6 +120,26 @@ export interface PluginState extends WorldServicePort {
  * 收掉的人：把它的工单放回队列（owner 清空、退回 ready），再把它从世界里移除。
  * 记忆跟着角色一起没了——所以**只该在用户主动减员时发生**，并在日志里说清楚。
  */
+/**
+ * R540：把存档里各角色的**显示名**按当前花名册刷一遍。
+ *
+ * 为什么需要：花名册改名（工头阿金 → kp 等）只影响新建的世界，旧存档里还是老名字，
+ * 用户会看到"我改了名但小镇里没变"。R165 当年就是拿"队长名要规范化"临时补的这一刀，
+ * 但它只规范了队长一个、还硬编码成 captain；这里推广成整张花名册。
+ *
+ * 只改**还能对上座位**的角色（palette 相同 = 还是那个座位），
+ * 免得把 subagent 投影出来的临时角色也改掉。
+ */
+function refreshSeatNames(world: World, seats: readonly { name: string; palette: string }[]): void {
+  if (!Array.isArray(world.agents) || seats.length === 0) return
+  for (let i = 0; i < world.agents.length && i < seats.length; i += 1) {
+    const agent = world.agents[i]
+    const seat = seats[i]
+    if (agent === undefined || seat === undefined) continue
+    if (agent.palette !== seat.palette) continue
+    if (agent.name !== seat.name) agent.name = seat.name
+  }
+}
 function capAgents(world: World, maxAgents: number, log?: (message: string) => void): void {
   // 防御：单元测试里的假世界可能没有 agents/tasks 数组，这里不能让整条启动流程炸掉。
   if (!Array.isArray(world.agents)) return
@@ -170,6 +190,16 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
 
   const contentPort: ContentPort = contentPortOf(registry, issueList, externalRoot)
 
+  /** R540：当前场景的花名册座位（取不到就空数组，改名不该让插件起不来）。 */
+  const seatsOfScene = (): readonly { name: string; palette: string }[] => {
+    try {
+      const scene = registry.require('scenes', config.scene, '刷新角色显示名时取场景')
+      const roster = registry.require('rosters', scene.roster, '刷新角色显示名时取花名册')
+      return roster.seats
+    } catch {
+      return []
+    }
+  }
   const build = (name: string, seeded: 'all' | 'captain' = initialAgents): World => {
     const errors = registry
       .validate()
@@ -466,14 +496,16 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
       activeSessionId = sessionId
       state.world = migrateWorld(loadSession(sessionId) ?? build(config.worldName, sessionInitialAgents), options.places)
       capAgents(state.world, config.maxAgents, options.log)
+      refreshSeatNames(state.world, seatsOfScene())
       const captain = state.world.agents[0]
       if (captain !== undefined) {
-        // R171：队长的显示名固定为 `captain`，不继承内容花名册的人名（工头阿金等），
-        // 避免内容换一版 / 多份花名册时同一个队长出现两个名字。
-        // ⚠️ R165 试过改成 `leader`，但 agent-teams 里 `captain` 是**保留名**，
-        // 改成 leader 后成员名对不上、加成员直接报
-        // `member name "captain" is reserved for the captain` —— 所以维持 `captain`。
-        captain.name = 'captain'
+        // R540：**不再**把队长的显示名改成 `captain`。用户要看的是花名册里的人名
+        // （kp / 悟空 / 路飞），而 R171 那次改名是为了"内容换版时同一个队长出现两个名字"，
+        // 代价是第一个角色永远显示成 `captain`，和内容里写的人名对不上。
+        // R165 的教训仍然有效、但管的是另一件事：agent-teams 里的**成员名**不能叫
+        // `captain`（保留名，加成员会报 `member name "captain" is reserved for the captain`）。
+        // 那条约束在 teams 侧的名字映射里处理，不该靠篡改世界里的显示名来满足。
+        // （`name` 保持花名册原值；这里只保留"队长不绑会话"这条。）
         // 队长是 UI 的代理角色；agent-teams 的 captain 是另一个派生会话。
         // 因此这里**不绑定**会话 id，点它说话时会按普通成员 ensureMember/发送。
         captain.boundAgentId = null
@@ -577,6 +609,7 @@ export function createPluginState(config: AgentWorldConfig, options: PluginState
       if (state.world) return state.world
       state.world = migrateWorld(tryRestore() ?? build(config.worldName), options.places)
       capAgents(state.world, config.maxAgents, options.log)
+      refreshSeatNames(state.world, seatsOfScene())
       return state.world
     },
 
