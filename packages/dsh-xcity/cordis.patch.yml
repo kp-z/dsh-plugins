@@ -15,7 +15,9 @@
         # 逻辑 tick 间隔（ms）。渲染层对它做插值，所以 100ms（10Hz）足够。
         tickMs: 100
         # 世界启动后是否自动开始推进模拟。
-        autoStart: true
+        # R545（用户要求，2026-11-28）：先停一份——小镇推进要烧模型 token，
+        # 开发暂停期间不该在重启后自己跑起来。要看的时候在侧栏看板点「启动」。
+        autoStart: false
         # 同屏角色上限（性能预算的一部分，见 docs/ARCHITECTURE.md §5.3）。
         # R533（用户要求）：同屏只留三个人——花名册前三席是工头阿金 / 小蓝 / 小青，
         # 配色与外观模型各不相同（skin.role.lead+mv-tom / engineer+mv-lea / researcher+mv-alice）。
