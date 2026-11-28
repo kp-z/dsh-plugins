@@ -43,6 +43,7 @@ const MODULES = [
   'src/client/runsExactStyles.js',
   'src/client/dashboardStyles.js',
   'src/client/InsightFeature.js',
+  'src/client/TodayInsightCharts.js',
   'src/client/RunsFeature.js',
   'src/client/waterBubble.js',
 ]

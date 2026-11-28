@@ -58,11 +58,11 @@ const ctx = {
   },
   fetch() { throw new Error('network forbidden') }, onInstallCli() { throw new Error('installation forbidden') },
   setTimeout: (f, delay) => { const id = ++timerId; timers.set(id, { f, delay }); return id }, clearTimeout: id => timers.delete(id),
-  connectActivityStream() {}, stopActivityStream() {}, deferAuxiliaryLoads() {},
+  connectActivityStream() {}, stopActivityStream() {}, renderTodayInsight() {},
   activityState: () => ctx.app.activity || (ctx.app.activity = {}),
   taskRenderObserver: { observe() { observed++ }, disconnect() { disconnected++ } },
   renderAll() { rendered++; ctx.renderSetup(); ctx.renderAuth(); ctx.scheduleAuthWatch() },
-  maybeAutoInsight() {}, pollCardComments() {}, updateTaskActivityNodes() {},
+  pollCardComments() {}, updateTaskActivityNodes() {},
 }
 vm.createContext(ctx)
 for (const name of ['backendOf', 'backendLabel', 'setupState', 'setupCliDraft', 'wireSetupCliSettings', 'renderSetupCli', 'renderCliChoice', 'onSaveSetupSettings', 'onSwitchLarkMode', 'authStepCard', 'appendFeishuAuthSteps', 'appendLarkAuthSteps', 'deriveNext', 'nextActionRow', 'renderAuth', 'stopAuthWatch', 'scheduleAuthWatch', 'disposeActivityPanel', 'load', 'stablePanelSignature', 'stateSignature', 'schedulePoll']) vm.runInContext(fn(name), ctx)

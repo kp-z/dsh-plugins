@@ -46,7 +46,7 @@ function uiModuleUrl() {
 
 /* sidebar.panellist 的 id 同时就是 main 面板的 key（DSH 约定），两处必须同源。 */
 const OVERVIEW_KEY = 'cove-task-overview'
-/* 面板在左侧栏显示的名字：插件改名 Cove Task 后跟随；面板内部的品牌标仍是「海湾」。 */
+/* 面板在左侧栏显示的名字：插件改名 Cove Task 后跟随；面板内部的品牌标是「Cove」。 */
 const OVERVIEW_LABEL = 'Cove Task'
 
 /* 取可选服务：cordis 里访问未声明的服务会直接抛，两段分开 try。 */

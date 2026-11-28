@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>海湾 · Cove Task</title>
+<title>Cove</title>
 <link rel="icon" type="image/png" href="/dsh-cove-task/tasks/logo.png">
 <!-- 独立海湾页：跑的是面板自己的组件（OverviewPanel + 三个 feature），不是另写一份页面。
      这里只给宿主令牌的兜底值与整页尺寸，其余样式由面板自己注入。 -->
@@ -32,6 +32,9 @@
     /* 关系图的 derived_from / temporal 边用它（漏了就是 stroke:none） */
     --dsw-alias-state-idle-primary: #81858c;
     --dsw-specific-sidebar-fill: #ffffff;
+    /* 验收目标徽标：宿主里是「彩色底 + 固定白字」，trajectory-accent 明暗同值 */
+    --dsw-alias-label-on-color: #ffffff;
+    --dsw-alias-trajectory-accent: #3b5bdb;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
@@ -53,6 +56,8 @@
       --dsw-alias-state-success-primary: #22c55e;
       --dsw-alias-state-idle-primary: #81858c;
       --dsw-specific-sidebar-fill: #1b1b1c;
+      --dsw-alias-label-on-color: #ffffff;
+      --dsw-alias-trajectory-accent: #3b5bdb;
       color-scheme: dark;
     }
   }

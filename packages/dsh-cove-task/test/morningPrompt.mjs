@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { DEFAULT_INSIGHT_PROMPT, DEFAULT_MORNING_PROMPT, PROMPT_REV } from '../index.js'
+import { DEFAULT_INSIGHT_PROMPT, DEFAULT_MORNING_PROMPT, INSIGHT_PLAYBOOK, PROMPT_REV } from '../index.js'
 
 /* 早会口述稿的契约：昨天逐条、每条先解释「这块是干嘛的」，听众只听得到项目名。 */
 assert.ok(PROMPT_REV >= 13, 'prompt revision bumped so cached scripts regenerate')
@@ -29,4 +29,16 @@ assert.ok(PROMPT_REV >= 17, 'prompt rev bumped so cached diagnoses regenerate')
 assert.ok(DEFAULT_MORNING_PROMPT.includes('项目只认材料里的「项目」字段'))
 assert.ok(DEFAULT_MORNING_PROMPT.includes('不要从工作区、目录或标题前缀猜项目'))
 assert.ok(PROMPT_REV >= 18)
+
+/* 长期诊断契约：一条 longTerm、可被下周数据检验、不做人格诊断（R4）。 */
+for (const needle of ['"longTerm"', 'falsifier', 'secondOrder', 'if-then', 'longTerm=null', '样本不足', '主要矛盾', '不做人格诊断', 'MBTI', '不背书']) {
+  assert.ok(DEFAULT_INSIGHT_PROMPT.includes(needle), 'long-term contract missing: ' + needle)
+}
+for (const lens of ['contradiction', 'inversion', 'values', 'structure', 'second_order']) {
+  assert.ok(DEFAULT_INSIGHT_PROMPT.includes(lens), 'lens id missing from prompt: ' + lens)
+  assert.ok(INSIGHT_PLAYBOOK.includes(lens), 'lens id missing from playbook: ' + lens)
+}
+assert.ok(INSIGHT_PLAYBOOK.includes('长期行为诊断'), 'playbook 必须有长期诊断一节')
+assert.ok(INSIGHT_PLAYBOOK.includes('坏：') && INSIGHT_PLAYBOOK.includes('好：'), 'playbook 要有正反例')
+assert.ok(PROMPT_REV >= 19, 'prompt rev bumped for long-term contract')
 console.log('MORNING_PROMPT_OK: itemized yesterday script with plain-language project context')

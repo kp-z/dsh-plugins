@@ -12,8 +12,8 @@ class Node {
   contains(n) { return this === n || this.children.some((child) => child.contains(n)) }
   removeChild(n) { this.children.splice(this.children.indexOf(n), 1); n.parent = null }
 }
-const nodes = new Map(['taskList', 'taskCount', 'taskListName', 'syncNow', 'insightCharts'].map((id) => [id, new Node()]))
-let made = 0, chartClears = 0, renderAllCalls = 0, requests = 0, resolveState
+const nodes = new Map(['taskList', 'taskCount', 'taskListName', 'syncNow', 'todayInsight'].map((id) => [id, new Node()]))
+let made = 0, renderAllCalls = 0, requests = 0, resolveState
 let hideA = false, menu = false
 const context = {
   app: { snap: { tasks: [{ id: 'a', title: 'A', docs: [] }, { id: 'b', title: 'B', docs: [] }] }, busy: {}, busyTask: {}, currentSessionId: '', settings: {}, workspaces: [], serverFeatures: [] },
@@ -22,16 +22,14 @@ const context = {
   filterTasksForPanel: (tasks) => tasks.filter((t) => !hideA || t.id !== 'a'),
   taskNode(task) { made++; const node = new Node(); node.task = task; return node },
   sessionSyncNode: () => null, emptyNode: () => new Node(),
-  clear(node) { if (node === nodes.get('insightCharts')) chartClears++; node.children = [] },
-  el: () => new Node(), insightChartSpecs: () => [{ type: 'bars', dataset: 'x', title: 'x' }],
-  chartIndexOf: () => 0, renderInsightBody() {},
-  insightChartCard: () => new Node(), insightChartEmpty: () => new Node(),
+  clear(node) { node.children = [] },
+  el: () => new Node(),
   api(path) { requests++; return new Promise((resolve) => { resolveState = resolve }) },
-  renderAll: () => { renderAllCalls++ }, markCurrentSessionSeen() {}, maybeAutoInsight() {}, renderHostStaleBar() {},
+  renderAll: () => { renderAllCalls++ }, markCurrentSessionSeen() {}, renderHostStaleBar() {},
   setTimeout, clearTimeout,
 }
 vm.createContext(context)
-for (const name of ['stablePanelSignature', 'syncCachedTask', 'reconcilePanelChildren', 'taskCardSignature', 'sortPanelTasks', 'reorderActivityTaskCards', 'renderTasks', 'flushPendingTaskRender', 'stateSignature', 'load', 'renderInsightCharts', 'schedulePoll']) vm.runInContext(fn(name), context)
+for (const name of ['stablePanelSignature', 'syncCachedTask', 'reconcilePanelChildren', 'taskCardSignature', 'sortPanelTasks', 'reorderActivityTaskCards', 'renderTasks', 'flushPendingTaskRender', 'stateSignature', 'load', 'renderTodayInsight', 'schedulePoll']) vm.runInContext(fn(name), context)
 context.renderTasks()
 assert.equal(made, 2)
 const oldA = nodes.get('taskList').children[0], oldB = nodes.get('taskList').children[1]
@@ -121,19 +119,21 @@ assert.equal(requests, 2)
 resolveState({ state: base, settings: {}, workspaces: [] })
 await third
 assert.equal(renderAllCalls, 1)
-context.app.insightStats = { datasets: { x: { values: [1, 2] } } }
-context.renderInsightCharts(); context.renderInsightCharts()
-assert.equal(chartClears, 1)
-context.document.body.className = 'dark'
-context.renderInsightCharts()
-assert.equal(chartClears, 2)
-context.app.insightStats.datasets.x.values[0] = 3
-context.renderInsightCharts()
-assert.equal(chartClears, 3)
+// 侧栏只更新同一 React 根的 props，不清空宿主 DOM 或重复创建根。
+const insightRenders = []
+context.window = { React: { createElement: (type, props) => ({ type, props }) } }
+context.enterRelatedTask = () => {}
+context.app.TodayInsight = function Shared() {}
+context.app.todayInsightRoot = { render: (tree) => insightRenders.push(tree) }
+context.renderTodayInsight()
+context.app.pageParked = true
+context.renderTodayInsight()
+assert.deepEqual(insightRenders.map((tree) => tree.props.visible), [true, false])
+assert.equal(insightRenders[0].type, insightRenders[1].type)
 context.document.hidden = true
 context.schedulePoll()
 assert.equal(context.app.pollTimer, null)
-assert.match(script, /load\(\)\.then\(function \(\) \{ schedulePoll\(\); deferAuxiliaryLoads\(\);/)
+assert.match(script, /load\(\)\.then\(schedulePoll\)/)
 vm.runInContext(fn('changeWorkspace'), context)
 let resolveBind
 context.api = () => new Promise((resolve) => { resolveBind = resolve })
@@ -181,4 +181,4 @@ assert.equal(context.app.snap.tasks[0].workspaceId, 'latest-ws')
 assert.equal(context.app.settings.fresh, true)
 assert.equal(context.app.loadPromise, null)
 assert.equal(settled, true)
-console.log('PERFORMANCE_PANEL_OK: keyed 0/1 rebuild, fresh closure, filter cache, pending menu, signatures, singleflight, chart reuse, hidden polling')
+console.log('PERFORMANCE_PANEL_OK: keyed 0/1 rebuild, fresh closure, filter cache, pending menu, signatures, singleflight, insight root reuse, hidden polling')

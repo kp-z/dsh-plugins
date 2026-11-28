@@ -79,6 +79,7 @@ function adaptApi(raw) {
     insightDiagnose: fn('insightDiagnose'),
     insightAi: fn('insightAi'),
     insightExport: fn('insightExport'),
+    saveInsightSettings: fn('saveInsightSettings'),
     /* 项目图标（纯本地展示）：旧宿主没有就退化成 null，气泡回退到任务编号 */
     setWorkspaceLogo: fn('setWorkspaceLogo'),
     /* 系统健康（运行页的「系统健康」卡）：featureCtx.api 传的是**这个白名单对象**，
@@ -1491,7 +1492,7 @@ export function createOverviewPanel(deps) {
           ),
           /* cove 的品牌区是「logo + 一行名字」：副标题不再占第二行，降级成 title 提示 */
           h('span', { className: 'fo-brand-text', title: model.str(options.subtitle) || 'DeepSeek Harness' },
-            h('span', { className: 'fo-brand-title' }, model.str(options.title) || '海湾'),
+            h('span', { className: 'fo-brand-title' }, model.str(options.title) || 'Cove'),
           ),
         ),
         /* 功能导航 = 两级菜单：一级项是功能（数量 = 注册表长度），可展开的项下面是它的二级菜单
@@ -1574,8 +1575,8 @@ export function createOverviewPanel(deps) {
             h('button', {
               type: 'button',
               className: 'fo-rail-action fo-rail-open',
-              title: '在浏览器打开海湾页',
-              'aria-label': '在浏览器打开海湾页',
+              title: '在浏览器打开 Cove 页',
+              'aria-label': '在浏览器打开 Cove 页',
               onClick: () => {
                 void (async () => {
                   let opened = null

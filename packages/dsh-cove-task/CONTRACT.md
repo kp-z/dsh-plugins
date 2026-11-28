@@ -252,6 +252,38 @@ HTTP 前缀：`/dsh-cove-task`（宿主 `webServer.register({kind:'prefix'})`）
 
 ## 接口
 
+### 长期洞察 `longTerm`（v0.25）
+
+`GET /api/insight` 在原有 `local / ai / results / settings / promptDefaults` 之外，新增 `longTerm`：
+
+```json
+{
+  "at": 1795798397518,
+  "promptRev": 19,
+  "data": {
+    "lens": "contradiction|inversion|values|structure|second_order",
+    "fact": "必须原样出现在行为档案里的一行（含数字）",
+    "hypothesis": "≤60 字",
+    "falsifier": "什么情况下这条作废（必填）",
+    "secondOrder": "≤60 字",
+    "action": "当…（就|先|再|立刻|马上）…，≤80 字",
+    "metric": "周节奏|进出台账|在跑|进列表→收口|预期兑现|deadline 挤压|切换|基线",
+    "metricNote": "模型原始的指标写法（可空）",
+    "until": "YYYY-MM-DD（默认 +7 天，最长 28 天）",
+    "at": 1795798397518,
+    "sampleDays": 37,
+    "windowDays": 84
+  }
+}
+```
+
+**采纳规则（宿主侧 `insightLongTerm.js`，不通过就返回 null）**
+1. 样本 <14 天 → 丢弃；2. lens 白名单；3. fact 含数字且能在行为档案里找到（忽略空白）；4. falsifier 必填；5. action 必须是 if-then；6. metric 必须是 8 个信号名之一（允许括号说明）；7. fact/hypothesis/falsifier/secondOrder/action 出现人格或临床标签（不自律/拖延型/性格/MBTI/人格/心理诊断/抑郁/焦虑症）→ 丢弃。
+
+**存储与过期**：`state.longTerm = { at, promptRev, data }` 跨天保留；`until` 早于今天时 `longTerm` 返回 null（卡片显示「重新判断」由前端按 `at` 是否 ≥7 天决定）。本次校验不通过时保留尚未过期的旧结论，不用坏建议覆盖好结论。`insightResults` 仍然只保当天，两者不要混。
+
+**提示词迁移**：`DEFAULT_INSIGHT_PROMPT` 变化时 `PROMPT_REV + 1`；只有「仍是旧默认」（`/^你是团队早会/` 或 `/^你是任务行为诊断/`）的配置会被换成新默认，用户自定义提示词保留。
+
 ### `GET /dsh-cove-task/api/state`
 
 ```json

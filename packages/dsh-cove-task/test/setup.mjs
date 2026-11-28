@@ -117,7 +117,7 @@ try {
   check('收放行展示 授权 / CLI / 上次同步 / 出错', ['需要授权', 'CLI 未就绪', '上次同步', '上次同步出错'].every((s) => html.includes(s)))
   check('状态行有「配置」「认证」两个并列按钮', html.indexOf('id="configurationToggle"') >= 0 &&
     html.indexOf('id="authToggle"') > html.indexOf('id="configurationToggle"'))
-  check('配置内容收进状态卡内部', /id="setupCard"[\s\S]*id="configurationArea"[\s\S]*id="insightCard"/.test(html))
+  check('配置内容收进状态卡内部，洞察挂载点在同一张卡里', /id="setupCard"[\s\S]*id="configurationArea"[\s\S]*id="todayInsight"/.test(html))
   check('未就绪时认证信息强制展开', html.includes('app.setupForceAuth = !ready') &&
     html.includes("return app.setupForceAuth ? 'auth' : ''"))
 

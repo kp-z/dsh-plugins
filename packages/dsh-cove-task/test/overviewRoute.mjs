@@ -16,7 +16,7 @@ const HOME = await isolatedHome('dsh-cove-task-overview-route-')
 /* 这条测试会故意发一个非法 Host 去验证「不启动浏览器」；
    若继承了运行环境的 DSH_WEB_URL，宿主会拿它拼出合法地址并真的去 open —— 必须隔离掉。 */
 delete process.env.DSH_WEB_URL
-const { apply } = await import('../index.js')
+const { apply, PROMPT_REV, DEFAULT_INSIGHT_PROMPT } = await import('../index.js')
 
 const routes = []
 /* 宿主内存里的会话活性：这条会话「正在跑」，用来验证 running / runningSince 的观测口径。 */
@@ -42,6 +42,21 @@ await writeFile(join(HOME, 'dsh-cove-task', 'state.json'), JSON.stringify({
     customFields: [{ name: '模块', value: '插件', type: 'text' }],
   }],
   relations: [], relationSync: {}, suspensions: {},
+  insightResults: {
+    morning: { summary: '早会摘要', at: Date.now(), mode: 'morning', promptRev: PROMPT_REV },
+    diagnose: { summary: '诊断摘要', at: Date.now(), mode: 'diagnose', promptRev: PROMPT_REV },
+    removed: { summary: '不应暴露的旧配置结果', at: Date.now(), mode: 'morning', promptRev: PROMPT_REV },
+  },
+  /* 长期结论：跨天保留，/api/insight 必须带出来（与只保当天的 insightResults 不同） */
+  longTerm: {
+    at: Date.now(), promptRev: PROMPT_REV,
+    data: {
+      lens: 'inversion', fact: '预期兑现（n=36）：提前 20 / 准时 3 / 延期 13',
+      hypothesis: '承诺偏乐观', falsifier: '下周延期里估时占比 <30%', secondOrder: '缓冲太多会松',
+      action: '当写预期时，就先乘 1.5', metric: '预期兑现', until: '2099-01-01',
+      at: Date.now(), sampleDays: 37, windowDays: 84,
+    },
+  },
 }))
 apply(ctx, {})
 
@@ -71,6 +86,15 @@ const get = async (path, init) => {
   const body = await res.text().catch(() => '')
   return { status: res.status, body, contentType: res.headers.get('content-type') || '' }
 }
+
+const daily = await json('/api/insight')
+check('GET /api/insight 带长期结论（跨天保留）',
+  daily.data?.longTerm?.data?.lens === 'inversion' && daily.data?.longTerm?.data?.until === '2099-01-01',
+  JSON.stringify(daily.data?.longTerm || null).slice(0, 120))
+check('今日洞察只返回洞察设置、默认提示和各按钮的当日结果', daily.status === 200
+  && daily.data?.results?.morning?.summary === '早会摘要' && daily.data?.results?.diagnose?.summary === '诊断摘要'
+  && !daily.data?.results?.removed && Object.keys(daily.data?.settings || {}).sort().join(',') === 'insightButtons,insightIgnore'
+  && typeof daily.data?.promptDefaults?.morning === 'string')
 
 /* ── 瘦快照 ─────────────────────────────────────────────────────────── */
 const overview = await json('/api/overview')
@@ -189,8 +213,8 @@ check('GET /tasks 直出独立海湾页（HTML，不重定向到 DSH）',
   `status=${tasksPage.status}`)
 
 const tasksBoot = await get('/tasks/boot.js')
-check('GET /tasks/boot.js 挂载的是面板自己的组件（import OverviewPanel）',
-  tasksBoot.status === 200 && tasksBoot.contentType?.includes('javascript') && tasksBoot.body.includes("from './src/OverviewPanel.js'"),
+check('GET /tasks/boot.js 使用和宿主相同的 createUi 工厂',
+  tasksBoot.status === 200 && tasksBoot.contentType?.includes('javascript') && tasksBoot.body.includes("from './src/ui.js'") && tasksBoot.body.includes('createElement(OverviewPanel'),
   tasksBoot.contentType)
 check('GET /tasks/boot.js 以 standalone 模式挂载（独立页不渲染左下「打开页面」）',
   tasksBoot.status === 200 && tasksBoot.body.includes('standalone: true'),
@@ -213,6 +237,9 @@ for (const [path, marker] of [
   ['/tasks/src/OverviewPanel.js', 'createOverviewPanel'],
   ['/tasks/src/RunsFeature.js', 'createRunsFeature'],
   ['/tasks/src/InsightFeature.js', 'createInsightFeature'],
+  ['/tasks/src/TodayInsight.js', 'createTodayInsight'],
+  ['/tasks/src/TodayInsightCharts.js', 'createTodayInsightCharts'],
+  ['/tasks/src/TodayInsightSettings.js', 'createTodayInsightSettings'],
   ['/tasks/src/GraphFeature.js', 'createGraphFeature'],
   ['/tasks/src/openSession.js', 'OPEN_SESSION_ENDPOINT'],
   ['/tasks/src/runsView.js', 'buildRuns'],
@@ -283,6 +310,24 @@ const stateFile = join(HOME, 'dsh-cove-task', 'state.json')
 const persisted = JSON.parse(await readFile(stateFile, 'utf8'))
 check('分组落盘（state.json 里有 workspaceGroups）', Array.isArray(persisted.workspaceGroups) && persisted.workspaceGroups.length === 1)
 check('落盘内容与接口一致', persisted.workspaceGroups[0].members.length === 2)
+
+/* ── 提示词迁移：旧默认换成新默认；用户自定义保留 ─────────────────── */
+const saveSettings = (body) => json('/api/settings', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
+const migrated = await saveSettings({ insightPrompt: '你是团队早会的诊断助手。旧版内容', insightPromptRev: 17 })
+check('旧默认提示词升级到新默认（rev 17 → 19）',
+  migrated.status === 200 && migrated.data?.settings?.insightPrompt.trim() === DEFAULT_INSIGHT_PROMPT.trim()
+  && migrated.data?.settings?.insightPromptRev === PROMPT_REV,
+  'status=' + migrated.status)
+const customPrompt = await saveSettings({ insightPrompt: '我的自定义提示词', insightPromptRev: 17 })
+check('用户自定义提示词不被迁移吞掉',
+  customPrompt.data?.settings?.insightPrompt === '我的自定义提示词')
+const keptNew = await saveSettings({ insightPrompt: DEFAULT_INSIGHT_PROMPT, insightPromptRev: PROMPT_REV })
+check('新版默认提示词原样保留',
+  keptNew.data?.settings?.insightPrompt.trim() === DEFAULT_INSIGHT_PROMPT.trim())
 
 /* 目录图标的数据面：groups[] 要带 logo / logoColor（右键设置图标后靠它回读） */
 {

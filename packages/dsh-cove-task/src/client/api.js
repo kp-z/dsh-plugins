@@ -187,7 +187,15 @@ export function createApi({ fetchImpl } = {}) {
         force: o.force === true,
         ...(o.prompt ? { prompt: String(o.prompt) } : {}),
         ...(o.mode ? { mode: String(o.mode) } : {}),
+        ...(o.buttonId ? { buttonId: String(o.buttonId) } : {}),
       });
+    },
+    saveInsightSettings(patch) {
+      return post('/api/settings', patch);
+    },
+    /** 切到某条 Cove 会话（洞察生成就是一条会话）。 */
+    openSession(sessionId, title) {
+      return post('/api/open-session', { sessionId: String(sessionId || ''), title: String(title || '') });
     },
     /** 把一段结论写进某条任务的飞书评论（用户确认后才调）。 */
     insightExport(taskId, text) {

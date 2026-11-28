@@ -937,7 +937,7 @@ check('rail 三段 DOM：品牌（logo + 一行名字）/ 功能导航 / 底部�
   assert.ok(String(openBtn.props['aria-label']).length > 0, '按钮要有无障碍名')
   assert.ok(textOf(openBtn).includes('打开'), '按钮文字')
   const brandText = textOf(byClass(rail, 'fo-brand')[0])
-  assert.ok(brandText.includes('海湾'), '主标题')
+  assert.ok(brandText.includes('Cove'), '主标题')
   /* cove 的品牌区是「logo + 一行名字」：副标题不再占第二行，降级成 title 提示 */
   assert.equal(byClass(rail, 'fo-brand-sub').length, 0, '副标题不再单独占一行')
   assert.ok(String(byClass(rail, 'fo-brand-text')[0].props.title || '').length > 0, '副标题降级成 title')
@@ -955,7 +955,7 @@ check('独立页：左下「打开页面」整块不渲染（品牌 / 导航 / �
   assert.equal(byClass(rail, 'fo-rail-foot').length, 0, '独立页没有底部固定区')
   assert.equal(byClass(rail, 'fo-rail-open').length, 0, '独立页没有「打开页面」按钮')
   assert.equal(byClass(rail, 'fo-rail-action').length, 0, '底部按钮类名也不该出现')
-  assert.equal(findAll(standaloneFx.tree, (node) => node.kind === 'host' && node.props.title === '在浏览器打开海湾页').length, 0, '全页都没有这个按钮')
+  assert.equal(findAll(standaloneFx.tree, (node) => node.kind === 'host' && node.props.title === '在浏览器打开 Cove 页').length, 0, '全页都没有这个按钮')
   assert.equal(byClass(rail, 'fo-brand').length, 1, '品牌区保留')
   assert.equal(byClass(rail, 'fo-featnav').length, 1, '功能导航保留')
   assert.equal(byClass(rail, 'fo-rail-resizer').length, 1, '拖动把手保留')
@@ -1588,7 +1588,7 @@ const PANEL_CARD = layout.CARD
     /* cove 的 NavGroup 没有展开箭头：一级项就是图标 + 文字，展开与否由二级容器在不在表达 */
     assert.equal(textOf(graphNav).replace(/\s/g, ''), '看板', '「看板」项不带任何箭头')
     assert.equal(byClass(graphNav, 'fo-nav-caret').length, 0, '没有 caret 元素')
-    assert.ok(count(text, '海湾') >= 1, '品牌名是「海湾」')
+    assert.ok(count(text, 'Cove') >= 1, '品牌名是「Cove」')
     assert.equal(count(text, '任务分组'), 0, '二级菜单里不再重复一个分组标题')
   })
   check('全局 Header：不显示页面名，也没有计数胶囊（在哪一页看 rail 选中态）', () => {
@@ -2047,12 +2047,12 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   /* 重新取 form：onSubmit 闭包里的 hintText 是**那一次渲染**的值，拿旧的会提交上一句。 */
   composer().props.onSubmit({ preventDefault() {} })
   ft = await fx.mini.act()
-  check('提交后的那一组，组头回显那句话', () => {
+  check('提交后的那一组，气泡回显那句话', () => {
     assert.equal(backend.log.hints[backend.log.hints.length - 1], '按项目分组给我看')
-    const hintNode = findAll(drawer(), (node) => node.kind === 'host'
-      && classNameOf(node).split(/\s+/).includes('fo-org-group-hint'))[0]
-    assert.ok(hintNode, '组头要显示这一组的要求')
-    assert.ok(textOf(hintNode).includes('按项目分组给我看'), '要写清是哪句话')
+    const bubbles = findAll(drawer(), (node) => node.kind === 'host'
+      && classNameOf(node).split(/\s+/).includes('fo-org-user-text'))
+    assert.ok(bubbles.length, '要显示这一组照哪句话生成')
+    assert.ok(bubbles.some((node) => textOf(node).includes('按项目分组给我看')), '要写清是哪句话')
   })
 }
 
@@ -2240,6 +2240,17 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
   check('重试真的又打了一次接口', () => {
     assert.equal(backend.log.organize.length, 2, `organize 调用 ${backend.log.organize.length} 次`)
   })
+  /* 失败不能把刚打的那句话弄丢：退回输入框，人可以改一下再发。 */
+  const failInput = () => findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'textarea'
+    && classNameOf(node).split(/\s+/).includes('fo-org-composer-input'))[0]
+  failInput().props.onChange({ currentTarget: { value: '只看 Demo' } })
+  ft = await fx.mini.act()
+  findAll(organizeDrawers(ft)[0], (node) => node.kind === 'host' && node.type === 'form'
+    && classNameOf(node).split(/\s+/).includes('fo-org-composer'))[0].props.onSubmit({ preventDefault() {} })
+  ft = await fx.mini.act()
+  check('生成失败：刚发的那句话退回输入框，不丢', () => {
+    assert.equal(failInput().props.value, '只看 Demo')
+  })
 }
 
 {
@@ -2283,6 +2294,42 @@ const orgButton = (item, action) => findAll(item, (node) => node.kind === 'host'
     assert.equal(ORGANIZE_RERUN(ft).props.disabled, false)
     assert.ok(textOf(ORGANIZE_TRIGGER(ft)).includes('建议'))
     assert.equal(organizeDrawers(ft).length, 1)
+  })
+}
+
+{
+  /* 发出去了但回包还没到：我打的那句话要立刻成为对话气泡，再跟一条「正在生成」。
+     用户口径：按了发送以后屏幕上不能什么都没有。 */
+  const deferred = []
+  const backend = makeOrganizeBackend({ defer: deferred })
+  const fx = await mountPanel({ organizeApi: backend.api })
+  let ft = fx.tree
+  ORGANIZE_TRIGGER(ft).props.onClick()
+  ft = await fx.mini.act()
+  const openDrawer = () => organizeDrawers(ft)[0]
+  const input = () => findAll(openDrawer(), (node) => node.kind === 'host' && node.type === 'textarea'
+    && classNameOf(node).split(/\s+/).includes('fo-org-composer-input'))[0]
+  const bubbles = () => findAll(openDrawer(), (node) => node.kind === 'host'
+    && classNameOf(node).split(/\s+/).includes('fo-org-user-text'))
+  const typing = () => findAll(openDrawer(), (node) => node.kind === 'host'
+    && classNameOf(node).split(/\s+/).includes('fo-org-typing'))[0]
+
+  input().props.onChange({ currentTarget: { value: '只看 Demo 的前置' } })
+  ft = await fx.mini.act()
+  input().props.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault() {} })
+  ft = await fx.mini.act()
+  check('回包还没到：刚发的那句话已经是气泡 + 正在生成', () => {
+    assert.equal(input().props.value, '', '提交后输入框清空')
+    assert.equal(bubbles().length, 1, '应有一个我方气泡')
+    assert.ok(textOf(bubbles()[0]).includes('只看 Demo 的前置'))
+    assert.ok(typing(), '同时要有「正在生成」')
+  })
+  deferred.forEach((resolve) => resolve())
+  ft = await fx.mini.act()
+  check('回包到了：气泡由这一组接手，不留重复', () => {
+    assert.equal(bubbles().length, 1, '临时气泡不能留成两个')
+    assert.ok(textOf(bubbles()[0]).includes('只看 Demo 的前置'))
+    assert.equal(typing(), undefined, '生成完就不再显示「正在生成」')
   })
 }
 

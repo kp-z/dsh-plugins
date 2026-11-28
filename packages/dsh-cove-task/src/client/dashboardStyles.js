@@ -17,7 +17,7 @@ const g = (token, pct) => `color-mix(in oklab, var(--dsw-alias-${token}) ${pct}%
 
 export const CSS = `
 /* ============ 仪表盘根：auto-fit 网格填满主区（最后一列/行自动拉满） ============ */
-.fd-page {
+.fd-page, .fd-today {
   --fd-line: ${g('border-l2', 55)};
   --fd-line-strong: ${g('border-l2', 80)};
   --fd-surface: ${g('bg-layer-1', 92)};
@@ -31,6 +31,8 @@ export const CSS = `
   --fd-danger: var(--dsw-alias-state-error-primary);
   /* 同 styles.js：令牌缺失时退成次级文字色，而不是让描边/底色整块失效 */
   --fd-idle: var(--dsw-alias-state-idle-primary, var(--dsw-alias-label-secondary));
+}
+.fd-page {
   flex: 1 1 auto; min-height: 0; min-width: 0;
   /* 页面 = 「KPI 带 + 网格」两段式：KPI 那一条按内容定高（auto），
      其余面板在下面的网格里平分剩余高度。
@@ -748,22 +750,8 @@ export const CSS = `
 .fr-empty-line { font-size: 11px; color: var(--fr-dim); padding: 4px 0; }
 
 /* ============ AI 诊断：小助手 + 一句话判断 + 结论卡 ============ */
-/* 这张卡是洞察页的视觉锚点：柔和的品牌色晕、圆润的小人、结论按卡排。
-   所有颜色只走 --fd-*（最终仍是宿主的 14 个令牌），亮暗两套都不用改。 */
-.fd-panel[data-mod="ai"] {
-  border-color: color-mix(in oklab, var(--fd-brand) 24%, var(--fd-line));
-  background:
-    radial-gradient(140% 120% at 0% 0%, color-mix(in oklab, var(--fd-brand) 7%, transparent), transparent 58%),
-    var(--fd-surface);
-}
-.fd-panel[data-mod="ai"]:hover { border-color: color-mix(in oklab, var(--fd-brand) 45%, var(--fd-line-strong)); }
-.fd-panel[data-mod="ai"] .fd-panel-body { gap: 0; }
-/* 标题贴顶：去掉副标题占位与多余间距，标题直接对齐卡片上沿 */
-/* 洞察卡没有标题，也不再为它单独调内边距/字号——卡片的壳与其他卡片完全一致。 */
-/* 右上角只放一个「重新判断」：它是刷新动作，不该混在正文底部 */
+/* 洞察卡的外观与其它卡片完全一致：不设专属边框/底色，只保留定位上下文。 */
 .fd-panel[data-mod="ai"] { position: relative; }
-.fd-ins-corner { position: absolute; top: 12px; right: 14px; z-index: 2; }
-.fd-ins-headline { padding-right: 92px; }
 
 /* 两栏：左=状态（上）+ 人物（下），右=判断与明细。 */
 .fd-ins {
@@ -774,18 +762,13 @@ export const CSS = `
   display: flex; flex-direction: column; justify-content: space-between; gap: 16px;
   min-width: 0; padding-right: 18px; border-right: 1px solid var(--fd-line);
 }
-.fd-ins-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fd-ins-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
 .fd-ins-status { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.fd-ins-status-head {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 10px; letter-spacing: .08em; color: var(--fd-dim);
-}
-.fd-ins-status-dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--fd-ok);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--fd-ok) 18%, transparent);
-}
-.fd-ins-status-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10px; line-height: 1.5; color: var(--fd-dim); }
+.fd-ins-weather { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; color: var(--fd-text); }
+.fd-ins-weather-icon { font-size: 15px; line-height: 1; }
+.fd-ins-weather-word { font-weight: 600; }
+.fd-ins-weather-note { font-size: 11px; color: var(--fd-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fd-ins-figure { display: flex; justify-content: center; align-items: flex-end; }
 /* 3D 层：加载好之后盖在 SVG 上；没加载好就什么都不显示，SVG 继续当着 */
 /* 动图自带透明通道：按原始比例摆，不加底色/外框/圆角，也不裁切。
@@ -807,154 +790,292 @@ export const CSS = `
 .fd-ins-face { display: grid; place-items: center; }
 .fd-ins-headline { font-size: 19px; font-weight: 650; letter-spacing: -.015em; line-height: 1.35; color: var(--fd-text); }
 .fd-ins-summary { font-size: 12.5px; line-height: 1.75; color: var(--fd-dim); max-width: 72ch; }
-.fd-ins-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-.fd-ins-facts { display: flex; flex-direction: column; gap: 8px; }
-.fd-ins-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.fd-ins-fact-label { font-size: 10px; letter-spacing: .02em; color: var(--fd-dim); }
-.fd-ins-fact-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fd-text); }
-.fd-ins-fact-bar { height: 3px; border-radius: 999px; background: var(--fd-sunken); overflow: hidden; }
-.fd-ins-fact-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--fd-brand); }
-.fd-ins-next > .fd-ai-jump { flex: 0 0 auto; margin-left: auto; }
-
-/* ---- 下一步：全卡唯一一块强调色，不与结论抢注意力 ---- */
+/* ---- 下一步 / 要处理·做得对 / 脚注：结论卡的正文块 ---- */
 .fd-ins-next {
-  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px;
-  background: color-mix(in oklab, var(--fd-brand) 8%, var(--fd-surface-2));
-  border: 1px solid color-mix(in oklab, var(--fd-brand) 30%, var(--fd-line));
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 9px 12px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--fd-brand) 26%, var(--fd-line));
+  background: color-mix(in oklab, var(--fd-brand) 8%, transparent);
 }
-.fd-ins-next-tag {
-  flex: 0 0 auto; margin-top: 1px; padding: 1px 8px; border-radius: 999px; font-size: 10px;
-  color: var(--fd-brand); background: color-mix(in oklab, var(--fd-brand) 16%, transparent);
-  border: 1px solid color-mix(in oklab, var(--fd-brand) 34%, transparent);
-}
-.fd-ins-next-text { margin: 0; font-size: 13px; line-height: 1.7; color: var(--fd-text); }
+.fd-ins-next-tag { font-size: 10px; letter-spacing: .08em; color: var(--fd-brand); }
+.fd-ins-next-text { margin: 0; font-size: 12.5px; line-height: 1.7; color: var(--fd-text); overflow-wrap: anywhere; }
+.fd-ins-next > .fd-ai-jump { align-self: flex-start; }
 
-/* ---- 结论两栏：左「要处理」右「做得对」；行不套框，靠左侧色条分区 ---- */
-.fd-ins-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-.fd-ins-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.fd-ins-block-head { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .08em; color: var(--fd-dim); }
-.fd-ins-block-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--fd-tone, var(--fd-brand)); }
-.fd-ins-block-head > b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fd-dim); }
+/* ---- 长期结论：事实（灰）→ 假设 → if-then 动作；只在宽形态出现 ---- */
+.fd-ins-longterm {
+  display: flex; flex-direction: column; gap: 5px; min-width: 0;
+  padding: 9px 12px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--fd-brand) 22%, var(--fd-line));
+  background: color-mix(in oklab, var(--fd-brand) 5%, transparent);
+}
+.fd-ins-longterm-head { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .08em; color: var(--fd-dim); }
+.fd-ins-longterm-head > b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fd-ins-longterm-fact { margin: 0; font-size: 11px; color: var(--fd-dim); overflow-wrap: anywhere; }
+.fd-ins-longterm-hyp { margin: 0; font-size: 12.5px; color: var(--fd-text); overflow-wrap: anywhere; }
+.fd-ins-longterm-action { margin: 0; font-size: 12px; line-height: 1.6; color: var(--fd-brand); overflow-wrap: anywhere; }
+.fd-ins-longterm-meta { margin: 0; font-size: 10.5px; color: var(--fd-dim); overflow-wrap: anywhere; }
+.fd-ins-longterm-review { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--fd-dim); }
+/* ---- 侧栏头行 / 摘要 / 图表 / 脚注（从旧版恢复） ---- */
+.fd-today-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fd-today-avatar { width: 22px; height: 22px; flex: none; border-radius: 50%; overflow: hidden; background: var(--fd-sunken); display: grid; place-items: center; }
+.fd-today-weather { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 10.5px; color: var(--fd-dim); }
+.fd-today-weather .fd-weather-scene { width: 18px; height: 18px; flex: none; }
+.fd-today-weather-inline { gap: 3px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fd-today-weather-inline .fd-weather-scene { width: 16px; height: 16px; }
+.fd-today-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fd-today-title { font-size: 13px; font-weight: 600; color: var(--fd-text); border: 0; background: none; padding: 0; cursor: pointer; }
+.fd-today-title.is-static { cursor: default; }
+.fd-today-tabs { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.fd-today-head-actions { display: flex; align-items: center; gap: 4px; }
+.fd-today-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; min-width: 0; }
+.fd-today-summary { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fd-today-editor-wrap { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 96px; min-width: 0; }
+.fd-today-md { flex: 1 1 auto; min-height: 0; max-height: 180px; overflow: auto; padding: 4px 6px; font-size: 12.5px; line-height: 1.6; color: var(--fd-text); cursor: text; }
+.fd-today-md.is-hidden { visibility: hidden; }
+.fd-today-md-empty { color: var(--fd-dim); }
+.fd-md-p { margin: 0 0 6px; }
+.fd-md-h { margin: 6px 0 4px; font-size: 13px; font-weight: 600; }
+.fd-md-list { margin: 0 0 6px; padding-left: 16px; }
+.fd-md-quote { margin: 0 0 6px; padding-left: 8px; border-left: 2px solid var(--fd-line); color: var(--fd-dim); }
+.fd-md-pre { margin: 0 0 6px; padding: 6px 8px; background: var(--fd-sunken); border-radius: 6px; overflow: auto; font-size: 11px; }
+.fd-md-code-inline { padding: 1px 4px; background: var(--fd-sunken); border-radius: 4px; font-size: 11px; }
+.fd-md-link { color: var(--fd-brand); text-decoration: underline; }
+.fd-md-hr { border: 0; border-top: 1px solid var(--fd-line); margin: 8px 0; }
+.fd-today-editor { position: absolute; inset: 0; width: 100%; height: 100%; flex: 1 1 auto; min-height: 0; resize: none; box-sizing: border-box; padding: 8px 10px; opacity: 0; pointer-events: none;
+
+  border-radius: 8px; border: 1px solid var(--fd-line); background: var(--fd-sunken); color: var(--fd-text);
+  font: 12.5px/1.65 inherit; }
+.fd-today-editor.is-editing { opacity: 1; pointer-events: auto; }
+.fd-today-dash .fd-today-md { max-height: 140px; }
+.fd-today-editor:focus-visible { outline: 2px solid color-mix(in oklab, var(--fd-brand) 40%, transparent); }
+.fd-today-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fd-today-note { margin: 0; font-size: 10.5px; color: var(--fd-dim); }
+.fd-today-chart { min-width: 0; border: 1px solid var(--fd-line); border-radius: 10px; padding: 8px; }
+.fd-today-foot { display: flex; justify-content: flex-end; margin-left: auto; }
+.fd-today-fold-text { font-size: 11px; color: var(--fd-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fd-today-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; gap: 12px; min-width: 0; }
+.fd-today-split > * { min-width: 0; }
+.fd-today-dash { gap: 12px; }
+.fd-today-head-inline { align-items: center; margin-bottom: 0; }
+.fd-today-head-inline .fd-ins-headline { flex: 1 1 auto; min-width: 0; }
+.fd-today-dash .fd-today-editor { min-height: 84px; }
+@container fdtoday (max-width: 560px) {
+  .fd-today-body, .fd-today-split { grid-template-columns: minmax(0, 1fr); }
+}
+@container fdtoday (max-width: 640px) {
+  .fd-today-dash .fd-ins { grid-template-columns: minmax(0, 1fr); }
+  .fd-today-dash .fd-ins-rail { padding-right: 0; padding-bottom: 12px; border-right: 0; border-bottom: 1px solid var(--fd-line); }
+}
+
+/* ---- 总览右栏：问题 / 做得对 / 脚注 ---- */
+.fd-ins-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-width: 0; }
+.fd-ins-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fd-ins-block-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--fd-dim); }
+.fd-ins-block-head > b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fd-ins-block-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fd-dim); flex: none; }
 .fd-ins-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.fd-ins-row {
-  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px 8px 9px;
-  border-radius: 10px; border-left: 2px solid var(--fd-tone, var(--fd-line));
-  background: var(--fd-surface-2);
-}
-.fd-ins-mark {
-  flex: 0 0 16px; height: 16px; margin-top: 1px; border-radius: 5px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 9px; font-variant-numeric: tabular-nums;
-  color: var(--fd-tone, var(--fd-brand));
-  background: color-mix(in oklab, var(--fd-tone, var(--fd-brand)) 16%, transparent);
-}
-.fd-ins-row-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
-.fd-ins-row-text {
-  font-size: 12px; line-height: 1.6; color: var(--fd-text);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.fd-ins-row-ev {
-  font-size: 10px; line-height: 1.5; color: var(--fd-dim);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.fd-ins-acts { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
-
-/* ---- 脚注：改法 / 履约 / 延期，尽量轻，不占主视线 ---- */
-.fd-ins-foot { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--fd-line); }
+.fd-ins-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.fd-ins-mark { width: 16px; height: 16px; border-radius: 50%; font-size: 9.5px; display: grid; place-items: center;
+  background: var(--fd-sunken); color: var(--fd-dim); }
+.fd-tone-danger .fd-ins-mark { background: color-mix(in oklab, var(--fd-danger) 18%, transparent); color: var(--fd-danger); }
+.fd-tone-warn .fd-ins-mark { background: color-mix(in oklab, var(--fd-warn) 18%, transparent); color: var(--fd-warn); }
+.fd-tone-ok .fd-ins-mark { background: color-mix(in oklab, var(--fd-ok) 18%, transparent); color: var(--fd-ok); }
+.fd-ins-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fd-ins-row-text { font-size: 12px; line-height: 1.6; color: var(--fd-text); overflow-wrap: anywhere; }
+.fd-ins-row-ev { font-size: 10.5px; color: var(--fd-dim); overflow-wrap: anywhere; }
+.fd-ins-acts { display: flex; align-items: center; gap: 4px; }
+.fd-ins-foot { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--fd-line); }
 .fd-ins-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.fd-ins-chip {
-  font-size: 11px; padding: 3px 9px; border-radius: 999px; cursor: default;
-  color: var(--fd-text); background: var(--fd-sunken); border: 1px solid var(--fd-line);
-}
-.fd-ins-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; line-height: 1.6; color: var(--fd-dim); }
-.fd-ins-meta-item { cursor: default; }
+.fd-ins-chip { font-size: 10.5px; color: var(--fd-dim); padding: 2px 8px; border-radius: 999px; background: var(--fd-sunken); }
+.fd-ins-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 10.5px; color: var(--fd-dim); }
+.fd-ins-meta-item { color: var(--fd-dim); }
 
-/* 窄容器：左右两栏改成上下——状态与人物并排在上，判断与明细在下 */
-@container fdpage (max-width: 819px) {
-  .fd-ins { grid-template-columns: minmax(0, 1fr); }
-  .fd-ins-rail {
-    flex-direction: row; align-items: flex-end; justify-content: space-between;
-    gap: 16px; padding: 0 0 12px; border-right: 0; border-bottom: 1px solid var(--fd-line);
-  }
-  .fd-ins-status { flex: 1 1 auto; }
-  .fd-figure-img { width: 132px; }
+/* ---- 按钮系统：次要 = 描边，主要 = 实心；浮起只给指针设备 ---- */
+.fd-today .fd-ai-jump,
+.fd-today .fd-ai-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 24px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--fd-line); background: transparent; color: var(--fd-dim);
+  font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background-color .14s ease, color .14s ease, border-color .14s ease, transform .14s ease;
 }
+.fd-today .fd-ai-btn {
+  background: var(--fd-brand); border-color: transparent;
+  color: var(--dsw-alias-bg-base); font-weight: 600;
+}
+.fd-today .fd-ai-jump:disabled,
+.fd-today .fd-ai-btn:disabled { opacity: .5; cursor: not-allowed; }
+.fd-today button:focus-visible { outline: 2px solid var(--fd-brand); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .fd-today .fd-ai-jump:hover { background: var(--fd-sunken); color: var(--fd-text); border-color: var(--fd-line-strong); }
+  .fd-today .fd-ai-btn:hover { background: color-mix(in oklab, var(--fd-brand) 86%, var(--dsw-alias-bg-base)); }
+}
+.fd-today .fd-ai-jump:active,
+.fd-today .fd-ai-btn:active { transform: translateY(1px); }
 
-.fd-ai-write { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--fd-dim); }
-.fd-ai-write.fd-tone-ok { color: var(--fd-ok); }
-.fd-ai-write.fd-tone-danger { color: var(--fd-danger); }
-.fd-ai-jump {
-  flex: 0 0 auto; font-size: 10px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
-  color: var(--fd-dim); background: transparent; border: 1px solid var(--fd-line);
-}
-.fd-ai-jump:hover { color: var(--fd-text); border-color: var(--fd-line-strong); }
-.fd-ai-btn {
-  font-size: 11px; padding: 4px 11px; border-radius: 8px; cursor: pointer;
-  color: var(--fd-text); background: var(--fd-surface-2); border: 1px solid var(--fd-line);
-}
-.fd-ai-btn:hover:not(:disabled) { border-color: var(--fd-line-strong); background: var(--fd-sunken); }
-.fd-ai-btn:disabled { cursor: default; opacity: .55; }
-
-/* ---- 小助手本体：线条只描不填色，跟着主题走 ---- */
-.fd-bot { width: 66px; height: 66px; overflow: visible; animation: fd-bot-bob 5s ease-in-out infinite; }
-.fd-bot-head {
-  fill: color-mix(in oklab, var(--fd-brand) 10%, var(--fd-surface));
-  stroke: color-mix(in oklab, var(--fd-brand) 44%, var(--fd-line-strong));
-  stroke-width: 1.4;
-}
-.fd-bot-glint { fill: none; stroke: color-mix(in oklab, var(--fd-text) 22%, transparent); stroke-width: 2.4; stroke-linecap: round; }
-.fd-bot-cheek { fill: var(--fd-brand); opacity: .2; }
-.fd-bot-eye { fill: var(--fd-text); }
-.fd-bot-eye-arc { fill: none; stroke: var(--fd-text); stroke-width: 2.2; stroke-linecap: round; }
-.fd-bot-brows { fill: none; stroke: var(--fd-warn); stroke-width: 1.8; stroke-linecap: round; }
-.fd-bot-mouth { fill: none; stroke: var(--fd-text); stroke-width: 2; stroke-linecap: round; }
-.fd-bot-mouth.is-shape { fill: var(--fd-text); stroke: none; }
-.fd-bot-antenna { fill: none; stroke: var(--fd-line-strong); stroke-width: 1.6; stroke-linecap: round; }
-.fd-bot-bulb { fill: var(--fd-brand); animation: fd-bot-bulb 3.4s ease-in-out infinite; }
-.fd-bot-ring {
-  fill: none; stroke: var(--fd-brand); stroke-width: 1.2; stroke-dasharray: 5 11;
-  opacity: 0; transform-box: fill-box; transform-origin: center;
-}
-.fd-bot-think { fill: var(--fd-brand); opacity: 0; }
-.fd-bot-shadow { fill: var(--fd-text); opacity: .07; }
-.fd-bot.is-thinking .fd-bot-ring { opacity: .45; animation: fd-bot-spin 7s linear infinite; }
-.fd-bot.is-thinking .fd-bot-bulb { animation-duration: 1.1s; }
-.fd-bot.is-thinking .fd-bot-think { opacity: .9; animation: fd-bot-float 2.4s ease-in-out infinite; }
-.fd-bot.is-alert .fd-bot-bulb { fill: var(--fd-warn); }
-.fd-bot.is-happy .fd-bot-bulb { animation-duration: 5s; }
-
-@keyframes fd-bot-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
-@keyframes fd-bot-bulb { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
-@keyframes fd-bot-spin { to { transform: rotate(360deg); } }
-@keyframes fd-bot-float { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-
-/* 页面一致性：每张卡的标题前加一个小色点，和诊断卡的标签同一套节奏 */
-.fd-panel-title::before {
-  content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px;
-  border-radius: 50%; vertical-align: 1px;
-  background: color-mix(in oklab, var(--fd-brand) 55%, transparent);
+/* tabs = 分段控件：容器一块浅底，选中项浮起 */
+.fd-today-tabs { display: flex; align-items: center; gap: 0; margin-left: auto; padding: 2px; border-radius: 8px; background: var(--fd-sunken); }
+.fd-today-tabs .fd-ai-jump { height: 22px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--fd-dim); }
+.fd-today-tabs .fd-ai-jump[aria-pressed="true"] {
+  background: var(--fd-surface); color: var(--fd-text); font-weight: 600;
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--fd-text) 14%, transparent);
 }
 
-/* ============ 尊重系统「减少动态效果」 ============ */
-/* 减少动效：一律 !important —— 不能靠「块在文件最后 + 同特异度」生效，
-   否则以后任何追加的动画规则（或特异度更高的选择器）会静默压过它（复核 R3）。
-   与 styles.js 的 fo- 段同一口径。 */
+/* ---- 推理链：事实 → 假设 → 反证 → 动作 → 验收 ---- */
+.fd-ins-chain { position: relative; display: flex; flex-direction: column; gap: 6px; margin-top: 3px; padding-left: 15px; }
+.fd-ins-chain::before { content: ''; position: absolute; left: 3px; top: 6px; bottom: 8px; width: 1px; background: var(--fd-line-strong); }
+.fd-ins-chain-row { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: start; }
+.fd-ins-chain-row::before {
+  content: ''; position: absolute; left: -15px; top: 4px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--fd-surface); border: 1.5px solid var(--fd-brand); box-sizing: border-box;
+}
+.fd-ins-chain-row.is-action::before { background: var(--fd-brand); }
+.fd-ins-chain-label { font-size: 10px; letter-spacing: .04em; color: var(--fd-dim); padding-top: 1px; }
+.fd-ins-longterm-falsifier { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--fd-dim); overflow-wrap: anywhere; }
+.fd-ins-longterm-metric { margin: 0; font-size: 11px; line-height: 1.6; color: var(--fd-dim); overflow-wrap: anywhere; }
+.fd-ins-longterm .fd-ins-longterm-action { font-size: 12.5px; font-weight: 600; }
+.fd-ins-headline { font-size: 20px; }
+
+/* ---- 分区：记录 / 深度 / 关联任务 / 标签与操作 ---- */
+.fd-zone { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px;
+  border: 1px solid var(--fd-line); border-radius: 10px; background: var(--fd-surface); }
+.fd-zone-record { gap: 8px; }
+.fd-zone-deep { gap: 8px; }
+.fd-today-dash { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 16px; align-self: start; }
+.fd-today-dash .fd-tic-insight-charts { min-height: 96px; }
+.fd-today-dash .fd-today-editor-wrap { min-height: 76px; }
+.fd-zone-tasks .fd-ins-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
+.fd-today-dash .fd-ins-longterm-fact,
+.fd-today-dash .fd-ins-longterm-hyp,
+.fd-today-dash .fd-ins-longterm-action,
+.fd-today-dash .fd-ins-longterm-falsifier,
+.fd-today-dash .fd-ins-longterm-metric { font-size: 11px; line-height: 1.5; }
+.fd-today-dash .fd-today-chart { padding: 6px; }
+.fd-today-dash .fd-ins-chain { gap: 2px; }
+.fd-today-dash .fd-ins-chain-label { font-size: 9.5px; }
+.fd-today-dash .fd-ins-longterm { gap: 3px; }
+.fd-today-dash .fd-ins-longterm-head { font-size: 9.5px; }
+.fd-today-dash .fd-ins-longterm-review { font-size: 10px; }
+.fd-today-dash .fd-ins-next { padding: 7px 10px; }
+.fd-today-dash .fd-ins-next-text { font-size: 12px; line-height: 1.55; }
+.fd-today-dash .fd-mini-bars { height: 34px; }
+.fd-today-dash .fd-ring { width: 52px; height: 52px; }
+.fd-today-dash .fd-deep-body { gap: 8px 18px; }
+.fd-today-dash .fd-deep-minis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fd-today-dash .fd-zone { gap: 6px; }
+.fd-today-dash .fd-ins-chain-row p { line-height: 1.45; }
+.fd-today-dash .fd-ins-longterm-fact { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fd-today-dash .fd-task-row { padding-top: 3px; padding-bottom: 3px; }
+.fd-report .fd-ins-headline { font-size: 18px; }
+.fd-zone-tasks { gap: 6px; }
+.fd-zone-foot { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.fd-zone-foot .fd-ins-chips { flex: 1 1 auto; min-width: 0; }
+.fd-zone-foot .fd-today-foot { margin-left: auto; flex: none; }
+.fd-zone-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 10.5px; color: var(--fd-dim); }
+.fd-zone-head > b { font-size: 11px; font-weight: 600; color: var(--fd-text); }
+.fd-zone-empty { margin: 0; font-size: 11px; color: var(--fd-dim); }
+.fd-ico { flex: none; width: 13px; height: 13px; color: var(--fd-dim); }
+.fd-ico path { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 深度：一张卡，内部是一个 grid（bento 机制：少轨道、同一 gap、按区域挂块），不画分割线 */
+.fd-deep-body {
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-areas: 'main side';
+  gap: 10px 24px; align-items: start;
+}
+.fd-deep-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.fd-deep-side { grid-area: side; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.fd-zone-deep .fd-ins-next,
+.fd-zone-deep .fd-ins-longterm { border: 0; background: transparent; padding: 0; border-radius: 0; }
+.fd-deep-minis { display: flex; flex-direction: column; gap: 10px; }
+.fd-mini { margin: 0; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fd-mini figcaption { display: flex; align-items: center; gap: 4px; font-size: 9.5px; letter-spacing: .04em; color: var(--fd-dim); }
+.fd-mini-bars { display: flex; align-items: flex-end; gap: 3px; height: 46px; }
+.fd-mini-col { flex: 1; display: flex; align-items: flex-end; gap: 1px; height: 100%; }
+.fd-mini-col i { flex: 1; min-height: 1px; display: block; border-radius: 2px 2px 0 0; }
+.fd-mini-col i.is-created { background: color-mix(in oklab, var(--fd-brand) 28%, transparent); }
+.fd-mini-col i.is-done { background: var(--fd-brand); }
+.fd-mini-note { margin: 0; font-size: 9.5px; color: var(--fd-dim); font-variant-numeric: tabular-nums; }
+.fd-mini-ring { align-items: center; }
+.fd-ring { --p: 0%; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; position: relative;
+  background: conic-gradient(var(--fd-brand) var(--p), var(--fd-sunken) 0); }
+.fd-ring::after { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: var(--fd-surface); }
+.fd-ring b { position: relative; z-index: 1; font-size: 12px; font-variant-numeric: tabular-nums; }
+.fd-mini-ring figcaption { justify-content: center; }
+
+/* 天气：动画 + hover tooltip */
+.fd-weather-card { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 8px 9px;
+  border-radius: 10px; border: 1px solid var(--fd-line); background: var(--fd-surface); }
+.fd-weather-row { display: flex; align-items: center; gap: 9px; min-width: 0; width: 100%; }
+.fd-weather-updated { margin-left: auto; padding-left: 6px; font-size: 9.5px; color: var(--fd-dim); white-space: nowrap; }
+.fd-weather-row .fd-weather-scene { width: 44px; height: 44px; flex: none; }
+.fd-weather-scene { flex: none; width: 34px; height: 34px; color: var(--fd-dim); overflow: visible; }
+.fd-weather-copy { display: flex; flex-direction: column; min-width: 0; }
+.fd-weather-copy b { font-size: 11.5px; font-weight: 600; color: var(--fd-text); }
+.fd-weather-copy span { font-size: 10px; color: var(--fd-dim); }
+.fd-weather-tip { position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; width: 230px;
+  display: none; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 9px;
+  background: var(--fd-text); color: var(--dsw-alias-bg-base); font-size: 10.5px; line-height: 1.55;
+  box-shadow: 0 8px 20px color-mix(in oklab, var(--fd-text) 28%, transparent); }
+.fd-weather-tip b { font-size: 10.5px; }
+.fd-weather-tip i { font-style: normal; opacity: .72; }
+.fd-weather-card:hover .fd-weather-tip,
+.fd-weather-card:focus-visible .fd-weather-tip { display: flex; }
+.fd-weather-card:focus-visible { outline: 2px solid var(--fd-brand); outline-offset: 2px; }
+.fd-w-sun { fill: color-mix(in oklab, var(--fd-warn) 24%, transparent); stroke: var(--fd-warn); stroke-width: 1.2; }
+.fd-w-rays { transform-origin: 20px 20px; animation: fd-spin 24s linear infinite; stroke: var(--fd-warn); stroke-width: 1.2; fill: none; }
+.fd-w-cloud { fill: color-mix(in oklab, var(--fd-dim) 18%, transparent); stroke: var(--fd-dim); stroke-width: 1; animation: fd-drift 6s ease-in-out infinite; }
+.fd-w-drop { stroke: color-mix(in oklab, var(--fd-idle) 80%, transparent); stroke-width: 1.4; stroke-linecap: round; animation: fd-fall 1.2s linear infinite; }
+.fd-w-drop:nth-of-type(2) { animation-delay: .3s; }
+.fd-w-drop:nth-of-type(3) { animation-delay: .6s; }
+.fd-w-bolt { fill: var(--fd-warn); stroke: none; animation: fd-flash 2.4s steps(1) infinite; }
+@keyframes fd-spin { to { transform: rotate(360deg); } }
+@keyframes fd-drift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
+@keyframes fd-fall { 0% { opacity: 0; transform: translateY(-2px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(4px); } }
+@keyframes fd-flash {
+  0% { opacity: 0; }
+  82% { opacity: 0; }
+  86% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .fd-panel, .fr-panel { animation: none !important; }
-  .fd-bar > i, .fd-bar-split > i, .fd-bar-split > b, .fd-donut-arc, .fr-bar > i { transition: none !important; }
-  /* 用户口径：只在系统允许动效时才呼吸 */
-  .fr-bubble.is-running, .fr-kpi-ball.is-running, .fr-avatar-dot.is-running { animation: none !important; }
-  /* 水位条：入场动画关掉后宽度直接落位（width 变量），横扫高光也停 */
-  .fr-water-fill, .fr-water-shine { animation: none !important; }
-  .fr-bubble:hover { transform: none !important; }
-  /* 洞察的小人：漂浮、眨眼、天线闪、虚线圈转、轨道绕行，全部停 */
-  .fd-bot, .fd-bot-bulb, .fd-bot-ring, .fd-bot-think { animation: none !important; }
-  /* 气泡墙：漂浮与呼吸都停，避免前庭敏感用户看到一直晃的元素 */
-  .fr-bubble-slot { animation: none !important; }
-  .fr-bubble-orb.is-running { animation: none !important; }
-  .fr-bubble-orb:hover, .fr-bubble-orb.is-hovered { transform: none !important; }
+  .fd-w-rays, .fd-w-cloud, .fd-w-drop, .fd-w-bolt { animation: none !important; }
+  .fr-bubble.is-running, .fr-bubble-orb.is-running, .fr-kpi-ball.is-running, .fr-avatar-dot.is-running {
+    animation: none !important; transition: none !important;
+  }
+  .fr-bubble.is-running::after { animation: none !important; }
 }
+@media (max-width: 640px) {
+  .fd-deep-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'main' 'side'; }
+}
+@media (max-width: 560px) {
+  .fd-deep-minis { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 天气与下方文字左对齐：去掉卡片内边距与描边，只留内容和 tooltip */
+.fd-weather-card { border: 0; background: transparent; padding: 0; }
+
+/* 左栏「今日结构」：ECharts 环图 + 图例（今天只画今天，和右侧趋势不重复） */
+.fd-rail-chart { margin: 0; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fd-rail-chart-box { height: 190px; min-width: 0; }
+.fd-rail-chart-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; font-size: 9.5px; color: var(--fd-dim); }
+.fd-rail-chart-legend i { display: inline-block; width: 6px; height: 6px; border-radius: 2px; margin-right: 4px; vertical-align: middle; background: var(--fd-dim); }
+.fd-rail-chart-legend i.fd-tone-ok { background: var(--fd-ok); }
+.fd-rail-chart-legend i.fd-tone-brand { background: var(--fd-brand); }
+.fd-rail-chart-legend i.fd-tone-danger { background: var(--fd-danger); }
+.fd-rail-chart-legend i.fd-tone-idle { background: var(--fd-idle); opacity: .55; }
+.fd-rail-flow { margin: 0; display: flex; flex-direction: column; gap: 2px; color: var(--fd-brand); min-width: 0; }
+.fd-flow-box { height: 108px; min-width: 0; }
+.fd-flow-box .fd-tic-chart-canvas { height: 100%; }
+.fd-river-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 8px; font-size: 9px; color: var(--fd-dim); }
+.fd-river-legend span { display: flex; align-items: center; gap: 3px; max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-river-legend i { width: 6px; height: 6px; border-radius: 2px; flex: none; }
+.fd-rail-flow-note { margin: 0; font-size: 9px; color: var(--fd-dim); text-align: center; }
+.fd-rail-flow-empty { margin: 0; font-size: 9px; color: var(--fd-dim); }
+.fd-rail-empty { margin: 0; font-size: 10px; color: var(--fd-dim); }
+
 `
 
 /** 幂等注入：宿主文档里已有同 id 的 <style> 就不重复插。 */

@@ -1,7 +1,10 @@
 /**
  * 「洞察」功能页 —— dashboard 风格，工厂组件，模块顶层不 import react。
  *
- * 六个面板（CSS grid `repeat(auto-fit, minmax(240px, 1fr))` + `grid-auto-rows: 1fr` 填满）：
+ * 顶部 = 洞察结论卡：与侧栏同一个 `TodayInsight` 组件，只是 `variant='dashboard'`
+ * （数据 / tabs / 生成 / 草稿 / 设置 / 评论全在组件里，这里只给宿主能力面与任务快照）。
+ *
+ * 其下六个面板（CSS grid `repeat(auto-fit, minmax(240px, 1fr))` + `grid-auto-rows: 1fr` 填满）：
  *   1. KPI 气泡行（全宽跨列）  2. 状态分布 donut（手绘 SVG，不引图表库）
  *   3. 项目分布横条            4. 关系概览
  *   5. 阻塞榜 Top5             6. 最近动态三列
@@ -13,7 +16,8 @@
 
 import { buildInsight, buildHistory, calendarFromTasks, calendarHints } from './insightView.js'
 import { injectStyles } from './dashboardStyles.js'
-import { aiMascot } from './AiMascot.js'
+import { createTodayInsight } from './TodayInsight.js'
+import { createSunburstChart, sunburstFromTasks } from './insightSunburst.js'
 
 const R = 52
 const TAU = Math.PI * 2
@@ -62,6 +66,9 @@ export function createInsightFeature(deps) {
   const useEffect = React && typeof React.useEffect === 'function' ? React.useEffect : null
   const useRef = React && typeof React.useRef === 'function' ? React.useRef : null
   const useState = React && typeof React.useState === 'function' ? React.useState : null
+  /* 结论卡在工厂层建一次：每次渲染新建组件会重建它的 state（草稿、生成 job 全丢）。 */
+  const TodayInsight = React ? createTodayInsight({ React, h }) : null
+  const SunburstChart = React ? createSunburstChart({ React, h }) : null
 
   function Donut(view) {
     const total = view.totals.tasks
@@ -134,84 +141,23 @@ export function createInsightFeature(deps) {
     /* ---- 历史指标（/api/insight/stats）：拿不到就降级，只保留快照口径的六个面板 ---- */
     const api = deps.api || ctx.api
     const fetchStats = api && typeof api.insightStats === 'function' ? (days) => api.insightStats(days) : null
+    /* stats 原样留给顶部的结论卡（它的图表用 stats.datasets）：一页只取一次历史指标。 */
     const [hist, setHist] = useState ? useState(() => ({
       phase: fetchStats ? 'loading' : 'unsupported',
       view: null,
       message: '',
-    })) : [{ phase: fetchStats ? 'loading' : 'unsupported', view: null, message: '' }, () => {}]
+      stats: null,
+    })) : [{ phase: fetchStats ? 'loading' : 'unsupported', view: null, message: '', stats: null }, () => {}]
     const histState = Array.isArray(hist) ? hist[0] : hist
     const setHistState = Array.isArray(hist) ? hist[1] : setHist
     const [retry, setRetry] = useState ? useState(0) : [0, () => {}]
     const retryCount = Array.isArray(retry) ? retry[0] : retry
     const bumpRetry = Array.isArray(retry) ? retry[1] : (() => {})
 
-    /* ---- AI 诊断：先读现成结果（零模型成本），重新诊断走后台 job 再轮询 ---- */
-    const fetchInsight = api && typeof api.insight === 'function' ? () => api.insight() : null
-    const startDiagnose = api && typeof api.insightDiagnose === 'function' ? (options) => api.insightDiagnose(options) : null
-    const pollInsight = api && typeof api.insightAi === 'function' ? () => api.insightAi() : null
-    const canDiagnose = Boolean(fetchInsight && startDiagnose && pollInsight)
-    const aiAlive = useRef ? useRef(true) : null
-    const [ai, setAi] = useState
-      ? useState(() => ({ phase: fetchInsight ? 'loading' : 'unsupported', data: null, message: '' }))
-      : [{ phase: fetchInsight ? 'loading' : 'unsupported', data: null, message: '' }, () => {}]
-    const aiState = Array.isArray(ai) ? ai[0] : ai
-    /* 有 hooks 时 ai 是状态值本身，setter 是 setAi；只有无 hooks 的降级分支才是数组。 */
-    const setAiState = Array.isArray(ai) ? ai[1] : setAi
-
-    if (useEffect) {
-      useEffect(() => {
-        if (aiAlive) aiAlive.current = true
-        if (!fetchInsight) return () => { if (aiAlive) aiAlive.current = false }
-        let cancelled = false
-        Promise.resolve()
-          .then(() => fetchInsight())
-          .then((payload) => {
-            if (cancelled) return
-            const data = payload && payload.ai && typeof payload.ai === 'object' ? payload.ai : null
-            /* local 是引擎本地算的今日/看板数据：左栏的「数据」只用它，不用模型自评分。 */
-            const local = payload && payload.local && typeof payload.local === 'object' ? payload.local : null
-            setAiState({ phase: data ? 'ok' : 'idle', data, local, message: '' })
-          })
-          .catch((error) => {
-            if (!cancelled) setAiState({ phase: 'failed', data: null, message: (error && error.message) || '读取诊断失败' })
-          })
-        return () => { cancelled = true; if (aiAlive) aiAlive.current = false }
-      }, [])
-    }
-
-    /* 点一次按钮 = 触发后台任务 + 轮询到出结果；轮询有上限，不无限转圈。 */
-    const runDiagnose = () => {
-      if (!canDiagnose || aiState.phase === 'running') return
-      setAiState((prev) => ({ phase: 'running', data: prev && prev.data ? prev.data : null, message: '' }))
-      Promise.resolve()
-        .then(() => startDiagnose({ force: true, mode: 'diagnose' }))
-        .then(async () => {
-          for (let attempt = 0; attempt < 24; attempt += 1) {
-            if (aiAlive && aiAlive.current === false) return
-            await new Promise((resolve) => setTimeout(resolve, 2500))
-            const state = await pollInsight()
-            if (!state || state.running) continue
-            if (state.data) {
-              /* 诊断后本地统计也变了（比如今天完成数），顺手刷新一次；失败不影响结论。 */
-              let local = null
-              try { local = ((await fetchInsight()) || {}).local || null } catch (error) { local = null }
-              setAiState({ phase: 'ok', data: state.data, local, message: '' })
-            } else {
-              setAiState({ phase: 'failed', data: null, message: state.error || '模型没有返回可用结果' })
-            }
-            return
-          }
-          setAiState((prev) => ({ phase: 'failed', data: prev && prev.data ? prev.data : null, message: '仍在后台跑，稍后刷新再看' }))
-        })
-        .catch((error) => {
-          setAiState({ phase: 'failed', data: null, message: (error && error.message) || '诊断没跑成' })
-        })
-    }
-
     if (useEffect) {
       useEffect(() => {
         if (!fetchStats) {
-          setHistState({ phase: 'unsupported', view: null, message: '' })
+          setHistState({ phase: 'unsupported', view: null, message: '', stats: null })
           return undefined
         }
         let cancelled = false
@@ -220,16 +166,25 @@ export function createInsightFeature(deps) {
           if (cancelled || settled) return
           settled = true
           clearTimeout(timer)
-          setHistState(next)
+          setHistState({ stats: null, ...next })
         }
-        setHistState((prev) => ({ phase: 'loading', view: prev && prev.phase === 'ok' ? prev.view : null, message: '' }))
+        setHistState((prev) => ({
+          phase: 'loading',
+          view: prev && prev.phase === 'ok' ? prev.view : null,
+          message: '',
+          stats: prev ? prev.stats : null,
+        }))
         /* 7s 没回来就按失败处理（不阻塞页面，也不无限转圈） */
         const timer = setTimeout(() => finish({ phase: 'failed', view: null, message: '请求超时' }), 7000)
         Promise.resolve()
           .then(() => fetchStats(14))
           .then((payload) => {
             const built = buildHistory(payload, toNum(ctx.now) || Date.now())
-            if (built.ok) finish({ phase: 'ok', view: built, message: '' })
+            /* 诊断卡要的是 stats.datasets（原始值），不是 buildHistory 的派生视图。 */
+            const raw = payload && typeof payload === 'object' && payload.stats && typeof payload.stats === 'object'
+              ? payload.stats
+              : payload
+            if (built.ok) finish({ phase: 'ok', view: built, message: '', stats: raw || null })
             else if (built.reason === 'empty') finish({ phase: 'empty', view: null, message: '还没有历史记录' })
             else if (built.reason === 'failed') finish({ phase: 'failed', view: null, message: '接口返回失败' })
             else finish({ phase: 'failed', view: null, message: '返回结构不完整' })
@@ -244,240 +199,6 @@ export function createInsightFeature(deps) {
 
     const history = histState.phase === 'ok' ? histState.view : null
 
-    /* ---- AI 诊断面板 ---- */
-    const aiData = aiState.data && typeof aiState.data === 'object' ? aiState.data : null
-    const aiIdByNo = new Map()
-    for (const task of (ctx.snapshot || ctx).tasks || []) {
-      if (task && Number(task.no)) aiIdByNo.set(Number(task.no), task.id)
-    }
-    /* 脸：用户 profile 上那张动图（animated WebP）在上，SVG 小助手在下；
-       图一加载成功就藏掉 SVG；图挂了就把 img 摘掉，SVG 继续当着——不留空白框。 */
-    const aiFace = (mood) => h('div', { className: 'fd-ins-face' },
-      h('div', { className: 'fd-figure', 'data-mood': mood, 'aria-hidden': 'true' },
-      /* 动图自带透明通道，直接按原始比例摆；不要圆角、不要底色、不要裁切。 */
-      aiMascot(h, mood),
-      h('img', {
-        className: 'fd-figure-img',
-        src: '/dsh-cove-task/tasks/assets/kp-avatar.webp',
-        alt: '',
-        decoding: 'async',
-        /* 缓存命中时 load 可能在挂载前就结束，React 的 onLoad 会漏；ref 里补一次 complete 判断。 */
-        ref: (node) => {
-          if (!node) return
-          const mark = () => {
-            const host = node.parentElement
-            if (host) host.setAttribute('data-ready', '1')
-          }
-          if (node.complete && node.naturalWidth > 0) mark()
-          else node.addEventListener('load', mark, { once: true })
-          node.addEventListener('error', () => node.remove(), { once: true })
-        },
-      }))
-    )
-
-    /* 一条结论 = 列表里的一行：序号/对勾 + 判断 + 依据 + 动作。
-       不用「一条一个框」，是因为十几个同质边框会把重点切碎；
-       两栏（要处理 / 做得对）+ 左侧色条，扫一眼就能分出轻重。 */
-    const insRow = (kind, item, index) => {
-      const tone = kind === 'issue'
-        ? (item.level === 'bad' ? 'danger' : (item.level === 'warn' ? 'warn' : 'brand'))
-        : 'ok'
-      const taskId = aiIdByNo.get(Number(item.taskNo))
-      return h('li', {
-        key: kind + ':' + (item.taskNo || 0) + ':' + String(item.text || '').slice(0, 24),
-        className: 'fd-ins-row fd-tone-' + tone,
-      },
-        h('span', { className: 'fd-ins-mark', 'aria-hidden': 'true' }, kind === 'issue' ? String(index + 1) : '✓'),
-        h('span', { className: 'fd-ins-row-main' },
-          h('span', { className: 'fd-ins-row-text', title: item.text }, item.text),
-          item.evidence ? h('span', { className: 'fd-ins-row-ev' }, '依据 · ' + item.evidence) : null),
-        taskId
-          ? h('span', { className: 'fd-ins-acts' },
-            h('button', { type: 'button', className: 'fd-ai-jump', title: '打开这条任务', onClick: () => openTask(ctx, taskId) }, '打开'),
-            canWrite ? writeControl(taskId, item) : null)
-          : null,
-      )
-    }
-    const insBlock = (key, label, rows, tone) => h('section', { key, className: 'fd-ins-block' },
-      h('div', { className: 'fd-ins-block-head' },
-        h('span', { className: 'fd-ins-block-dot fd-tone-' + (tone || 'brand') }),
-        h('span', null, label),
-        rows.length ? h('b', null, String(rows.length)) : null),
-      h('ul', { className: 'fd-ins-list' }, rows))
-    const aiAction = (label, onClick, disabled) => h('button', {
-      type: 'button', className: 'fd-ai-btn', disabled: disabled === true, onClick,
-    }, label)
-    /* 写评论是外部副作用（发到飞书），所以做成两段：先点亮「写评论」，再点「确认写入」。 */
-    const canWrite = Boolean(api && typeof api.insightExport === 'function')
-    const [writeState, setWriteState] = useState ? useState(null) : [null, () => {}]
-    const ws = Array.isArray(writeState) ? writeState[0] : writeState
-    /* 有 hooks 时 writeState 是状态值本身，setter 是解构出来的 setWriteState；
-       只有无 hooks 的降级分支才是数组。写错成空函数会让按钮静默失效。 */
-    const setWs = Array.isArray(writeState) ? writeState[1] : setWriteState
-    const writeComment = (taskId, text) => {
-      if (!canWrite) return
-      setWs({ key: taskId, phase: 'running', message: '' })
-      Promise.resolve()
-        .then(() => api.insightExport(taskId, text))
-        .then((result) => setWs({
-          key: taskId,
-          phase: result && result.ok === false ? 'failed' : 'ok',
-          message: (result && result.error) || '已写入评论',
-        }))
-        .catch((error) => setWs({ key: taskId, phase: 'failed', message: (error && error.message) || '写入失败' }))
-    }
-
-    /* 每条结论旁的动作：确认后才把这段写进任务评论（外部副作用，不自动发）。 */
-    const writeControl = (taskId, item) => {
-      const current = ws && ws.key === taskId ? ws : null
-      if (current && current.phase === 'running') return h('span', { className: 'fd-ai-write' }, '写入中…')
-      if (current && current.phase === 'ok') return h('span', { className: 'fd-ai-write fd-tone-ok' }, current.message || '已写入')
-      if (current && current.phase === 'failed') return h('span', { className: 'fd-ai-write fd-tone-danger' }, current.message || '写入失败')
-      if (current && current.phase === 'confirm') {
-        const text = '[洞察] ' + item.text + (item.evidence ? '（依据：' + item.evidence + '）' : '')
-        return h('span', { className: 'fd-ai-write' },
-          h('button', { type: 'button', className: 'fd-ai-jump', onClick: () => writeComment(taskId, text) }, '确认写入'),
-          h('button', { type: 'button', className: 'fd-ai-jump', onClick: () => setWs(null) }, '取消'))
-      }
-      return h('button', {
-        type: 'button', className: 'fd-ai-jump', title: '把这条结论写进任务的飞书评论',
-        onClick: () => setWs({ key: taskId, phase: 'confirm', message: '' }),
-      }, '写评论')
-    }
-
-    const aiAt = toNum(aiData && aiData.at)
-    const aiAtText = aiAt ? new Date(aiAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
-
-    const aiBody = (() => {
-      /* 没结论时也保持同一套骨架：小人 + 一句话 + 一个动作，页面不会突然变成一行灰字。 */
-      /* 同一套骨架：左栏上=状态、下=人物；右栏=文字与动作。 */
-      const stateHero = (mood, eyebrow, title, text, actions) => h('div', { className: 'fd-ins is-state' },
-        h('aside', { className: 'fd-ins-rail' },
-          h('div', { className: 'fd-ins-status' },
-            h('div', { className: 'fd-ins-status-head' }, eyebrow)),
-          h('div', { className: 'fd-ins-figure' }, aiFace(mood)),
-        ),
-        h('div', { className: 'fd-ins-main' },
-          h('div', { className: 'fd-ins-headline' }, title),
-          h('div', { className: 'fd-ins-summary' }, text),
-          actions ? h('div', { className: 'fd-ins-actions' }, actions) : null,
-        ),
-      )
-      /* eyebrow 不重复卡片标题里的「AI 诊断」，只说这一刻的状态。 */
-      if (!fetchInsight) {
-        return stateHero('calm', '暂不可用', '这台宿主还没有诊断接口', '其余看板不受影响；升级宿主或重载插件后再来。')
-      }
-      if (aiState.phase === 'loading') {
-        return stateHero('calm', '读取中', '正在读取上次的结论…', '只读本地缓存，不会调用模型。')
-      }
-      if (aiState.phase === 'running') {
-        return stateHero('thinking', '分析中', '正在读任务与对话…', '通常十几秒；可以切到别的页面，回来结论还在。')
-      }
-      if (aiState.phase === 'failed') {
-        return stateHero('alert', '没有结论', '这次没跑成', aiState.message || '模型没有返回可用结果。',
-          canDiagnose ? aiAction(aiData ? '再试一次' : '重试', runDiagnose) : null)
-      }
-      if (!aiData) {
-        return stateHero('calm', '待命', '还没诊断过', '它只读任务与对话、只给判断和建议，不会改任何任务。',
-          canDiagnose ? aiAction('跑一次诊断', runDiagnose) : null)
-      }
-      const issues = Array.isArray(aiData.issues) ? aiData.issues.filter((item) => item && item.text) : []
-      const strengths = Array.isArray(aiData.strengths) ? aiData.strengths.filter((item) => item && item.text) : []
-      const improve = Array.isArray(aiData.improve) ? aiData.improve.filter((item) => item && (item.title || item.detail)) : []
-      const patterns = Array.isArray(aiData.delayPatterns) ? aiData.delayPatterns : []
-      /* 有结论：小人的表情跟着结论走——有严重问题就皱眉，只有好事就笑。 */
-      const mood = issues.some((item) => item.level === 'bad') ? 'alert' : (strengths.length ? 'happy' : 'calm')
-      /* 左栏只放「可核对的数据」：全部来自本地引擎（/api/insight 的 local），
-         不再用模型自评的 focus/throughput/hygiene——那是模型的印象分，不能当数据看。 */
-      const local = aiState.local && typeof aiState.local === 'object' ? aiState.local : null
-      const todayStat = local && local.today ? local.today : null
-      const boardStat = local && local.board ? local.board : null
-      const clamped = (v) => Math.max(0, Math.min(100, toNum(v)))
-      const facts = []
-      if (todayStat) {
-        facts.push({ key: 'done', label: '今日完成', value: todayStat.doneCount + ' 条' })
-        if (todayStat.completion !== null && todayStat.completion !== undefined && todayStat.completion !== '') {
-          facts.push({ key: 'rate', label: '完成度', value: todayStat.completion + '%', bar: clamped(todayStat.completion) })
-        }
-        facts.push({ key: 'active', label: '今日活跃', value: todayStat.activeCount + ' 条' })
-        facts.push({ key: 'drift', label: '停滞占比', value: todayStat.deviation + '% · ' + todayStat.deviationLevel })
-      } else if (boardStat) {
-        facts.push({ key: 'started', label: '在跑', value: boardStat.started + ' 条' })
-        facts.push({ key: 'idle', label: '未开始', value: boardStat.idle + ' 条' })
-      }
-
-      /* 版面：左栏 上=状态、下=人物；右栏 判断 → 下一步 → 两栏结论 → 轻脚注。 */
-      return h('div', { className: 'fd-ins' },
-        /* 重新判断放右上角：它是这张卡的「刷新」，不是读内容的最后一步。 */
-        canDiagnose
-          ? h('div', { className: 'fd-ins-corner' }, aiAction('重新判断', runDiagnose, aiState.phase === 'running'))
-          : null,
-        h('aside', { className: 'fd-ins-rail' },
-          h('div', { className: 'fd-ins-status' },
-            h('div', { className: 'fd-ins-status-head' },
-              h('span', { className: 'fd-ins-status-dot', 'aria-hidden': 'true' }),
-              h('span', null, aiAtText ? aiAtText + ' 更新' : '当前状态'),
-            ),
-            facts.length
-              ? h('div', { className: 'fd-ins-facts' }, facts.map((fact) => h('div', { key: fact.key, className: 'fd-ins-fact' },
-                h('span', { className: 'fd-ins-fact-label' }, fact.label),
-                h('b', { className: 'fd-ins-fact-value' }, fact.value),
-                fact.bar !== undefined
-                  ? h('span', { className: 'fd-ins-fact-bar' }, h('i', { style: { width: fact.bar + '%' } }))
-                  : null)))
-              : null,
-            boardStat
-              ? h('div', { className: 'fd-ins-status-meta' },
-                h('span', null, '共 ' + boardStat.total + ' 条'),
-                h('span', null, '在跑 ' + boardStat.started),
-                h('span', null, '未开始 ' + boardStat.idle))
-              : null,
-          ),
-          h('div', { className: 'fd-ins-figure' }, aiFace(mood)),
-        ),
-        h('div', { className: 'fd-ins-main' },
-          aiData.headline ? h('div', { className: 'fd-ins-headline' }, aiData.headline) : null,
-          aiData.summary ? h('div', { className: 'fd-ins-summary' }, aiData.summary) : null,
-          aiData.advice
-          ? (() => {
-            /* 建议里点名了哪条任务，就在这里给一个直达入口——比让人回列表里找要快。 */
-            const hit = String(aiData.advice).match(/T(\d{2,})/)
-            const targetId = hit ? aiIdByNo.get(Number(hit[1])) : null
-            return h('div', { className: 'fd-ins-next' },
-              h('span', { className: 'fd-ins-next-tag' }, '下一步'),
-              h('p', { className: 'fd-ins-next-text' }, aiData.advice),
-              targetId
-                ? h('button', { type: 'button', className: 'fd-ai-jump', onClick: () => openTask(ctx, targetId) }, '打开 T' + hit[1])
-                : null)
-          })()
-          : null,
-        (issues.length || strengths.length)
-          ? h('div', { className: 'fd-ins-cols' },
-            issues.length ? insBlock('issues', '要处理', issues.map((item, index) => insRow('issue', item, index)), 'danger') : null,
-            strengths.length ? insBlock('strengths', '做得对', strengths.map((item, index) => insRow('strength', item, index)), 'ok') : null)
-          : null,
-        (improve.length || aiData.fulfillmentComment || patterns.length || canDiagnose)
-          ? h('div', { className: 'fd-ins-foot' },
-            improve.length
-              ? h('div', { className: 'fd-ins-chips' }, improve.map((item) => h('span', {
-                key: 'improve:' + (item.title || '') + (item.detail || ''),
-                className: 'fd-ins-chip', title: item.detail || '',
-              }, item.title || item.detail)))
-              : null,
-            (aiData.fulfillmentComment || patterns.length)
-              ? h('div', { className: 'fd-ins-meta' },
-                aiData.fulfillmentComment ? h('span', null, '履约 · ' + aiData.fulfillmentComment) : null,
-                patterns.map((item) => h('span', {
-                  key: 'delay:' + (item.bucket || item.label),
-                  className: 'fd-ins-meta-item',
-                  title: [item.comment, item.advice].filter(Boolean).join(' → '),
-                }, '延期 · ' + (item.label || item.bucket || '未分类') + ' ' + (toNum(item.count) || 0) + ' 次')))
-              : null)
-          : null,
-        ),
-      )
-    })()
-
     if (view.empty) {
       return h('div', { className: 'fd-page', 'data-empty': '1' },
         h('div', { className: 'fd-empty', role: 'status' },
@@ -488,7 +209,7 @@ export function createInsightFeature(deps) {
     }
 
     /* 尾部面板数 = 5（快照口径）+ 4（历史指标，拿不到就不渲染） */
-    const tailCount = 5 + (history ? 4 : 0)
+    const tailCount = 6 + (history ? 4 : 0)
     const tailSpans = spansForTail(tailCount, cols || 1)
     const panel = (index, key, title, hint, extra, body, span, mod) => h('section', {
       key,
@@ -687,7 +408,7 @@ export function createInsightFeature(deps) {
         })
         : null,
     ) : null
-    const trendPanel = history ? panel(6, 'trend', '吞吐趋势', `近 ${history.trend.days} 天`, `${history.trend.totals.done} 完成 / ${history.trend.totals.created} 新增`,
+    const trendPanel = history ? panel(7, 'trend', '吞吐趋势', `近 ${history.trend.days} 天`, `${history.trend.totals.done} 完成 / ${history.trend.totals.created} 新增`,
       h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', minHeight: 0, flex: '1 1 auto' } },
         h('div', { className: 'fd-legend', style: { flexDirection: 'row', flexWrap: 'wrap', gap: '10px' } },
           h('span', { className: 'fd-legend-row fd-tone-ok' }, h('span', { className: 'fd-legend-dot' }), h('span', { className: 'fd-legend-label' }, '完成')),
@@ -699,10 +420,10 @@ export function createInsightFeature(deps) {
         h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '6px' } },
           history.trend.ticks.map((tick) => h('span', { key: tick.key, className: 'fd-panel-hint' }, tick.label)),
         ),
-      ), tailSpans[5]) : null
+      ), tailSpans[6]) : null
 
     /* 8) 履约：准时率环 + 大数字 + 追踪中 / 逾期 / 平均富余 */
-    const fulfillmentPanel = history ? panel(7, 'fulfillment', '履约', '近 28 天有承诺时间的任务', history.fulfillment.hasData ? `追踪 ${history.fulfillment.tracked}` : '',
+    const fulfillmentPanel = history ? panel(8, 'fulfillment', '履约', '近 28 天有承诺时间的任务', history.fulfillment.hasData ? `追踪 ${history.fulfillment.tracked}` : '',
       history.fulfillment.hasData
         ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', minHeight: 0, flex: '1 1 auto' } },
           h('div', { className: `fd-tone-${history.fulfillment.onTimePct === null ? 'idle' : (history.fulfillment.onTimePct >= 70 ? 'ok' : (history.fulfillment.onTimePct >= 40 ? 'brand' : 'danger'))}`, style: { flex: '0 0 auto', position: 'relative', width: '72px', height: '72px' } },
@@ -721,10 +442,10 @@ export function createInsightFeature(deps) {
             )),
           ),
         )
-        : h('div', { className: 'fd-empty-line' }, history.fulfillment.emptyText), tailSpans[6]) : null
+        : h('div', { className: 'fd-empty-line' }, history.fulfillment.emptyText), tailSpans[7]) : null
 
     /* 9) 延期原因：横向条（次数 + 平均天数） */
-    const delayPanel = history ? panel(8, 'delay', '延期原因', '按记录条数排序', history.delay.hasData ? `${history.delay.total} 条记录` : '',
+    const delayPanel = history ? panel(9, 'delay', '延期原因', '按记录条数排序', history.delay.hasData ? `${history.delay.total} 条记录` : '',
       history.delay.hasData
         ? h('div', { className: 'fd-list fd-scroll' }, history.delay.rows.map((row) => h('div', {
           key: row.key,
@@ -736,10 +457,10 @@ export function createInsightFeature(deps) {
           h('span', { className: 'fd-list-value' }, `${row.count} 次`),
           h('span', { className: 'fd-list-meta' }, `平均 ${row.avgDaysText}`),
         )))
-        : h('div', { className: 'fd-empty-line' }, history.delay.emptyText), tailSpans[7]) : null
+        : h('div', { className: 'fd-empty-line' }, history.delay.emptyText), tailSpans[8]) : null
 
     /* 10) 质量 / 周期：提前 / 准时 / 延迟 + 中位数 / P85 */
-    const qualityPanel = history ? panel(9, 'quality', '质量 / 周期', '完成质量与周期分位', history.quality.samplesText,
+    const qualityPanel = history ? panel(10, 'quality', '质量 / 周期', '完成质量与周期分位', history.quality.samplesText,
       history.quality.hasData
         /* 这张卡是全宽的：横向排（左：三档图例；右：两个周期分位），
            否则 3 行字撑在 320px 高的卡顶上、下面一大片空。 */
@@ -761,7 +482,14 @@ export function createInsightFeature(deps) {
             ),
           ),
         )
-        : h('div', { className: 'fd-empty-line' }, history.quality.emptyText), tailSpans[8]) : null
+        : h('div', { className: 'fd-empty-line' }, history.quality.emptyText), tailSpans[9]) : null
+
+    /* 6) 项目层级：工作区 → 项目 → 未完成任务数，ECharts 旭日图按数值着色。 */
+    const sunburstData = sunburstFromTasks((ctx.snapshot || ctx).tasks)
+    const sunburstPanel = SunburstChart && sunburstData.length
+      ? panel(5, 'sunburst', '项目层级', '工作区 → 项目', `${sunburstData.length} 个工作区`,
+        h(SunburstChart, { key: 'sunburst-chart', data: sunburstData, height: 260 }), tailSpans[5])
+      : null
 
     /* 降级提示：一行 role="status"，永远不挡住快照口径的六个面板 */
     const historyNote = history ? null : h('section', {
@@ -792,10 +520,19 @@ export function createInsightFeature(deps) {
         ),
     )
 
-    /* 诊断面板要排在 panel() 定义之后（它用 panel 渲染），所以在这里组装，不要提前。 */
-    /* 卡片叫「洞察」而不是「AI 诊断」：它是这一页的结论，不是一个工具入口。 */
-    /* 这张卡不挂标题：它自己就是这页的结论，再写一行「洞察」是重复。样式与其它卡片一致。 */
-    const aiPanel = panel(0, 'ai', '', '', '', aiBody, 'all', 'ai')
+    /* 结论卡不套 panel() 外壳：TodayInsight 自己就是那张卡（fd-panel fd-today），
+       与侧栏共用同一份实现，只是换了宽形态。 */
+    const insightCard = TodayInsight
+      ? h(TodayInsight, {
+        key: 'ai',
+        variant: 'dashboard',
+        api,
+        tasks: (ctx.snapshot || ctx).tasks,
+        onOpenTask: ctx.onOpenTask,
+        /* null 也要显式给：给了就不再各自去请求一次 /api/insight/stats。 */
+        stats: histState.stats,
+      })
+      : null
 
     /* 顶部一行：有日历时「日历 + KPI」并排（日历在左上角）；旧宿主没有日历时 KPI 仍占满整行 */
     const topRow = calPanel
@@ -808,13 +545,13 @@ export function createInsightFeature(deps) {
       'data-history': history ? '1' : '0',
       'data-cols': String(cols || ''),
       ref: hostRef || undefined,
-    /* AI 诊断占整页第一行：它是这一页的结论，不该排在日历/指标后面。
+    /* 洞察结论卡占整页第一行：它是这一页的结论，不该排在日历/指标后面。
        放在 .fd-page 这一层即可（纵向 flex + 统一 gap），不需要额外间距规则。 */
-    }, aiPanel, historyNote, topRow,
+    }, insightCard, historyNote, topRow,
       /* KPI 带之后的面板进子网格：这一段才需要「平分剩余高度」（见 dashboardStyles 里 .fd-grid 的说明）。
          KPI 卡自己按内容定高，不再被拉到和图表卡一样高。 */
       h('div', { key: 'grid', className: 'fd-grid' },
-        donut, workspaces, relations, blockers, recent, trendPanel, fulfillmentPanel, delayPanel, qualityPanel))
+        donut, workspaces, relations, blockers, recent, sunburstPanel, trendPanel, fulfillmentPanel, delayPanel, qualityPanel))
   }
 }
 

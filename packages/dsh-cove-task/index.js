@@ -45,6 +45,8 @@ import { randomUUID, createHash } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createBackendScope } from './backendScope.js'
 import { createCreationLedger } from './creationLedger.js'
+import { buildBehaviorProfile } from './behavior.js'
+import { isLongTermExpired, normalizeLongTerm } from './insightLongTerm.js'
 const backendIOContext = new AsyncLocalStorage()
 import { matchWorkspace, titleChangeOf } from './workspace.js'
 import { updateRelations, projectRelations, relationStats } from './relations.js'
@@ -251,7 +253,17 @@ function pluginVersion() {
  * 输出固定 JSON，面板直接渲染，不做二次解析。
  */
 /* 提示词版本：改了默认提示词就把这个数 +1，旧版会被自动替换成新的（用户改过的也换，说明见 PR） */
-export const PROMPT_REV = 18
+export const PROMPT_REV = 20
+
+/* 洞察会话按天滚动：同一天复用同一条，跨天换新；旧的由 askInsightViaSession 归档。 */
+export const INSIGHT_SESSION_PREFIX = 'cove-insight-'
+
+export function insightSessionIdFor(now = Date.now()) {
+  const date = new Date(now)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return INSIGHT_SESSION_PREFIX + date.getFullYear() + month + day
+}
 
 /**
  * 早会同步专用提示词。
@@ -314,7 +326,22 @@ export const INSIGHT_PLAYBOOK = `【先记住两个定义】
 - 理由要具体到可验证的动作或状态（「只差两档色标数值」），不要用「重要」「紧急」这种空词。
 - 不喊口号、不写「加油」「坚持」、不用「赋能/抓手/闭环」这类黑话。
 - 不罗列任务计数（共几个、完成几个），除非计数本身就是结论。
-- 不确定的就说不确定，不要编造进度、数字、人名。`
+- 不确定的就说不确定，不要编造进度、数字、人名。
+【长期行为诊断：选视角与模型】
+先看「行为档案」有几行数字；一行都没有，就给 longTerm=null，不要硬编。
+按优先级只选一个视角（写进 longTerm.lens）：
+1. contradiction 主要矛盾：异常 ≥2 条时用。问「哪一条在决定其余几条」，只留一个抓手，其余写「暂不处理」。
+2. inversion 逆向：同一延期原因 ≥2 次或重承诺 ≥3 次时用。问「想保证继续延期，该怎么做」，产出停止清单，不要写成「要更努力」。
+3. values 价值澄清：标了 P0 的任务活动占比 <15% 且并发 >3 时用。只拿行为比行为，不做价值观问卷。
+4. structure 结构：同类卡点 ≥3 次时用。问「这是流程问题还是人的问题」，改模板 / 缓冲 / 前置条件，禁止归因到性格。
+5. second_order 二阶：任何时候可用，但只推一步：这个改法会带来什么新成本，怎么预防。
+模型只在数字对得上时用，且不写进卡片：
+- 启动/deadline → if-then（当 X 时做 Y）；估时偏乐观 → 参考类预测（按同类 85 分位估）；deadline前才动 → 学生综合征（先给中间验收点）；
+- 并发多、周期长 → 利特尔法则（限 WIP，先关再开）；跨项目多 → 注意力残留（一天只排两个项目）；
+- 长期挂着 → 关闭需求（写deadline或砍）；新习惯 → 按 8 周看，不按 3 天判失败。
+【写 longTerm 的正反例】
+坏：{"lens":"structure","fact":"你经常拖延","hypothesis":"你不自律","falsifier":"","secondOrder":"","action":"提高效率","metric":"","until":""}
+好：{"lens":"inversion","fact":"预期兑现（n=36）：提前 20 / 准时 3 / 延期 13","hypothesis":"承诺按最乐观估，延期集中在估时","falsifier":"下周延期样本里估时占比 <30%","secondOrder":"缓冲加太多会让承诺失去约束力","action":"当写预期时，先乘 1.5 再拆到 1 天以内","metric":"不延期率","until":"2026-12-05"}`
 
 export const DEFAULT_MORNING_PROMPT = `你是团队早会的发言稿写手。我每天要在早会上**口述**两段：昨天做了什么、今天做什么。
 听众是同事和领导：他们不知道我在做哪个项目，也不会去看任务清单。所以每一句都要自带背景，
@@ -379,63 +406,46 @@ export const DEFAULT_MORNING_PROMPT = `你是团队早会的发言稿写手。�
 /* 上一版早会默认提示词的最后一行：用来把「旧默认 + 用户追加句子」迁移成「新默认 + 用户追加句子」 */
 const LEGACY_MORNING_MARKER = '- 中文，句子短，不喊口号。'
 
-export const DEFAULT_INSIGHT_PROMPT = `你是团队早会的诊断助手。根据给你的任务清单与最近对话摘要，输出一个 JSON 对象，
-不要解释、不要 markdown 代码块，格式严格如下：
+export const DEFAULT_INSIGHT_PROMPT = `你是任务行为的诊断助手。每次诊断回答两件事：我的长期行为哪里在拖后腿，今天先动哪一件。
+根据给到的任务清单、行为档案与履约材料输出一个 JSON 对象，不要解释、不要 markdown 代码块：
 
-{"summary":"一段话总结（2-3 句，不超过 70 字）：现在最该注意的是什么、为什么","headline":"一句话总结当前推进状态（不超过 24 字）",
- "today":"一句话说今天实际做了什么（不超过 50 字，基于任务与对话摘要，不要编造）",
- "issues":[{"taskNo":12,"level":"info|warn|bad","text":"问题（不超过 30 字，以 T12「任务名」开头）","evidence":"一句话证据（不超过 40 字，写你凭什么这么说：哪条记录/哪次提交/哪个状态；不是下一步该做什么）"}],
- "advice":"今天先做什么：必须点名 T 号（或具体对象），写清「做什么 + 到什么算完成 + 什么时候」，不超过 60 字",
- "commentary":"你自己想补充的一句判断（不超过 80 字，可以说趋势/风险/悖论）",
- "charts":[{"type":"bar|line|pie|sunburst","dataset":"done_by_day_7|started_by_day_7|wip_by_day_14|state_distribution|workspace_distribution","title":"图表标题（不超过 14 字）","why":"为什么用这张图（不超过 20 字）"}],
-
- "score":{"focus":0-100,"throughput":0-100,"hygiene":0-100},
-
- "fulfillmentComment":"一句话评价履约（不超过 50 字，说判断、不要抄数字）",
- "delayPatterns":[{"bucket":"dependency|scope|interrupt|estimate|environment|review|other","comment":"这类延期在你这批任务里具体长什么样（不超过 30 字）","advice":"下一轮怎么改（不超过 40 字，要能落地）"}],
- "strengths":[{"taskNo":12,"text":"做得对的地方（不超过 30 字，以 T12「任务名」开头）","evidence":"一句话证据（不超过 40 字：哪条记录/哪次收口/哪个状态）"}],
- "improve":[{"title":"改进点（不超过 14 字）","detail":"具体做法（不超过 40 字）"}]}
+{"summary":"2-3 句、≤70 字：最该注意什么、为什么","headline":"一句话判断（≤24 字）",
+ "today":"今天实际做了什么（≤50 字，只写材料里有的）",
+ "issues":[{"taskNo":12,"level":"info|warn|bad","text":"问题（≤30 字，以 T12「任务名」开头）","evidence":"凭什么这么说（≤40 字）"}],
+ "advice":"今天先做的一件事（≤60 字：点名 T 号 + 做什么 + 到什么算完成 + 什么时候）",
+ "commentary":"一句补充判断（≤80 字，趋势/风险/悖论）",
+ "charts":[{"type":"bar|line|pie|sunburst","dataset":"done_by_day_7|started_by_day_7|wip_by_day_14|state_distribution|workspace_distribution","title":"≤14 字","why":"≤20 字"}],
+ "score":{"focus":0,"throughput":0,"hygiene":0},
+ "fulfillmentComment":"一句话评价履约（≤50 字，说判断、不抄数字）",
+ "delayPatterns":[{"bucket":"dependency|scope|interrupt|estimate|environment|review|other","comment":"≤30 字","advice":"≤40 字"}],
+ "strengths":[{"taskNo":12,"text":"做得对的地方（≤30 字）","evidence":"≤40 字"}],
+ "improve":[{"title":"≤14 字","detail":"≤40 字"}],
+ "longTerm":{"lens":"contradiction|inversion|values|structure|second_order","fact":"原样引用行为档案里的一行（含数字）","hypothesis":"≤30 字","falsifier":"什么情况下这条作废（≤30 字）","secondOrder":"两步之后的新问题（≤30 字）","action":"当 X 时我就 Y（≤40 字）","metric":"验收指标（用档案里的信号名）","until":"YYYY-MM-DD"}}
 
 规则：
-- 只依据给到的信息，不要编造没出现的任务或数字。
-- issues 最多 3 条，优先「卡住 / 长时间没动 / 反复返工」的。
-- **strengths 0-2 条，和 issues 对称**：只写有证据的正向事实（收口快、依赖时间确认得准、记录完整、重承诺少）。
-  没有就留空数组——不要为了凑对称硬夸，也不要把「没出问题」当成优点。用户需要知道自己哪套做法有效，
-  只挑毛病会让人不知道该保留什么。
-- **把优先级当考量条件**：任务行里的「优先级=P0/P1/P2/P3」是用户手动排的（P0 最急，缺失=没排过）。
-  P0 出问题必须进 issues；P1 的问题排在未排过的之前；P2/P3 的小毛病别占名额。
-  高优先级却长期没动的，直接把「P1 挂了 N 天」当成问题写出来。
-- focus=是否集中在少数任务上；throughput=产出节奏；hygiene=收尾与记录（评论、文档）。
-- charts 选 1-3 张，type 与 dataset 只能从给定枚举里选；**不要自己编数字**，数值由系统按 dataset 渲染。
-  挑最有说服力的：比如「堆活」用 wip_by_day_14 折线，「注意力分散」用 workspace_distribution 旭日/饼图。
-- **工作区怎么划分**：以工作区名字最前面方括号 [] 里的内容为准，[] 内相同就是同一个工作区，
-  后面的文字只是子方向。例如「[Demo] 坐标转换」和「[Demo] 预览配色」是同一个工作区 Demo。
-  判断注意力是否分散、统计跨了几个工作区时都按这个口径合并，不要把它们当成不同工作区。
-- **summary 是收起卡片时唯一会显示的内容**：2-3 句、不超过 70 字，说清最该注意什么、为什么。
+- 只依据材料。没出现的任务、数字、趋势一律不写；不确定就说不确定，不要编。
+- 【长期结论本期只给 1 条】先看行为档案，按手册选一个视角，再写一条能被下周数据检验的假设：
+  - fact 必须原样引用行为档案里的一行（含数字）；引用不到就 longTerm=null。
+  - falsifier 写清「什么情况下这条作废」，写不出就 longTerm=null。
+  - secondOrder 只推一步：照这个改法两周后最可能出现的新问题，不写「连锁反应」。
+  - action 必须是 if-then：「当 X 时我就 Y」，≤40 字；落不到具体动作就 longTerm=null。
+  - metric 用档案里的信号名（周节奏 / 进出台账 / 在跑 / 进列表→收口 / 预期兑现 / deadline 挤压 / 切换 / 基线）。
+  - 样本不足（行为档案少于 2 行，或明说不足 14 天）：longTerm=null，summary 里写「先积累样本，还差 N 天」。
+- 【主要矛盾】issues 最多 3 条；issues 两条以上时，longTerm 必须指向其中最影响「完成」的那一条，其余只在 improve 各留一句。
+- 【不做人格诊断】禁止「你不自律 / 拖延型 / 性格问题」这类判断，一律改写成结构问题（承诺方式、并发数、切换、模板、验收标准）。不提 MBTI，不做心理或临床判断。
+- 【不背书】longTerm 里不写书名、人名、理论术语；lens 只是选角度的标签，卡片上不出现「某本书说」。
+- issues：最多 3 条，优先「卡住 / 长期没动 / 反复返工」；每条带 taskNo 与 evidence（哪条记录、哪个状态）。
+- strengths 0-2 条，和 issues 对称：只写有证据的正向事实（收口快、依赖确认准、记录完整、重承诺少）。不要为了凑对称硬夸，也不要把「没出问题」当成优点。
+- 把优先级当考量：P0 出问题必须进 issues；P1 的问题排在未排过之前；P2/P3 的小毛病别占名额。
+- advice 只给一件事：必须点名 T 号（没有合适任务就说清对哪一类任务做什么），写清「做什么 + 到什么算完成 + 什么时候」。换个项目也成立的话一律不要写；「提高效率 / 加强沟通 / 注意风险 / 合理安排时间」视为空话，等于没给建议。
+- improve 2-3 条，必须能对上证据（具体任务或具体数字），对不上的删掉，宁少勿凑。
+- focus=是否集中在少数任务；throughput=产出节奏；hygiene=收尾与记录。
+- charts 1-3 张，type 与 dataset 只能从枚举里选；数值由系统渲染，不要自己编。
+- summary 是收起卡片时唯一会显示的一行：说清最该注意什么、为什么，不要罗列任务计数。
 - 全部内容要能在卡片上 8 行内显示完，宁可少说，不要堆字。
-- **不要在 headline / commentary 里罗列任务计数**。卡片上方已经有一行统计（共几个 / 已绑定几个 /
-  未开始几个 / 今日完成几个 / 完成度），你说的「7 个任务在跑、0 个收尾」就是在抄那行数字。
-  headline 写**判断与原因**（为什么慢、卡在哪、该动哪根杠杆），不要写「N 个…」这种句式；
-  需要举例就用任务号（T8、T12）。
-- 【履约怎么评估】材料里有「履约 · 近 28 天」「完成质量」「延期原因分布」「最近延期记录」「逾期未完成」「承诺了但还没开工」。
-  准时率以**首次承诺**（严格口径）为主，最终口径只作对照；重承诺次数多，说明承诺在往后漂。
-  分清三件事：**延期**=已完成但晚于承诺；**逾期**=还在进行中、已经过了承诺；**重承诺**=把承诺往后改过。
-  别把「还没到期」说成延期，也别把「改过预期」当成延期。
-- 【fulfillmentComment】只写判断和原因（「承诺普遍偏乐观」「依赖等待吃掉了两周」），不要复述数字。
-- 【delayPatterns】bucket 只能从材料给的枚举里选，最多 3 条、按次数从多到少；**不要写次数**（系统回填）。
-  comment 说「这类延误在你这批任务里长什么样」，advice 说「下一轮具体怎么改」。例如：
-  估时不准→承诺时加一半缓冲并拆到两天；依赖等待→先确认上游时间再承诺；被打断→每天只留一个主任务。
-- 【improve】2-3 条，必须可执行（加缓冲 / 拆任务 / 先做依赖 / 减少并行 / 给验收留时间），
-  不要「提高效率」「加强沟通」这种空话。
-- 【advice 只给一件事】点名 T 号（没有合适的任务时，就说清是对哪一类任务做什么），
-  并且写清「做什么 + 到什么算完成 + 什么时候」。**换个项目也成立的话一律不要写**——
-  「提高效率 / 加强沟通 / 注意风险 / 合理安排时间」这类视为空话，等于没给建议。
-  实在没有可执行的下一步，就写「先补预期」或「先确认依赖」，并指名是哪条。
-- 【improve 必须能对上证据】每条改法要么指向一条具体任务，要么指向一个具体数字（例如「3 条逾期里有 2 条卡在依赖」）；
-  对不上的删掉，宁少勿凑。
-- 还没有履约数据（没有任何预期记录）时：fulfillmentComment 说明「先给在跑的任务设预期」，
-  delayPatterns 与 improve 可以留空，不要编造延期。
-- 中文，句子短，不说场面话。`
+- 履约：准时率看首次承诺（严格口径），分清延期 / 逾期 / 重承诺；没有履约数据就说「先设预期」，不要编造延期。
+- 中文，句子短，不说场面话。
+`
 
 /* feishu-sync 若来自自建/私有 PyPI，可在「飞书准备 → 高级」里填私有索引；留空就用公共源。 */
 const DEFAULT_CLI_INDEX_URL = ''
@@ -561,8 +571,8 @@ const DEFAULT_SETTINGS = {
   /* Insight 卡片右上角的按钮：可增删、每个按钮可带自己的 prompt。
      kind: morning=本地早会视图 · export=写评论 · ai=跑一次诊断（用自己的 prompt） */
   insightButtons: [
-    { id: 'morning', label: '早会同步', prompt: '', kind: 'morning' },
     { id: 'diagnose', label: '诊断', prompt: '', kind: 'ai' },
+    { id: 'morning', label: '早会同步', prompt: '', kind: 'morning' },
     { id: 'export', label: '写入评论', prompt: '', kind: 'export' },
   ],
   /* 生成飞书文档时给模型的写作要求（面板可编辑）。 */
@@ -660,6 +670,9 @@ const DEFAULT_STATE = {
   /* 早会诊断：{ at, headline, issues, advice, score } + 生成时的任务签名 */
   insight: null,
   insightSignature: '',
+  insightResults: {},
+  /* 长期结论：跨天保留，{ at, promptRev, data }；过期由 longTermView 判定 */
+  longTerm: null,
 }
 
 /* ────────────────────────────── 小工具 ────────────────────────────── */
@@ -1280,7 +1293,7 @@ function sanitizeSettings(input, base) {
       if ((Number(next.insightPromptRev) || 0) >= PROMPT_REV) return stored.slice(0, 4000)
       /* 版本升级：只有「还是我们某一版默认」才换成新默认；用户自己写的提示词保留，
          否则一次改版就把定制吞掉了（旧行为）。 */
-      const looksLikeOurDefault = stored.trim() === DEFAULT_INSIGHT_PROMPT.trim() || /^你是团队早会/.test(stored.trim())
+      const looksLikeOurDefault = stored.trim() === DEFAULT_INSIGHT_PROMPT.trim() || /^你是团队早会/.test(stored.trim()) || /^你是任务行为诊断/.test(stored.trim())
       return looksLikeOurDefault ? base.insightPrompt : stored.slice(0, 4000)
     })(),
     insightPromptRev: PROMPT_REV,
@@ -6515,6 +6528,30 @@ function createSyncEngine(ctx) {
     return found
   }
 
+  /** 取「助手消息」快照：条数 + 最后一条文本。会话复用后用它区分「本轮新回复」与旧历史。 */
+  async function readAssistantSnapshot(sessionId) {
+    let record
+    try { record = await readSessionRecord(sessionId) } catch { record = undefined }
+    if (!record) return { count: 0, last: '' }
+    let count = 0
+    let last = ''
+    const textOf = (content) => {
+      if (typeof content === 'string') return content
+      if (!Array.isArray(content)) return ''
+      return content.map((part) => (typeof part === 'string' ? part : asString(part?.text))).join('')
+    }
+    const walk = (value) => {
+      if (!value || typeof value !== 'object') return
+      if (value.role === 'assistant') {
+        const text = (textOf(value.content) || asString(value.text)).trim()
+        if (text) { count += 1; last = text }
+      }
+      for (const key of Object.keys(value)) walk(value[key])
+    }
+    walk(record)
+    return { count, last }
+  }
+
   /** 整理会话用完即归档（不删日志，只是从会话列表收起），避免 cove 里越积越多。 */
   async function archiveOrganizeSession(sessionId) {
     if (!sessionId) return
@@ -8667,11 +8704,11 @@ bucket 只能从枚举里选：
   }
 
   /** 立即返回，模型在后台跑；同一时间只跑一个。 */
-  function startInsightJob(force = false, promptOverride = '', mode = '') {
+  function startInsightJob(force = false, promptOverride = '', mode = '', buttonId = '') {
     if (insightJob.running) return { ok: true, started: false, jobId: insightJob.id, reason: '已经在跑了' }
     insightJobSeq += 1
     insightJob = { id: insightJobSeq, running: true, startedAt: nowMs(), result: null, error: '' }
-    void diagnoseInsight(force, promptOverride, mode).then((result) => {
+    void diagnoseInsight(force, promptOverride, mode, buttonId).then((result) => {
       insightJob.running = false
       if (result.ok) insightJob.result = result.data
       else insightJob.error = result.reason || '模型没有返回可用结果'
@@ -8679,16 +8716,130 @@ bucket 只能从枚举里选：
       insightJob.running = false
       insightJob.error = error instanceof Error ? error.message : String(error)
     })
-    return { ok: true, started: true }
+    return { ok: true, started: true, jobId: insightJob.id }
+  }
+
+  function insightResults() {
+    const cutoff = dayStart(0)
+    const results = state.insightResults ?? {}
+    return Object.fromEntries(settings.insightButtons.flatMap((button) => {
+      const data = Object.hasOwn(results, button.id) ? results[button.id] : null
+      const mode = button.kind === 'morning' ? 'morning' : 'diagnose'
+      return button.kind !== 'export' && data?.at >= cutoff && data.promptRev === PROMPT_REV && data.mode === mode
+        ? [[button.id, data]] : []
+    }))
+  }
+
+  /**
+   * 长期结论的读接口：跨天可用，但过期（until 早于今天）就不给。
+   * 与 insightResults 分开：那份只保留当天，长期建议要活到 until。
+   */
+  function longTermView() {
+    const record = state.longTerm
+    if (!record || !record.data) return null
+    return isLongTermExpired(record, dayKey(0)) ? null : record
+  }
+
+  /**
+   * 在 cove 项目里开一条会话跑洞察生成（用户口径：所有 AI 生成都走 cove 会话）。
+   * 会话保留在工作区，卡片据此给「打开会话」；失败由调用方回退后台模型。
+   */
+  /** 每日滚动：今天开新会话时，把昨天/更早的洞察会话归档（不删日志，只从列表收起）。 */
+  async function archiveStaleInsightSessions(currentId, dir) {
+    try {
+      const registry = await awaitService(ctx, 'workspaceRegistry')
+      if (!registry || typeof registry.resolveByPath !== 'function' || typeof registry.archiveSession !== 'function') return
+      const workspace = await registry.resolveByPath(dir)
+      const ids = workspace && Array.isArray(workspace.sessionIds) ? workspace.sessionIds : []
+      for (const id of ids) {
+        if (!id || id === currentId) continue
+        if (id !== 'cove-insight' && !String(id).startsWith(INSIGHT_SESSION_PREFIX)) continue
+        await registry.archiveSession(id, { stopActivity: true }).catch(() => undefined)
+      }
+    } catch { /* 归档失败不影响生成 */ }
+  }
+
+  async function askInsightViaSession(button, system, text) {
+    const cove = await ensureCoveWorkspace()
+    if (cove.error) return { error: cove.error }
+    const agents = await awaitService(ctx, 'agents')
+    const sessions = await awaitService(ctx, 'sessionController')
+    if (!agents || typeof agents.create !== 'function') return { error: '宿主没有提供会话服务（agents）' }
+    if (!sessions || typeof sessions.prompt !== 'function') return { error: '宿主没有提供会话服务（sessionController）' }
+
+    let agentOptions
+    try {
+      const selection = service(ctx, 'agentDefaultModel')?.currentSelection?.()
+      if (selection && selection.provider && selection.model) {
+        agentOptions = {
+          provider: selection.provider,
+          model: selection.model,
+          ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
+        }
+      }
+    } catch { agentOptions = undefined }
+
+    /* 诊断 / 早会同步共用同一条 cove 洞察会话：不每次新建，会话列表不膨胀 */
+    const sessionId = insightSessionIdFor()
+    let created = false
+    try {
+      await agents.create({ sessionId, meta: { cwd: cove.dir }, ...(agentOptions ? { agentOptions } : {}) })
+      created = true
+    } catch (error) {
+      /* 已存在就复用；建不出来且读不到记录才算失败 */
+      const existing = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
+      const record = existing ? existing : await readSessionRecord(sessionId, 5000).catch(() => undefined)
+      if (!record) return { error: '创建会话失败：' + (error instanceof Error ? error.message : String(error)) }
+    }
+    await attachSessionToWorkspace(sessionId, cove.dir).catch(() => undefined)
+    if (created) {
+      const today = new Date()
+      const label = (today.getMonth() + 1) + '/' + today.getDate()
+      await renameSession(sessionId, 'cove · 洞察 ' + label).catch(() => undefined)
+      await archiveStaleInsightSessions(sessionId, cove.dir)
+    }
+
+    /* 复用会话：先等它空闲，再记「助手消息条数」基线；轮询到条数增加才算本轮新回复。
+       文本相同也可能是不同轮，所以不用文本比对。 */
+    const idleDeadline = Date.now() + 20_000
+    while (Date.now() < idleDeadline) {
+      const idleAgent = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
+      const busy = !!(idleAgent && (idleAgent.phase?.kind === 'running' || idleAgent.isRunning === true))
+      if (!busy) break
+      await new Promise((resolve) => setTimeout(resolve, 600))
+    }
+    const baseline = await readAssistantSnapshot(sessionId)
+    try {
+      await sessions.prompt({
+        requestId: 'cove-insight:' + Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 6),
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: system + '\n\n' + text }],
+      }, new AbortController().signal)
+    } catch (error) {
+      return { error: '投递提示失败：' + (error instanceof Error ? error.message : String(error)), sessionId }
+    }
+
+    /* 长提示词 + 推理模型实测要 1.5–2 分钟：给到 240s，超时再回退后台模型 */
+    const deadline = Date.now() + 240_000
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      const agent = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
+      const running = !!(agent && (agent.phase?.kind === 'running' || agent.isRunning === true))
+      const snapshot = await readAssistantSnapshot(sessionId)
+      if (snapshot.count > baseline.count && snapshot.last && !running) return { text: snapshot.last, sessionId }
+    }
+    return { error: '会话 240 秒内没有给出结果', sessionId }
   }
 
   /** AI 诊断：一句话结论 + 3 条问题 + 三个粗分。失败返回 null，由面板降级。 */
-  async function diagnoseInsight(force = false, promptOverride = '', mode = '') {
+  async function diagnoseInsight(force = false, promptOverride = '', mode = '', buttonId = '') {
     const custom = asString(promptOverride).trim()
     const scope = custom ? `${custom.length}:${custom.slice(0, 24)}` : (mode || 'default')
     const signature = `${insightSignature()}:${scope}`
     /* 结果落在 state 里：热重载/重启之后「今天已经诊断过」这件事不该丢 */
     if (!force && state.insight && state.insightSignature === signature
+      && state.insight.buttonId === (buttonId || undefined)
       && Number(state.insight.promptRev ?? 0) === PROMPT_REV) {
       return { ok: true, data: state.insight, cached: true }
     }
@@ -8707,8 +8858,21 @@ bucket 只能从枚举里选：
     const local = insightLocal()
     const statLine = `共 ${local.board.total} · 已绑定 ${local.board.started} · 未开始 ${local.board.idle}`
       + ` · 今日完成 ${local.today.doneCount} · 完成度 ${local.today.completion === null ? '—' : `${local.today.completion}%`}`
+    /* 长期洞察：行为档案只在「诊断」注入；早会回答的是「今天先做哪件」，不塞长期结论 */
+    const behavior = mode === 'morning'
+      ? { text: '', sampleDays: 0, windowDays: 0, coverage: 0 }
+      : buildBehaviorProfile({
+        tasks: state.tasks,
+        metricsByDay: state.metricsByDay ?? {},
+        now: nowMs(),
+        ignoreWords: settings.insightIgnore,
+      })
+    const behaviorBlock = mode === 'morning' ? '' : (behavior.text
+      ? `\n\n【行为档案】（样本 ${behavior.sampleDays} 天，覆盖 ${Math.round(behavior.coverage * 100)}%；n<5 的信号不出现）\n${behavior.text}`
+      : '\n\n【行为档案】暂无（样本不足）：本次不要给长期结论，longTerm 填 null。')
     const promptText = `${context}\n\n卡片上方已经显示的统计（**不要重复这些数字**）：${statLine}`
       + `\n\n可用图表数据集（挑图表时用这些 key，不要另造）：\n${dataBrief}`
+      + behaviorBlock
     /* 一个按钮一份提示词：写了就用它，整份替换（用户要的是「直接改提示词」，不是再叠一层） */
     const ignoreWords = (settings.insightIgnore ?? []).map((item) => asString(item)).filter(Boolean)
     const ignoreNotice = ignoreWords.length
@@ -8727,9 +8891,19 @@ bucket 只能从枚举里选：
     /* 输出被 maxTokens 截断时文本非空但 JSON 不完整，所以要按「能否解析」决定是否加预算重试 */
     let asked = { text: '', reason: '' }
     let parsed
+    /* 先走 cove 会话（用户口径：AI 生成都是会话）；拿不到再回退后台模型。 */
+    let sessionId = ''
+    if (buttonId) {
+      const viaSession = await askInsightViaSession(
+        (settings.insightButtons ?? []).find((item) => item.id === buttonId), systemPrompt, promptText,
+      )
+      sessionId = asString(viaSession.sessionId)
+      if (asString(viaSession.text)) asked = { text: viaSession.text, reason: '' }
+      else log(ctx, 'warn', '[insight] 会话生成未成功：' + asString(viaSession.error))
+    }
     /* 900 起步太紧：模型一旦先思考，正文还没开始就被截断，表现为「返回空」 */
     for (const budget of [1800, 2800, 4000]) {
-      asked = await askModelForInsight(systemPrompt, promptText, budget)
+      if (!asString(asked.text).trim()) asked = await askModelForInsight(systemPrompt, promptText, budget)
       parsed = parseJson(asked.text)
       /* 解析出来但字段对不上（模型自己换了结构）也算失败，换个预算重试 */
       if (parsed && typeof parsed === 'object'
@@ -8769,6 +8943,13 @@ bucket 只能从枚举里选：
       }
       return `T${no}「${name}」 ${body}`
     }
+    /* 长期结论：模型只负责写字，能不能落地由 normalizeLongTerm 判定（fact 命中 / lens 白名单 / if-then） */
+    const longTerm = mode === 'morning' ? null : normalizeLongTerm(parsed.longTerm, {
+      profileText: behavior.text,
+      sampleDays: behavior.sampleDays,
+      windowDays: behavior.windowDays,
+      now: nowMs(),
+    })
     const data = {
       summary: asString(parsed.summary).slice(0, 400),
       headline: asString(parsed.headline).slice(0, 120),
@@ -8818,7 +8999,11 @@ bucket 只能从枚举里选：
         }))
         .filter((item) => item.title || item.detail)
         .slice(0, 3),
+      /* 长期结论：校验不过就是 null（样本不足 / 数字对不上 / 写不出反证） */
+      longTerm,
       at: nowMs(),
+      /* 这次是在哪条 cove 会话里生成的：卡片上的「打开会话」用它。 */
+      ...(sessionId ? { sessionId } : {}),
       promptRev: PROMPT_REV,
       /* 让面板能显示「这次到底用了哪份提示词」，不用猜 */
       promptSource,
@@ -8832,8 +9017,19 @@ bucket 只能从枚举里选：
         chars: context.length,
       },
     }
+    const button = settings.insightButtons.find((item) => item.id === buttonId && item.kind !== 'export'
+      && (item.kind === 'morning' ? 'morning' : 'diagnose') === data.mode)
+    if (button) {
+      data.buttonId = button.id
+      state.insightResults = { ...insightResults(), [button.id]: data }
+    }
     state.insight = data
     state.insightSignature = signature
+    /* 长期结论跨天保留：本次校验通过就覆盖；没通过则保留还没过期的旧结论 */
+    const previousLongTerm = state.longTerm
+    state.longTerm = longTerm
+      ? { at: nowMs(), promptRev: PROMPT_REV, data: longTerm }
+      : (previousLongTerm && !isLongTermExpired(previousLongTerm, dayKey(0)) ? previousLongTerm : null)
     await persistState()
     return { ok: true, data, cached: false }
   }
@@ -11082,6 +11278,8 @@ bucket 只能从枚举里选：
     insightLocal,
     /* 面板打开时带上的「今天那份诊断」：只要还在同一天就给，任务变动不该让结论凭空消失 */
     insightStats,
+    insightResults,
+    longTermView,
     insightDataset,
     insightChartData,
     startInsightJob,
@@ -11720,7 +11918,16 @@ function mountRoutes(ctx, engine) {
 
           if (route === '/api/insight' && req.method === 'GET') {
             /* 连同「今天已经诊断过的那份」一起给，刷新面板不用重新烧 token */
-            sendJson(res, 200, { ok: true, local: engine.insightLocal(), ai: engine.cachedInsight() })
+            const { insightIgnore, insightButtons } = engine.getSettings()
+            sendJson(res, 200, {
+              ok: true,
+              local: engine.insightLocal(),
+              ai: engine.cachedInsight(),
+              results: engine.insightResults(),
+              longTerm: engine.longTermView(),
+              settings: { insightIgnore, insightButtons },
+              promptDefaults: { morning: DEFAULT_MORNING_PROMPT, insight: DEFAULT_INSIGHT_PROMPT },
+            })
             return
           }
 
@@ -11738,11 +11945,11 @@ function mountRoutes(ctx, engine) {
             const body = await readBody(req)
             /* 默认后台跑：立刻返回，面板轮询 /api/insight/ai；带 wait:true 才同步等结果 */
             if (body.wait === true) {
-              const result = await engine.diagnoseInsight(body.force === true, asString(body.prompt), asString(body.mode))
+              const result = await engine.diagnoseInsight(body.force === true, asString(body.prompt), asString(body.mode), asString(body.buttonId))
               sendJson(res, result.ok ? 200 : 400, result)
               return
             }
-            const started = engine.startInsightJob(body.force === true, asString(body.prompt), asString(body.mode))
+            const started = engine.startInsightJob(body.force === true, asString(body.prompt), asString(body.mode), asString(body.buttonId))
             sendJson(res, 200, started)
             return
           }
