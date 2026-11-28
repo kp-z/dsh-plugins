@@ -1,6 +1,6 @@
 # 座位供给与人数上限：这张地图能坐几个人
 
-> 结论先给：**默认场景（company / `scene.office`）的实用人数上限 = 10 人**（每人有工位 + 有床）。
+> 结论先给：**默认场景（company / `scene.office`）的实用人数上限 = 19 人**（每人有工位 + 有床）；R531 后休息位由 10 扩到 22，工位 19 成为新短板。
 > 当前花名册 8 人，还余 2 人。换 `scene.default-town` 则只有 **3 人**。
 > 数字全部来自内容库，本文末尾有可复制执行的复核命令。
 
@@ -28,7 +28,7 @@
 
 | place | 站点数（scene.office） | 站点数（scene.default-town） |
 |---|---|---|
-| `place:office.tech_company_1`（company） | **26** | **10** |
+| `place:office.tech_company_1`（company） | **28** | **22** |
 | 公寓 / 便利店 / 餐馆 / 健身房 / 海滩 | 0 | 0 |
 
 也就是说：**另外 5 个 place 一个座位都没有**，人也不会去——`life.ts:143` 只挑
@@ -47,7 +47,7 @@
 | breakroom | 2 / 10 | 1 / 3 |
 | server | 0 / 0 | 1 / 1 |
 | lab | 0 / 0 | 1 / 1 |
-| **合计** | **26 / 34** | **10 / 16** |
+| **合计** | **28 / 46** | **22 / 16** |
 
 两场景的 `slots` 与容量逐站相等（`slotsFor` 只在没声明 slots 时兜底，`src/content/instantiate.ts:102-105`）：
 office 34 槽 / 34 容量，town 16 槽 / 16 容量。**没有任何站点"容量多于槽位"**。
@@ -177,3 +177,13 @@ scene.default-town stations= 10 capacity= 16 slots= 16
 
 本文另用 `createWorld()`（`src/world/create.ts`）按 `places = 公司 + 公寓` 建过一次世界核对：
 `world.stations` 与上表逐项相同（26/34、10/16），且 100% 站点的 `placeId` 都是默认场所。
+
+---
+
+## 7. R531 之后的实际供给（以此为准）
+
+实测（56 人世界跑一天）：sleep 需 5.33 座、meal 需 2.19 座、rest 需 9.22 座，合计 16.7 座；扩容前休息容量 10 —— 缺口约 7 座。
+
+扩容后：scene.office 28 站点 / 46 容量，其中 rest 22 座（breakroom 10 + lounge 12）。真机复核（同一世界重启后）：restCapacity 22、restOccupied 20、runtime.intentStats.hungry-no-breakroom = 0（扩容前同口径 11845/天）。
+
+顺手修掉一个站点重叠：lounge-01 原第 3 个槽的绝对坐标 (24,-6) 与 seat-04 的工位落点完全重合 —— 工位上的人和休息的人会叠在同一点。已跳过该格，并由 test/content-capacity.test.js 的「槽位两两不重合」断言守住。

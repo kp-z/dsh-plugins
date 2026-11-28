@@ -143,6 +143,43 @@ const LOUNGE: StationEntry = {
   capacity: 6,
   capabilities: ['rest'],
   props: [{ model: CHAIR, offset: { x: 0, z: 0 }, rotationY: 0 }],
+  // R531：第 3 个槽原来是 x=+4（绝对坐标 24,-6），**和 station.seat-04 的工位落点
+  // 完全重合**——工位上的人会和一个休息的人叠在同一点。这里跳过那一格，
+  // 6 个座点摊成 20/22/26/28/30/32（x=24 那张椅子是工位，不是沙发）。
+  slots: [
+    { x: 0, z: 0 },
+    { x: 2, z: 0 },
+    { x: 6, z: 0 },
+    { x: 8, z: 0 },
+    { x: 10, z: 0 },
+    { x: 12, z: 0 },
+  ],
+}
+
+/**
+ * R531：茶水间第二排座位（6 座）。
+ *
+ * 为什么"加站点"而不是把 breakroom-01 的 capacity 从 4 调大：capacity 与 slots
+ * 条数**不被校验**（src/content/validate.ts:358-384），而 stationSlot 会把越界索引
+ * **夹到最后一个槽**（src/domain/geometry.ts:39-43）——多出来的人会叠在同一点。
+ * 要加座位，就得同时给得出**互不重合的可走坐标**。
+ *
+ * 坐标怎么定的：取 OFFICE_MAP.walkable 去掉 OFFICE_OCCUPANCY 后剩下的可走格，
+ * 再排除已被其它站点槽位占用的格（docs/SEATING-CAPACITY.md 第 6 节有复核命令）。
+ * 茶水间（district.6，x∈[-17,3]、z∈[-15,-7]）的 z=-8 一排整排可走且全空；
+ * 相对锚点 (-12,-8) 每 2 单位一格，正好 6 个。
+ */
+const BREAKROOM_2: StationEntry = {
+  id: 'station.breakroom-02',
+  name: '茶水间窗边座位',
+  kind: 'breakroom',
+  district: 'district.6',
+  anchor: { x: -12, z: -8 },
+  relativeTo: null,
+  capacity: 6,
+  capabilities: ['rest'],
+  props: [{ model: CHAIR, offset: { x: 0, z: 0 }, rotationY: 0 }],
+  // 绝对坐标：(-12,-8) (-10,-8) (-8,-8) (-6,-8) (-4,-8) (-2,-8)。
   slots: [
     { x: 0, z: 0 },
     { x: 2, z: 0 },
@@ -153,7 +190,35 @@ const LOUNGE: StationEntry = {
   ],
 }
 
-const ALL_STATIONS: StationEntry[] = [...STATIONS, BREAKROOM, LOUNGE]
+/**
+ * R531：东侧休息区里排（6 座）。
+ *
+ * 与 lounge-01（z=-6）平行，退到 z=-10 一排——那一排整排可走且全空，
+ * 且离 z=-9 那三张工位椅（seat-19/20/21）≥2 单位，不会和工位坐点挤在一起。
+ * 这样休息位合计 4+6+6+6 = 22 座，覆盖实测 16.7 的需求峰值。
+ */
+const LOUNGE_2: StationEntry = {
+  id: 'station.lounge-02',
+  name: '东侧休息区里排',
+  kind: 'breakroom',
+  district: 'district.4',
+  anchor: { x: 24, z: -10 },
+  relativeTo: null,
+  capacity: 6,
+  capabilities: ['rest'],
+  props: [{ model: CHAIR, offset: { x: 0, z: 0 }, rotationY: 0 }],
+  // 绝对坐标：24/26/28/30/32/34 在 z=-10。
+  slots: [
+    { x: 0, z: 0 },
+    { x: 2, z: 0 },
+    { x: 4, z: 0 },
+    { x: 6, z: 0 },
+    { x: 8, z: 0 },
+    { x: 10, z: 0 },
+  ],
+}
+
+const ALL_STATIONS: StationEntry[] = [...STATIONS, BREAKROOM, LOUNGE, BREAKROOM_2, LOUNGE_2]
 
 /**
  * **这一局的装配单**：只引用原版办公室的 9 个分区与 24 个座位。
@@ -190,7 +255,7 @@ export const officePack: ContentPack = {
     id: 'pack.office',
     name: 'Microverse 原版办公室',
     description:
-      '把 Microverse 游戏自带的办公室场景搬过来：9 个房间（名字与描述是原版的中文）、24 个工位、茶水间/休息区 10 个座位、一张整图底图。',
+      '把 Microverse 游戏自带的办公室场景搬过来：9 个房间（名字与描述是原版的中文）、24 个工位、茶水间/休息区 22 个座位（4+6+6+6，R531）、一张整图底图。',
     version: '1.0.0',
     schemaVersion: 1,
     requires: ['pack.pixel'],
