@@ -39,6 +39,7 @@ import { planTeamSync, startActivity } from './sim/index.js'
 import { createWorldStore } from './store/index.js'
 import { skillForTool } from './sim/tool-skill.js'
 import { intentStats } from './sim/intent-stats.js'
+import { skillLineForPrompt } from './sim/skills.js'
 import { summarizeDay } from './sim/day-summary.js'
 import { createPluginState } from './state.js'
 import { createSlowvaleBridge, type Bridge } from './adapters/slowvale/index.js'
@@ -1873,6 +1874,15 @@ function createSeatResolver(state: ReturnType<typeof createPluginState>): (chara
           stationName: stationLabel(state, agent.station),
           taskTitle,
           walkingTo: stationLabel(state, agent.targetStation),
+          // R541：成长。派生在 sim 侧（边界不允许 bridge import sim），这里只把结果这一行传进去。
+          // 派生出错（老存档形状怪）不该让建会话失败：退化成"没有成长行"。
+          skillLine: (() => {
+            try {
+              return skillLineForPrompt(world, agent.id)
+            } catch {
+              return null
+            }
+          })(),
         },
         scene.residentRules ?? [],
       ),
